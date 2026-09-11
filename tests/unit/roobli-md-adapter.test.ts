@@ -1,5 +1,5 @@
 /**
- * Parity and adapter coverage for `@roobli/md` v0.1.0.
+ * Parity and adapter coverage for `@roobli/md` v0.1.1.
  *
  * Default product path stays micromark. These tests force the adapter and
  * compare structural spans against the micromark baseline on synthetic
@@ -56,6 +56,7 @@ const G002_PARITY = [
   'malformed-fence.md',
   'malformed-html-comment.md',
   'malformed-raw-html.md',
+  'quote-callout.md',
   'raw-html.md',
   'table-math.md',
 ];
@@ -95,12 +96,9 @@ describe('@roobli/md adapter — structural parity', () => {
     });
   }
 
-  it('documents known callout divergence (native merges tight quotes)', () => {
-    const text = readFileSync(path.join(g002Dir, 'quote-callout.md'), 'utf8');
-    const engine = parseBlocksStructural(text);
-    const micro = splitBlocksMicromark(text);
-    expect(joinSplit(engine, text)).toBe(text);
-    expect(engine.spans.length).not.toBe(micro.spans.length);
+  it('matches micromark on g004 tight quote then callout', () => {
+    const text = '> A regular quote remains semantically editable.\n\n> [!NOTE]\n> Callout source remains exact and visible.\n';
+    structuralParity(text);
   });
 });
 

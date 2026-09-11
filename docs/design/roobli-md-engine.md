@@ -2,7 +2,7 @@
 
 Noto’s markdown v3 stack (`src/shared/markdown/v3/`) still defaults to micromark.
 The long-term engine that should own that hot path is the public MIT package
-**[@roobli/md](https://github.com/roobli/md)** v0.1.0 (“WYSIWYG-first markdown
+**[@roobli/md](https://github.com/roobli/md)** v0.1.1 (“WYSIWYG-first markdown
 engine for Noto”).
 
 ## Why
@@ -16,7 +16,7 @@ mdast dump.
 ## Dependency
 
 ```
-"@roobli/md": "github:roobli/md#v0.1.0"
+"@roobli/md": "github:roobli/md#v0.1.1"
 ```
 
 pnpm must allow its `prepare` (tsc) build — see `allowBuilds` in
@@ -44,8 +44,8 @@ NOTO_MARKDOWN_ENGINE=roobli-md pnpm start
 NOTO_MARKDOWN_ENGINE=roobli-md pnpm test
 ```
 
-Product / CI stay on micromark until remaining fixture divergences (tight
-adjacent quotes / callouts, etc.) are closed or explicitly accepted.
+Product / CI stay on micromark until broader golden gates pass; tight adjacent
+quotes/callouts now match micromark (`@roobli/md` v0.1.1).
 
 ## Adapter mapping
 
@@ -73,9 +73,8 @@ ProseMirror-ready node is required.
 4. **Serialize identity** — engine `serializeDocument(identityUnits)` bytes
    equal Noto `identityTransaction` output on the same sources.
 
-Known divergence today: consecutive tight blockquotes (e.g. Typora callouts in
-`quote-callout.md` / `g004-daily-editing.md`) — native may merge where micromark
-emits two `blockquote` nodes. Coverage (`joinSplit`) still holds.
+Tight adjacent quotes/callouts (`quote-callout.md`, g004 quote→callout) match
+micromark as of `@roobli/md` v0.1.1 (CommonMark: unprefixed blank ends a quote).
 
 ## Bridge docs (engine repo)
 
@@ -86,8 +85,8 @@ emits two `blockquote` nodes. Coverage (`joinSplit`) still holds.
 
 ## Status
 
-**Adapter spike landed (default-off).** `@roobli/md` Phase 6 native scanner is
-the flagged backend; micromark remains the product default. Next: close
-callout/quote split parity, optionally cache prior splits so
+**Adapter spike landed (default-off).** `@roobli/md` v0.1.1 Phase 6 native
+scanner is the flagged backend; micromark remains the product default. Quote/
+callout split parity is closed. Next: optionally cache prior splits so
 `NotoEditor.replaceMarkdown` can call `reparseBlocks` instead of a full native
 split, then consider default-on behind broader golden gates.
