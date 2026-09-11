@@ -914,56 +914,49 @@
 /* Centred, because with nothing else on screen there is no writing column for
    it to align to: aligned left at 22vh it read as content that had failed to
    lay out rather than as the one thing the screen is for. */
+/* One short line and two ways in. No heading hierarchy, no Plugins / Remote /
+   graph pitch: the first screen is only for opening. Recent may sit below, but
+   it must not compete with the buttons. */
 .empty-state {
   display: flex;
   flex-direction: column;
   align-items: center;
   justify-content: center;
-  gap: 10px;
+  gap: 14px;
   width: var(--measure);
   min-height: 100%;
   margin: 0 auto;
-  padding-bottom: 6vh;
+  padding-bottom: 8vh;
   text-align: center;
   font-family: tokens.$ui;
 }
 
-.empty-state h1 {
-  margin: 0;
-  color: var(--ink);
-  font-family: tokens.$prose;
-  font-size: 26px;
-  font-weight: 600;
-}
-
-.empty-state p {
+.empty-state .empty-lead {
   margin: 0;
   color: var(--muted);
-  font-size: 14px;
+  font-size: 13px;
+  font-weight: 400;
+  letter-spacing: 0.01em;
 }
 
 .empty-state .empty-error {
+  margin: 0;
   color: var(--danger);
+  font-size: 13px;
 }
 
-/* The one thing this screen exists to get you to do, so it is the one filled
-   control on it. Ink rather than accent: the accent marks where you are, and
-   spending it on a button here would make it mean two things. */
 /* Two ways in, the folder first because a vault is what this app is for.
-   The second is quiet: an outline, no fill, the same height. */
+   Ink fill on the primary only — accent stays for “where you are”, not CTA. */
 .empty-actions {
   display: flex;
   align-items: center;
-  gap: 10px;
+  gap: 8px;
 }
 
-/* Both buttons take their shape from one rule, so the pair cannot drift out of
-   line. The first attempt gave the primary a top margin of its own, which in a
-   centred row simply pushed it below its neighbour. */
 .empty-state .empty-actions button {
-  padding: 8px 16px;
+  padding: 7px 14px;
   font: inherit;
-  font-size: 14px;
+  font-size: 13px;
   color: var(--ink);
   background: transparent;
   border: 1px solid var(--hairline);
@@ -984,14 +977,49 @@
   border-color: color-mix(in srgb, var(--ink) 82%, var(--paper));
 }
 
+/* Recent is a quiet recall list under the actions — names only, path on hover.
+   Uppercase rail headings and dual-line file-rows would out-shout the buttons. */
 .recent-list {
   display: flex;
   flex-direction: column;
-  gap: 2px;
+  align-items: stretch;
+  gap: 0;
   width: 100%;
-  max-width: 380px;
-  margin-top: 26px;
+  max-width: 280px;
+  margin-top: 28px;
   text-align: left;
+}
+
+.empty-state .recent-label {
+  margin: 0 0 4px;
+  padding: 0 8px;
+  color: color-mix(in srgb, var(--muted) 72%, var(--paper));
+  font-size: 11px;
+  font-weight: 500;
+  letter-spacing: 0.02em;
+}
+
+.empty-state .recent-row {
+  display: block;
+  width: 100%;
+  margin: 0;
+  padding: 5px 8px;
+  overflow: hidden;
+  color: var(--muted);
+  font: inherit;
+  font-size: 12px;
+  text-align: left;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  background: transparent;
+  border: 0;
+  border-radius: 4px;
+  cursor: pointer;
+
+  &:hover {
+    color: var(--ink);
+    background: color-mix(in srgb, var(--raised) 70%, transparent);
+  }
 }
 
 /* Outline ----------------------------------------------------------------- */

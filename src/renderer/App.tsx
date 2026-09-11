@@ -2450,8 +2450,7 @@ function NotoWorkspace({ platform }: { platform: NotoPlatform }) {
             : state === 'Opening'
               ? <div className="opening-state">Starting…</div>
               : <section className="empty-state" data-testid="empty-state">
-                  <h1>No document open</h1>
-                  <p>Open a file to write, or a folder to browse its notes.</p>
+                  <p className="empty-lead">Open a folder or a file.</p>
                   <div className="empty-actions">
                     <button type="button" className="primary" data-testid="empty-open-folder"
                       onClick={chooseFolder}>Open folder…</button>
@@ -2460,13 +2459,12 @@ function NotoWorkspace({ platform }: { platform: NotoPlatform }) {
                   </div>
                   {openError && <p role="alert" className="empty-error">{openError}</p>}
                   {recent.length > 0 && (
-                    <div className="recent-list">
-                      <span className="aside-heading">Recent</span>
-                      {recent.slice(0, 8).map((file) => (
-                        <button key={file.path} type="button" className="file-row" title={file.path}
+                    <div className="recent-list" data-testid="empty-recent">
+                      <span className="recent-label">Recent</span>
+                      {recent.slice(0, 5).map((file) => (
+                        <button key={file.path} type="button" className="recent-row" title={file.path}
                           onClick={() => void openPath(file.path)}>
-                          <strong>{file.name}</strong>
-                          <span>{file.path}</span>
+                          {file.name}
                         </button>
                       ))}
                     </div>
