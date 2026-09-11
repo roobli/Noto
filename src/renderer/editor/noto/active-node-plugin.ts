@@ -1,27 +1,33 @@
 /**
  * What reveals its markup, and when.
  *
- * Two scopes, because markdown has two kinds of syntax and they do not behave
- * the same way.
+ * Three scopes, because markdown has three kinds of syntax and they do not
+ * behave the same way.
  *
- * Block syntax belongs to the block: a heading's `#`, a fence's language, the
- * frontmatter's fold. There is nothing smaller to reveal, so the block that
- * holds the selection carries a class and the stylesheet does the rest.
+ * Top-level block syntax belongs to the top-level block: a heading's level
+ * badge, a fence's language, the frontmatter's fold. There is nothing smaller
+ * to reveal, so the block that holds the selection carries `.noto-active-block`
+ * and the stylesheet does the rest — and only while the editor itself has
+ * focus, so opening a file does not flash syntax for a block nobody is editing.
  *
- * Inline syntax belongs to the span. This is the part that was wrong. The block
- * class used to drive descendant rules, so putting the caret anywhere in a
- * paragraph revealed the delimiters of every emphasis, every code span and
- * every link in it at once: a list item mentioning eleven directory names
- * turned into eleven pairs of visible backticks because the caret was
- * somewhere in the sentence. Typora reveals the one span you are actually in
- * and leaves the rest of the sentence set as prose, which is the whole
- * difference between reading a document and reading its source.
+ * Textblock-scoped source belongs to the caret's own textblock (a paragraph
+ * inside a list item, a heading, a quote line). Wiki-link brackets and the
+ * muted `target|` path are ordinary characters in the file; they stay hidden
+ * until that textblock is the one being edited, which is the Typora rule for
+ * "source symbols of the focused block" without lighting up every sibling item
+ * in a long list of `[[links]]`.
  *
- * So the delimiters are widgets on the innermost mark range containing the
- * caret, and nothing else in the paragraph changes. Widgets rather than
- * generated content because a widget can be placed at an exact position rather
- * than at the edge of an element, and because it is a decoration either way and
- * so can never reach the saved file.
+ * Inline mark syntax belongs to the span. The top-level block class used to
+ * drive descendant rules, so putting the caret anywhere in a paragraph revealed
+ * the delimiters of every emphasis, every code span and every link in it at
+ * once: a list item mentioning eleven directory names turned into eleven pairs
+ * of visible backticks because the caret was somewhere in the sentence. Typora
+ * reveals the one span you are actually in and leaves the rest of the sentence
+ * set as prose. So those delimiters are widgets on the innermost mark range
+ * containing the caret, and nothing else in the paragraph changes. Widgets
+ * rather than generated content because a widget can be placed at an exact
+ * position rather than at the edge of an element, and because it is a
+ * decoration either way and so can never reach the saved file.
  */
 
 import { Plugin, PluginKey, type EditorState } from 'prosemirror-state';
@@ -155,12 +161,17 @@ function activeDecorations(state: EditorState): DecorationSet {
   });
 
   /*
+   * Deeper than the top-level active block.
+   *
    * Raw HTML that is shown as a picture shows its source while the caret is
    * in it, at whatever depth it sits. The top-level class above cannot say
    * that: an image tag inside a list item would show its source whenever the
-   * caret was anywhere in the list. So the block holding the caret, and the
-   * textblock holding the caret when it contains inline HTML, are marked on
-   * their own, from the selection's ends up through their ancestors.
+   * caret was anywhere in the list.
+   *
+   * Every textblock holding the caret also gets `.noto-source-editing`, so
+   * wiki-link brackets (and similar in-file source) can reveal for that
+   * paragraph alone rather than for every sibling in a list. Inline HTML
+   * keeps `.noto-inline-editing` on top of that when the textblock holds any.
    */
   const marked = new Set<number>();
   for (const $pos of [state.selection.$from, state.selection.$to]) {
@@ -171,9 +182,12 @@ function activeDecorations(state: EditorState): DecorationSet {
       if (node.type.name === 'html_block') {
         marked.add(start);
         decorations.push(Decoration.node(start, $pos.after(depth), { class: 'noto-html-editing' }));
-      } else if (node.isTextblock && holdsInlineHtml(node)) {
+      } else if (node.isTextblock) {
         marked.add(start);
-        decorations.push(Decoration.node(start, $pos.after(depth), { class: 'noto-inline-editing' }));
+        const classes = holdsInlineHtml(node)
+          ? 'noto-source-editing noto-inline-editing'
+          : 'noto-source-editing';
+        decorations.push(Decoration.node(start, $pos.after(depth), { class: classes }));
       }
     }
   }

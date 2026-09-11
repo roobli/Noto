@@ -83,9 +83,10 @@ export function findWikiLinks(text: string, offset: number): WikiLinkMatch[] {
 /**
  * The link's decorations.
  *
- * Brackets (and, when present, `target|`) are dimmed rather than removed, so
- * the caret still walks the real characters. The visible name is the label —
- * or the bare target when nobody wrote a pipe — styled as a link.
+ * Brackets (and, when present, `target|`) carry `.noto-wiki-bracket` so the
+ * stylesheet can hide them outside the caret's textblock and show them dimmed
+ * while that block is being edited. The visible name is the label — or the
+ * bare target when nobody wrote a pipe — styled as a link either way.
  */
 function decorateLink(match: WikiLinkMatch): Decoration[] {
   const openTo = match.from + 2;
