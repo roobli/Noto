@@ -92,6 +92,20 @@ test.describe('settings', () => {
 
       await page.getByTestId('settings-close').click();
       await expect(page.getByTestId('settings-panel')).toBeHidden();
+
+      // Esc after a font change returns to typing; Cmd+, again leaves too.
+      await invokeMenu(app, 'settings');
+      await expect(page.getByTestId('settings-panel')).toBeVisible();
+      await page.getByTestId('setting-font-size').fill('18');
+      await page.keyboard.press('Escape');
+      await expect(page.getByTestId('settings-panel')).toBeHidden();
+      await expect(page.locator('.ProseMirror')).toBeFocused();
+
+      await invokeMenu(app, 'settings');
+      await expect(page.getByTestId('settings-panel')).toBeVisible();
+      await invokeMenu(app, 'settings');
+      await expect(page.getByTestId('settings-panel')).toBeHidden();
+      await expect(page.locator('.ProseMirror')).toBeFocused();
     } finally {
       await app.close();
     }

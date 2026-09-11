@@ -88,8 +88,8 @@ default; Links (graph / related) stays off until you turn it on in Settings →
 Appearance. The one control at the top left opens and closes the rail, and
 `Cmd+Shift+L` and `Cmd+Shift+O` open it directly on the view they name.
 `Cmd+F` finds, `Cmd+Alt+F` finds and replaces, `Cmd+K` opens the command
-palette, and `Cmd+,` opens Settings — a full-page shell with categories, where
-plugins are turned on under the Plugins section. On Windows and Linux, read
+palette, and `Cmd+,` opens Settings (and closes it again) — a full-page shell with
+categories, where plugins are turned on under the Plugins section. On Windows and Linux, read
 Control for Command.
 
 The title bar carries the filename and nothing else that is not an action you
