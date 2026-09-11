@@ -296,7 +296,10 @@ A full-page Settings shell (Cursor-style), reached from the gear or `Cmd+,`.
 Left categories, right content: Appearance, Editor, Markdown, Images, then
 Remote and Plugins quieter at the bottom. It is one surface, not a floating
 720×560 three-tab dialog and not a second Plugins modal from the title bar.
-The empty state and the title bar do not promote Remote or Plugins.
+The empty state is only Open folder / Open file and one short line. Recent may
+sit below as a quiet name list; it does not out-shout the buttons. No Plugins,
+Remote, or graph pitch on that screen. The title bar likewise does not promote
+Remote or Plugins.
 
 `Esc`, Done, or `Cmd+,` again leaves immediately for the document. Focus returns
 to the editor when a note is open so the next keystroke types; with nothing open

@@ -32,7 +32,12 @@ describe('Settings Appearance restraint', () => {
     expect(settings).toContain('is-buried');
     expect(css).toContain('.pref-section.is-buried');
 
-    expect(empty).not.toMatch(/Remote|Plugins|plugin/i);
+    expect(empty).not.toMatch(/Remote|Plugins|plugin|graph|Links|MOC/i);
+    expect(empty).toContain('empty-lead');
+    expect(empty).toContain('Open a folder or a file.');
+    expect(empty).not.toMatch(/<h1\b/);
+    expect(empty).toContain('empty-open-folder');
+    expect(empty).toContain('empty-open');
     expect(titlebar).toContain('settings-toggle');
     expect(titlebar).not.toMatch(/pref-plugins|plugins-toggle|Remote/);
   });
