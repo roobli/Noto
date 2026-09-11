@@ -53,7 +53,7 @@ import { Shortcuts } from './Shortcuts';
 import { RailFooter } from './RailFooter';
 import { Preferences, type PreferencesSection } from './Preferences';
 import {
-  DEFAULT_SETTINGS, stepWidthMode, type NotoSettingsV1, type TreeSortV1,
+  DEFAULT_SETTINGS, clampRailWidth, stepWidthMode, type NotoSettingsV1, type TreeSortV1,
 } from '../shared/settings/v1/contracts';
 import type { AssetRefusalV1 } from '../shared/assets/v1/contracts';
 import { copyThroughSelection } from './editor/noto/clipboard';
@@ -631,6 +631,19 @@ function NotoWorkspace({ platform }: { platform: NotoPlatform }) {
     });
     return () => { active = false; unsubscribe(); };
   }, []);
+
+  /** Window width for the live rail ceiling (35% of screen). */
+  const [viewportWidth, setViewportWidth] = useState(() => (
+    typeof window !== 'undefined' ? window.innerWidth : 0
+  ));
+  useEffect(() => {
+    const sync = () => setViewportWidth(window.innerWidth);
+    sync();
+    window.addEventListener('resize', sync);
+    return () => window.removeEventListener('resize', sync);
+  }, []);
+  /** Applied rail width: clamp a stored value that outgrew a narrower window. */
+  const appliedRailWidth = clampRailWidth(settings.railWidth, viewportWidth);
 
   const changeSettings = useCallback((patch: Partial<NotoSettingsV1>) => {
     // Applied locally at once so the control responds, then confirmed by main,
@@ -2044,7 +2057,7 @@ function NotoWorkspace({ platform }: { platform: NotoPlatform }) {
       data-testid="noto-app" data-file-state={state}
       /* Rail width as a CSS variable for anything that still wants to know
          how wide the open rail is (print, narrow-window overrides). */
-      style={{ '--shell-rail': rail.open ? `${settings.railWidth}px` : '0px' } as CSSProperties}
+      style={{ '--shell-rail': rail.open ? `${appliedRailWidth}px` : '0px' } as CSSProperties}
       data-plugin-lifecycle={pluginSnapshot?.lifecycle ?? 'disabled'}
       data-plugin-registrations={pluginSnapshot?.rendererRegistrations ?? 0}>
       <a className="skip-link" href="#document-canvas">Skip to document</a>
@@ -2073,8 +2086,8 @@ function NotoWorkspace({ platform }: { platform: NotoPlatform }) {
             }}
             view={rail.view}
             onView={(view) => setRail({ open: true, view })}
-            width={settings.railWidth}
-            onResize={(railWidth) => changeSettings({ railWidth })}
+            width={appliedRailWidth}
+            onResize={(railWidth) => changeSettings({ railWidth: clampRailWidth(railWidth, window.innerWidth) })}
             outline={outline}
             currentHeading={currentHeading}
             onGoToBlock={(blockIndex) => editorRef.current?.focusBlock(blockIndex)}

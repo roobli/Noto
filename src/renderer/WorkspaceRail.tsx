@@ -15,13 +15,16 @@ import { RailSearch, type RailSearchProps } from './RailSearch';
 import { useCallback, useEffect, useRef, useState, type CSSProperties, type ReactNode } from 'react';
 import { FileTree, type FileTreeProps } from './FileTree';
 import { nestOutline, type OutlineEntry, type OutlineNode } from './outline';
-import { SETTING_RANGES } from '../shared/settings/v1/contracts';
+import { clampRailWidth, railWidthMaxForScreen, SETTING_RANGES } from '../shared/settings/v1/contracts';
 import { sizeTreeGuides } from './tree-guides';
 
 export type RailView = 'files' | 'outline' | 'links' | 'search';
 
 const RAIL_MIN = SETTING_RANGES.railWidth.min;
-const RAIL_MAX = SETTING_RANGES.railWidth.max;
+
+function windowWidth(): number {
+  return typeof window !== 'undefined' ? window.innerWidth : 0;
+}
 
 export interface WorkspaceRailProps {
   readonly view: RailView;
@@ -190,6 +193,15 @@ export function WorkspaceRail({
     if (body) sizeTreeGuides(body);
   }, [outline, currentHeading, view, folded]);
 
+  /** Live drag ceiling: 35% of the window, refreshed on resize. */
+  const [railMax, setRailMax] = useState(() => railWidthMaxForScreen(windowWidth()));
+  useEffect(() => {
+    const sync = () => setRailMax(railWidthMaxForScreen(window.innerWidth));
+    sync();
+    window.addEventListener('resize', sync);
+    return () => window.removeEventListener('resize', sync);
+  }, []);
+
   /**
    * Drag the rail wider.
    *
@@ -197,7 +209,8 @@ export function WorkspaceRail({
    * pointer moves, and the setting is written once on release. Routing every
    * move through React state and IPC would put a settings round trip between
    * the pointer and the edge it is dragging, which is exactly the lag that
-   * makes a resize feel broken.
+   * makes a resize feel broken. Max is 35% of the window, not the soft
+   * absolute in SETTING_RANGES.
    */
   const startResize = useCallback((event: React.PointerEvent<HTMLDivElement>) => {
     event.preventDefault();
@@ -210,7 +223,10 @@ export function WorkspaceRail({
     handle.setPointerCapture(event.pointerId);
 
     const move = (moveEvent: PointerEvent) => {
-      latest = Math.min(RAIL_MAX, Math.max(RAIL_MIN, startWidth + moveEvent.clientX - startX));
+      const max = railWidthMaxForScreen(window.innerWidth);
+      latest = clampRailWidth(startWidth + moveEvent.clientX - startX, window.innerWidth);
+      // Keep aria in step if the window resized mid-drag.
+      setRailMax(max);
       rail.style.setProperty('--rail-width', `${Math.round(latest)}px`);
     };
     const finish = () => {
@@ -229,8 +245,9 @@ export function WorkspaceRail({
    *  a control some people simply do not have. */
   const nudge = useCallback((event: React.KeyboardEvent<HTMLDivElement>) => {
     const step = event.shiftKey ? 32 : 8;
+    const max = railWidthMaxForScreen(window.innerWidth);
     if (event.key === 'ArrowLeft') { event.preventDefault(); onResize(Math.max(RAIL_MIN, width - step)); }
-    if (event.key === 'ArrowRight') { event.preventDefault(); onResize(Math.min(RAIL_MAX, width + step)); }
+    if (event.key === 'ArrowRight') { event.preventDefault(); onResize(Math.min(max, width + step)); }
   }, [onResize, width]);
 
   return (
@@ -296,7 +313,7 @@ export function WorkspaceRail({
         aria-label="Rail width"
         aria-valuenow={width}
         aria-valuemin={RAIL_MIN}
-        aria-valuemax={RAIL_MAX}
+        aria-valuemax={railMax}
         tabIndex={0}
         data-testid="rail-resize"
         onPointerDown={startResize}
