@@ -32,8 +32,15 @@ export const viewportStubKey = new PluginKey<ViewportStubState>('noto-viewport-s
 /** Below this, stubbing stays off — medium corpus notes stay fully real. */
 export const STUB_MIN_TOP_LEVEL_BLOCKS = 3000;
 
-/** Screens of real content above and below the visible scroller. */
-export const STUB_SCREEN_BUFFER = 2;
+/**
+ * Screens of real content above and below the visible scroller.
+ *
+ * Two was enough for small-step hysteresis, but a 0.75×view step then hit the
+ * edge every couple of frames and paid the full remount spike (~75–79ms). Three
+ * keeps large-step scrolling inside the buffer more often without stubbing
+ * always-real fences/tables (membership rules unchanged).
+ */
+export const STUB_SCREEN_BUFFER = 3;
 
 /** Top-level neighbours of the selection that must stay fully real. */
 export const STUB_SELECTION_RADIUS = 2;
@@ -474,6 +481,48 @@ export function viewportNeedsRemount(current: BlockRange, visible: BlockRange): 
 }
 
 /**
+ * Prefer an extend-then-slide remount over a hard recenter.
+ *
+ * `viewportFromScroll` returns the ideal visible±buffer window. Taking that
+ * wholesale advances the trailing edge by roughly the whole buffer, so one
+ * edge-crossing remounts half the real window even though only the leading
+ * band is newly needed. Keep the trailing edge, extend the leading edge to
+ * the ideal, and only slide the trailing edge once the window would exceed
+ * `idealSpan * STUB_WINDOW_SLACK`.
+ *
+ * Membership rules (viewport OR selection; stubbable types) are unchanged.
+ */
+export const STUB_WINDOW_SLACK = 1.5;
+
+export function slideViewportWindow(
+  current: BlockRange,
+  ideal: BlockRange,
+  last: number,
+): BlockRange {
+  const idealSpan = Math.max(0, ideal.to - ideal.from);
+  const maxSpan = Math.max(idealSpan, Math.ceil(idealSpan * STUB_WINDOW_SLACK));
+  const overlaps = ideal.from <= current.to && ideal.to >= current.from;
+  // Disjoint jump (scrollbar drag / big leap) — take the ideal window.
+  if (!overlaps) return clampRange(ideal.from, ideal.to, last);
+  // Scrolled down: leading edge needs to grow.
+  if (ideal.to >= current.to && ideal.from >= current.from) {
+    const nextTo = Math.max(current.to, ideal.to);
+    let nextFrom = current.from;
+    if (nextTo - nextFrom > maxSpan) nextFrom = nextTo - maxSpan;
+    return clampRange(nextFrom, nextTo, last);
+  }
+  // Scrolled up.
+  if (ideal.from <= current.from && ideal.to <= current.to) {
+    const nextFrom = Math.min(current.from, ideal.from);
+    let nextTo = current.to;
+    if (nextTo - nextFrom > maxSpan) nextTo = nextFrom + maxSpan;
+    return clampRange(nextFrom, nextTo, last);
+  }
+  // Partial overlap with mixed edges — prefer the ideal recenter.
+  return clampRange(ideal.from, ideal.to, last);
+}
+
+/**
  * Write measured heights for currently real blocks.
  *
  * Returns true when any stub height cache entry changed. A follow-up
@@ -660,7 +709,7 @@ class StubbableBlockView implements NodeView {
 function decorateRange(
   doc: ProseNode,
   range: BlockRange,
-  generation: number,
+  _generation: number,
   decorations: Decoration[],
   seen: Set<number>,
 ): void {
@@ -673,9 +722,11 @@ function decorateRange(
     const end = position + child.nodeSize;
     if (!seen.has(index) && STUBBABLE.has(child.type.name)) {
       seen.add(index);
+      // Class presence alone drives stub↔real remounts. Do not stamp generation
+      // into the spec: a slide would otherwise invalidate every still-real node.
       decorations.push(Decoration.node(position, end, {
         class: 'noto-stub-real',
-      }, { stubGeneration: generation }));
+      }));
     }
     position = end;
   }
@@ -749,14 +800,37 @@ export function viewportStubPlugin(): Plugin<ViewportStubState> {
         editorView.dispatch(transaction);
       };
 
+      let measureFrame = 0;
+      const scheduleDeferredMeasure = (budget: number) => {
+        if (measureFrame) return;
+        measureFrame = requestAnimationFrame(() => {
+          measureFrame = 0;
+          const current = viewportStubKey.getState(editorView.state);
+          if (!current?.enabled) return;
+          const heightsChanged = measureRealHeights(editorView, current);
+          publishDataset(editorView, current);
+          if (heightsChanged && budget > 0 && resyncBudget > 0) {
+            resyncBudget -= 1;
+            scheduleViewportFromScroll();
+          }
+        });
+      };
+
       const scheduleViewportFromScroll = () => {
         if (resyncFrame) return;
         resyncFrame = requestAnimationFrame(() => {
           resyncFrame = 0;
           const current = viewportStubKey.getState(editorView.state);
           if (!current?.enabled) return;
-          const next = viewportFromScroll(editorView, current.heights);
-          if (next) dispatchViewport(next);
+          // Height fixes after a remount must not bypass hysteresis — doing so
+          // recentered the window on the next frame and left the visible band
+          // against an edge, so the next large-step scroll remounted again.
+          const visible = visibleWindowFromScroll(editorView);
+          if (visible && !viewportNeedsRemount(current.viewport, visible)) return;
+          const ideal = viewportFromScroll(editorView, current.heights);
+          if (!ideal) return;
+          const next = slideViewportWindow(current.viewport, ideal, editorView.state.doc.childCount - 1);
+          dispatchViewport(next);
         });
       };
 
@@ -770,8 +844,14 @@ export function viewportStubPlugin(): Plugin<ViewportStubState> {
           if (!visible) return;
           if (!viewportNeedsRemount(current.viewport, visible)) return;
           resyncBudget = 2;
-          const next = viewportFromScroll(editorView, current.heights);
-          if (next) dispatchViewport(next);
+          const ideal = viewportFromScroll(editorView, current.heights);
+          if (!ideal) return;
+          const next = slideViewportWindow(
+            current.viewport,
+            ideal,
+            editorView.state.doc.childCount - 1,
+          );
+          dispatchViewport(next);
         });
       };
 
@@ -804,19 +884,19 @@ export function viewportStubPlugin(): Plugin<ViewportStubState> {
           // Measuring every transaction forced layout across the whole real
           // window on each keystroke. Remounts (generation bumps) are what
           // need fresh stub sizes; typing into an already-real block can wait.
+          // Defer the measure one frame so the scroll remount's own layout
+          // paint is not compounded by offsetHeight across the real window.
           const generationChanged = stub.generation !== lastMeasuredGeneration;
-          let heightsChanged = false;
           if (generationChanged) {
-            heightsChanged = measureRealHeights(view, stub);
             lastMeasuredGeneration = stub.generation;
+            publishDataset(view, stub);
+            if (resyncBudget > 0) {
+              const budgeted = resyncBudget;
+              scheduleDeferredMeasure(budgeted);
+            }
+            return;
           }
           publishDataset(view, stub);
-          // DOM windowing usually self-corrects; one follow-up covers the case
-          // where remount heights change geometry under the scrollport.
-          if (heightsChanged && resyncBudget > 0) {
-            resyncBudget -= 1;
-            scheduleViewportFromScroll();
-          }
         },
         destroy: () => {
           attached?.removeEventListener('scroll', onScroll);
@@ -825,6 +905,8 @@ export function viewportStubPlugin(): Plugin<ViewportStubState> {
           frame = 0;
           if (resyncFrame) cancelAnimationFrame(resyncFrame);
           resyncFrame = 0;
+          if (measureFrame) cancelAnimationFrame(measureFrame);
+          measureFrame = 0;
           const host = editorView.dom.closest('.noto-editor-host');
           if (host instanceof HTMLElement) {
             delete host.dataset.stubEnabled;

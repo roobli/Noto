@@ -173,3 +173,38 @@ Packaged Linux `out/e2e/Noto-linux-x64`, `node scripts/bench/profile-typing.mjs 
 
 macOS packaged re-measure remains useful; do not invent Apple-silicon numbers.
 
+
+### Large-step scroll remount batch, 2026-09-11
+
+After #53, caret-in-viewport paint was inside a frame while Linux packaged
+`large` **scroll-frame(0.75×view)** still sat near **75–79ms**. Splitting the
+probe by remount showed idle large steps at ~10–20ms; the spike was the frame
+that remounted the stub window. Always-real fences/tables/math (549×3 on the
+corpus) were **not** stubbed — membership rules unchanged — and were not proven
+to be the sole cause; the remount path itself was.
+
+This cut keeps OR membership and the always-real set, and changes three local
+pieces:
+
+1. **Extend-then-slide** — `slideViewportWindow` keeps the trailing edge when
+   the visible band just crosses, remounting only the newly needed leading band
+   until the window exceeds `idealSpan * 1.5`.
+2. **Buffer 2 → 3 screens** — large-step scrolls stay inside hysteresis more
+   often, so the spike fires less often in the 0.75× probe.
+3. **Hysteresis on height-resync + deferred measure** — post-remount
+   `measureRealHeights` no longer recenters on the next frame (which had paired
+   remounts and left the visible band against an edge).
+
+Packaged Linux `out/e2e/Noto-linux-x64`, `node scripts/bench/profile-typing.mjs large`
+(×3, 2026-09-11). Stub membership unchanged. Always-real fences/tables/math still
+mounted. Quick-open wiki-follow e2e flake left alone.
+
+| | scroll-frame 0.25×view | scroll-frame 0.75×view | mid caret-in-viewport script / paint |
+| --- | --- | --- | --- |
+| before (#53) | ~18–24 ms | **~75–79 ms** | ~4.5 / ~18 ms |
+| after (extend-slide + buffer 3 + deferred measure) | ~27–28 ms | **~38–42 ms** | ~4.5 / ~18 ms |
+
+Remount spikes alone (0.75× steps that change `data-stub-real`) dropped from
+~75–79ms to ~14–16ms; remaining median is idle-frame variance and occasional
+non-remount layout cost, still above one frame.
+
