@@ -5,9 +5,11 @@ import { docFromSpans } from '../../src/shared/markdown/v3/pm/from-mdast';
 import {
   STUB_MIN_TOP_LEVEL_BLOCKS,
   blockWindowForY,
+  countRealIndices,
   cumulativeHeights,
   estimateAllHeights,
   estimateBlockHeight,
+  isIndexReal,
   isIndexStubbed,
   isTopLevelPos,
   selectionRealRange,
@@ -32,6 +34,10 @@ function stateFor(markdown: string, caretInBlock = 0): EditorState {
 
 function manyParagraphs(count: number): string {
   return `${Array.from({ length: count }, (_, index) => `Paragraph ${index}.`).join('\n\n')}\n`;
+}
+
+function withViewport(state: EditorState, viewport: { from: number; to: number }): EditorState {
+  return state.apply(state.tr.setMeta(viewportStubKey, { viewport }));
 }
 
 describe('when stubbing turns on', () => {
@@ -63,16 +69,16 @@ describe('selection neighbourhood stays real', () => {
     expect(selectionRealRange(end.doc, end.selection)).toEqual({ from: 7, to: 9 });
   });
 
-  it('marks only indices outside the real window as stubbed', () => {
+  it('marks only indices outside the real windows as stubbed', () => {
     const state = stateFor(manyParagraphs(STUB_MIN_TOP_LEVEL_BLOCKS), 100);
     const stub = viewportStubKey.getState(state)!;
     expect(stub.enabled).toBe(true);
-    expect(isIndexStubbed(stub, stub.real.from, 'paragraph')).toBe(false);
-    expect(isIndexStubbed(stub, stub.real.to, 'paragraph')).toBe(false);
-    if (stub.real.from > 0) {
-      expect(isIndexStubbed(stub, stub.real.from - 1, 'paragraph')).toBe(true);
+    expect(isIndexStubbed(stub, stub.selection.from, 'paragraph')).toBe(false);
+    expect(isIndexStubbed(stub, stub.selection.to, 'paragraph')).toBe(false);
+    if (stub.selection.from > 0) {
+      expect(isIndexStubbed(stub, stub.selection.from - 1, 'paragraph')).toBe(true);
     }
-    expect(isIndexStubbed(stub, stub.real.from, 'code_block')).toBe(false);
+    expect(isIndexStubbed(stub, stub.selection.from, 'code_block')).toBe(false);
   });
 });
 
@@ -86,9 +92,40 @@ describe('vertical window from estimated heights', () => {
     expect(blockWindowForY(cumulative, 140, 200)).toEqual({ from: 4, to: 4 });
   });
 
-  it('unions the scroller window with the selection window', () => {
+  it('can still compute a contiguous envelope when windows overlap', () => {
     expect(unionRanges({ from: 10, to: 20 }, { from: 18, to: 22 }, 100)).toEqual({ from: 10, to: 22 });
+    // Contiguous envelope spans the gap — membership must NOT use this alone.
     expect(unionRanges({ from: 50, to: 60 }, { from: 0, to: 2 }, 100)).toEqual({ from: 0, to: 60 });
+  });
+});
+
+describe('scroll-away keeps the gap stubbed', () => {
+  it('does not keep every block between caret and viewport real', () => {
+    let state = stateFor(manyParagraphs(STUB_MIN_TOP_LEVEL_BLOCKS + 100), 0);
+    // Caret stays near the top; viewport jumps far down — the body-feel case.
+    state = withViewport(state, { from: 800, to: 860 });
+    const stub = viewportStubKey.getState(state)!;
+    expect(stub.enabled).toBe(true);
+    expect(stub.selection.to).toBeLessThan(10);
+    expect(stub.viewport.from).toBe(800);
+
+    // Ends of each window stay real.
+    expect(isIndexReal(stub, stub.selection.from)).toBe(true);
+    expect(isIndexReal(stub, stub.viewport.from)).toBe(true);
+    expect(isIndexStubbed(stub, stub.viewport.from, 'paragraph')).toBe(false);
+
+    // The gap between them must stay stubbed — contiguous union was the bug.
+    const gap = Math.floor((stub.selection.to + stub.viewport.from) / 2);
+    expect(gap).toBeGreaterThan(stub.selection.to);
+    expect(gap).toBeLessThan(stub.viewport.from);
+    expect(isIndexReal(stub, gap)).toBe(false);
+    expect(isIndexStubbed(stub, gap, 'paragraph')).toBe(true);
+
+    const realCount = countRealIndices(stub, state.doc.childCount);
+    const contiguous = stub.real.to - stub.real.from + 1;
+    expect(realCount).toBeLessThan(150);
+    expect(contiguous).toBeGreaterThan(700);
+    expect(realCount).toBeLessThan(contiguous / 4);
   });
 });
 
@@ -121,7 +158,7 @@ describe('large-document real window', () => {
     const state = stateFor(manyParagraphs(STUB_MIN_TOP_LEVEL_BLOCKS + 200), 50);
     const stub = viewportStubKey.getState(state)!;
     expect(stub.enabled).toBe(true);
-    const realCount = stub.real.to - stub.real.from + 1;
+    const realCount = countRealIndices(stub, state.doc.childCount);
     expect(realCount).toBeLessThan(200);
     expect(realCount).toBeGreaterThanOrEqual(5);
     expect(stub.selection.from).toBeLessThanOrEqual(50);
@@ -138,7 +175,6 @@ describe('large-document real window', () => {
     state = state.apply(state.tr.setSelection(TextSelection.create(state.doc, position + 1)));
     stub = viewportStubKey.getState(state)!;
     expect(stub.selection.from).toBeGreaterThan(70);
-    expect(stub.real.from).toBeLessThanOrEqual(80);
-    expect(stub.real.to).toBeGreaterThanOrEqual(80);
+    expect(isIndexReal(stub, 80)).toBe(true);
   });
 });

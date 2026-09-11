@@ -18,13 +18,14 @@
 import { mkdir, readFile, writeFile, copyFile } from 'node:fs/promises';
 import path from 'node:path';
 import { _electron as electron } from 'playwright';
+import { e2eExecutable, e2eLaunchArgs } from './e2e-executable.mjs';
 
 const ROOT = path.resolve(import.meta.dirname, '../..');
 const CORPUS = path.join(ROOT, 'out/bench/corpus');
 const WORKSPACE = path.join(ROOT, 'out/bench/workspace');
 
 function executable() {
-  return path.join(ROOT, 'out/e2e/Noto-darwin-arm64/Noto.app/Contents/MacOS/Noto');
+  return e2eExecutable(ROOT);
 }
 
 /** Median is reported rather than mean, so one scheduling hiccup cannot skew it. */
@@ -51,7 +52,7 @@ async function measure(entry, repetitions) {
     // through startup, so timing it would measure something users never do.
     const app = await electron.launch({
       executablePath: executable(),
-      args: [`--user-data-dir=${path.join(workspace, 'user-data')}`],
+      args: e2eLaunchArgs(path.join(workspace, 'user-data')),
     });
     const page = await app.firstWindow();
     try {
