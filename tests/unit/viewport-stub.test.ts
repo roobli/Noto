@@ -18,6 +18,7 @@ import {
   stubbingEnabled,
   topLevelIndexAt,
   unionRanges,
+  slideViewportWindow,
   viewportNeedsRemount,
   viewportStubKey,
   viewportStubPlugin,
@@ -199,5 +200,27 @@ describe('viewport remount hysteresis', () => {
   it('remounts when the visible band crosses an edge', () => {
     expect(viewportNeedsRemount({ from: 100, to: 200 }, { from: 90, to: 180 })).toBe(true);
     expect(viewportNeedsRemount({ from: 100, to: 200 }, { from: 120, to: 210 })).toBe(true);
+  });
+});
+
+describe('slideViewportWindow remount batch', () => {
+  it('extends the leading edge without tearing the trailing buffer on a small advance', () => {
+    const current = { from: 100, to: 200 };
+    // Ideal recenter jumped the trailing edge forward by ~40; a hard take would
+    // remount 40 leave + 40 enter. With slack, keep from and only extend to.
+    const ideal = { from: 140, to: 240 };
+    expect(slideViewportWindow(current, ideal, 1000)).toEqual({ from: 100, to: 240 });
+  });
+
+  it('slides the trailing edge once the window exceeds the slack budget', () => {
+    const current = { from: 100, to: 200 };
+    // idealSpan=100, maxSpan=150 → nextTo=300 implies nextFrom >= 150
+    const ideal = { from: 200, to: 300 };
+    expect(slideViewportWindow(current, ideal, 1000)).toEqual({ from: 150, to: 300 });
+  });
+
+  it('takes the ideal window on a disjoint jump', () => {
+    expect(slideViewportWindow({ from: 10, to: 40 }, { from: 400, to: 460 }, 1000))
+      .toEqual({ from: 400, to: 460 });
   });
 });
