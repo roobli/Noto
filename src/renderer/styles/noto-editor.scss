@@ -651,6 +651,12 @@
   -webkit-user-select: none;
 }
 
+/* Widgets outlive a blur (the selection stays). Hide them once the editor
+   itself no longer holds the caret, matching the heading-marker gate. */
+.noto-editor-host:not(:focus-within):not([data-semantic-focus='true']) .ProseMirror .noto-syntax {
+  display: none;
+}
+
 /*
  * Headings carry their `#` in the gutter, visible only while the caret is in
  * the block. Generated content, so the marker cannot leak into the file.
@@ -1179,14 +1185,23 @@
 
 /* Wiki links
    -------------------------------------------------------------------------
-   The brackets stay in the text, because they are in the file and removing them
-   from view makes the caret jump two characters through text that is still
-   there. They are dimmed instead, so the eye reads the name and the fingers
-   still find the syntax. */
+   Brackets and a labelled link's `target|` are real characters in the file.
+   They stay hidden while the caret is elsewhere so a list of `[[path|title]]`
+   reads as titles, which is Typora's focused-block source rule. While the
+   caret's own textblock is being edited (and the editor has focus) they return
+   dimmed — `display` rather than opacity, so unread links do not leave a gap
+   the width of the path. The caret still walks the real characters once they
+   are shown; that is the trade the dimming used to buy for every link at once. */
 
 .ProseMirror .noto-wiki-bracket {
+  display: none;
   color: var(--muted);
   opacity: 0.35;
+}
+
+.noto-editor-host:focus-within .ProseMirror .noto-source-editing .noto-wiki-bracket,
+.noto-editor-host[data-semantic-focus='true'] .ProseMirror .noto-source-editing .noto-wiki-bracket {
+  display: inline;
 }
 
 .ProseMirror .noto-wiki-link {
@@ -1964,8 +1979,10 @@
 
 .ProseMirror .noto-typora-delim,
 .ProseMirror .noto-inline-html.noto-inline-tag { display: none; }
-.ProseMirror .noto-marks-editing .noto-typora-delim,
-.ProseMirror .noto-marks-editing .noto-inline-html.noto-inline-tag {
+.noto-editor-host:focus-within .ProseMirror .noto-marks-editing .noto-typora-delim,
+.noto-editor-host:focus-within .ProseMirror .noto-marks-editing .noto-inline-html.noto-inline-tag,
+.noto-editor-host[data-semantic-focus='true'] .ProseMirror .noto-marks-editing .noto-typora-delim,
+.noto-editor-host[data-semantic-focus='true'] .ProseMirror .noto-marks-editing .noto-inline-html.noto-inline-tag {
   display: inline;
   color: var(--muted);
   font-family: tokens.$mono;

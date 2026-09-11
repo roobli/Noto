@@ -139,7 +139,10 @@ want:
   is `.noto-inline-tag`, the text between carries `.noto-html-kbd`,
   `.noto-html-sub`, `.noto-html-sup`, `.noto-html-u` and so on, and a `<br>`
   is `.noto-inline-break`. A text block whose selection is touching any of
-  these carries `.noto-marks-editing`, and that is when the syntax shows.
+  these carries `.noto-marks-editing`, and that is when the syntax shows
+  (editor focus required). Wiki-link brackets use `.noto-wiki-bracket` and
+  reveal only inside the caret's `.noto-source-editing` textblock while the
+  editor is focused.
 - Task list items are `li.noto-task-item` with `data-checked`; the box is drawn
   with `::before` and `::after`.
 

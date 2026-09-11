@@ -1424,7 +1424,29 @@ remaining plugins after that, in the order the author names them;
 `fence-enhance` itself is now complete, and `sidenote`, `todo-manager`,
 `file-tags`, `timeline` and `code-viewer` are closed; `drawio` has the code-viewer open/preview slice above, not a live editor.
 
-The Typora-habit queue is soft-empty as of 2026-09-11. What remains named rather
+## 70. Wiki-link brackets lit up a whole list. Closed.
+
+A note that is mostly `[[path|title]]` rows (DailyNews indexes, MOC hubs) showed
+every pair of brackets and every muted path at once. The brackets are real
+characters, so they used to stay dimmed rather than hidden; the top-level
+`.noto-active-block` then kept them lit for every sibling in the list while the
+caret was in one item. That is reading the source of the page, not of the block
+being edited.
+
+The caret's own textblock now carries `.noto-source-editing`. Wiki brackets
+(and labelled `target|`) `display: none` until that textblock is focused and the
+editor has the caret — the same focus gate heading markers already used. Inline
+mark widgets and Typora-mark delimiters take the same blur gate so leaving the
+editor hides source rather than freezing it mid-reveal. Span-scoped emphasis /
+code / link widgets are unchanged.
+
+Residual, named rather than queued: heading level still uses the margin `hN`
+badge rather than revealing `#` hashes in the line (intentional, matching the
+author's Typora theme); wiki brackets still appear for every wiki link inside
+one paragraph when that paragraph is focused (block scope, not span scope).
+
+The Typora-habit queue is soft-empty as of 2026-09-11 aside from the residuals
+named on gap 70. What remains named rather
 than queued: a live diagrams.net editor inside `drawio` (large product work, not
 a habit slice), and the open-path distance to Typora after the dual-parse removal
 (`docs/performance/measurements.md`) — main `parseDocument` dominates, but
