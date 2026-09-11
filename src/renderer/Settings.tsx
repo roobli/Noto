@@ -2,8 +2,10 @@
  * Settings (Cursor-style full page).
  *
  * Left categories, right content — a full-page route rather than a floating
- * modal that jumps height between Remote and Plugins. Plugins are still a
- * section here; the list can drill into `Plugins > name` for detail/debug.
+ * modal that jumps height between Remote and Plugins. Appearance stays a short
+ * glance (theme, type, width, custom CSS path); colour theming is the CSS file,
+ * not twenty dials. Remote and Plugins stay at the bottom of the nav and are
+ * not promoted from the empty state or the title bar.
  *
  * Every control writes immediately rather than collecting changes behind a Save
  * button. Applying a setting at once lets the reader see it and change their
@@ -73,13 +75,13 @@ function SectionGlyph({ name }: { name: SettingsSection }) {
   );
 }
 
-const SECTIONS: readonly { value: SettingsSection; label: string; keywords: string }[] = [
+const SECTIONS: readonly { value: SettingsSection; label: string; keywords: string; buried?: boolean }[] = [
   { value: 'appearance', label: 'Appearance', keywords: 'theme dark light text size line height width rail stylesheet css font serif sans mono system family always on top float window links graph moc related backlinks' },
   { value: 'editor', label: 'Editor', keywords: 'spell check images brackets pairs focus typewriter save autosave line numbers guides reload external disk sync watch file tags frontmatter' },
   { value: 'markdown', label: 'Markdown', keywords: 'smart quotes dashes ellipsis punctuation typography syntax' },
   { value: 'images', label: 'Images', keywords: 'image picture paste drop screenshot assets folder copy relative path escape url upload picgo bucket' },
-  { value: 'remote', label: 'Remote', keywords: 'remote control api token port script agent automation' },
-  { value: 'plugins', label: 'Plugins', keywords: 'plugin extension enable disable palette' },
+  { value: 'remote', label: 'Remote', keywords: 'remote control api token port script agent automation', buried: true },
+  { value: 'plugins', label: 'Plugins', keywords: 'plugin extension enable disable palette', buried: true },
 ];
 
 const THEMES: readonly { value: NotoTheme; label: string }[] = [
@@ -616,19 +618,31 @@ export function Settings({
               onChange={(event) => setQuery(event.target.value)}
             />
           </label>
-          {matching.map((entry) => (
-            <button
-              key={entry.value}
-              type="button"
-              aria-current={section === entry.value ? 'true' : undefined}
-              className={section === entry.value ? 'pref-section is-current' : 'pref-section'}
-              data-testid={`pref-${entry.value}`}
-              onClick={() => onSection(entry.value)}
-            >
-              <SectionGlyph name={entry.value} />
-              {entry.label}
-            </button>
-          ))}
+          {matching.map((entry, index) => {
+            const prev = matching[index - 1];
+            const showSep = entry.buried === true && prev?.buried !== true;
+            return (
+              <span key={entry.value} className={showSep ? 'pref-nav-block' : undefined}>
+                {showSep && <span className="pref-nav-sep" aria-hidden="true" />}
+                <button
+                  type="button"
+                  aria-current={section === entry.value ? 'true' : undefined}
+                  className={
+                    [
+                      'pref-section',
+                      section === entry.value ? 'is-current' : '',
+                      entry.buried ? 'is-buried' : '',
+                    ].filter(Boolean).join(' ')
+                  }
+                  data-testid={`pref-${entry.value}`}
+                  onClick={() => onSection(entry.value)}
+                >
+                  <SectionGlyph name={entry.value} />
+                  {entry.label}
+                </button>
+              </span>
+            );
+          })}
           {matching.length === 0 && <p className="pref-no-match">Nothing by that name.</p>}
         </nav>
 
@@ -652,6 +666,8 @@ export function Settings({
           <div className="pref-content">
             {section === 'appearance' && (
               <>
+                {/* Glance surface: theme, type, width, then the CSS escape hatch.
+                    Colour theming is the stylesheet path — not independent dials. */}
                 <Choices label="Theme" options={THEMES} value={settings.theme}
                   onPick={(value) => onChange({ theme: value })} testPrefix="theme" />
                 <Slider label="Text size" setting="fontSize" value={settings.fontSize}
@@ -664,6 +680,9 @@ export function Settings({
                 <Choices label="Page width" hint="Also on the View menu."
                   options={WIDTHS} value={settings.widthMode}
                   onPick={(value) => onChange({ widthMode: value })} testPrefix="width" />
+                <ThemeFile settings={settings} onChange={onChange}
+                  problem={themeProblem} onReload={onReloadCss} />
+                <p className="pref-group">Window</p>
                 <Switch
                   label="Open the rail at launch"
                   hint="Start with the file tree showing."
@@ -685,8 +704,6 @@ export function Settings({
                   onChange={(value) => onChange({ alwaysOnTop: value })}
                   testId="setting-always-on-top"
                 />
-                <ThemeFile settings={settings} onChange={onChange}
-                  problem={themeProblem} onReload={onReloadCss} />
               </>
             )}
 

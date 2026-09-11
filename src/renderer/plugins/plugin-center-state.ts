@@ -345,3 +345,21 @@ export function restorePluginTriggerFocus(
 ): void {
   schedule(() => trigger?.focus());
 }
+
+/**
+ * Leaving Settings returns to typing when a document is open.
+ *
+ * Esc / Cmd+, / Done are muscle memory for "back to the note". Focusing the
+ * gear that opened Settings is correct when nothing is open to type into; with
+ * an editor present, the caret has to land there or the next keystroke is lost.
+ */
+export function restoreSettingsExitFocus(
+  editor: { focus(): void } | null | undefined,
+  gear: Pick<HTMLElement, 'focus'> | null | undefined,
+  schedule: (callback: () => void) => void = queueMicrotask,
+): void {
+  schedule(() => {
+    if (editor) editor.focus();
+    else gear?.focus();
+  });
+}

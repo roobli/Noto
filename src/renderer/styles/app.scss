@@ -773,6 +773,32 @@ button:disabled { color: var(--muted); opacity: 0.7; }
   font-size: 12px;
 }
 
+/* Remote and Plugins stay reachable but quiet: a hairline and lower contrast,
+   not a second entry from the title bar or the empty state. */
+.pref-nav-block {
+  display: flex;
+  flex-direction: column;
+  gap: 1px;
+  margin-top: 6px;
+}
+
+.pref-nav-sep {
+  display: block;
+  height: 1px;
+  margin: 4px 8px 8px;
+  background: var(--hairline);
+}
+
+.pref-section.is-buried {
+  color: var(--muted);
+  font-size: 12px;
+  opacity: 0.85;
+}
+
+.pref-section.is-buried.is-current {
+  opacity: 1;
+}
+
 /* The mark beside the word. A column of words is a list; a column of words
    with marks is a place, and the eye finds its row without reading. */
 .pref-glyph {

@@ -14,6 +14,7 @@ import {
   presentFilesystemPlugin,
   presentRendererPlugin,
   restorePluginTriggerFocus,
+  restoreSettingsExitFocus,
   shouldClosePluginCenter,
   watchPluginCenterModal,
 } from '../../src/renderer/plugins/plugin-center-state';
@@ -248,6 +249,21 @@ describe('plugin center interaction and production structure', () => {
     expect(focus).not.toHaveBeenCalled();
     callbacks[0]();
     expect(focus).toHaveBeenCalledOnce();
+  });
+
+  it('returns Settings exit focus to the editor when one is open, else the gear', () => {
+    const editorFocus = vi.fn();
+    const gearFocus = vi.fn();
+    const withEditor: Array<() => void> = [];
+    restoreSettingsExitFocus({ focus: editorFocus }, { focus: gearFocus }, (cb) => withEditor.push(cb));
+    withEditor[0]();
+    expect(editorFocus).toHaveBeenCalledOnce();
+    expect(gearFocus).not.toHaveBeenCalled();
+
+    const withoutEditor: Array<() => void> = [];
+    restoreSettingsExitFocus(null, { focus: gearFocus }, (cb) => withoutEditor.push(cb));
+    withoutEditor[0]();
+    expect(gearFocus).toHaveBeenCalledOnce();
   });
 
   it('updates modal state from matchMedia and wraps both Tab directions', () => {

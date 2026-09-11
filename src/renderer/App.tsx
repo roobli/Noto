@@ -78,7 +78,7 @@ import { createRendererPluginHosts } from './plugins/bundled/hosts';
 import { RendererPluginClient } from './plugins/RendererPluginClient';
 import { PluginCenter } from './plugins/PluginCenter';
 import { createPluginSnapshotStream } from './plugins/plugin-snapshot-stream';
-import { restorePluginTriggerFocus, type PluginSnapshotAvailability } from './plugins/plugin-center-state';
+import { restoreSettingsExitFocus, type PluginSnapshotAvailability } from './plugins/plugin-center-state';
 
 const rid = (prefix: string) => `${prefix}:${crypto.randomUUID()}`;
 
@@ -243,6 +243,8 @@ function NotoWorkspace({ platform }: { platform: NotoPlatform }) {
     pluginDetailId: string | null;
     pluginDetailName: string | null;
   }>({ open: false, section: 'appearance', pluginDetailId: null, pluginDetailName: null });
+  const prefsRef = useRef(prefs);
+  prefsRef.current = prefs;
   /** Bumped to re-read a stylesheet whose contents changed but whose path did not. */
   const [themeReload, setThemeReload] = useState(0);
   const [themeProblem, setThemeProblem] = useState('');
@@ -450,9 +452,15 @@ function NotoWorkspace({ platform }: { platform: NotoPlatform }) {
     setRail((current) => (current.view === 'links' ? { ...current, view: 'files' } : current));
   }, [settings.railLinks]);
   const openSettings = useCallback((section: SettingsSection) => {
-    setPrefs((current) => (current.open && current.section === section && current.pluginDetailId === null
-      ? { open: false, section, pluginDetailId: null, pluginDetailName: null }
-      : { open: true, section, pluginDetailId: null, pluginDetailName: null }));
+    setPrefs((current) => {
+      const closing = current.open && current.section === section && current.pluginDetailId === null;
+      if (closing) {
+        // Gear click is already focused; keep it so the chord stays on chrome.
+        restoreSettingsExitFocus(null, settingsButtonRef.current);
+        return { open: false, section, pluginDetailId: null, pluginDetailName: null };
+      }
+      return { open: true, section, pluginDetailId: null, pluginDetailName: null };
+    });
   }, []);
   const [find, setFind] = useState<{ open: boolean; replace: boolean; query?: string }>(
     { open: false, replace: false },
@@ -1709,11 +1717,11 @@ function NotoWorkspace({ platform }: { platform: NotoPlatform }) {
     if (!dirty && !recoveryBarrierRef.current) setLocalMessage(null);
   }, []);
 
-  /** Closing Settings returns focus to the gear that opened it, so keyboard
-   *  users are not dropped at the top of the document. */
+  /** Esc / Done / Cmd+, leave Settings for the document: focus the editor so
+   *  the next keystroke types. With no note open, the gear keeps the chord. */
   const closeSettings = useCallback(() => {
     setPrefs((current) => ({ ...current, open: false, pluginDetailId: null, pluginDetailName: null }));
-    restorePluginTriggerFocus(settingsButtonRef.current);
+    restoreSettingsExitFocus(editorRef.current, settingsButtonRef.current);
   }, []);
 
   /**
@@ -1985,7 +1993,9 @@ function NotoWorkspace({ platform }: { platform: NotoPlatform }) {
         editorRef.current?.history('redo');
         break;
       case 'settings':
-        setPrefs({ open: true, section: 'appearance', pluginDetailId: null, pluginDetailName: null });
+        // Cmd+, again is muscle memory for leave: toggle closed from any section.
+        if (prefsRef.current.open) closeSettings();
+        else setPrefs({ open: true, section: 'appearance', pluginDetailId: null, pluginDetailName: null });
         break;
       case 'toggle-sidebar':
         toggleRail('files');

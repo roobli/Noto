@@ -269,20 +269,28 @@ line the window has on something already read.
 ## Settings
 
 A full-page Settings shell (Cursor-style), reached from the gear or `Cmd+,`.
-Left categories, right content: Appearance, Editor, Markdown, Images, Remote,
-Plugins. It is one surface, not a floating 720×560 three-tab dialog and not a
-second Plugins modal from the title bar.
+Left categories, right content: Appearance, Editor, Markdown, Images, then
+Remote and Plugins quieter at the bottom. It is one surface, not a floating
+720×560 three-tab dialog and not a second Plugins modal from the title bar.
+The empty state and the title bar do not promote Remote or Plugins.
+
+`Esc`, Done, or `Cmd+,` again leaves immediately for the document. Focus returns
+to the editor when a note is open so the next keystroke types; with nothing open
+it returns to the gear.
 
 No rule between rows. A line under every setting draws a table where there is
 only a list. Space separates; a label and its control are already a pair by
 sharing a line.
 
-Appearance carries the theme, the typographic settings, and the custom
-stylesheet. Text size and line height are sliders with the value beside them in
-its own units, because a slider alone hides the number and a number field alone
-turns finding a comfortable line height into typing and re-typing. Page width
-is the same three-way control as the theme, since it is three modes rather than
-a number and the pixels each mode resolves to depend on the canvas; the hint
+Appearance is a glance: theme, text size, line height, document font, page
+width, and a custom stylesheet path. Colour theming is that CSS file — not a
+row of independent colour dials. Window chrome switches (rail on launch, Links
+in the rail, always on top) sit under a Window group below the glance surface.
+Text size and line height are sliders with the value beside them in its own
+units, because a slider alone hides the number and a number field alone turns
+finding a comfortable line height into typing and re-typing. Page width is the
+same three-way control as the theme, since it is three modes rather than a
+number and the pixels each mode resolves to depend on the canvas; the hint
 under the label names the chord that walks them.
 
 Range inputs are painted rather than left alone. A bare one uses the operating
