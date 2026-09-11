@@ -176,6 +176,9 @@ export function coerceSettings(value: unknown): NotoSettingsV1 {
     fileTags: typeof value.fileTags === 'boolean'
       ? value.fileTags
       : DEFAULT_SETTINGS.fileTags,
+    railLinks: typeof value.railLinks === 'boolean'
+      ? value.railLinks
+      : DEFAULT_SETTINGS.railLinks,
   };
 }
 
@@ -261,6 +264,7 @@ export function isSettingsReplyV1(value: unknown): value is SettingsReplyV1 {
     && typeof settings.codeViewer === 'boolean'
     && typeof settings.sidenotes === 'boolean'
     && typeof settings.fileTags === 'boolean'
+    && typeof settings.railLinks === 'boolean'
     && typeof settings.autoPair === 'boolean'
     && typeof settings.todoCheckTime === 'boolean'
     && typeof settings.focusMode === 'boolean'

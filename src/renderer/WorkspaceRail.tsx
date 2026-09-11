@@ -1,10 +1,12 @@
 /**
  * The navigation rail.
  *
- * One region holding two views rather than two panels. Files and Outline used to
- * open as separate columns, so asking for both spent 470 pixels of a 1280 pixel
- * window on navigation and pushed the document twice. They answer the same
- * question, "where do I go next", so they share one region and take turns.
+ * One region holding Files and Outline by default, with Links opt-in. Files and
+ * Outline used to open as separate columns, so asking for both spent 470 pixels
+ * of a 1280 pixel window on navigation and pushed the document twice. They
+ * answer the same question, "where do I go next", so they share one region and
+ * take turns. Links (graph / related) stays off the default path until Settings
+ * turns it on.
  *
  * The rail owns the region and its header; the tree and the outline own only
  * their bodies.
@@ -29,6 +31,8 @@ function windowWidth(): number {
 export interface WorkspaceRailProps {
   readonly view: RailView;
   readonly onView: (view: RailView) => void;
+  /** When false, the Links tab (graph / MOC / related) is not drawn. */
+  readonly showLinks: boolean;
   readonly width: number;
   /** Called once when the drag ends, not per pointer move: the width follows
    *  the pointer through a CSS variable, and only the result is persisted. */
@@ -163,7 +167,7 @@ const INDICATOR: Record<RailView, { left: string; width: string }> = {
 };
 
 export function WorkspaceRail({
-  view, onView, width, onResize, outline, onGoToBlock, currentHeading, tree, search, links,
+  view, onView, showLinks, width, onResize, outline, onGoToBlock, currentHeading, tree, search, links,
 }: WorkspaceRailProps) {
   const railRef = useRef<HTMLElement>(null);
   const outlineRef = useRef<HTMLElement>(null);
@@ -264,7 +268,9 @@ export function WorkspaceRail({
       >
         <Tab id="files" current={view} onSelect={onView} testId="rail-files">Files</Tab>
         <Tab id="outline" current={view} onSelect={onView} testId="outline-toggle">Outline</Tab>
-        <Tab id="links" current={view} onSelect={onView} testId="links-toggle">Links</Tab>
+        {showLinks && (
+          <Tab id="links" current={view} onSelect={onView} testId="links-toggle">Links</Tab>
+        )}
         <button type="button" data-testid="rail-search"
           className={view === 'search' ? 'icon-button rail-search is-on' : 'icon-button rail-search'}
           aria-label="Search in notes" aria-pressed={view === 'search'} title="Search in notes (⇧⌘F)"
@@ -281,7 +287,7 @@ export function WorkspaceRail({
           <FileTree {...tree} />
         </div>
       )}
-      {view === 'links' && (
+      {showLinks && view === 'links' && (
         <div className="rail-view" id="rail-view-links" role="tabpanel" aria-labelledby="rail-tab-links">
           <RailLinks {...links} />
         </div>

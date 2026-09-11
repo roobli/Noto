@@ -83,18 +83,21 @@ dot. Exceptional states are not whispered here at all: they take the alert.
 
 ## Rail
 
-One region on the left, 240px, holding three views rather than three panels:
-Files, Outline and Links. The previous build opened Files and Outline as
-separate columns, so asking for both spent 470 pixels of a 1280 pixel window on
-navigation.
+One region on the left, 240px, holding Files and Outline by default rather than
+three panels. Links (backlinks, outbound wiki links, related notes from the
+vault graph) is opt-in from Settings → Appearance → Links in the rail, so a
+fresh install reads as a writing editor rather than an Obsidian foyer. The
+previous build opened Files and Outline as separate columns, so asking for both
+spent 470 pixels of a 1280 pixel window on navigation.
 
-The header is three words, `Files`, `Outline` and `Links`, with a 1.5px rule
-that slides between them in 180ms. Not a bordered segmented control: that is a
-component out of a kit, it repeats the panel border it already sits inside, and
-its filled half becomes the second heaviest thing in the rail. The rule moves
-because moving is what says the views are one control and that you went from
-one to another. It is positioned by a custom property the current view sets, so
-nothing is measured after paint and the first frame is never in the wrong place.
+The header is the words that are on (`Files`, `Outline`, and `Links` when
+enabled), with a 1.5px rule that slides between them in 180ms. Not a bordered
+segmented control: that is a component out of a kit, it repeats the panel
+border it already sits inside, and its filled half becomes the second heaviest
+thing in the rail. The rule moves because moving is what says the views are one
+control and that you went from one to another. It is positioned by a custom
+property the current view sets, so nothing is measured after paint and the
+first frame is never in the wrong place.
 
 The rail toggle in the title bar opens and closes the region; the menu items
 open it on the view they name. At the right of the labels sits a search glyph

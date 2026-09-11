@@ -26,6 +26,10 @@ describe('reading settings', () => {
     expect(await store.load()).toEqual(DEFAULT_SETTINGS);
   });
 
+  it('keeps Links off the default path', () => {
+    expect(DEFAULT_SETTINGS.railLinks).toBe(false);
+  });
+
   it('keeps the readable fields when the file is partly corrupt', async () => {
     // A hand edited file with one good value and two bad ones must not cost the
     // user every preference.

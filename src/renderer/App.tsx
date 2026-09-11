@@ -444,6 +444,11 @@ function NotoWorkspace({ platform }: { platform: NotoPlatform }) {
       ? { open: false, view }
       : { open: true, view }));
   }, []);
+  /* Links is opt-in: if the setting is off while that view is showing, leave it. */
+  useEffect(() => {
+    if (settings.railLinks) return;
+    setRail((current) => (current.view === 'links' ? { ...current, view: 'files' } : current));
+  }, [settings.railLinks]);
   const openSettings = useCallback((section: SettingsSection) => {
     setPrefs((current) => (current.open && current.section === section && current.pluginDetailId === null
       ? { open: false, section, pluginDetailId: null, pluginDetailName: null }
@@ -2085,6 +2090,7 @@ function NotoWorkspace({ platform }: { platform: NotoPlatform }) {
               onClose: () => setRail({ open: true, view: 'files' }),
             }}
             view={rail.view}
+            showLinks={settings.railLinks}
             onView={(view) => setRail({ open: true, view })}
             width={appliedRailWidth}
             onResize={(railWidth) => changeSettings({ railWidth: clampRailWidth(railWidth, window.innerWidth) })}
@@ -2401,12 +2407,12 @@ function NotoWorkspace({ platform }: { platform: NotoPlatform }) {
               ? <div className="opening-state">Starting…</div>
               : <section className="empty-state" data-testid="empty-state">
                   <h1>No document open</h1>
-                  <p>Open a folder to browse its notes, or a single file to start writing.</p>
+                  <p>Open a file to write, or a folder to browse its notes.</p>
                   <div className="empty-actions">
                     <button type="button" className="primary" data-testid="empty-open-folder"
-                      onClick={chooseFolder}>Open a folder…</button>
+                      onClick={chooseFolder}>Open folder…</button>
                     <button type="button" data-testid="empty-open"
-                      onClick={() => void openWithDialog()}>Open a document…</button>
+                      onClick={() => void openWithDialog()}>Open file…</button>
                   </div>
                   {openError && <p role="alert" className="empty-error">{openError}</p>}
                   {recent.length > 0 && (

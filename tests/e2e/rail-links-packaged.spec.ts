@@ -27,6 +27,12 @@ test('the Links view shows what the graph knows and opens a neighbour', async ()
   const workspace = path.join(process.cwd(), 'test-results', 'rail-links');
   await rm(workspace, { recursive: true, force: true });
   await mkdir(path.join(workspace, 'user-data'), { recursive: true });
+  // Links is opt-in; this suite exercises the view itself.
+  await writeFile(
+    path.join(workspace, 'user-data', 'settings.json'),
+    JSON.stringify({ railLinks: true }),
+    'utf8',
+  );
   const vault = path.join(workspace, 'vault');
   await mkdir(path.join(vault, 'topics'), { recursive: true });
   await mkdir(path.join(vault, 'journal'), { recursive: true });

@@ -74,7 +74,7 @@ function SectionGlyph({ name }: { name: SettingsSection }) {
 }
 
 const SECTIONS: readonly { value: SettingsSection; label: string; keywords: string }[] = [
-  { value: 'appearance', label: 'Appearance', keywords: 'theme dark light text size line height width rail stylesheet css font serif sans mono system family always on top float window' },
+  { value: 'appearance', label: 'Appearance', keywords: 'theme dark light text size line height width rail stylesheet css font serif sans mono system family always on top float window links graph moc related backlinks' },
   { value: 'editor', label: 'Editor', keywords: 'spell check images brackets pairs focus typewriter save autosave line numbers guides reload external disk sync watch file tags frontmatter' },
   { value: 'markdown', label: 'Markdown', keywords: 'smart quotes dashes ellipsis punctuation typography syntax' },
   { value: 'images', label: 'Images', keywords: 'image picture paste drop screenshot assets folder copy relative path escape url upload picgo bucket' },
@@ -670,6 +670,13 @@ export function Settings({
                   checked={settings.sidebarOnLaunch}
                   onChange={(value) => onChange({ sidebarOnLaunch: value })}
                   testId="setting-sidebar-launch"
+                />
+                <Switch
+                  label="Links in the rail"
+                  hint="Backlinks, outbound links, and related notes from the vault graph. Off until you want a linked vault, not a writing surface."
+                  checked={settings.railLinks}
+                  onChange={(value) => onChange({ railLinks: value })}
+                  testId="setting-rail-links"
                 />
                 <Switch
                   label="Keep the window on top"
