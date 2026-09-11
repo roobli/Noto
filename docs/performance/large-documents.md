@@ -72,8 +72,41 @@ threshold, so ordinary notes are unchanged. Host dataset attributes
 `data-stub-enabled`, `data-stub-real` and `data-stub-count` expose the window
 for packaged benches.
 
-Packaged before/after keystroke numbers for `large` still need a macOS
-`out/e2e` build (`scripts/bench/profile-typing.mjs` / `run-noto.mjs`); this
-Linux agent box cannot run those darwin binaries. Unit coverage for windowing
-and the enable threshold lives in `tests/unit/viewport-stub.test.ts`.
+### Body-feel targets (same corpus files as Typora)
+
+Pinned before further tuning, so the next cut answers a feel debt rather than a
+micro-benchmark:
+
+| corpus | Typora | Noto body-feel target |
+| --- | --- | --- |
+| medium (525KB, 2742 blocks) | opens and edits | keystroke and scroll-frame ≤ ~16ms (one frame). Stubbing stays off. |
+| large (2MB, 10982 blocks) | never loads | still aim for immediate writing: keystroke toward one frame; scroll without remounting the gap between caret and viewport. |
+| huge (8MB) | never loads | usable at all is already ahead of Typora; polish after large feels good. |
+
+### Contiguous real-window bug, fixed 2026-09-11
+
+Stubbing kept a single contiguous `real` span from `min(selection, viewport)` to
+`max(...)`. Scrolling away from the caret therefore remounted every block
+between them. On the Linux packaged `large` corpus that meant a mid-document
+scroll left `real=0-7334` (~3600 real paragraphs) and a median scroll-frame of
+about **947ms**. Membership is now OR of the two windows; the gap stays stubbed.
+
+Measured on this Linux box with `node scripts/bench/profile-typing.mjs` against
+`out/e2e/Noto-linux-x64` (same probe: scroll `.canvas-scroll` to mid, then type
+and step-scroll). Numbers are not the macOS baseline table, but they are
+before/after on one machine:
+
+| | mid stubbed | mid real `<p>` | scroll-frame | mid keystroke total |
+| --- | --- | --- | --- | --- |
+| before (contiguous union) | 3647 | 3667 | 947 ms | 16 ms* |
+| after (OR windows) | 10864 | 59 | 60 ms | 17 ms |
+
+\* Keystroke looked fine once thousands of blocks had already remounted; the
+feel debt was the scroll that got them there.
+
+macOS packaged re-measure remains useful for the original Apple-silicon table
+(`BENCH_RUNS=3 node scripts/bench/run-noto.mjs` /
+`node scripts/bench/profile-typing.mjs large`). Unit coverage for windowing,
+the enable threshold, and scroll-away gap stubbing lives in
+`tests/unit/viewport-stub.test.ts`.
 

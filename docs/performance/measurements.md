@@ -265,8 +265,10 @@ far-off blocks from the DOM:
 
 - **When:** `doc.childCount >= 3000` (`STUB_MIN_TOP_LEVEL_BLOCKS`). Medium
   corpus notes stay fully real; large and huge turn stubbing on.
-- **What stays real:** union of (a) the selection neighbourhood with radius 2
-  and (b) an estimated y-window around the scroller with two screens of buffer.
+- **What stays real:** (a) the selection neighbourhood with radius 2 **or**
+  (b) an estimated y-window around the scroller with two screens of buffer.
+  Membership is OR of those two windows — not one contiguous span from caret to
+  viewport (that remounted the gap on scroll; see `large-documents.md`).
 - **What is stubbed:** top-level paragraphs, headings, lists, rules,
   blockquotes, frontmatter, source blocks, footnote and link definitions.
   Custom node views (fences, tables, math, HTML) are not wrapped in this slice.
@@ -275,12 +277,14 @@ far-off blocks from the DOM:
   window remounts the view. Heights start as estimates and are overwritten from
   `offsetHeight` when a block is real.
 - **Observability:** `.noto-editor-host` gets `data-stub-enabled`,
-  `data-stub-real` (`from-to`) and `data-stub-count` while stubbing is active.
+  `data-stub-real` (viewport `from-to`), `data-stub-selection` (selection
+  `from-to`) and `data-stub-count` (actually stubbed blocks) while stubbing is
+  active.
 
 ### Re-measurement methodology (macOS packaged build)
 
-This Linux environment cannot launch `out/e2e/Noto-darwin-arm64`. After
-packaging on Apple silicon:
+`scripts/bench/e2e-executable.mjs` picks darwin-arm64 or linux-x64 under
+`out/e2e`. After packaging on the machine you are measuring:
 
 ```
 node scripts/bench/corpus.mjs

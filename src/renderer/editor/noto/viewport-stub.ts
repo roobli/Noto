@@ -15,6 +15,12 @@
  *
  * Enabled automatically once the document has enough top-level blocks that
  * medium-sized notes stay unaffected. Off below that threshold.
+ *
+ * Real blocks are the union of two windows — the scroller viewport and the
+ * selection neighbourhood — checked with OR, not as one contiguous span from
+ * the caret to the viewport. A contiguous span remounts every block between
+ * them when the reader scrolls away from the caret, which is exactly the
+ * mid/large scroll jank this layer exists to prevent.
  */
 
 import { Plugin, PluginKey, type EditorState, type Selection, type Transaction } from 'prosemirror-state';
@@ -67,7 +73,11 @@ export interface ViewportStubState {
   readonly viewport: BlockRange;
   /** Inclusive top-level index window kept real for the selection. */
   readonly selection: BlockRange;
-  /** Union of viewport and selection — what NodeViews consult. */
+  /**
+   * Bounding span covering viewport and selection (for observability).
+   * Membership uses `isIndexReal`, not this contiguous span — otherwise
+   * scrolling away from the caret would keep every block between them real.
+   */
   readonly real: BlockRange;
   /**
    * Per top-level-index height cache. Mutated in place after measuring real
@@ -225,6 +235,22 @@ export function blockWindowForY(cumulative: Float64Array, y0: number, y1: number
   return clampRange(from, to, count - 1);
 }
 
+export function rangeContains(range: BlockRange, index: number): boolean {
+  return index >= range.from && index <= range.to;
+}
+
+/**
+ * Whether a top-level index stays mounted as real content.
+ *
+ * Viewport and selection are separate windows. OR membership — never the
+ * contiguous span between them — is what keeps scroll-away from the caret
+ * from remounting thousands of blocks.
+ */
+export function isIndexReal(state: ViewportStubState, index: number): boolean {
+  if (!state.enabled) return true;
+  return rangeContains(state.viewport, index) || rangeContains(state.selection, index);
+}
+
 export function isIndexStubbed(
   state: ViewportStubState,
   index: number,
@@ -233,7 +259,17 @@ export function isIndexStubbed(
   if (!state.enabled) return false;
   if (!STUBBABLE.has(typeName)) return false;
   if (index < 0) return false;
-  return index < state.real.from || index > state.real.to;
+  return !isIndexReal(state, index);
+}
+
+/** How many top-level blocks are currently mounted real (either window). */
+export function countRealIndices(state: ViewportStubState, childCount: number): number {
+  if (!state.enabled || childCount <= 0) return childCount;
+  let count = 0;
+  for (let index = 0; index < childCount; index += 1) {
+    if (isIndexReal(state, index)) count += 1;
+  }
+  return count;
 }
 
 function remappedHeights(
@@ -282,7 +318,9 @@ function buildState(
     last,
   );
   const real = unionRanges(viewportRange, selectionRange, last);
-  const generation = previous && rangesEqual(previous.real, real)
+  const generation = previous
+    && rangesEqual(previous.viewport, viewportRange)
+    && rangesEqual(previous.selection, selectionRange)
     ? previous.generation
     : (previous?.generation ?? 0) + 1;
 
@@ -335,7 +373,7 @@ function measureRealHeights(view: EditorView, stub: ViewportStubState): void {
   if (!stub.enabled) return;
   let position = 0;
   for (let index = 0; index < view.state.doc.childCount; index += 1) {
-    if (index >= stub.real.from && index <= stub.real.to) {
+    if (isIndexReal(stub, index)) {
       const nodeDom = view.nodeDOM(position);
       if (nodeDom instanceof HTMLElement && !nodeDom.classList.contains(STUB_CLASS)) {
         const height = nodeDom.offsetHeight;
@@ -352,12 +390,15 @@ function publishDataset(view: EditorView, stub: ViewportStubState): void {
   if (!stub.enabled) {
     delete host.dataset.stubEnabled;
     delete host.dataset.stubReal;
+    delete host.dataset.stubSelection;
     delete host.dataset.stubCount;
     return;
   }
-  const stubbed = Math.max(0, view.state.doc.childCount - (stub.real.to - stub.real.from + 1));
+  const stubbed = Math.max(0, view.state.doc.childCount - countRealIndices(stub, view.state.doc.childCount));
   host.dataset.stubEnabled = '1';
-  host.dataset.stubReal = `${stub.real.from}-${stub.real.to}`;
+  // Viewport window (what is on screen), not the contiguous caret↔viewport span.
+  host.dataset.stubReal = `${stub.viewport.from}-${stub.viewport.to}`;
+  host.dataset.stubSelection = `${stub.selection.from}-${stub.selection.to}`;
   host.dataset.stubCount = String(stubbed);
 }
 
@@ -492,22 +533,37 @@ class StubbableBlockView implements NodeView {
  * `NodeView.update` for an unchanged node unless its decorations change, so
  * these marks force remounts when a block enters or leaves the real window.
  */
+function decorateRange(
+  doc: ProseNode,
+  range: BlockRange,
+  generation: number,
+  decorations: Decoration[],
+  seen: Set<number>,
+): void {
+  let position = 0;
+  for (let index = 0; index < range.from; index += 1) {
+    position += doc.child(index).nodeSize;
+  }
+  for (let index = range.from; index <= range.to; index += 1) {
+    const child = doc.child(index);
+    const end = position + child.nodeSize;
+    if (!seen.has(index) && STUBBABLE.has(child.type.name)) {
+      seen.add(index);
+      decorations.push(Decoration.node(position, end, {
+        class: 'noto-stub-real',
+      }, { stubGeneration: generation }));
+    }
+    position = end;
+  }
+}
+
 function realWindowDecorations(doc: ProseNode, state: ViewportStubState): DecorationSet {
   if (!state.enabled) return DecorationSet.empty;
   const decorations: Decoration[] = [];
-  let position = 0;
-  for (let index = 0; index < state.real.from; index += 1) {
-    position += doc.child(index).nodeSize;
-  }
-  for (let index = state.real.from; index <= state.real.to; index += 1) {
-    const child = doc.child(index);
-    if (STUBBABLE.has(child.type.name)) {
-      decorations.push(Decoration.node(position, position + child.nodeSize, {
-        class: 'noto-stub-real',
-      }, { stubGeneration: state.generation }));
-    }
-    position += child.nodeSize;
-  }
+  const seen = new Set<number>();
+  // Two windows, not the span between them — see isIndexReal.
+  decorateRange(doc, state.viewport, state.generation, decorations, seen);
+  decorateRange(doc, state.selection, state.generation, decorations, seen);
   return DecorationSet.create(doc, decorations);
 }
 
@@ -612,6 +668,7 @@ export function viewportStubPlugin(): Plugin<ViewportStubState> {
           if (host instanceof HTMLElement) {
             delete host.dataset.stubEnabled;
             delete host.dataset.stubReal;
+            delete host.dataset.stubSelection;
             delete host.dataset.stubCount;
           }
         },
