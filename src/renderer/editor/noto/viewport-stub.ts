@@ -306,6 +306,25 @@ function remappedHeights(
   newDoc: ProseNode,
   emPx: number,
 ): Float64Array {
+  // Common keystroke: same top-level count, one block's size changed. Reuse the
+  // measured cache and re-estimate only the mismatched indices instead of
+  // estimating every block then copying the cache back over.
+  if (
+    previous.enabled
+    && previous.heights.length === oldDoc.childCount
+    && oldDoc.childCount === newDoc.childCount
+  ) {
+    const heights = new Float64Array(previous.heights);
+    for (let index = 0; index < newDoc.childCount; index += 1) {
+      const before = oldDoc.child(index);
+      const after = newDoc.child(index);
+      if (before.type !== after.type || before.nodeSize !== after.nodeSize) {
+        heights[index] = estimateBlockHeight(after, emPx);
+      }
+    }
+    return heights;
+  }
+
   const heights = estimateAllHeights(newDoc, emPx);
   if (!previous.enabled || previous.heights.length === 0) return heights;
 

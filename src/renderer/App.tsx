@@ -1046,20 +1046,57 @@ function NotoWorkspace({ platform }: { platform: NotoPlatform }) {
    * and an external conflict resolved automatically is data loss nobody
    * watched happen.
    */
-  const typingRef = useRef(0);
-  const [typingTick, setTypingTick] = useState(0);
-  const bumpTyping = useCallback(() => {
-    typingRef.current += 1;
-    setTypingTick(typingRef.current);
-  }, []);
   const saveRef = useRef<() => Promise<void>>(async () => {});
-
-  useEffect(() => {
+  // Autosave debounce without setState on every keystroke: a typingTick state
+  // re-rendered the whole shell (~React commit) on the caret-in-viewport path.
+  const autoSaveTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const noteTagsTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const clearAutoSaveTimer = useCallback(() => {
+    if (autoSaveTimerRef.current !== null) {
+      clearTimeout(autoSaveTimerRef.current);
+      autoSaveTimerRef.current = null;
+    }
+  }, []);
+  const scheduleAutoSave = useCallback(() => {
     if (!settings.autoSave || !editorDirty || pending) return;
     if (recoveryBarrier || state === 'External conflict' || state === 'Stale editor revision') return;
-    const timer = setTimeout(() => { void saveRef.current(); }, settings.autoSaveDelayMs);
-    return () => clearTimeout(timer);
-  }, [settings.autoSave, settings.autoSaveDelayMs, editorDirty, pending, recoveryBarrier, state, typingTick]);
+    clearAutoSaveTimer();
+    autoSaveTimerRef.current = setTimeout(() => {
+      autoSaveTimerRef.current = null;
+      void saveRef.current();
+    }, settings.autoSaveDelayMs);
+  }, [
+    settings.autoSave,
+    settings.autoSaveDelayMs,
+    editorDirty,
+    pending,
+    recoveryBarrier,
+    state,
+    clearAutoSaveTimer,
+  ]);
+  const bumpTyping = useCallback(() => {
+    scheduleAutoSave();
+  }, [scheduleAutoSave]);
+
+  useEffect(() => {
+    scheduleAutoSave();
+    return () => clearAutoSaveTimer();
+  }, [scheduleAutoSave, clearAutoSaveTimer]);
+
+  const scheduleNoteTags = useCallback((documentId: string) => {
+    if (!settings.fileTags) return;
+    if (noteTagsTimerRef.current !== null) clearTimeout(noteTagsTimerRef.current);
+    noteTagsTimerRef.current = setTimeout(() => {
+      noteTagsTimerRef.current = null;
+      if (documentId !== activeIdRef.current) return;
+      const markdown = editorsRef.current.get(documentId)?.getMarkdown() ?? '';
+      setNoteTags(parseTagsFromMarkdown(markdown));
+    }, 200);
+  }, [settings.fileTags]);
+
+  useEffect(() => () => {
+    if (noteTagsTimerRef.current !== null) clearTimeout(noteTagsTimerRef.current);
+  }, []);
 
   const save = async () => {
     const editor = editorRef.current;
@@ -2342,10 +2379,7 @@ function NotoWorkspace({ platform }: { platform: NotoPlatform }) {
                 onDocumentChanged={() => {
                   if (doc.document.documentId === activeIdRef.current) {
                     bumpTyping();
-                    if (settings.fileTags) {
-                      const markdown = editorsRef.current.get(doc.document.documentId)?.getMarkdown() ?? '';
-                      setNoteTags(parseTagsFromMarkdown(markdown));
-                    }
+                    scheduleNoteTags(doc.document.documentId);
                   }
                 }}
                 onFollowWikiLink={(target) => followWikiLinkRef.current(target)}
