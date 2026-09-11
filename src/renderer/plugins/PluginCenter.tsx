@@ -69,6 +69,10 @@ interface PluginCenterProps {
   snapshots: readonly PluginLifecycleSnapshot[];
   availability: PluginSnapshotAvailability;
   open: boolean;
+  /** When set, only this plugin's detail/debug pane is shown. */
+  detailId?: string | null;
+  /** Open a plugin's detail route (Plugins › name). */
+  onOpenDetail?: (pluginId: string, pluginName: string) => void;
   evidenceControls?: ReactNode;
 }
 
@@ -99,7 +103,7 @@ function dotState(lifecycle: Entry['lifecycle']): string {
   return 'off';
 }
 
-export function PluginCenter({ api, snapshots, availability, open, evidenceControls }: PluginCenterProps) {
+export function PluginCenter({ api, snapshots, availability, open, detailId = null, onOpenDetail, evidenceControls }: PluginCenterProps) {
   const [pendingAction, setPendingAction] = useState<PendingActions>(emptyPending);
   const [operationError, setOperationError] = useState<OperationErrors>(emptyErrors);
   const snapshotsRef = useRef(snapshots);
@@ -325,14 +329,35 @@ export function PluginCenter({ api, snapshots, availability, open, evidenceContr
   };
 
   /**
-   * One plugin, laid out in full.
-   *
-   * Every plugin is drawn, one after another, rather than one at a time behind
-   * an index. The index was a second column of navigation inside a pane that
-   * already sat behind one, so reaching a plugin's switch took two choices and
-   * the panel showed three levels of nesting at once. There are five of these,
-   * not fifty; a list of five that answers itself beats a list of five that
-   * has to be clicked through.
+   * Compact list row for the Plugins index. Click opens Plugins › name.
+   */
+  const renderRow = (entry: Entry) => {
+    const pending = pendingAction[entry.section] !== null;
+    return (
+      <button
+        key={entry.id}
+        type="button"
+        className="plugin-row"
+        data-testid={`plugin-row-${entry.id}`}
+        aria-busy={pending}
+        onClick={() => onOpenDetail?.(entry.id, entry.name)}
+      >
+        <span className="plugin-dot" data-state={
+          entry.lifecycle === 'failed' || entry.lifecycle === 'crashed' ? 'failed'
+            : entry.lifecycle === 'ready' ? 'on'
+              : 'ready'
+        } aria-hidden="true" />
+        <span className="plugin-row-text">
+          <strong>{entry.name}</strong>
+          <span className="plugin-row-scope">{pluginDescriptions.get(entry.id) ?? entry.presentation.scope}</span>
+        </span>
+        <span className="plugin-row-status">{entry.presentation.status}</span>
+      </button>
+    );
+  };
+
+  /**
+   * One plugin's detail/debug pane (Plugins › name).
    */
   const renderEntry = (entry: Entry) => {
     // Per plugin now, not per panel: with every plugin on screen at once, one
@@ -470,21 +495,32 @@ export function PluginCenter({ api, snapshots, availability, open, evidenceContr
     );
   };
 
-  const renderGroup = (group: Entry['group'], label: string) => {
+  const renderGroup = (group: Entry['group'], label: string, mode: 'list' | 'detail') => {
     const inGroup = entries.filter((candidate) => candidate.group === group);
     if (inGroup.length === 0) return null;
     return (
       <section className="plugin-group" key={group}>
         <p className="pref-group">{label}</p>
-        {inGroup.map(renderEntry)}
+        {inGroup.map(mode === 'list' ? renderRow : renderEntry)}
       </section>
     );
   };
 
+  if (detailId) {
+    const selected = entries.find((entry) => entry.id === detailId);
+    return (
+      <div className="plugin-center" id="plugin-drawer" data-plugin-view="detail">
+        {selected ? renderEntry(selected) : (
+          <p className="pref-note">That plugin is not in the catalog.</p>
+        )}
+      </div>
+    );
+  }
+
   return (
-    <div className="plugin-center" id="plugin-drawer">
-      {renderGroup('installed', 'Installed')}
-      {renderGroup('examples', 'Examples')}
+    <div className="plugin-center" id="plugin-drawer" data-plugin-view="list">
+      {renderGroup('installed', 'Installed', 'list')}
+      {renderGroup('examples', 'Examples', 'list')}
     </div>
   );
 }

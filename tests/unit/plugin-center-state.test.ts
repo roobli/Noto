@@ -270,25 +270,25 @@ describe('plugin center interaction and production structure', () => {
   });
 
   it('mounts the shared production component in the single renderer entry point', async () => {
-    const [app, center] = await Promise.all([
+    const [app, center, prefs] = await Promise.all([
       readFile(new URL('../../src/renderer/App.tsx', import.meta.url), 'utf8'),
       readFile(new URL('../../src/renderer/plugins/PluginCenter.tsx', import.meta.url), 'utf8'),
+      readFile(new URL('../../src/renderer/Preferences.tsx', import.meta.url), 'utf8'),
     ]);
     expect(app).toContain('<PluginCenter api={window.notoDesktop} snapshots={pluginSnapshots}');
     expect(app).toContain('data-testid="plugin-toggle"');
     expect(center).not.toMatch(/setPluginSnapshots|reply\.value\.snapshots/);
-    // Plugins are a preferences section now, so the dialog around them owns
+    // Plugins are a Settings section now, so the page around them owns
     // modality and the focus trap. A second trap inside it fought the first.
     expect(center).not.toMatch(/role=\{modal|aria-modal=\{modal/);
     expect(app).toContain('<Preferences');
-    // Every plugin is drawn at once, and each is busy only while an action of
-    // its own kind is pending. A flag shared across the pane would grey out
-    // every button while any one of them was working.
+    expect(prefs).toContain('settings-page');
+    // List rows open Plugins › name; detail keeps per-entry busy flags.
     expect(center).toContain('aria-busy={pending}');
     expect(center).toContain('pendingAction[entry.section] !== null');
-    // No index inside a pane that already sits behind one.
-    expect(center).not.toContain('plugin-index');
-    expect(center).not.toContain('setSelectedId');
+    expect(center).toContain('plugin-row');
+    expect(center).toContain('onOpenDetail');
+    expect(center).toContain('data-plugin-view');
     expect(center).toContain("action === 'disable' || action === 'retry-cleanup'");
     expect(center).toContain("action === 'retry-cleanup'");
     expect(center).toContain('Restart service (revokes current access)');
@@ -307,10 +307,8 @@ describe('plugin center interaction and production structure', () => {
   it('keeps plugin chrome neutral and reachable', async () => {
     const css = await readFile(new URL('../../src/renderer/styles/app.scss', import.meta.url), 'utf8');
     const pluginChrome = css.slice(css.indexOf('.plugin-center {'), css.indexOf('.search-field'));
-    // The accent marks where you are and nothing else. Nothing in this pane is
-    // "where you are" any more: every plugin is on screen at once, so there is
-    // no selected row to mark and the accent has no business here at all. Tone
-    // is carried by the warning and danger rails.
+    // The accent marks where you are and nothing else. The Plugins list is
+    // neutral; tone on a detail card is carried by warning and danger rails.
     expect(pluginChrome).not.toMatch(/gradient|box-shadow|backdrop-filter/);
     expect(pluginChrome.match(/var\(--accent\)/g) ?? []).toHaveLength(0);
     expect(pluginChrome).toContain('border-color: var(--hairline);');
