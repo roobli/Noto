@@ -41,6 +41,14 @@ export const STUB_SELECTION_RADIUS = 2;
 /** Fallback line height guess when the host has not been measured yet. */
 export const STUB_FALLBACK_EM_PX = 16;
 
+/**
+ * Vertical rhythm between top-level blocks (`editor.scss`: 0.74 × doc font size,
+ * collapsing between neighbours). Stubs use `margin: 0` and fold this into their
+ * height instead, so the height cache must count the same gap or remounting a
+ * stub as real grows the document and the viewport window drifts off-screen.
+ */
+export const STUB_BLOCK_GAP_EM = 0.74;
+
 /** Class on a stub placeholder element. */
 export const STUB_CLASS = 'noto-block-stub';
 
@@ -160,39 +168,59 @@ export function topLevelIndexAt(doc: ProseNode, pos: number): number | null {
   return doc.resolve(pos).index();
 }
 
+export function blockGapPx(emPx: number): number {
+  return Math.max(0, emPx) * STUB_BLOCK_GAP_EM;
+}
+
 export function estimateBlockHeight(node: ProseNode, emPx: number): number {
   const line = Math.max(8, emPx) * 1.6;
+  const gap = blockGapPx(emPx);
+  let content: number;
   switch (node.type.name) {
     case 'horizontal_rule':
-      return Math.max(line, emPx * 2);
+      content = Math.max(line, emPx * 2);
+      break;
     case 'heading': {
       const level = Number(node.attrs.level ?? 1);
-      return line * (1.6 - Math.min(5, Math.max(0, level - 1)) * 0.08);
+      content = line * (1.6 - Math.min(5, Math.max(0, level - 1)) * 0.08);
+      break;
     }
     case 'code_block':
-    case 'math_block':
     case 'html_block':
     case 'frontmatter':
     case 'source_block': {
       const lines = Math.max(1, node.textContent.split('\n').length);
-      return line * Math.min(40, lines + 1);
+      // Fence chrome (lang badge / tools) adds roughly two lines beyond source.
+      content = line * Math.min(48, lines + 3);
+      break;
+    }
+    case 'math_block': {
+      content = line * 3;
+      break;
     }
     case 'bullet_list':
     case 'ordered_list':
-      return line * Math.max(1, node.childCount);
+      content = line * Math.max(1, node.childCount);
+      break;
     case 'blockquote':
     case 'footnote_definition':
-      return line * Math.max(1, node.childCount);
+      content = line * Math.max(1, node.childCount);
+      break;
     case 'paragraph': {
       const chars = node.textContent.length;
       const lines = Math.max(1, Math.ceil(chars / 72));
-      return line * lines;
+      content = line * lines;
+      break;
     }
     case 'table':
-      return line * Math.max(2, node.childCount + 1);
+      // Table frame padding + row chrome; under-estimates here shift the whole map.
+      content = line * Math.max(3, node.childCount * 1.6 + 2);
+      break;
     default:
-      return line;
+      content = line;
+      break;
   }
+  return content + gap;
 }
 
 export function estimateAllHeights(doc: ProseNode, emPx: number): Float64Array {
@@ -350,38 +378,115 @@ function hostEmPx(view: EditorView): number {
   return Number.isFinite(size) && size > 0 ? size : STUB_FALLBACK_EM_PX;
 }
 
-function contentYOffset(view: EditorView, scroller: HTMLElement): number {
-  const scrollerBox = scroller.getBoundingClientRect();
-  const editorBox = view.dom.getBoundingClientRect();
-  return editorBox.top - scrollerBox.top + scroller.scrollTop;
+
+/**
+ * Inclusive top-level index window whose DOM boxes intersect `[y0, y1)` in
+ * viewport coordinates (getBoundingClientRect space).
+ */
+function blockWindowForClientY(
+  children: HTMLCollection,
+  last: number,
+  y0: number,
+  y1: number,
+): BlockRange {
+  if (children.length === 0 || last < 0) return emptyRange();
+  const limit = Math.min(last, children.length - 1);
+
+  let low = 0;
+  let high = limit + 1;
+  while (low < high) {
+    const mid = (low + high) >> 1;
+    const box = children[mid]!.getBoundingClientRect();
+    if (box.bottom <= y0) low = mid + 1;
+    else high = mid;
+  }
+  const from = Math.min(low, last);
+
+  let to = from;
+  for (let index = from; index <= limit; index += 1) {
+    const box = children[index]!.getBoundingClientRect();
+    if (index > from && box.top >= y1) break;
+    to = index;
+  }
+  return clampRange(from, to, last);
 }
 
-function viewportFromScroll(view: EditorView, heights: Float64Array): BlockRange | null {
+/**
+ * Inclusive top-level window covering the scroller plus buffer screens.
+ *
+ * Uses the live DOM geometry of ProseMirror's top-level children rather than
+ * the height cache. The cache still sizes stubs, but estimating y from it
+ * drifted whenever always-real fences/tables or block rhythm disagreed with
+ * the placeholder map — leaving the "real" window off-screen.
+ */
+function viewportFromScroll(view: EditorView, _heights: Float64Array): BlockRange | null {
   const scroller = findScroller(view);
   if (!scroller) return null;
-  const last = heights.length - 1;
+  const last = view.state.doc.childCount - 1;
   if (last < 0) return emptyRange();
 
+  const children = view.dom.children;
+  if (children.length === 0) return emptyRange();
+
+  const sc = scroller.getBoundingClientRect();
   const buffer = scroller.clientHeight * STUB_SCREEN_BUFFER;
-  const offset = contentYOffset(view, scroller);
-  const y0 = scroller.scrollTop - buffer - offset;
-  const y1 = scroller.scrollTop + scroller.clientHeight + buffer - offset;
-  return blockWindowForY(cumulativeHeights(heights), y0, y1);
+  return blockWindowForClientY(children, last, sc.top - buffer, sc.bottom + buffer);
 }
 
-function measureRealHeights(view: EditorView, stub: ViewportStubState): void {
-  if (!stub.enabled) return;
+/** Strictly visible band (no buffer) — used to decide whether to remount. */
+function visibleWindowFromScroll(view: EditorView): BlockRange | null {
+  const scroller = findScroller(view);
+  if (!scroller) return null;
+  const last = view.state.doc.childCount - 1;
+  if (last < 0) return emptyRange();
+  const children = view.dom.children;
+  if (children.length === 0) return emptyRange();
+  const sc = scroller.getBoundingClientRect();
+  return blockWindowForClientY(children, last, sc.top, sc.bottom);
+}
+
+/**
+ * Remount only when the visible band would leave the current real window.
+ * Scrolling inside the buffered region is free — the residual scroll-frame
+ * cost was remounting on every step even when nothing on screen needed it.
+ */
+export function viewportNeedsRemount(current: BlockRange, visible: BlockRange): boolean {
+  return visible.from < current.from || visible.to > current.to;
+}
+
+/**
+ * Write measured heights for currently real blocks.
+ *
+ * Returns true when any stub height cache entry changed. A follow-up
+ * viewport pass picks up geometry shifts after stub↔real remounts.
+ */
+
+function measureRealHeights(view: EditorView, stub: ViewportStubState): boolean {
+  if (!stub.enabled) return false;
+  const gap = blockGapPx(hostEmPx(view));
+  let changed = false;
   let position = 0;
   for (let index = 0; index < view.state.doc.childCount; index += 1) {
     if (isIndexReal(stub, index)) {
       const nodeDom = view.nodeDOM(position);
       if (nodeDom instanceof HTMLElement && !nodeDom.classList.contains(STUB_CLASS)) {
         const height = nodeDom.offsetHeight;
-        if (height > 0) stub.heights[index] = height;
+        if (height > 0) {
+          // offsetHeight omits margins; stubs fold the rhythm gap into height.
+          // Never shrink a cached height during remount: a shorter real block
+          // packs more indices into the visible band, which trips hysteresis
+          // and remounts again (scroll-frame cascade). Growth is fine.
+          const next = height + gap;
+          if (next > stub.heights[index] + 0.5) {
+            stub.heights[index] = next;
+            changed = true;
+          }
+        }
       }
     }
     position += view.state.doc.child(index).nodeSize;
   }
+  return changed;
 }
 
 function publishDataset(view: EditorView, stub: ViewportStubState): void {
@@ -612,6 +717,10 @@ export function viewportStubPlugin(): Plugin<ViewportStubState> {
     view: (editorView) => {
       let attached: HTMLElement | null = null;
       let frame = 0;
+      let resyncFrame = 0;
+      let lastMeasuredGeneration = -1;
+      /** Caps measure→viewport feedback so remount height fixes can chase once. */
+      let resyncBudget = 0;
 
       const dispatchViewport = (viewport: BlockRange) => {
         const current = viewportStubKey.getState(editorView.state);
@@ -621,12 +730,27 @@ export function viewportStubPlugin(): Plugin<ViewportStubState> {
         editorView.dispatch(transaction);
       };
 
+      const scheduleViewportFromScroll = () => {
+        if (resyncFrame) return;
+        resyncFrame = requestAnimationFrame(() => {
+          resyncFrame = 0;
+          const current = viewportStubKey.getState(editorView.state);
+          if (!current?.enabled) return;
+          const next = viewportFromScroll(editorView, current.heights);
+          if (next) dispatchViewport(next);
+        });
+      };
+
       const onScroll = () => {
         if (frame) return;
         frame = requestAnimationFrame(() => {
           frame = 0;
           const current = viewportStubKey.getState(editorView.state);
           if (!current?.enabled) return;
+          const visible = visibleWindowFromScroll(editorView);
+          if (!visible) return;
+          if (!viewportNeedsRemount(current.viewport, visible)) return;
+          resyncBudget = 2;
           const next = viewportFromScroll(editorView, current.heights);
           if (next) dispatchViewport(next);
         });
@@ -643,6 +767,7 @@ export function viewportStubPlugin(): Plugin<ViewportStubState> {
       ensureScroll();
       const initial = viewportStubKey.getState(editorView.state);
       if (initial?.enabled) {
+        resyncBudget = 6;
         const next = viewportFromScroll(editorView, initial.heights);
         if (next) dispatchViewport(next);
         publishDataset(editorView, viewportStubKey.getState(editorView.state) ?? initial);
@@ -653,17 +778,34 @@ export function viewportStubPlugin(): Plugin<ViewportStubState> {
           ensureScroll();
           const stub = viewportStubKey.getState(view.state);
           if (!stub?.enabled) {
+            lastMeasuredGeneration = -1;
             publishDataset(view, stub ?? disabledState());
             return;
           }
-          measureRealHeights(view, stub);
+          // Measuring every transaction forced layout across the whole real
+          // window on each keystroke. Remounts (generation bumps) are what
+          // need fresh stub sizes; typing into an already-real block can wait.
+          const generationChanged = stub.generation !== lastMeasuredGeneration;
+          let heightsChanged = false;
+          if (generationChanged) {
+            heightsChanged = measureRealHeights(view, stub);
+            lastMeasuredGeneration = stub.generation;
+          }
           publishDataset(view, stub);
+          // DOM windowing usually self-corrects; one follow-up covers the case
+          // where remount heights change geometry under the scrollport.
+          if (heightsChanged && resyncBudget > 0) {
+            resyncBudget -= 1;
+            scheduleViewportFromScroll();
+          }
         },
         destroy: () => {
           attached?.removeEventListener('scroll', onScroll);
           attached = null;
           if (frame) cancelAnimationFrame(frame);
           frame = 0;
+          if (resyncFrame) cancelAnimationFrame(resyncFrame);
+          resyncFrame = 0;
           const host = editorView.dom.closest('.noto-editor-host');
           if (host instanceof HTMLElement) {
             delete host.dataset.stubEnabled;

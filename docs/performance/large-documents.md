@@ -110,3 +110,37 @@ macOS packaged re-measure remains useful for the original Apple-silicon table
 the enable threshold, and scroll-away gap stubbing lives in
 `tests/unit/viewport-stub.test.ts`.
 
+
+
+### Height-map drift after remount, fixed 2026-09-11
+
+After the OR-window fix, Linux packaged `large` still sat near **60ms** median
+scroll-frame — and worse, the height *cache* used for windowing omitted the
+0.74em top-level block rhythm while always-real fences/tables disagreed with
+their estimates. The "real" indices were consistent with the cache but sat
+tens of thousands of pixels above the visible scrollport (stubs on screen).
+
+This cut keeps the same stubbing architecture and changes three local pieces:
+
+1. **DOM-geometry windowing** — `viewportFromScroll` binary-searches live
+   `getBoundingClientRect` of top-level children instead of cumulative estimates.
+2. **Remount hysteresis** — scroll only remounts when the strict visible band
+   would leave the current buffered window (idle scrolling inside the buffer is
+   free).
+3. **Gap-aware stub heights + generation-gated measure** — estimates fold the
+   0.74em rhythm; `measureRealHeights` runs on stub generation changes (not every
+   keystroke) and never shrinks a cached height (shrinks re-expanded the visible
+   index band and remount-cascaded).
+
+Packaged Linux `out/e2e/Noto-linux-x64`, `node scripts/bench/profile-typing.mjs large`
+(2026-09-11). macOS packaged binaries are **not** on this agent box — no
+`Noto-darwin-arm64`; do not invent Apple-silicon numbers.
+
+| | scroll-frame 0.25×view | scroll-frame 0.75×view | mid caret-in-viewport script / paint | visible real in scrollport |
+| --- | --- | --- | --- | --- |
+| before (OR + height-cache window) | n/a | ~61 ms | not measured (selection stuck at top; real window off-screen) | no |
+| after (DOM window + hysteresis) | ~18 ms | ~78 ms | ~4.7 / ~94 ms | yes |
+
+Caret-in-viewport **script** is inside a frame; **paint** (~97ms) is the next
+feel residual once scroll tracks the scrollport. Unit coverage:
+`tests/unit/viewport-stub.test.ts`.
