@@ -1,7 +1,7 @@
 {
   "name": "noto",
   "productName": "Noto",
-  "version": "0.0.2-alpha.9",
+  "version": "0.0.2-alpha.10",
   "license": "AGPL-3.0-only",
   "private": true,
   "description": "Noto, a Markdown editor that keeps your file byte for byte",
