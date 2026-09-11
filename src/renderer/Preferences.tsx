@@ -70,7 +70,7 @@ function SectionGlyph({ name }: { name: PreferencesSection }) {
 }
 
 const SECTIONS: readonly { value: PreferencesSection; label: string; keywords: string }[] = [
-  { value: 'appearance', label: 'Appearance', keywords: 'theme dark light text size line height width rail stylesheet css font always on top float window' },
+  { value: 'appearance', label: 'Appearance', keywords: 'theme dark light text size line height width rail stylesheet css font serif sans mono system family always on top float window' },
   { value: 'editor', label: 'Editor', keywords: 'spell check images brackets pairs focus typewriter save autosave line numbers guides reload external disk sync watch file tags frontmatter' },
   { value: 'markdown', label: 'Markdown', keywords: 'smart quotes dashes ellipsis punctuation typography syntax' },
   { value: 'images', label: 'Images', keywords: 'image picture paste drop screenshot assets folder copy relative path escape url upload picgo bucket' },
@@ -188,7 +188,7 @@ function RemotePane({ on, onChange }: { on: boolean; onChange: (value: boolean) 
 }
 
 const FACES: readonly { value: ProseFaceV1; label: string; hint: string }[] = [
-  { value: 'serif', label: 'Serif', hint: 'Songti SC, as Typora sets Chinese prose.' },
+  { value: 'serif', label: 'Serif', hint: 'Recommended. Songti SC, as Typora sets Chinese prose.' },
   { value: 'sans', label: 'Sans', hint: 'PingFang SC, for reading on a screen.' },
   { value: 'mono', label: 'Mono', hint: 'Menlo, for a note that is mostly code.' },
 ];
@@ -416,6 +416,64 @@ function ImageFolder({ settings, onChange }: {
   );
 }
 
+/**
+ * Preset faces plus an optional installed family from main's enumerator.
+ *
+ * Picking Serif / Sans / Mono clears a custom family so the preset stack is
+ * what you get. Picking a system font keeps the last preset as fallback.
+ * Serif is the recommended default.
+ */
+function DocumentFont({ settings, onChange }: {
+  settings: NotoSettingsV1;
+  onChange: (patch: Partial<NotoSettingsV1>) => void;
+}) {
+  const [families, setFamilies] = useState<readonly string[]>([]);
+  useEffect(() => {
+    let active = true;
+    void window.notoSettings.listFonts({ version: 1, requestId: `fonts:${Date.now()}` })
+      .then((result) => {
+        if (!active || !result.ok) return;
+        setFamilies(result.value.families);
+      })
+      .catch(() => { /* presets still work */ });
+    return () => { active = false; };
+  }, []);
+
+  return (
+    <>
+      <Choices
+        label="Document font"
+        hint="Serif recommended. Presets keep their fallback stacks; a system font leads them."
+        options={FACES}
+        value={settings.proseFace}
+        onPick={(value) => onChange({ proseFace: value, proseFontFamily: '' })}
+        testPrefix="face"
+      />
+      <div className="pref-row">
+        <span className="pref-label">
+          System font
+          <small>Installed families from this machine. Empty uses the preset alone.</small>
+        </span>
+        <select
+          className="pref-select"
+          data-testid="setting-prose-font-family"
+          aria-label="System font"
+          value={settings.proseFontFamily}
+          onChange={(event) => onChange({ proseFontFamily: event.target.value })}
+        >
+          <option value="">Preset default</option>
+          {settings.proseFontFamily
+            && !families.includes(settings.proseFontFamily)
+            && <option value={settings.proseFontFamily}>{settings.proseFontFamily}</option>}
+          {families.map((family) => (
+            <option key={family} value={family}>{family}</option>
+          ))}
+        </select>
+      </div>
+    </>
+  );
+}
+
 function Choices<T extends string>({ label, hint, options, value, onPick, testPrefix }: {
   label: string;
   hint?: string;
@@ -583,9 +641,7 @@ export function Preferences({
                 <Slider label="Line height" setting="lineHeight" value={settings.lineHeight}
                   format={(value) => value.toFixed(2)} testId="setting-line-height"
                   onChange={(value) => onChange({ lineHeight: Number(value.toFixed(2)) })} />
-                <Choices label="Document font" hint="What the note itself is set in."
-                  options={FACES} value={settings.proseFace}
-                  onPick={(value) => onChange({ proseFace: value })} testPrefix="face" />
+                <DocumentFont settings={settings} onChange={onChange} />
                 <Choices label="Page width" hint="Also on the View menu."
                   options={WIDTHS} value={settings.widthMode}
                   onPick={(value) => onChange({ widthMode: value })} testPrefix="width" />

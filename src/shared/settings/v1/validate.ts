@@ -25,8 +25,10 @@ import {
   IMAGE_DESTINATIONS,
   type ImageDestinationV1,
   PROSE_FACES,
+  PROSE_FONT_FAMILY_MAX,
   type ProseFaceV1,
   TREE_SORTS,
+  type SystemFontsReplyV1,
   type TreeSortV1,
   type RemoteStatusReplyV1,
 } from './contracts';
@@ -52,6 +54,12 @@ const isCssPath = (value: unknown): value is string =>
   && value.length <= 1024
   && !/[\0\r\n]/.test(value)
   && (value === '' || value.startsWith('/') || /^[A-Za-z]:[\\/]/.test(value));
+
+/** A font family name from the system list, or empty for the preset stack. */
+const isProseFontFamily = (value: unknown): value is string =>
+  typeof value === 'string'
+  && value.length <= PROSE_FONT_FAMILY_MAX
+  && !/[\0\r\n"']/.test(value);
 
 /**
  * The custom folder a picture is copied into.
@@ -91,6 +99,9 @@ export function coerceSettings(value: unknown): NotoSettingsV1 {
     proseFace: PROSE_FACES.includes(value.proseFace as ProseFaceV1)
       ? value.proseFace as ProseFaceV1
       : DEFAULT_SETTINGS.proseFace,
+    proseFontFamily: isProseFontFamily(value.proseFontFamily)
+      ? value.proseFontFamily
+      : DEFAULT_SETTINGS.proseFontFamily,
     treeSort: TREE_SORTS.includes(value.treeSort as TreeSortV1)
       ? value.treeSort as TreeSortV1
       : DEFAULT_SETTINGS.treeSort,
@@ -188,6 +199,7 @@ export function isSettingsWriteRequestV1(value: unknown): value is SettingsWrite
     if (key === 'theme') return themes.includes(patch.theme as NotoTheme);
     if (key === 'widthMode') return isWidthMode(patch.widthMode);
     if (key === 'proseFace') return PROSE_FACES.includes(patch.proseFace as ProseFaceV1);
+    if (key === 'proseFontFamily') return isProseFontFamily(patch.proseFontFamily);
     if (key === 'treeSort') return TREE_SORTS.includes(patch.treeSort as TreeSortV1);
     if (key === 'quickOpenWidth') return patch.quickOpenWidth === 'default' || patch.quickOpenWidth === 'wide';
     if (key === 'customCssPath') return isCssPath(patch.customCssPath);
@@ -260,7 +272,27 @@ export function isSettingsReplyV1(value: unknown): value is SettingsReplyV1 {
     && typeof settings.alwaysOnTop === 'boolean'
     && IMAGE_DESTINATIONS.includes(settings.imageDestination as ImageDestinationV1)
     && isImageFolder(settings.imageCustomFolder)
-    && isCssPath(settings.customCssPath);
+    && isCssPath(settings.customCssPath)
+    && PROSE_FACES.includes(settings.proseFace as ProseFaceV1)
+    && isProseFontFamily(settings.proseFontFamily);
+}
+
+export function isSystemFontsReplyV1(value: unknown): value is SystemFontsReplyV1 {
+  return record(value) && value.version === NOTO_SETTINGS_VERSION
+    && Array.isArray(value.families)
+    && value.families.length <= 800
+    && value.families.every((name) => typeof name === 'string' && name.length > 0
+      && name.length <= PROSE_FONT_FAMILY_MAX && !/[\0\r\n"']/.test(name));
+}
+
+export function isSystemFontsResultV1(
+  value: unknown,
+  expectedRequestId: string,
+): value is SettingsResultV1<SystemFontsReplyV1> {
+  if (!record(value) || value.requestId !== expectedRequestId) return false;
+  if (value.ok === true) return isSystemFontsReplyV1(value.value);
+  return value.ok === false && record(value.error)
+    && typeof value.error.code === 'string' && typeof value.error.message === 'string';
 }
 
 export function isSettingsResultV1(

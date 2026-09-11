@@ -15,6 +15,7 @@ import {
   type SettingsResultV1,
   type SettingsWriteRequestV1,
   type ThemeCssReplyV1,
+  type SystemFontsReplyV1,
   type RemoteStatusReplyV1,
 } from '../../shared/settings/v1/contracts';
 import {
@@ -24,6 +25,7 @@ import {
 import { isTrustedRendererSender } from '../ipc/trusted-renderer';
 import type { StructuredLogger } from '../logger';
 import type { SettingsStore } from './settings-store';
+import { listSystemFontFamilies } from './list-system-fonts';
 
 export function registerSettingsHandlers(deps: {
   settings: SettingsStore;
@@ -117,6 +119,16 @@ export function registerSettingsHandlers(deps: {
         return { ...empty, problem: 'Stylesheet could not be read.' };
       }
     },
+  );
+
+
+  register<{ requestId: string }, SystemFontsReplyV1>(
+    SETTINGS_CHANNELS.listFonts,
+    isSettingsRequestV1,
+    async () => ({
+      version: NOTO_SETTINGS_VERSION,
+      families: await listSystemFontFamilies(),
+    }),
   );
 
   const remoteReply = async (kind: 'status' | 'regenerate'): Promise<RemoteStatusReplyV1> => {

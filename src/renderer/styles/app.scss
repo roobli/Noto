@@ -716,12 +716,10 @@ button:disabled { color: var(--muted); opacity: 0.7; }
      At 720 the hints wrapped to three lines and the panel read as cramped
      rather than as considered. */
   width: min(1000px, 94vw);
-  /* As tall as what is in it, up to what the window can hold. A fixed height
-     left the shortest section with a void under its last control and the
-     footnote pinned to an edge it had nothing to do with, so the panel looked
-     to have been sized for some other section. */
-  height: auto;
-  max-height: min(700px, 88vh);
+  /* Fixed height so Remote does not shrink and Plugins does not grow the
+     chrome when switching sections — the body scrolls inside instead. */
+  height: min(640px, 88vh);
+  max-height: min(640px, 88vh);
   overflow: hidden;
   border: 1px solid var(--hairline);
   border-radius: 10px;
@@ -854,6 +852,25 @@ button:disabled { color: var(--muted); opacity: 0.7; }
 }
 
 .pref-close { min-height: 26px; padding: 3px 10px; font-size: 12px; }
+
+.pref-select {
+  flex: 0 1 240px;
+  min-width: 140px;
+  max-width: 280px;
+  min-height: 28px;
+  border: 1px solid var(--hairline);
+  border-radius: 6px;
+  background: var(--paper);
+  padding: 4px 8px;
+  color: var(--ink);
+  font: inherit;
+  font-size: 12.5px;
+}
+
+.pref-select:focus-visible {
+  outline: 2px solid var(--focus);
+  outline-offset: 1px;
+}
 
 .pref-content {
   min-height: 0;
@@ -1183,25 +1200,25 @@ button:disabled { color: var(--muted); opacity: 0.7; }
 .plugin-center {
   display: flex;
   flex-direction: column;
-  gap: 18px;
+  gap: 12px;
   min-width: 0;
 }
 
 .plugin-group {
   display: flex;
   flex-direction: column;
-  gap: 10px;
+  gap: 8px;
   min-width: 0;
 }
 
-/* A card each, so the eye can tell where one plugin ends and the next begins
-   without a rule between every pair. */
+/* Compact cards in the modal: name + switch first, diagnostics stay collapsed. */
 .plugin-center .plugin-detail {
   border: 1px solid var(--hairline);
-  border-radius: 8px;
+  border-radius: 6px;
   background: var(--panel);
-  padding: 14px 16px;
+  padding: 8px 12px;
   min-width: 0;
+  gap: 6px;
 }
 
 
@@ -1223,9 +1240,9 @@ button:disabled { color: var(--muted); opacity: 0.7; }
 .plugin-section {
   display: flex;
   flex-direction: column;
-  gap: 10px;
+  gap: 6px;
   min-width: 0;
-  padding: 2px 0 13px;
+  padding: 0;
   overflow-wrap: anywhere;
 }
 
@@ -1242,7 +1259,7 @@ button:disabled { color: var(--muted); opacity: 0.7; }
   min-width: 0;
 }
 
-.plugin-name-row strong { font-size: 15px; font-weight: 600; }
+.plugin-name-row strong { font-size: 13.5px; font-weight: 600; }
 
 .plugin-kind {
   color: var(--muted);

@@ -550,14 +550,23 @@ function NotoWorkspace({ platform }: { platform: NotoPlatform }) {
     root.style.setProperty('--doc-line-height', `${settings.lineHeight}`);
     root.dataset.widthMode = settings.widthMode;
     root.dataset.proseFace = settings.proseFace;
+    if (settings.proseFontFamily) {
+      root.dataset.proseFont = 'custom';
+      // Quote the family for CSS; names with quotes are refused at the settings boundary.
+      root.style.setProperty('--prose-font-family', `"${settings.proseFontFamily}"`);
+    } else {
+      delete root.dataset.proseFont;
+      root.style.removeProperty('--prose-font-family');
+    }
     root.dataset.codeLineNumbers = settings.codeLineNumbers ? 'on' : 'off';
     root.dataset.codeIndentGuides = settings.codeIndentGuides ? 'on' : 'off';
     root.dataset.codeTabMarkers = settings.codeTabMarkers ? 'on' : 'off';
     root.dataset.sidenotes = settings.sidenotes ? 'on' : 'off';
     root.dataset.timelines = settings.timelines ? 'on' : 'off';
     root.dataset.focusMode = settings.focusMode ? 'on' : 'off';
-  }, [settings.fontSize, settings.lineHeight, settings.widthMode, settings.proseFace, settings.codeLineNumbers,
-    settings.codeIndentGuides, settings.codeTabMarkers, settings.sidenotes, settings.timelines, settings.focusMode]);
+  }, [settings.fontSize, settings.lineHeight, settings.widthMode, settings.proseFace, settings.proseFontFamily,
+    settings.codeLineNumbers, settings.codeIndentGuides, settings.codeTabMarkers, settings.sidenotes,
+    settings.timelines, settings.focusMode]);
 
   /**
    * The user's own stylesheet, layered over the theme.

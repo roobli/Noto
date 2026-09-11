@@ -2435,6 +2435,17 @@
 :root[data-prose-face='sans'] .ProseMirror { font-family: tokens.$ui; }
 :root[data-prose-face='mono'] .ProseMirror { font-family: tokens.$mono; }
 
+/* An installed family leads the preset stack when the reader picks one. */
+:root[data-prose-font='custom'][data-prose-face='serif'] .ProseMirror {
+  font-family: var(--prose-font-family), tokens.$prose;
+}
+:root[data-prose-font='custom'][data-prose-face='sans'] .ProseMirror {
+  font-family: var(--prose-font-family), tokens.$ui;
+}
+:root[data-prose-font='custom'][data-prose-face='mono'] .ProseMirror {
+  font-family: var(--prose-font-family), tokens.$mono;
+}
+
 /* The HTML a note draws with, once it is cleaned: a table, a `<details>`,
    a picture in a centred block. Set in the document's own face, and given
    the same table rules the editor's own tables have, so a note that mixes

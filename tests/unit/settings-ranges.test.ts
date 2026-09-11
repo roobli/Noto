@@ -103,3 +103,18 @@ describe('rail width range', () => {
     expect(write({ railWidth: 721 })).toBe(false);
   });
 });
+
+describe('document font family', () => {
+  it('defaults to the Serif preset with no custom family', () => {
+    expect(DEFAULT_SETTINGS.proseFace).toBe('serif');
+    expect(DEFAULT_SETTINGS.proseFontFamily).toBe('');
+    expect(coerceSettings({}).proseFontFamily).toBe('');
+  });
+
+  it('accepts a system family name and refuses quotes or oversize', () => {
+    expect(write({ proseFontFamily: 'Songti SC' })).toBe(true);
+    expect(write({ proseFontFamily: '' })).toBe(true);
+    expect(write({ proseFontFamily: 'Bad"Name' })).toBe(false);
+    expect(write({ proseFontFamily: 'x'.repeat(81) })).toBe(false);
+  });
+});
