@@ -182,12 +182,22 @@ button:disabled { color: var(--muted); opacity: 0.7; }
   background: var(--paper);
 }
 
-/* macOS `hiddenInset` + `trafficLightPosition` float the lights over the
-   title bar's left edge. Always pad the bar so the sidebar toggle and trail
-   back/forward sit to the right of them (Claude-style), never underneath —
-   including when the rail is open, because the bar now spans the full width.
-   Windows and Linux keep their own chrome; this reservation would be a hole. */
+/* Platform system-button avoidance (see docs/design/chrome.md).
+   macOS: `hiddenInset` + `trafficLightPosition` float the lights over the
+   title bar's left edge — pad so the sidebar toggle and trail sit to their
+   right (Claude-style), never underneath.
+   Windows / Linux: `titleBarStyle: hidden` + Window Controls Overlay puts
+   caption buttons on the right — pad so Settings (and Save when dirty) are
+   never under them. Prefer WCO geometry env vars; fall back to a typical
+   three-button strip (~46px × 3). */
 [data-platform='darwin'] .titlebar { padding-left: 78px; }
+
+[data-platform='win32'] .titlebar,
+[data-platform='linux'] .titlebar {
+  padding-right: calc(
+    100vw - env(titlebar-area-width, calc(100vw - 138px)) - env(titlebar-area-x, 0px)
+  );
+}
 
 .titlebar button,
 .titlebar input { -webkit-app-region: no-drag; }

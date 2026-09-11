@@ -9,13 +9,13 @@ import { startRemoteServer, type RunningRemote } from './remote/server';
 import { TokenStore } from './remote/token-store';
 import { confineRemoteOpenPath } from './remote/resolve-open-path';
 import {
-  NOTO_SETTINGS_VERSION, SETTINGS_CHANNELS, type NotoSettingsV1, type RemoteStatusReplyV1,
+  NOTO_SETTINGS_VERSION, SETTINGS_CHANNELS, type NotoSettingsV1, type NotoTheme, type RemoteStatusReplyV1,
 } from '../shared/settings/v1/contracts';
 import { ensureThemeFolder, listThemes } from './workspace/themes';
 import path from 'node:path';
 import { statSync } from 'node:fs';
 import { readFile, realpath, rm, writeFile } from 'node:fs/promises';
-import { app, BrowserWindow, dialog, shell } from 'electron';
+import { app, BrowserWindow, dialog, nativeTheme, shell } from 'electron';
 import { FileTruthStoreV1 } from './file-truth/v1/file-truth-store';
 import { registerFileTruthHandlers } from './file-truth/v1/register-file-truth-handlers';
 import { registerIpcHandlers } from './ipc/register-handlers';
@@ -35,6 +35,11 @@ import { IPC_CHANNELS } from '../shared/ipc/contracts';
 import type { PluginCatalog } from '../shared/plugins/catalog';
 import { PLUGIN_LIFECYCLE_VERSION } from '../shared/plugins/lifecycle';
 import { createEditorWindow, headless, type RendererConsoleState } from './windows/create-editor-window';
+import {
+  EDITOR_CHROME_COLORS,
+  resolveEditorChromeTone,
+  syncEditorTitleBarOverlay,
+} from './windows/editor-window-chrome';
 import { RecentFiles } from './workspace/recent-files';
 import { SettingsStore } from './workspace/settings-store';
 import { registerSettingsHandlers } from './workspace/register-settings-handlers';
@@ -162,11 +167,28 @@ app.on('web-contents-created', (_event, contents) => {
  */
 let windowAlwaysOnTop = false;
 
-function createApplicationWindow(preloadPath: string): BrowserWindow {
-  editorWindow = createEditorWindow(preloadPath, logger, rendererConsole);
+function createApplicationWindow(preloadPath: string, theme: NotoTheme = 'system'): BrowserWindow {
+  editorWindow = createEditorWindow(preloadPath, logger, rendererConsole, {
+    theme,
+    shouldUseDarkColors: nativeTheme.shouldUseDarkColors,
+  });
   if (windowAlwaysOnTop) editorWindow.setAlwaysOnTop(true);
   editorWindow.on('closed', () => { editorWindow = null; });
   return editorWindow;
+}
+
+function syncWindowChromeTheme(theme: NotoTheme): void {
+  const window = editorWindow;
+  if (!window || window.isDestroyed()) return;
+  syncEditorTitleBarOverlay(
+    process.platform,
+    (options) => window.setTitleBarOverlay(options),
+    theme,
+    nativeTheme,
+  );
+  /* Match the frame fill to the title bar so a resize flash is not a white strip. */
+  const tone = resolveEditorChromeTone(theme, nativeTheme.shouldUseDarkColors);
+  window.setBackgroundColor(EDITOR_CHROME_COLORS[tone].background);
 }
 
 async function run(): Promise<void> {
@@ -656,6 +678,7 @@ async function run(): Promise<void> {
     },
     onChanged: (reply) => {
       logger.log('settings_changed', { theme: reply.settings.theme });
+      syncWindowChromeTheme(reply.settings.theme);
       // The window has to be told, and the menu's tick has to follow, or the
       // preference and what the window is doing drift apart.
       if (!reply.settings.codeViewer) session?.clearCodeView();
@@ -692,7 +715,10 @@ async function run(): Promise<void> {
   });
 
   const preloadPath = path.join(__dirname, 'preload.js');
-  const window = createApplicationWindow(preloadPath);
+  const window = createApplicationWindow(preloadPath, settings.current().theme);
+  nativeTheme.on('updated', () => {
+    if (settings.current().theme === 'system') syncWindowChromeTheme('system');
+  });
   const disposeRendererAuthority = () => {
     const leases = rendererLeaseBridge.activeLeases();
     rendererLeaseBridge.rendererDisposed();
@@ -754,7 +780,7 @@ async function run(): Promise<void> {
 
   app.on('activate', () => {
     if (BrowserWindow.getAllWindows().length === 0) {
-      const restored = createApplicationWindow(preloadPath);
+      const restored = createApplicationWindow(preloadPath, settings.current().theme);
       restored.webContents.once('did-finish-load', () => session?.republish());
     }
   });

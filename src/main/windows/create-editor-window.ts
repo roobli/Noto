@@ -1,13 +1,24 @@
 import path from 'node:path';
 import { BrowserWindow } from 'electron';
+import type { NotoTheme } from '../../shared/settings/v1/contracts';
 import { summarizeUntrustedText, type StructuredLogger } from '../logger';
 import { isAllowedRendererUrl } from '../protocol/register-app-protocol';
 import { classifyRendererConsoleMessage } from './classify-renderer-console-message';
+import {
+  EDITOR_CHROME_COLORS,
+  editorWindowFrameOptions,
+  resolveEditorChromeTone,
+} from './editor-window-chrome';
 import { installEditorContextMenu } from './editor-context-menu';
 
 export interface RendererConsoleState {
   errors: number;
   warnings: number;
+}
+
+export interface CreateEditorWindowOptions {
+  readonly theme?: NotoTheme;
+  readonly shouldUseDarkColors?: boolean;
 }
 
 /** Set by the test runner. Never set when a person launches the app. */
@@ -19,20 +30,20 @@ export function createEditorWindow(
   preloadPath: string,
   logger: StructuredLogger,
   consoleState: RendererConsoleState,
+  options: CreateEditorWindowOptions = {},
 ): BrowserWindow {
+  const tone = resolveEditorChromeTone(
+    options.theme ?? 'system',
+    options.shouldUseDarkColors ?? false,
+  );
+  const frame = editorWindowFrameOptions(process.platform, tone);
   const window = new BrowserWindow({
     width: 1440,
     height: 900,
     minWidth: 720,
     minHeight: 560,
-    backgroundColor: '#FAF9F6',
-    /* Claude-style chrome: inset bar with traffic lights pinned so the
-       renderer can pad the sidebar toggle and trail controls to their right,
-       never under them. y centres the ~12px lights in the 32px titlebar. */
-    titleBarStyle: 'hiddenInset',
-    ...(process.platform === 'darwin'
-      ? { trafficLightPosition: { x: 14, y: 10 } as const }
-      : {}),
+    backgroundColor: EDITOR_CHROME_COLORS[tone].background,
+    ...frame,
     show: false,
     webPreferences: {
       preload: path.resolve(preloadPath),

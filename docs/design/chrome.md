@@ -42,11 +42,35 @@ spine, and it is under five percent of any viewport.
 
 ## Title bar
 
-38 pixels. It carries identity, not actions.
+32 pixels in the stylesheet (the prose once said 38). It carries identity, not
+actions. The same restraint on every platform: one gear for Settings, Save only
+when dirty, no second Plugins entry, no menu-echo buttons.
 
 The filename sits in the optical centre of the window at 13px in `--muted`, with
-the unsaved dot beside it. On macOS the bar reserves 78px on the left for the
-traffic lights and nothing else goes there except the rail toggle.
+the unsaved dot beside it.
+
+### System buttons and the menu — avoid them, do not merely clear them
+
+The custom title bar is first-class on every OS. Platform chrome differs; the
+product chrome does not.
+
+| Platform | BrowserWindow | Where system buttons sit | What the renderer reserves |
+| --- | --- | --- | --- |
+| macOS | `titleBarStyle: 'hiddenInset'` + `trafficLightPosition` | Traffic lights over the left of the bar | 78px padding-left so the rail toggle and trail sit to their right, never under them |
+| Windows | `titleBarStyle: 'hidden'` + `titleBarOverlay` (height 32, paper/ink) | Caption buttons in the Window Controls Overlay on the right | `padding-right` from `env(titlebar-area-*)` (fallback ~138px) so Settings and Save are never under them |
+| Linux | Same as Windows | Same overlay contract where the WM cooperates | Same right-edge reservation |
+
+Traffic-light avoidance is macOS-only. On Windows and Linux the equivalent duty
+is caption-button avoidance on the right. Drag lives on the bar
+(`-webkit-app-region: drag`); controls opt out with `no-drag`. Matching Mac
+restraint means the bar still does not grow extra icons to "use the space"
+beside the system buttons.
+
+On Windows and Linux the application menu is a separate menu bar (File / Edit /
+…). The title bar must not grow a second Open, Find, Plugins, or Theme control
+just because those items also exist in the menu — that is clutter, and it is how
+the old six-button toolbar came back. Menu items stay in the menu; the title bar
+keeps the short set below.
 
 Icons only, at 26×26 with a 15px stroke glyph, `--muted` at rest, `--ink` on
 hover, `--accent` while the surface they open is open. No borders. No fills. No
