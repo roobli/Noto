@@ -83,8 +83,9 @@ build to run.
 
 Open a file with `Cmd+O`, or open a folder with `Cmd+Alt+O` to get the
 workspace tree. Open notes sit behind a quiet Recent strip in the status bar
-rather than a classic tab bar. The rail on the left holds Files, Outline and
-Links; the one control at the top left opens and closes it, and
+rather than a classic tab bar. The rail on the left holds Files and Outline by
+default; Links (graph / related) stays off until you turn it on in Settings →
+Appearance. The one control at the top left opens and closes the rail, and
 `Cmd+Shift+L` and `Cmd+Shift+O` open it directly on the view they name.
 `Cmd+F` finds, `Cmd+Alt+F` finds and replaces, `Cmd+K` opens the command
 palette, and `Cmd+,` opens Settings — a full-page shell with categories, where

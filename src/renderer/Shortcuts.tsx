@@ -5,7 +5,7 @@
  * reader who does not know a feature exists has no reason to open the menu
  * it lives on. Typora answers this with a reference under Help, and this is
  * the same idea for the things that are Noto's own as well as the ones it
- * borrows: the rail's three views, the vault search, the graph, PicGo, the
+ * borrows: the rail's views, the vault search, the opt-in graph Links view, PicGo, the
  * generated index blocks, the way pictures are resized.
  *
  * The list is written here rather than derived from the menu, because a
@@ -43,7 +43,7 @@ export function shortcutGroups(mac: boolean): Group[] {
         { keys: [mod('[', mac), mod(']', mac)], what: 'Back and forward along the notes you have read.' },
         { keys: [shift(mac) + mod('L', mac)], what: 'Show or hide the rail.' },
         { keys: [shift(mac) + mod('O', mac)], what: 'The outline of this note. A heading folds with the arrow keys.' },
-        { keys: ['Links'], what: "The rail's third view: what links here, what this links to, and what the vault's graph thinks is near." },
+        { keys: ['Links'], what: "Opt-in from Settings: the rail's Links view shows what links here, what this links to, and what the vault's graph thinks is near." },
         { keys: [shift(mac) + mod('T', mac)], what: 'Browse tags from every note\'s frontmatter, and open the notes that share one.' },
       ],
     },

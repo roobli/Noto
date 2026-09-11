@@ -325,6 +325,15 @@ export interface NotoSettingsV1 {
    * Browse Tags command's panel still works from the menu only when on.
    */
   readonly fileTags: boolean;
+  /**
+   * Show the Links view in the rail (backlinks, outbound wiki links, related
+   * notes from `.note-assistant/graph.json`).
+   *
+   * Off by default. Graph / MOC / related browsing is powerful for a linked
+   * vault and noise for a writing editor: advanced users turn it on in
+   * Settings. The graph reader and seed path stay in the build either way.
+   */
+  readonly railLinks: boolean;
 }
 
 export const DEFAULT_SETTINGS: NotoSettingsV1 = Object.freeze({
@@ -373,6 +382,7 @@ export const DEFAULT_SETTINGS: NotoSettingsV1 = Object.freeze({
   imageCustomFolder: './images',
   imageEscapeUrl: true,
   fileTags: true,
+  railLinks: false,
 });
 
 /** Clamp to the declared range and drop anything that is not a real number. */
