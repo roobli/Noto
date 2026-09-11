@@ -51,7 +51,7 @@ import { TableDialog } from './TableDialog';
 import { ReloadConfirmDialog } from './ReloadConfirmDialog';
 import { Shortcuts } from './Shortcuts';
 import { RailFooter } from './RailFooter';
-import { Preferences, type PreferencesSection } from './Preferences';
+import { Settings, type SettingsSection } from './Settings';
 import {
   DEFAULT_SETTINGS, clampRailWidth, stepWidthMode, type NotoSettingsV1, type TreeSortV1,
 } from '../shared/settings/v1/contracts';
@@ -239,7 +239,7 @@ function NotoWorkspace({ platform }: { platform: NotoPlatform }) {
   const [theme, setTheme] = useState<'light' | 'dark'>('light');
   const [prefs, setPrefs] = useState<{
     open: boolean;
-    section: PreferencesSection;
+    section: SettingsSection;
     pluginDetailId: string | null;
     pluginDetailName: string | null;
   }>({ open: false, section: 'appearance', pluginDetailId: null, pluginDetailName: null });
@@ -436,7 +436,7 @@ function NotoWorkspace({ platform }: { platform: NotoPlatform }) {
   const editorRef = useRef<NotoEditor | null>(null);
   const pluginHostRef = useRef<ReadonlyMap<string, RendererPluginHost> | null>(null);
   const pluginClientRef = useRef<RendererPluginClient | null>(null);
-  const pluginsButtonRef = useRef<HTMLButtonElement>(null);
+  const settingsButtonRef = useRef<HTMLButtonElement>(null);
   /** Show a rail view, opening the rail if it is closed, and close it when the
    *  view being asked for is already the one showing. */
   const toggleRail = useCallback((view: RailView) => {
@@ -444,7 +444,7 @@ function NotoWorkspace({ platform }: { platform: NotoPlatform }) {
       ? { open: false, view }
       : { open: true, view }));
   }, []);
-  const openPreferences = useCallback((section: PreferencesSection) => {
+  const openSettings = useCallback((section: SettingsSection) => {
     setPrefs((current) => (current.open && current.section === section && current.pluginDetailId === null
       ? { open: false, section, pluginDetailId: null, pluginDetailName: null }
       : { open: true, section, pluginDetailId: null, pluginDetailName: null }));
@@ -1667,11 +1667,11 @@ function NotoWorkspace({ platform }: { platform: NotoPlatform }) {
     if (!dirty && !recoveryBarrierRef.current) setLocalMessage(null);
   }, []);
 
-  /** Closing preferences returns focus to whatever opened it, so keyboard
+  /** Closing Settings returns focus to the gear that opened it, so keyboard
    *  users are not dropped at the top of the document. */
-  const closePlugins = useCallback(() => {
+  const closeSettings = useCallback(() => {
     setPrefs((current) => ({ ...current, open: false, pluginDetailId: null, pluginDetailName: null }));
-    restorePluginTriggerFocus(pluginsButtonRef.current);
+    restorePluginTriggerFocus(settingsButtonRef.current);
   }, []);
 
   /**
@@ -1772,7 +1772,7 @@ function NotoWorkspace({ platform }: { platform: NotoPlatform }) {
         void openTagBrowser();
         break;
       case 'quick-open':
-        // Preferences is modal and would sit over it, for the same reason the
+        // Settings is modal and would sit over it, for the same reason the
         // command palette dismisses it.
         setPrefs((current) => ({ ...current, open: false }));
         void ensureFileIndex();
@@ -1786,7 +1786,7 @@ function NotoWorkspace({ platform }: { platform: NotoPlatform }) {
         setRail({ open: true, view: 'search' });
         break;
       case 'command-palette':
-        // Preferences is modal, so leaving it open would put its scrim over the
+        // Settings is modal, so leaving it open would put its scrim over the
         // palette and swallow every click on a command. Asking for a command to
         // run against the document is also a statement that you are done with
         // preferences.
@@ -2067,7 +2067,7 @@ function NotoWorkspace({ platform }: { platform: NotoPlatform }) {
           the document on every screen. What is left is the filename where a
           window title belongs and icons that stay quiet until they are wanted.
           Open moved to the File menu and the empty state, Outline into the
-          rail, Theme into preferences, Find to its shortcut. */}
+          rail, Theme into Settings, Find to its shortcut. */}
       {/* Below the title bar (Claude-style): traffic lights and sidebar/trail
           controls share the full-width title row; the rail starts underneath. */}
       {rail.open && (
@@ -2170,20 +2170,11 @@ function NotoWorkspace({ platform }: { platform: NotoPlatform }) {
         <span className="file-state" data-testid="file-state" aria-live="polite">{state}</span>
 
         <div className="title-actions">
-          <button ref={pluginsButtonRef} type="button" className="icon-button" data-testid="plugin-toggle"
-            aria-expanded={prefs.open && prefs.section === 'plugins'} aria-controls="plugin-drawer"
-            aria-label="Plugins" title="Plugins"
-            onClick={() => openPreferences('plugins')}>
-            <svg viewBox="0 0 16 16" aria-hidden="true">
-              <rect x="2.25" y="2.25" width="5" height="5" rx="1.2" />
-              <rect x="8.75" y="8.75" width="5" height="5" rx="1.2" />
-              <path d="M8.75 4.75h5M4.75 8.75v5" />
-            </svg>
-          </button>
-          <button type="button" className="icon-button" data-testid="settings-toggle"
-            aria-expanded={prefs.open && prefs.section !== 'plugins'}
-            aria-label="Preferences" title="Preferences"
-            onClick={() => openPreferences('appearance')}>
+          <button ref={settingsButtonRef} type="button" className="icon-button" data-testid="settings-toggle"
+            aria-expanded={prefs.open}
+            aria-controls="settings-panel"
+            aria-label="Settings" title="Settings"
+            onClick={() => openSettings('appearance')}>
             <svg viewBox="0 0 16 16" aria-hidden="true">
               <circle cx="8" cy="8" r="2.1" />
               <path d="M8 1.4v1.6M8 13v1.6M14.6 8H13M3 8H1.4M12.7 3.3l-1.1 1.1M4.4 11.6l-1.1 1.1M12.7 12.7l-1.1-1.1M4.4 4.4 3.3 3.3" />
@@ -2207,13 +2198,13 @@ function NotoWorkspace({ platform }: { platform: NotoPlatform }) {
         </div>
       </header>
 
-      <Preferences
+      <Settings
         open={prefs.open}
         section={prefs.section}
         onSection={(section) => setPrefs({ open: true, section, pluginDetailId: null, pluginDetailName: null })}
         settings={settings}
         onChange={changeSettings}
-        onClose={closePlugins}
+        onClose={closeSettings}
         pluginDetailId={prefs.pluginDetailId}
         onPluginDetailClear={() => setPrefs((current) => ({
           ...current, pluginDetailId: null, pluginDetailName: null,
@@ -2552,7 +2543,7 @@ function NotoWorkspace({ platform }: { platform: NotoPlatform }) {
               className="status-flag status-remote"
               data-testid="remote-flag"
               title={`Listening on http://127.0.0.1:${remote.port ?? ''}. Press to open the Remote settings.`}
-              onClick={() => openPreferences('remote')}
+              onClick={() => openSettings('remote')}
             >
               Remote
             </button>

@@ -16,7 +16,7 @@ root of `app.scss`. There are no literal milliseconds anywhere else.
 | --- | --- | --- |
 | `--motion-micro` | 60ms | Hover fills, a press, an icon brightening, a tool bar fading in |
 | `--motion-fast` | 80ms | A colour or a small position change |
-| `--motion-default` | 100ms | Quick open, the command palette, a menu, preferences arriving; a twisty turning |
+| `--motion-default` | 100ms | Quick open, the command palette, a menu, Settings arriving; a twisty turning |
 | `--motion-medium` | 140ms | The rail's sliding rule, the frontmatter fold, the status notice rising |
 | `--motion-slow` | 200ms | The rail itself arriving |
 | `--ease-out` | `cubic-bezier(0.16, 1, 0.3, 1)` | Everything that enters or changes state |
@@ -60,9 +60,9 @@ arrivals all resolve to their final state on the first frame.
 
 ## Where each pattern lives
 
-- Arrival, `noto-arrive`: preferences, quick open, the command palette, the
-  folder menu in the rail footer.
-- Fade, `noto-fade`: the scrims behind preferences and quick open.
+- Arrival, `noto-arrive`: Settings, quick open, the command palette, the
+  vault-row folder menu.
+- Fade, `noto-fade`: the scrims behind Settings and quick open.
 - Slide from the edge, `noto-rail-in`: the rail when it opens.
 - Rise, `noto-rise`: a plugin's notice in the status line.
 - The rail's rule between Files and Outline moves by a custom property at

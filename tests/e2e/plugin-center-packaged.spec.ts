@@ -44,19 +44,34 @@ async function launch(name: string): Promise<RunningApp & { file: string }> {
 }
 
 /**
- * Every plugin is on screen at once, so reaching one is scrolling to it rather
- * than picking it out of an index.
+ * Plugins live under Settings › Plugins: open the gear, then the Plugins
+ * category, then a list row for the detail pane.
  */
+async function openSettingsPlugins(page: Page): Promise<void> {
+  await page.setViewportSize({ width: 1280, height: 900 });
+  if (!(await page.getByTestId('settings-panel').isVisible().catch(() => false))) {
+    await page.getByTestId('settings-toggle').click();
+  }
+  await expect(page.getByTestId('settings-panel')).toBeVisible();
+  await page.getByTestId('pref-plugins').click();
+}
+
 async function pickPlugin(page: Page, name: string) {
+  // Detail is one-at-a-time; return to the list before opening another row.
+  const crumb = page.getByTestId('plugins-crumb');
+  if (await crumb.isVisible().catch(() => false)) {
+    await crumb.click();
+  }
+  const row = page.locator('.plugin-row').filter({ has: page.locator('strong', { hasText: name }) });
+  await row.scrollIntoViewIfNeeded();
+  await row.click();
   const detail = page.locator('.plugin-detail').filter({ has: page.locator('strong', { hasText: name }) });
-  await detail.scrollIntoViewIfNeeded();
   await expect(detail).toBeVisible();
   return detail;
 }
 
 async function openPluginCenter(page: Page): Promise<void> {
-  await page.setViewportSize({ width: 1280, height: 900 });
-  await page.getByTestId('plugin-toggle').click();
+  await openSettingsPlugins(page);
   await pickPlugin(page, 'Semantic Focus');
   await expect(page.getByTestId('renderer-plugin-state')).toBeVisible();
 }
@@ -144,7 +159,7 @@ test.describe('plugin center', () => {
     try {
       await page.waitForSelector('[data-testid="noto-editor"]', { state: 'visible', timeout: 30_000 });
       await page.setViewportSize({ width: 1280, height: 900 });
-      await page.getByTestId('plugin-toggle').click();
+      await openSettingsPlugins(page);
 
       // Enable, then activate. The section is found by the plugin's own name.
       const section = await pickPlugin(page, 'Title Shift');
@@ -187,7 +202,7 @@ test.describe('plugin center', () => {
     try {
       await page.waitForSelector('[data-testid="noto-editor"]', { state: 'visible', timeout: 30_000 });
       await page.setViewportSize({ width: 1280, height: 900 });
-      await page.getByTestId('plugin-toggle').click();
+      await openSettingsPlugins(page);
 
       const section = await pickPlugin(page, 'Markdown Padding');
       await section.locator('button.plugin-primary').click();
@@ -269,11 +284,11 @@ test.describe('plugin hotkeys', () => {
       await page.waitForSelector('[data-testid="noto-editor"]', { state: 'visible', timeout: 30_000 });
       await page.setViewportSize({ width: 1280, height: 900 });
 
-      await page.getByTestId('plugin-toggle').click();
+      await openSettingsPlugins(page);
       const section = await pickPlugin(page, 'Title Shift');
       await section.locator('button.plugin-primary').click();
       await section.locator('button.plugin-primary').click();
-      // Preferences is modal, so it is dismissed rather than toggled off from
+      // Settings is modal, so it is dismissed rather than toggled off from
       // the title bar behind it.
       await page.keyboard.press('Escape');
       await expect(page.getByTestId('settings-panel')).toBeHidden();

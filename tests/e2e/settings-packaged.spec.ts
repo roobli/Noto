@@ -170,7 +170,7 @@ test.describe('settings', () => {
     try {
       await expect(page.locator('.ProseMirror')).toHaveAttribute('spellcheck', 'true');
       await invokeMenu(app, 'settings');
-      // Editing settings live in their own section of preferences.
+      // Editing settings live in their own section of Settings.
       await page.getByTestId('pref-editor').click();
       await page.getByTestId('setting-spell-check').uncheck();
       await page.getByTestId('settings-close').click();

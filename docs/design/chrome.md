@@ -2,7 +2,7 @@
 
 What surrounds the document, and why it is shaped this way. The document itself
 is specified by the editor stylesheet; this covers the title bar, the rail, the
-tabs, the status line and preferences.
+the Recent strip, the status line and Settings.
 
 ## Who this is for
 
@@ -15,8 +15,8 @@ contact and that credit does not renew. Everything here is judged by whether it
 still reads well in month three.
 
 Typora is the reference for how little chrome a writing surface needs. It is not
-a reference for what Noto does, which includes tabs, a plugin tier and settings
-Typora does not have.
+a reference for what Noto does, which includes a Recent strip, a plugin tier
+and Settings Typora does not have.
 
 ## The one idea
 
@@ -53,8 +53,10 @@ hover, `--accent` while the surface they open is open. No borders. No fills. No
 labels. Six bordered text buttons in a row is a toolbar from 2005 and it competed
 with the document on every screen.
 
-What is on it: the rail toggle, then back and forward, on the left; plugins,
-preferences and save on the right. Back and forward walk the trail, three
+What is on it: the rail toggle, then back and forward, on the left; Settings
+(the gear) and save on the right. Plugins are reached from Settings' left nav,
+not a second top-bar icon — both used to open the same shell with different
+default sections, which read as two modals. Back and forward walk the trail, three
 notes each way, from the author's plugin of that name, and they fade rather
 than vanish when there is nowhere to go, so the pair keeps its place. The
 filename in the centre is preceded by where the note is: inside an open
@@ -67,7 +69,7 @@ instead:
 | --- | --- |
 | Open… | File menu, the empty state, the tree |
 | Outline | A tab inside the rail |
-| Theme | Preferences, under Appearance |
+| Theme | Settings, under Appearance |
 | Find | `Cmd+F` and the Edit menu |
 
 **Save appears only when there is something to save.** A permanently greyed Save
@@ -81,23 +83,24 @@ dot. Exceptional states are not whispered here at all: they take the alert.
 
 ## Rail
 
-One region on the left, 240px, holding two views rather than two panels. The
-previous build opened Files and Outline as separate columns, so asking for both
-spent 470 pixels of a 1280 pixel window on navigation.
+One region on the left, 240px, holding three views rather than three panels:
+Files, Outline and Links. The previous build opened Files and Outline as
+separate columns, so asking for both spent 470 pixels of a 1280 pixel window on
+navigation.
 
-The header is two words, `Files` and `Outline`, with a 1.5px rule that slides
-between them in 180ms. Not a bordered segmented control: that is a component
-out of a kit, it repeats the panel border it already sits inside, and its filled
-half becomes the second heaviest thing in the rail. The rule moves because
-moving is what says the two are one control and that you went from one to the
-other. It is positioned by a custom property the current view sets, so nothing
-is measured after paint and the first frame is never in the wrong place.
+The header is three words, `Files`, `Outline` and `Links`, with a 1.5px rule
+that slides between them in 180ms. Not a bordered segmented control: that is a
+component out of a kit, it repeats the panel border it already sits inside, and
+its filled half becomes the second heaviest thing in the rail. The rule moves
+because moving is what says the views are one control and that you went from
+one to another. It is positioned by a custom property the current view sets, so
+nothing is measured after paint and the first frame is never in the wrong place.
 
 The rail toggle in the title bar opens and closes the region; the menu items
-open it on the view they name. At the right of the two words sits a search
-glyph that opens quick open, the same one the chord opens: a vault is entered
-by search as often as by browsing, and the hand on the mouse should not have
-to reach for the keyboard to do it.
+open it on the view they name. At the right of the labels sits a search glyph
+that opens in-rail content search (`Cmd+Shift+F`): a vault is entered by search
+as often as by browsing, and the hand on the mouse should not have to reach for
+the keyboard to do it.
 
 `Cmd+]` and `Cmd+[` walk the page width through three modes, default, wide and
 full, in a ring. Each mode is a share of the canvas beside the rail with a
@@ -228,13 +231,14 @@ file tree, two feet to the left. The documents are still open behind it and
 The current one is set in ink rather than boxed. At eleven pixels a filled chip
 is a smudge, and weight reads at any size.
 
-## Rail footer
+## Vault row (folder actions)
 
-The folder's name, and the actions that operate on the folder rather than on a
-file: open another, refresh, and the folders opened before. At the bottom
-because it answers "which folder", which is asked far less often than "which
-note" and belongs further from the hand. The menu opens upward, since it is
-anchored to the bottom of the window.
+There is no rail footer bar. The folder names itself on the tree's first row,
+and the folder's actions live on an ellipsis on that row — shown to the pointer,
+to the keyboard, and while its own menu is open. The menu holds open another
+folder, refresh, reveal in the file manager, and the folders opened before.
+That answers "which folder", which is asked far less often than "which note"
+and belongs on the container rather than in a second chrome strip.
 
 Recent folders are the same store as recent documents, instantiated twice: a
 folder is a path with a name and a timestamp exactly as a document is.
@@ -246,13 +250,8 @@ capability in the workspace API that reaches outside the app to "open the file
 manager at something this window is already showing you", which is small enough
 to reason about. The label follows the platform, because Finder, File Explorer
 and file manager are three names for the idea and only one of them is true on
-any given machine. Before
-this, moving between two vaults meant walking the file dialog to the same place
-every time.
-
-The tree above it no longer names the folder. The footer does, and a header
-saying the same thing above the same tree was the name twice with two ways to
-change it.
+any given machine. Before this, moving between two vaults meant walking the
+file dialog to the same place every time.
 
 ## Status line
 
@@ -264,15 +263,16 @@ kept byte for byte, and which nothing else says.
 Not the filename: the title bar has it, and repeating it spends the only other
 line the window has on something already read.
 
-## Preferences
+## Settings
 
-One dialog, 720×560, reached from the gear or `Cmd+,`. Sections down the left,
-content on the right: Appearance, Editor, Plugins.
+A full-page Settings shell (Cursor-style), reached from the gear or `Cmd+,`.
+Left categories, right content: Appearance, Editor, Markdown, Images, Remote,
+Plugins. It is one surface, not a floating 720×560 three-tab dialog and not a
+second Plugins modal from the title bar.
 
 No rule between rows. A line under every setting draws a table where there is
-only a list, and the last row of a section always ended up floating above the
-footer's own rule with nothing between them. Space separates; a label and its
-control are already a pair by sharing a line.
+only a list. Space separates; a label and its control are already a pair by
+sharing a line.
 
 Appearance carries the theme, the typographic settings, and the custom
 stylesheet. Text size and line height are sliders with the value beside them in
@@ -305,11 +305,11 @@ Plugins live here because they are configuration, not a workspace panel. They
 had a right sidebar of their own that pushed the document sideways whenever it
 opened, and it read as a debug console: `Disabled` in bold, a paragraph of
 capability jargon, and a full-width `Enable` slab, four times over. As a
-preferences section each plugin is one row, name and a plain sentence on the
-left, the action on the right at its natural width. Diagnostics stay collapsed
-behind a disclosure, because that is what they are.
+Settings section each plugin is a list row; opening one drills into
+`Plugins › name` for detail and debug. Diagnostics stay collapsed behind a
+disclosure, because that is what they are.
 
-Copy in this dialog is written for the person using the editor. "Editor
+Copy in this surface is written for the person using the editor. "Editor
 decoration only. No filesystem access." is a capability declaration and belongs
 in the manifest, not on screen. What the reader needs is what the plugin does.
 

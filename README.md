@@ -21,9 +21,9 @@ React and ProseMirror.
 
 ## Project status
 
-Noto is usable and under active development. Version 0.0.1 is the first
-release with downloadable builds, and the honest summary of where it stands is
-worth reading before you depend on it.
+Noto is usable and under active development. The current line is
+0.0.2-alpha; 0.0.1 was the first release with downloadable builds. The honest
+summary of where it stands is worth reading before you depend on it.
 
 All three platforms are now verified the same way: the packaged application is
 built and then driven through its real interface, and the whole suite of 237
@@ -32,7 +32,7 @@ about 1,200 unit tests. Windows was unproven until the run that proved it,
 which is also the run that found two faults nobody could have read out of the
 code: every plugin came up needing recovery because a durability step that
 only POSIX has was being treated as a failure, and the remote control refused
-the token its own preferences pane had shown, because the file's permissions
+the token its own Settings pane had shown, because the file's permissions
 mean nothing there and the token was being replaced on every read.
 
 Which is the honest summary: it is exercised most on macOS, where it is used
@@ -82,19 +82,23 @@ build to run.
 ## Using it
 
 Open a file with `Cmd+O`, or open a folder with `Cmd+Alt+O` to get the
-workspace tree. Documents open in tabs. The rail on the left holds two views,
-the file tree and the document outline; the one control at the top left opens
-and closes it, and `Cmd+Shift+L` and `Cmd+Shift+O` open it directly on the view
-they name. `Cmd+F` finds, `Cmd+Alt+F` finds and replaces, `Cmd+K` opens the
-command palette, and `Cmd+,` opens preferences, which is also where plugins are
-turned on. On Windows and Linux, read Control for Command.
+workspace tree. Open notes sit behind a quiet Recent strip in the status bar
+rather than a classic tab bar. The rail on the left holds Files, Outline and
+Links; the one control at the top left opens and closes it, and
+`Cmd+Shift+L` and `Cmd+Shift+O` open it directly on the view they name.
+`Cmd+F` finds, `Cmd+Alt+F` finds and replaces, `Cmd+K` opens the command
+palette, and `Cmd+,` opens Settings — a full-page shell with categories, where
+plugins are turned on under the Plugins section. On Windows and Linux, read
+Control for Command.
 
 The title bar carries the filename and nothing else that is not an action you
 can take right now: Save appears when there is something to save and is absent
-when there is not. What the chrome is for, and why it is this quiet, is written
-down in [`docs/design/chrome.md`](docs/design/chrome.md).
+when there is not. The gear is the single Settings entry; Plugins is reached
+from Settings' left nav, not a second top-bar icon. What the chrome is for, and
+why it is this quiet, is written down in
+[`docs/design/chrome.md`](docs/design/chrome.md).
 
-Preferences carries the document's typography, so text size, line height and
+Settings carries the document's typography, so text size, line height and
 line width are yours to set rather than fixed: the width is a character count,
 not a pixel width, so it holds as the size changes. Saving automatically is
 there too, off by default and debounced against typing, and it refuses in
@@ -119,9 +123,10 @@ keeping an index: on a vault of 7,066 notes and 82.5 MB it takes about 1.3
 seconds cold and 274 ms once the operating system has the files cached, which is
 what the adaptive debounce is for.
 
-The rail's footer names the open folder and holds what acts on it: open
-another, reveal it in the file manager, refresh, and the folders you opened
-before. `Cmd+Shift+R` reveals the current note instead.
+The open folder names itself on the tree's first row; an ellipsis on that
+row holds what acts on the folder: open another, reveal it in the file manager,
+refresh, and the folders you opened before. `Cmd+Shift+R` reveals the current
+note instead.
 
 `Cmd+/` opens Source Code Mode: the whole note as the Markdown it is saved as,
 the way Typora's Command-slash does. `Cmd+Alt+/` still toggles source for the
@@ -201,7 +206,7 @@ Writing one is described in [docs/plugins.md](docs/plugins.md), which also
 says plainly where the model stops today: plugins ship inside the
 application, and the sandboxed runtime for third-party code is built but not
 yet opened. Theming, which needs no plugin at all, is one CSS file named in
-Preferences; [docs/theming.md](docs/theming.md) lists what it can reach.
+Settings; [docs/theming.md](docs/theming.md) lists what it can reach.
 
 ## Building and verifying
 

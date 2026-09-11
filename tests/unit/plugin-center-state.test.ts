@@ -273,15 +273,16 @@ describe('plugin center interaction and production structure', () => {
     const [app, center, prefs] = await Promise.all([
       readFile(new URL('../../src/renderer/App.tsx', import.meta.url), 'utf8'),
       readFile(new URL('../../src/renderer/plugins/PluginCenter.tsx', import.meta.url), 'utf8'),
-      readFile(new URL('../../src/renderer/Preferences.tsx', import.meta.url), 'utf8'),
+      readFile(new URL('../../src/renderer/Settings.tsx', import.meta.url), 'utf8'),
     ]);
     expect(app).toContain('<PluginCenter api={window.notoDesktop} snapshots={pluginSnapshots}');
-    expect(app).toContain('data-testid="plugin-toggle"');
+    expect(app).toContain('data-testid="settings-toggle"');
+    expect(app).not.toContain('data-testid="plugin-toggle"');
     expect(center).not.toMatch(/setPluginSnapshots|reply\.value\.snapshots/);
     // Plugins are a Settings section now, so the page around them owns
     // modality and the focus trap. A second trap inside it fought the first.
     expect(center).not.toMatch(/role=\{modal|aria-modal=\{modal/);
-    expect(app).toContain('<Preferences');
+    expect(app).toContain('<Settings');
     expect(prefs).toContain('settings-page');
     // List rows open Plugins › name; detail keeps per-entry busy flags.
     expect(center).toContain('aria-busy={pending}');

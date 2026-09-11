@@ -130,14 +130,14 @@ and reach the plugin through the registry, so they work wherever focus is.
 
 ## Lifecycle, as the reader sees it
 
-A freshly discovered plugin is off. Enabling it in Preferences records the
+A freshly discovered plugin is off. Enabling it in Settings records the
 intent and leaves it waiting for an editor; activating it, or the editor's
 own `editor.ready` event, starts a generation. Disabling deactivates and
 forgets. A plugin that throws during activation is marked failed and can be
 retried or disabled from the same place, and its last failure is shown under
 Diagnostics.
 
-Preferences shows this as one index of plugins and one detail at a time. The
+Settings shows this as one index of plugins and one detail at a time. The
 dot beside a name is the state: filled when running, a ring when enabled and
 waiting, faint when off, red when failed.
 
@@ -202,4 +202,4 @@ decoration, a command and a hotkey, in
 `src/renderer/plugins/renderer-proof/plugin.ts`. `Fixture Reader` is the
 service example: it asks for a folder grant, reads inside it, and can be made
 to prove that a path outside it is refused. Both are kept in the build as
-examples rather than features, and Preferences says so under their names.
+examples rather than features, and Settings says so under their names.

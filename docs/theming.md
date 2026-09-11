@@ -1,7 +1,7 @@
 # Theming Noto
 
 Noto is themed with one CSS file of your own. You name it once in
-Preferences, under Appearance, and reload it from the same place while you
+Settings, under Appearance, and reload it from the same place while you
 edit it in your usual editor. Nothing is pasted into a text area and nothing
 is compiled: the file is read as it is and layered over the built-in styles.
 
@@ -11,7 +11,7 @@ the settings a reader may change under it.
 
 ## Loading a theme
 
-Preferences, Appearance, Custom stylesheet. The field takes an absolute path
+Settings, Appearance, Custom stylesheet. The field takes an absolute path
 to a `.css` file, committed on blur or Enter. Reload re-reads the file; a path
 that cannot be read is reported beside the field rather than failing quietly.
 The file is limited to a size a stylesheet should never approach, and a
@@ -40,9 +40,9 @@ distinguished by `data-theme="light"` and `data-theme="dark"` on the root.
 | Property | What it colours |
 | --- | --- |
 | `--paper` | The document canvas and the window ground |
-| `--panel` | The rail, the title bar and preferences |
+| `--panel` | The rail, the title bar and Settings |
 | `--raised` | Hover surfaces, code fences, quiet fills, the find bar |
-| `--overlay` | A panel floating over the scrim: preferences and quick open |
+| `--overlay` | A panel floating over the scrim: Settings and quick open |
 | `--ink` | Body text |
 | `--ink-strong` | Headings, bold, a table's first column |
 | `--muted` | Secondary text, folder names, labels |
@@ -60,7 +60,7 @@ distinguished by `data-theme="light"` and `data-theme="dark"` on the root.
 | `--mark-fill` | The fill behind `==highlighted==` text and `<mark>` |
 | `--success`, `--warning`, `--danger` | Status only |
 | `--focus` | Keyboard focus rings |
-| `--scrim` | The wash behind preferences and quick open |
+| `--scrim` | The wash behind Settings and quick open |
 | `--tree-line` | The connector lines in the file tree and outline |
 
 Set light values on `:root` and dark values on `:root[data-theme='dark']`. A
@@ -163,7 +163,7 @@ the folder's own row `.tree-vault-row`. Connector lines are drawn with
 `--tree-line` and the indent is `--tree-indent` on `.tree-level`. Open folder
 rows are sticky; a row that is actually stuck carries `data-stuck`.
 
-The title bar is `.titlebar`, its icons `.icon-button`. Preferences is
+The title bar is `.titlebar`, its icons `.icon-button`. Settings is
 `.settings-panel`. The width of the rail is a setting and arrives as
 `--rail-width`.
 

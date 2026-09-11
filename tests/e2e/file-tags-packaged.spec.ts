@@ -3,7 +3,7 @@
  *
  * The author's brief was tags on a file and multi-file linking by tag. The
  * tags stay in frontmatter; this checks that they draw, that a click opens
- * the other notes that share one, and that the Preferences switch hides them.
+ * the other notes that share one, and that the Settings switch hides them.
  */
 
 import { mkdir, rm, writeFile } from 'node:fs/promises';
@@ -103,7 +103,7 @@ test.describe('file tags', () => {
     }
   });
 
-  test('the Preferences switch hides the chips', async () => {
+  test('the Settings switch hides the chips', async () => {
     const { app, page } = await launch('toggle');
     try {
       await expect(page.getByTestId('tag-strip')).toBeVisible();

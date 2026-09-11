@@ -641,7 +641,7 @@ export interface KeymapOptions {
   /**
    * Whether a check writes a date, and which clock it uses.
    *
-   * Handed in so Preferences can turn the stamp off without rebuilding the
+   * Handed in so Settings can turn the stamp off without rebuilding the
    * keymap, the same way smart typography is read.
    */
   readonly taskStamp?: TaskStampOptions;
