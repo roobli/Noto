@@ -18,6 +18,8 @@ export const SETTINGS_CHANNELS = {
   /** Reads the stylesheet at `customCssPath`. Main owns the path; the renderer
    *  never names a file, so this cannot be pointed at anything else. */
   themeCss: 'noto:v1:settings:theme-css',
+  /** Installed font families, enumerated in main for the Appearance pane. */
+  listFonts: 'noto:v1:settings:list-fonts',
   /** What the remote control is doing, and a way to ask for a new token. */
   remoteStatus: 'noto:v1:settings:remote-status',
   remoteRegenerate: 'noto:v1:settings:remote-regenerate',
@@ -111,10 +113,16 @@ export type ImageDestinationV1 = (typeof IMAGE_DESTINATIONS)[number];
  * for a note that is mostly code. Named rather than free text, because a
  * name the machine does not have is a note set in Times and no way to see
  * why; each of these carries the fallbacks the theme already lists.
+ *
+ * Serif is the recommended default. A specific installed family can also be
+ * chosen via `proseFontFamily`; empty means use the preset's stack alone.
  */
 export const PROSE_FACES = ['serif', 'sans', 'mono'] as const;
 
 export type ProseFaceV1 = (typeof PROSE_FACES)[number];
+
+/** Upper bound for a stored system font family name. */
+export const PROSE_FONT_FAMILY_MAX = 80;
 
 /** How the file tree is ordered. Typora's sidebar offers the same choice. */
 export const TREE_SORTS = ['name', 'name-desc', 'modified', 'modified-old'] as const;
@@ -156,8 +164,13 @@ export interface NotoSettingsV1 {
    * the tags as ordinary inline HTML source.
    */
   readonly sidenotes: boolean;
-  /** Which face the document is set in. See `PROSE_FACES`. */
+  /** Which face the document is set in. See `PROSE_FACES`. Serif recommended. */
   readonly proseFace: ProseFaceV1;
+  /**
+   * An installed family name to lead the document face, or empty for the
+   * preset stack alone. Enumerated in main; never a path.
+   */
+  readonly proseFontFamily: string;
   /** Document text size in CSS pixels. */
   readonly fontSize: number;
   /** Unitless line height for document text. */
@@ -311,6 +324,7 @@ export const DEFAULT_SETTINGS: NotoSettingsV1 = Object.freeze({
   // it, Noto's 16 looked a size louder, and 15 is where the two windows match
   // to his eye. The leading is the theme's.
   proseFace: 'serif',
+  proseFontFamily: '',
   treeSort: 'name',
   quickOpenWidth: 'default',
   remoteControl: false,
@@ -409,10 +423,16 @@ export interface RemoteStatusReplyV1 {
   readonly problem: string;
 }
 
+export interface SystemFontsReplyV1 {
+  readonly version: typeof NOTO_SETTINGS_VERSION;
+  readonly families: readonly string[];
+}
+
 export interface NotoSettingsApiV1 {
   read(request: SettingsRequestV1): Promise<SettingsResultV1<SettingsReplyV1>>;
   write(request: SettingsWriteRequestV1): Promise<SettingsResultV1<SettingsReplyV1>>;
   readThemeCss(request: SettingsRequestV1): Promise<SettingsResultV1<ThemeCssReplyV1>>;
+  listFonts(request: SettingsRequestV1): Promise<SettingsResultV1<SystemFontsReplyV1>>;
   remoteStatus(request: SettingsRequestV1): Promise<SettingsResultV1<RemoteStatusReplyV1>>;
   regenerateRemoteToken(request: SettingsRequestV1): Promise<SettingsResultV1<RemoteStatusReplyV1>>;
   onChanged(listener: (event: SettingsReplyV1) => void): () => void;
