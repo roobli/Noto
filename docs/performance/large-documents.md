@@ -144,3 +144,32 @@ Packaged Linux `out/e2e/Noto-linux-x64`, `node scripts/bench/profile-typing.mjs 
 Caret-in-viewport **script** is inside a frame; **paint** (~97ms) is the next
 feel residual once scroll tracks the scrollport. Unit coverage:
 `tests/unit/viewport-stub.test.ts`.
+
+
+### Caret-in-viewport paint neighbourhood, 2026-09-11
+
+After DOM windowing, mid-document caret-in-viewport **script** was already
+inside a frame (~4.7ms) while the profile probe's "layout and paint" half sat
+near **~94ms**. A Chrome trace of that gap was mostly main-thread work after
+`execCommand` returned (decoration mapping / full-doc decoration rescans /
+per-keystroke React `setState` for autosave ticking and `fileTags` markdown),
+not Chromium paint. Paint deferral (`content-visibility: auto` +
+`noto-layout-live`) was still applied.
+
+This cut does not change stub membership. It keeps token decorations for
+always-real fences **outside** the selection/viewport neighbourhood off the
+keystroke path when stubbing is on, makes wiki-link updates incremental, avoids
+empty sidenote full-doc rescans on caret moves, and stops the shell from
+re-rendering / re-serializing markdown on every letter (autosave timer reset in
+a ref; `fileTags` chips debounced).
+
+Packaged Linux `out/e2e/Noto-linux-x64`, `node scripts/bench/profile-typing.mjs large`
+(2026-09-11). Stub membership unchanged. Large-step scroll left alone (~78ms).
+
+| | mid caret-in-viewport script / paint |
+| --- | --- |
+| before (DOM window + hysteresis) | ~4.7 / ~94 ms |
+| after (neighbourhood decorations + origin map + shell debounce) | **~4.5 / ~18 ms** |
+
+macOS packaged re-measure remains useful; do not invent Apple-silicon numbers.
+

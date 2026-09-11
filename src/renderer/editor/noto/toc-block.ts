@@ -115,9 +115,33 @@ export function tocBlockPlugin(options: { onGo: (blockIndex: number) => void }):
     key: tocBlockKey,
     state: {
       init: (_config, state) => decorate(state.doc, state.selection.from, state.selection.to, options.onGo),
-      apply: (tr, previous, _old, state) => (tr.docChanged || tr.selectionSet
-        ? decorate(state.doc, state.selection.from, state.selection.to, options.onGo)
-        : previous),
+      apply: (tr, previous, _old, state) => {
+        if (!tr.docChanged && !tr.selectionSet) return previous;
+        // Notes without a [TOC] marker used to walk every top-level block on
+        // each keystroke just to discover they still had none.
+        if (previous.find().length === 0 && tr.docChanged) {
+          let introduced = false;
+          tr.mapping.maps.forEach((map, index) => {
+            if (introduced) return;
+            const rest = tr.mapping.slice(index + 1);
+            map.forEach((_a, _b, newStart, newEnd) => {
+              if (introduced) return;
+              const from = rest.map(newStart, -1);
+              const to = rest.map(newEnd, 1);
+              state.doc.nodesBetween(Math.min(from, to), Math.max(from, to), (node) => {
+                if (node.type.name === 'paragraph' && MARKER.test(node.textContent.trim())) {
+                  introduced = true;
+                }
+                return false;
+              });
+            });
+          });
+          if (!introduced) return previous;
+        } else if (previous.find().length === 0 && !tr.docChanged) {
+          return previous;
+        }
+        return decorate(state.doc, state.selection.from, state.selection.to, options.onGo);
+      },
     },
     props: {
       decorations: (state) => tocBlockKey.getState(state) ?? null,

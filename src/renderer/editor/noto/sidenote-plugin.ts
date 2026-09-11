@@ -124,6 +124,27 @@ function fullScan(state: EditorState): DecorationSet {
   return list.length > 0 ? DecorationSet.create(state.doc, list) : DecorationSet.empty;
 }
 
+function changedMayAddSidenote(tr: Transaction, state: EditorState): boolean {
+  let found = false;
+  tr.mapping.maps.forEach((map, index) => {
+    if (found) return;
+    const rest = tr.mapping.slice(index + 1);
+    map.forEach((_oldStart, _oldEnd, newStart, newEnd) => {
+      if (found) return;
+      const from = rest.map(newStart, -1);
+      const to = rest.map(newEnd, 1);
+      state.doc.nodesBetween(Math.min(from, to), Math.max(from, to), (node, position) => {
+        if (!node.isTextblock || node.type.spec.code) return !node.isTextblock;
+        if (sidenoteRangesInBlock(childrenOf(node), position + 1, 0).length > 0) {
+          found = true;
+        }
+        return false;
+      });
+    });
+  });
+  return found;
+}
+
 function apply(
   tr: Transaction,
   set: DecorationSet,
@@ -131,10 +152,14 @@ function apply(
   state: EditorState,
 ): DecorationSet {
   if (!tr.docChanged && !tr.selectionSet) return set;
-  // Numbers run across the whole document, so any edit that could add or
-  // remove a note forces a full pass. A caret move alone only needs the
-  // blocks it left and entered, but rebuilding the set is cheap beside a
-  // parse and keeps the editing class honest.
+  // Numbers run across the whole document, so an edit that could add or
+  // remove a note forces a full pass. An empty set stays empty on caret
+  // moves and on edits that do not introduce a sidenote tag: most notes
+  // have none, and a full descendants walk was on the caret-in-viewport path.
+  if (set.find().length === 0) {
+    if (!tr.docChanged) return set;
+    if (!changedMayAddSidenote(tr, state)) return set;
+  }
   if (tr.docChanged || tr.selectionSet) return fullScan(state);
   return set.map(tr.mapping, tr.doc);
 }
@@ -162,10 +187,16 @@ export function sidenotePlugin(enabled: () => boolean = () => true): Plugin<Deco
       },
     },
     view() {
+      let known: boolean | null = null;
       return {
         update(view: EditorView) {
           const host = view.dom.closest('.noto-editor-host') ?? view.dom;
-          const has = enabled() && rangesInDoc(view.state.doc).length > 0;
+          // Derive from the decoration set already computed for this state —
+          // do not walk the document again on every keystroke.
+          const set = sidenoteKey.getState(view.state);
+          const has = enabled() && !!set && set.find().length > 0;
+          if (has === known) return;
+          known = has;
           host.classList.toggle('noto-has-sidenotes', has);
         },
         destroy() {

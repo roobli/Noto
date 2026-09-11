@@ -9,6 +9,11 @@
  * immutable and persistent, so an untouched fence is the same object after an
  * edit elsewhere and is never re-tokenised. Editing one block in a document full
  * of code re-highlights that block alone.
+ *
+ * When the stubbing scroller is active, token decorations are kept only for
+ * fences inside the selection and viewport neighbourhoods. Far-off fences stay
+ * mounted (they are not stubbable) but do not keep thousands of mapped spans on
+ * the caret's critical path.
  */
 
 import Prism from 'prismjs';
@@ -17,6 +22,12 @@ import { Decoration, DecorationSet } from 'prosemirror-view';
 import type { Node as ProseNode } from 'prosemirror-model';
 import { guideRanges } from './indent-guides';
 import { TAB_MARKER_CLASS, tabRanges } from './tab-markers';
+import {
+  isIndexReal,
+  rangesEqual,
+  viewportStubKey,
+  type ViewportStubState,
+} from './viewport-stub';
 
 // Prism resolves languages from a registry its component files write into, and
 // the order matters: several build on `clike` or `javascript`.
@@ -240,6 +251,48 @@ function buildDecorations(doc: ProseNode): DecorationSet {
 }
 
 /**
+ * Token decorations only for fences that are currently real.
+ *
+ * Off-screen fences stay in the DOM (they are not stubbable), but keeping
+ * every Prism span mapped on each keystroke dominates the caret-in-viewport
+ * frame. When stubbing is on, only the selection and viewport neighbourhoods
+ * need tokens — the same windows paint deferral already treats as live.
+ */
+function decorationsForStubWindows(doc: ProseNode, stub: ViewportStubState): Decoration[] {
+  const decorations: Decoration[] = [];
+  let position = 0;
+  for (let index = 0; index < doc.childCount; index += 1) {
+    const child = doc.child(index);
+    const end = position + child.nodeSize;
+    if (child.type.name === 'code_block' && isIndexReal(stub, index)) {
+      decorations.push(...decorationsIn(doc, position, end));
+    }
+    position = end;
+  }
+  return decorations;
+}
+
+function stubWindowsChanged(
+  before: ViewportStubState | undefined,
+  after: ViewportStubState | undefined,
+): boolean {
+  if (!before?.enabled && !after?.enabled) return false;
+  if (Boolean(before?.enabled) !== Boolean(after?.enabled)) return true;
+  if (!before || !after) return true;
+  return !rangesEqual(before.viewport, after.viewport)
+    || !rangesEqual(before.selection, after.selection);
+}
+
+function decorationsForState(state: EditorState): DecorationSet {
+  const stub = viewportStubKey.getState(state);
+  if (stub?.enabled) {
+    const list = decorationsForStubWindows(state.doc, stub);
+    return list.length > 0 ? DecorationSet.create(state.doc, list) : DecorationSet.empty;
+  }
+  return buildDecorations(state.doc);
+}
+
+/**
  * The span of the new document a transaction touched, widened to whole top
  * level blocks.
  *
@@ -273,7 +326,7 @@ export function syntaxHighlightPlugin(): Plugin<DecorationSet> {
   return new Plugin<DecorationSet>({
     key: highlightKey,
     state: {
-      init: (_config, state: EditorState) => buildDecorations(state.doc),
+      init: (_config, state: EditorState) => decorationsForState(state),
       /**
        * Rebuild only what changed.
        *
@@ -282,8 +335,26 @@ export function syntaxHighlightPlugin(): Plugin<DecorationSet> {
        * instead of the size of the document. Rebuilding the whole set made
        * every keystroke walk every node, which is unusable once a document
        * holds thousands of blocks.
+       *
+       * On stubbed documents the set is only the fences inside the real
+       * windows, so a keystroke maps dozens of token spans rather than tens
+       * of thousands on far-off always-real fences.
        */
-      apply: (transaction, previous, _oldState, newState) => {
+      apply: (transaction, previous, oldState, newState) => {
+        const stub = viewportStubKey.getState(newState);
+        if (stub?.enabled) {
+          if (
+            !transaction.docChanged
+            && !transaction.selectionSet
+            && !stubWindowsChanged(
+              viewportStubKey.getState(oldState),
+              stub,
+            )
+          ) {
+            return previous;
+          }
+          return decorationsForState(newState);
+        }
         if (!transaction.docChanged) return previous;
         const range = changedRange(transaction, newState.doc);
         if (!range) return previous.map(transaction.mapping, newState.doc);

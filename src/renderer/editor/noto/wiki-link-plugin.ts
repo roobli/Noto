@@ -13,7 +13,8 @@
  * text to be text.
  */
 
-import { Plugin, PluginKey, type EditorState } from 'prosemirror-state';
+import { Plugin, PluginKey, type EditorState, type Transaction } from 'prosemirror-state';
+import type { Node as ProseNode } from 'prosemirror-model';
 import { Decoration, DecorationSet } from 'prosemirror-view';
 
 export const wikiLinkKey = new PluginKey<DecorationSet>('noto-wiki-links');
@@ -119,6 +120,65 @@ function wikiDecorations(state: EditorState): DecorationSet {
   return DecorationSet.create(state.doc, decorations);
 }
 
+/** Textblocks overlapping a range — whole blocks, so a partial edit rescans cleanly. */
+function textblocksIn(doc: ProseNode, from: number, to: number): Map<number, ProseNode> {
+  const blocks = new Map<number, ProseNode>();
+  const size = doc.content.size;
+  const $from = doc.resolve(Math.max(0, Math.min(from, size)));
+  const $to = doc.resolve(Math.max(0, Math.min(to, size)));
+  const start = $from.parent.isTextblock ? $from.before() : $from.pos;
+  const end = $to.parent.isTextblock ? $to.after() : $to.pos;
+  doc.nodesBetween(start, end, (node, position) => {
+    if (node.isTextblock) {
+      if (!node.type.spec.code) blocks.set(position, node);
+      return false;
+    }
+    return true;
+  });
+  return blocks;
+}
+
+function blockWikiDecorations(block: ProseNode, position: number): Decoration[] {
+  const decorations: Decoration[] = [];
+  const contentStart = position + 1;
+  block.forEach((child, offset) => {
+    if (!child.isText || child.text === undefined) return;
+    for (const match of findWikiLinks(child.text, contentStart + offset)) {
+      decorations.push(...decorateLink(match));
+    }
+  });
+  return decorations;
+}
+
+function applyWiki(
+  transaction: Transaction,
+  previous: DecorationSet,
+  state: EditorState,
+): DecorationSet {
+  if (!transaction.docChanged) return previous;
+  let next = previous.map(transaction.mapping, transaction.doc);
+  const blocks = new Map<number, ProseNode>();
+  transaction.mapping.maps.forEach((map, index) => {
+    const rest = transaction.mapping.slice(index + 1);
+    map.forEach((_oldStart, _oldEnd, newStart, newEnd) => {
+      for (const [position, block] of textblocksIn(
+        state.doc,
+        rest.map(newStart, -1),
+        rest.map(newEnd, 1),
+      )) {
+        blocks.set(position, block);
+      }
+    });
+  });
+  for (const [position, block] of blocks) {
+    const stale = next.find(position + 1, position + block.nodeSize - 1);
+    if (stale.length > 0) next = next.remove(stale);
+    const fresh = blockWikiDecorations(block, position);
+    if (fresh.length > 0) next = next.add(state.doc, fresh);
+  }
+  return next;
+}
+
 export interface WikiLinkOptions {
   /** Asked to open a link's target. The shell decides how to resolve it. */
   readonly onFollow: (target: string) => void;
@@ -129,10 +189,12 @@ export function wikiLinkPlugin(options: WikiLinkOptions): Plugin<DecorationSet> 
     key: wikiLinkKey,
     state: {
       init: (_config, state) => wikiDecorations(state),
-      // Only on a document change: a link's position moves when text does, and
-      // moving the caret cannot change where a link is.
+      // Document change only: a link's position moves when text does. Map the
+      // existing set and rescan the textblocks the edit touched — a full
+      // descendants walk on every keystroke was on the caret-in-viewport path
+      // for multi-megabyte notes.
       apply: (transaction, previous, _oldState, newState) =>
-        (transaction.docChanged ? wikiDecorations(newState) : previous),
+        applyWiki(transaction, previous, newState),
     },
     props: {
       decorations: (state) => wikiLinkKey.getState(state),

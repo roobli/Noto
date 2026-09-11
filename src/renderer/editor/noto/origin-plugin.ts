@@ -48,17 +48,35 @@ function overlaps(from: number, to: number, range: TopLevelRange): boolean {
   return from < range.to && to > range.from;
 }
 
+/** First top-level range that contains `pos`, or null if none. */
+function rangeContaining(ranges: readonly TopLevelRange[], pos: number): TopLevelRange | null {
+  let low = 0;
+  let high = ranges.length - 1;
+  while (low <= high) {
+    const mid = (low + high) >> 1;
+    const range = ranges[mid]!;
+    if (pos < range.from) high = mid - 1;
+    else if (pos >= range.to) low = mid + 1;
+    else return range;
+  }
+  return null;
+}
+
 /**
  * Carry origins across one replacement step.
  *
  * An origin survives only if some part of its block survived. Two old blocks
  * that merge into one leave a single origin, which is correct: the merged block
  * is new text and will be re-serialized.
+ *
+ * Target lookup is binary search on the new top-level ranges. A linear
+ * `find` here was O(blocks²) on every keystroke and dominated caret-in-viewport
+ * time on the two-megabyte corpus.
  */
 function mapStep(oldDoc: ProseNode, newDoc: ProseNode, map: StepMap, previous: Origins): Origins {
   const oldRanges = topLevelRanges(oldDoc);
   const newRanges = topLevelRanges(newDoc);
-  const mapped: (NotoBlockOrigin | null)[] = newRanges.map(() => null);
+  const mapped: (NotoBlockOrigin | null)[] = new Array(newRanges.length).fill(null);
 
   for (const old of oldRanges) {
     const origin = previous[old.index] ?? null;
@@ -68,8 +86,9 @@ function mapStep(oldDoc: ProseNode, newDoc: ProseNode, map: StepMap, previous: O
     if (start.deletedAcross && end.deletedAcross) continue;
     const from = Math.min(start.pos, end.pos);
     const to = Math.max(start.pos, end.pos);
-    const target = newRanges.find((candidate) => overlaps(from, to, candidate));
-    if (!target || mapped[target.index]) continue;
+    const target = rangeContaining(newRanges, from)
+      ?? (to > from ? rangeContaining(newRanges, to - 1) : null);
+    if (!target || !overlaps(from, to, target) || mapped[target.index]) continue;
     mapped[target.index] = origin;
   }
 
