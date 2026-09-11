@@ -90,3 +90,6 @@ scanner is the flagged backend; micromark remains the product default. Quote/
 callout split parity is closed. Next: optionally cache prior splits so
 `NotoEditor.replaceMarkdown` can call `reparseBlocks` instead of a full native
 split, then consider default-on behind broader golden gates.
+
+**Noto `0.0.2-alpha.9`** ships the adapter (#37) plus `@roobli/md` v0.1.1 quote/
+callout parity (#38). Optional: `NOTO_MARKDOWN_ENGINE=roobli-md` (micromark remains default).
