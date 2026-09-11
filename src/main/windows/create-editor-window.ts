@@ -26,7 +26,13 @@ export function createEditorWindow(
     minWidth: 720,
     minHeight: 560,
     backgroundColor: '#FAF9F6',
+    /* Claude-style chrome: inset bar with traffic lights pinned so the
+       renderer can pad the sidebar toggle and trail controls to their right,
+       never under them. y centres the ~12px lights in the 32px titlebar. */
     titleBarStyle: 'hiddenInset',
+    ...(process.platform === 'darwin'
+      ? { trafficLightPosition: { x: 14, y: 10 } as const }
+      : {}),
     show: false,
     webPreferences: {
       preload: path.resolve(preloadPath),
