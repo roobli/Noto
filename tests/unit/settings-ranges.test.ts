@@ -93,3 +93,13 @@ describe('the custom stylesheet path', () => {
     expect(coerceSettings({ customCssPath: 42 }).customCssPath).toBe('');
   });
 });
+
+describe('rail width range', () => {
+  it('allows a wider rail than the old 520px cap for deep trees', () => {
+    expect(SETTING_RANGES.railWidth.max).toBe(720);
+    expect(clampSetting('railWidth', 640)).toBe(640);
+    expect(clampSetting('railWidth', 900)).toBe(720);
+    expect(write({ railWidth: 720 })).toBe(true);
+    expect(write({ railWidth: 721 })).toBe(false);
+  });
+});

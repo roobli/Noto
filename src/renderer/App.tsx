@@ -2030,9 +2030,8 @@ function NotoWorkspace({ platform }: { platform: NotoPlatform }) {
       // validated, which the shell already has.
       data-platform={platform}
       data-testid="noto-app" data-file-state={state}
-      /* The rail's width, so the title bar can carry the rail's ground above
-         the rail and the page's above the page, as Typora does: the divide
-         between the two runs floor to ceiling instead of a band across. */
+      /* Rail width as a CSS variable for anything that still wants to know
+         how wide the open rail is (print, narrow-window overrides). */
       style={{ '--shell-rail': rail.open ? `${settings.railWidth}px` : '0px' } as CSSProperties}
       data-plugin-lifecycle={pluginSnapshot?.lifecycle ?? 'disabled'}
       data-plugin-registrations={pluginSnapshot?.rendererRegistrations ?? 0}>
@@ -2044,9 +2043,8 @@ function NotoWorkspace({ platform }: { platform: NotoPlatform }) {
           window title belongs and icons that stay quiet until they are wanted.
           Open moved to the File menu and the empty state, Outline into the
           rail, Theme into preferences, Find to its shortcut. */}
-      {/* A column of its own, floor to ceiling, as Typora has it. It used to sit
-          under a title bar that spanned the whole window, which gave the left
-          side two header rows where Typora has one. */}
+      {/* Below the title bar (Claude-style): traffic lights and sidebar/trail
+          controls share the full-width title row; the rail starts underneath. */}
       {rail.open && (
           <WorkspaceRail
             links={{

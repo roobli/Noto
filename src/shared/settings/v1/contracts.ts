@@ -41,8 +41,9 @@ export const SETTING_RANGES = Object.freeze({
   /* A vault six levels deep spends 90px of the rail on indentation before the
      first character of a filename. 248px was chosen against a shallow fixture
      and leaves five siblings all reading "Done_TaskGro…" in a real one, so the
-     width has to be the reader's to set. */
-  railWidth: { min: 190, max: 520, step: 1 },
+     width has to be the reader's to set. Cap was 520; deep RooB-style trees
+     still truncated at that width, so the drag range now reaches 720. */
+  railWidth: { min: 190, max: 720, step: 1 },
 } as const);
 
 export type NotoNumericSetting = keyof typeof SETTING_RANGES;

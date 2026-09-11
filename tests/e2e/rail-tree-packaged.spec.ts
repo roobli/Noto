@@ -269,28 +269,39 @@ test.describe('a note opened on its own', () => {
     }, id);
   }
 
-  test('leaves no band across the title bar in a window too narrow for the rail', async () => {
+  test('keeps the rail under the title bar, and hides it when the window is too narrow', async () => {
     const { app, page } = await launchFile('narrow');
     try {
-      // Below 900 the rail is hidden and the document takes the window. The
-      // title bar paints the rail's ground above where the rail would be, and
-      // that width is an inline style no stylesheet can outrank, so it reads
-      // it through a property of its own.
-      await page.setViewportSize({ width: 640, height: 700 });
-      await invokeMenu(app, 'toggle-sidebar');
-      await expect(page.getByTestId('file-tree')).toBeHidden();
-      const band = await page.locator('.titlebar').evaluate(
-        (element) => getComputedStyle(element).getPropertyValue('--titlebar-rail').trim(),
-      );
-      expect(band).toBe('0px');
-
-      // Wide again, and the band comes back with the rail.
+      // Claude-style shell: the title bar spans the window; the rail starts on
+      // the row below so traffic lights never cover the sidebar toggle / trail.
       await page.setViewportSize({ width: 1200, height: 700 });
+      await invokeMenu(app, 'toggle-sidebar');
       await expect(page.getByTestId('file-tree')).toBeVisible();
-      const wide = await page.locator('.titlebar').evaluate(
-        (element) => getComputedStyle(element).getPropertyValue('--titlebar-rail').trim(),
-      );
-      expect(wide).not.toBe('0px');
+      const geometry = await page.evaluate(() => {
+        const title = document.querySelector('.titlebar');
+        const rail = document.querySelector('.workspace-rail');
+        const shell = document.querySelector('.app-shell');
+        if (!title || !rail || !shell) return null;
+        const t = title.getBoundingClientRect();
+        const r = rail.getBoundingClientRect();
+        const s = shell.getBoundingClientRect();
+        return {
+          titleLeft: t.left,
+          titleWidth: t.width,
+          shellWidth: s.width,
+          titleBottom: t.bottom,
+          railTop: r.top,
+        };
+      });
+      expect(geometry).not.toBeNull();
+      expect(geometry!.titleLeft).toBeLessThanOrEqual(1);
+      expect(geometry!.titleWidth).toBeGreaterThan(geometry!.shellWidth - 2);
+      expect(geometry!.railTop).toBeGreaterThanOrEqual(geometry!.titleBottom - 1);
+
+      // Below 900 the rail is hidden and the document takes the window.
+      await page.setViewportSize({ width: 640, height: 700 });
+      await expect(page.getByTestId('file-tree')).toBeHidden();
+      await expect(page.getByTestId('sidebar-toggle')).toBeHidden();
     } finally {
       await app.close();
     }

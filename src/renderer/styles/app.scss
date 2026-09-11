@@ -133,10 +133,9 @@ button:disabled { color: var(--muted); opacity: 0.7; }
      it said 38 while the bar is 32, and the six pixels between showed the
      page's own ground as a pale band across the top of the rail. */
   grid-template-rows: auto auto minmax(0, 1fr) auto auto;
-  /* Two columns: the rail, floor to ceiling, and everything else. Typora's
-     sidebar is the full height of the window with the title bar starting to
-     its right, and that is the difference that made this window look like it
-     had two header rows stacked on the left where Typora has one. */
+  /* Two columns: the rail and the page. The title bar spans both so macOS
+     traffic lights and the sidebar/trail controls share one Claude-style row;
+     the rail starts on the row below rather than under the lights. */
   grid-template-columns: auto minmax(0, 1fr);
   width: 100%;
   max-width: 100%;
@@ -151,12 +150,12 @@ button:disabled { color: var(--muted); opacity: 0.7; }
    the row a region landed in depended on how many of its siblings happened to
    be rendered. Naming the rows makes the layout independent of what is on
    screen. */
-.app-shell > .titlebar { grid-row: 1; grid-column: 2; }
+.app-shell > .titlebar { grid-row: 1; grid-column: 1 / -1; }
 .app-shell > .tab-bar { grid-row: 2; grid-column: 2; }
 .app-shell > .workspace-layout { grid-row: 3; grid-column: 2; }
 .app-shell > .file-truth-alert { grid-row: 4; grid-column: 2; }
 .app-shell > .operational-status { grid-row: 5; grid-column: 2; }
-.app-shell > .workspace-rail { grid-row: 1 / -1; grid-column: 1; }
+.app-shell > .workspace-rail { grid-row: 2 / -1; grid-column: 1; }
 
 /* Title bar
    -------------------------------------------------------------------------
@@ -183,14 +182,12 @@ button:disabled { color: var(--muted); opacity: 0.7; }
   background: var(--paper);
 }
 
-/* macOS opens the window with `hiddenInset`, which floats the traffic lights
-   over the top left of the page, so the bar starts clear of them. Windows and
-   Linux keep their own title bar and this reservation would just be a hole. */
-/* The traffic lights float over the top left of the window, which is the rail
-   when the rail is open and the page when it is not, so whichever is there
-   starts clear of them. */
-[data-platform='darwin'] .app-shell:not(:has(> .workspace-rail)) .titlebar { padding-left: 78px; }
-[data-platform='darwin'] .workspace-rail { padding-top: 22px; }
+/* macOS `hiddenInset` + `trafficLightPosition` float the lights over the
+   title bar's left edge. Always pad the bar so the sidebar toggle and trail
+   back/forward sit to the right of them (Claude-style), never underneath —
+   including when the rail is open, because the bar now spans the full width.
+   Windows and Linux keep their own chrome; this reservation would be a hole. */
+[data-platform='darwin'] .titlebar { padding-left: 78px; }
 
 .titlebar button,
 .titlebar input { -webkit-app-region: no-drag; }
@@ -372,9 +369,10 @@ button:disabled { color: var(--muted); opacity: 0.7; }
   gap: 14px;
   /* The bottom margin is small on purpose: the padding below already holds the
      underline off the words, and a second gap under that put the best part of
-     a row's height of nothing between the tabs and the first file. The top
-     margin clears the traffic lights and cannot go with it. */
-  margin: 10px 12px 3px;
+     a row's height of nothing between the tabs and the first file. Traffic
+     lights live in the title bar above the rail now, so the top margin is only
+     air under that bar. */
+  margin: 8px 12px 3px;
   padding: 0 0 6px;
 }
 

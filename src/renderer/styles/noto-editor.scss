@@ -1041,12 +1041,6 @@
      live over a region that cannot open. */
   .workspace-rail { display: none; }
   [data-testid='sidebar-toggle'] { display: none; }
-
-  /* The title bar paints the rail's ground above the rail, from a width the
-     rail itself no longer honours here. Toggling the sidebar from the View
-     menu left a band of panel colour across the top left of the window with
-     nothing underneath it. */
-  .titlebar { --titlebar-rail: 0px; }
 }
 
 /* Find and replace
