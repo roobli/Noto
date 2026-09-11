@@ -254,7 +254,7 @@ describe('shell failure containment', () => {
 
   it('clears a stale rejection alert when undo restores a clean editor, but not behind a barrier', async () => {
     const app = await shell();
-    const boundary = between(app, 'const onDocumentDirtyChange = useCallback', 'const closePlugins =');
+    const boundary = between(app, 'const onDocumentDirtyChange = useCallback', 'const closeSettings =');
     // A clean editor clears the stale outcome and message, but only when no
     // recovery evidence is standing in the way.
     expect(boundary).toContain('!dirty && !recoveryBarrierRef.current ? null : existing.outcome');

@@ -344,7 +344,7 @@ export function PluginCenter({ api, snapshots, availability, open, detailId = nu
       >
         <span className="plugin-dot" data-state={
           entry.lifecycle === 'failed' || entry.lifecycle === 'crashed' ? 'failed'
-            : entry.lifecycle === 'ready' ? 'on'
+            : entry.lifecycle === 'active' ? 'on'
               : 'ready'
         } aria-hidden="true" />
         <span className="plugin-row-text">

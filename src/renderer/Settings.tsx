@@ -24,12 +24,12 @@ import {
   type RemoteStatusReplyV1,
 } from '../shared/settings/v1/contracts';
 
-export type PreferencesSection = 'appearance' | 'editor' | 'markdown' | 'images' | 'remote' | 'plugins';
+export type SettingsSection = 'appearance' | 'editor' | 'markdown' | 'images' | 'remote' | 'plugins';
 
-export interface PreferencesProps {
+export interface SettingsProps {
   readonly open: boolean;
-  readonly section: PreferencesSection;
-  readonly onSection: (section: PreferencesSection) => void;
+  readonly section: SettingsSection;
+  readonly onSection: (section: SettingsSection) => void;
   readonly settings: NotoSettingsV1;
   readonly onChange: (patch: Partial<NotoSettingsV1>) => void;
   readonly onClose: () => void;
@@ -54,10 +54,10 @@ export interface PreferencesProps {
  *
  * A column of words is a list; a column of words with marks beside them is a
  * place, and the eye finds the row it wants without reading. Typora's own
- * preferences do this and it is most of why its panel reads as settled.
+ * settings do this and it is most of why its panel reads as settled.
  */
-function SectionGlyph({ name }: { name: PreferencesSection }) {
-  const paths: Record<PreferencesSection, string> = {
+function SectionGlyph({ name }: { name: SettingsSection }) {
+  const paths: Record<SettingsSection, string> = {
     appearance: 'M8 2.5a5.5 5.5 0 1 0 0 11c.7 0 1.2-.5 1.2-1.1 0-.3-.1-.6-.3-.8-.2-.2-.3-.4-.3-.7 0-.6.5-1.1 1.1-1.1h1.3A3.5 3.5 0 0 0 14 6.3C14 4 11.3 2.5 8 2.5Z M5.5 6.5h.01 M8 5h.01 M10.5 6.5h.01',
     editor: 'M2.5 12.5h11 M4 9.8 10.2 3.6a1.4 1.4 0 0 1 2 2L6 11.8l-2.6.6Z',
     markdown: 'M2.5 4.5h11v7h-11z M4.5 10V6.5l2 2 2-2V10 M11 6.5V10 M9.8 8.6 11 10l1.2-1.4',
@@ -73,7 +73,7 @@ function SectionGlyph({ name }: { name: PreferencesSection }) {
   );
 }
 
-const SECTIONS: readonly { value: PreferencesSection; label: string; keywords: string }[] = [
+const SECTIONS: readonly { value: SettingsSection; label: string; keywords: string }[] = [
   { value: 'appearance', label: 'Appearance', keywords: 'theme dark light text size line height width rail stylesheet css font serif sans mono system family always on top float window' },
   { value: 'editor', label: 'Editor', keywords: 'spell check images brackets pairs focus typewriter save autosave line numbers guides reload external disk sync watch file tags frontmatter' },
   { value: 'markdown', label: 'Markdown', keywords: 'smart quotes dashes ellipsis punctuation typography syntax' },
@@ -537,11 +537,11 @@ function Switch({ label, hint, checked, onChange, testId }: {
   );
 }
 
-export function Preferences({
+export function Settings({
   open, section, onSection, settings, onChange, onClose, plugins,
   pluginDetailId, onPluginDetailClear, pluginDetailName,
   themeProblem, onReloadCss,
-}: PreferencesProps) {
+}: SettingsProps) {
   const dialogRef = useRef<HTMLElement>(null);
   const [query, setQuery] = useState('');
 
@@ -592,6 +592,7 @@ export function Preferences({
         ref={dialogRef}
         tabIndex={-1}
         className="settings-shell pref-dialog"
+        id="settings-panel"
         data-testid="settings-panel"
         role="dialog"
         aria-modal="true"

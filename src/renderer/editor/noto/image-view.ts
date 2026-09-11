@@ -55,7 +55,7 @@ const LABELS: Record<Reason, string> = {
 };
 
 const EXPLANATIONS: Record<Reason, string> = {
-  'remote-off': 'Web images are off. Turn on "Load images from the web" in Preferences to show it.',
+  'remote-off': 'Web images are off. Turn on "Load images from the web" in Settings to show it.',
   missing: 'Could not be loaded. Images load from the open folder and from the folder the note is in.',
   'no-document': 'A relative path needs a folder to start from, and this note has none.',
   'no-definition': 'The note has no "[id]: url" line for this image.',
