@@ -43,10 +43,19 @@ export const SETTING_RANGES = Object.freeze({
   /* A vault six levels deep spends 90px of the rail on indentation before the
      first character of a filename. 248px was chosen against a shallow fixture
      and leaves five siblings all reading "Done_TaskGro…" in a real one, so the
-     width has to be the reader's to set. Cap was 520; deep RooB-style trees
-     still truncated at that width, so the drag range now reaches 720. */
-  railWidth: { min: 190, max: 720, step: 1 },
+     width has to be the reader's to set.
+     Live drag/apply max is floor(windowWidth * RAIL_WIDTH_SCREEN_FRACTION) via
+     railWidthMaxForScreen. `max` here is only a soft absolute ceiling for
+     persistence and coerce — not the hard drag cap (that used to be a fixed
+     520, then 720). */
+  railWidth: { min: 190, max: 1800, step: 1 },
 } as const);
+
+/** Share of the window the rail may occupy while dragging or after a resize. */
+export const RAIL_WIDTH_SCREEN_FRACTION = 0.35 as const;
+
+/** Soft max when window width is unavailable (main coerce / unknown screen). */
+export const RAIL_WIDTH_FALLBACK_MAX = 720 as const;
 
 export type NotoNumericSetting = keyof typeof SETTING_RANGES;
 
@@ -371,6 +380,28 @@ export function clampSetting(key: NotoNumericSetting, value: unknown): number {
   const range = SETTING_RANGES[key];
   if (typeof value !== 'number' || !Number.isFinite(value)) return DEFAULT_SETTINGS[key];
   return Math.min(range.max, Math.max(range.min, value));
+}
+
+/**
+ * Live drag/apply ceiling for the left rail.
+ *
+ * Thirty-five percent of the window, floored, and never below the declared min.
+ * Falls back to RAIL_WIDTH_FALLBACK_MAX when the width is not a usable number,
+ * and never above SETTING_RANGES.railWidth.max (soft absolute for storage).
+ */
+export function railWidthMaxForScreen(screenWidth: number): number {
+  const { min, max } = SETTING_RANGES.railWidth;
+  if (typeof screenWidth !== 'number' || !Number.isFinite(screenWidth) || screenWidth <= 0) {
+    return Math.min(max, RAIL_WIDTH_FALLBACK_MAX);
+  }
+  return Math.min(max, Math.max(min, Math.floor(screenWidth * RAIL_WIDTH_SCREEN_FRACTION)));
+}
+
+/** Clamp a rail width into the live range for the given window width. */
+export function clampRailWidth(value: unknown, screenWidth: number): number {
+  if (typeof value !== 'number' || !Number.isFinite(value)) return DEFAULT_SETTINGS.railWidth;
+  const max = railWidthMaxForScreen(screenWidth);
+  return Math.min(max, Math.max(SETTING_RANGES.railWidth.min, value));
 }
 
 export interface SettingsRequestV1 {

@@ -110,16 +110,20 @@ sideways, whatever the mode and however narrow the window; a code block that
 is wider than the column scrolls inside its own box. The numbers and the ring
 are the author's `wider` plugin for Typora, ported.
 
-Its width is dragged from the right edge and remembered. Not a fixed width and
-not a fraction of the window: a rail that follows the window rewraps filenames
-while you type in the document beside it, and a fixed one cannot serve both a
-flat folder and a vault six levels deep. That vault is the case that settles it.
-At six levels the indent alone spends seventy pixels before the first character
-of a name, and at the old fixed 248 five sibling folders all read
-`Done_TaskGro...`, which is a tree that has stopped answering the only question
-it exists to answer. The drag target is 7px wide because a 1px border is not
-something anyone can hit, and arrow keys move it too, because a control that
-only takes a pointer is a control some people do not have.
+Its width is dragged from the right edge and remembered as a pixel width, not
+as a fraction that reflows while you type. The live drag ceiling is
+`floor(windowWidth × 0.35)` (minimum 190): wide enough for a six-level vault,
+narrow enough that the rail cannot eat the canvas on a small window. A stored
+width that outgrows a later, narrower window is clamped when applied, not left
+to shove the document aside. `SETTING_RANGES.railWidth.max` is only a soft
+absolute for persistence when no window width is known — not the hard drag
+cap. That vault is the case that settles the floor: at six levels the indent
+alone spends seventy pixels before the first character of a name, and at the
+old fixed 248 five sibling folders all read `Done_TaskGro...`, which is a tree
+that has stopped answering the only question it exists to answer. The drag
+target is 7px wide because a 1px border is not something anyone can hit, and
+arrow keys move it too, because a control that only takes a pointer is a
+control some people do not have.
 
 The width follows the pointer through a custom property written straight to the
 element, and the setting is written once on release. Routing every pointer move

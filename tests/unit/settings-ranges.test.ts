@@ -10,9 +10,13 @@
 
 import { describe, expect, it } from 'vitest';
 import {
+  clampRailWidth,
   clampSetting,
   DEFAULT_SETTINGS,
   NOTO_SETTINGS_VERSION,
+  RAIL_WIDTH_FALLBACK_MAX,
+  RAIL_WIDTH_SCREEN_FRACTION,
+  railWidthMaxForScreen,
   SETTING_RANGES,
 } from '../../src/shared/settings/v1/contracts';
 import { coerceSettings, isSettingsWriteRequestV1 } from '../../src/shared/settings/v1/validate';
@@ -95,12 +99,32 @@ describe('the custom stylesheet path', () => {
 });
 
 describe('rail width range', () => {
-  it('allows a wider rail than the old 520px cap for deep trees', () => {
-    expect(SETTING_RANGES.railWidth.max).toBe(720);
+  it('keeps a soft absolute ceiling for persistence, not a hard drag cap', () => {
+    expect(SETTING_RANGES.railWidth.min).toBe(190);
+    expect(SETTING_RANGES.railWidth.max).toBe(1800);
+    expect(RAIL_WIDTH_FALLBACK_MAX).toBe(720);
+    expect(RAIL_WIDTH_SCREEN_FRACTION).toBe(0.35);
     expect(clampSetting('railWidth', 640)).toBe(640);
-    expect(clampSetting('railWidth', 900)).toBe(720);
+    expect(clampSetting('railWidth', 900)).toBe(900);
+    expect(clampSetting('railWidth', 2000)).toBe(1800);
     expect(write({ railWidth: 720 })).toBe(true);
-    expect(write({ railWidth: 721 })).toBe(false);
+    expect(write({ railWidth: 1800 })).toBe(true);
+    expect(write({ railWidth: 1801 })).toBe(false);
+  });
+
+  it('caps the live drag max at 35% of the window width', () => {
+    expect(railWidthMaxForScreen(1000)).toBe(350);
+    expect(railWidthMaxForScreen(1920)).toBe(672);
+    expect(railWidthMaxForScreen(400)).toBe(190); // floor(140) below min
+    expect(railWidthMaxForScreen(Number.NaN)).toBe(RAIL_WIDTH_FALLBACK_MAX);
+    expect(railWidthMaxForScreen(0)).toBe(RAIL_WIDTH_FALLBACK_MAX);
+  });
+
+  it('clamps an applied rail width into the live window range', () => {
+    expect(clampRailWidth(500, 1000)).toBe(350);
+    expect(clampRailWidth(100, 1000)).toBe(190);
+    expect(clampRailWidth(300, 1000)).toBe(300);
+    expect(clampRailWidth(Number.NaN, 1000)).toBe(DEFAULT_SETTINGS.railWidth);
   });
 });
 
