@@ -237,9 +237,12 @@ function NotoWorkspace({ platform }: { platform: NotoPlatform }) {
   const recoveryRecord = active?.recovery ?? null;
   const [localMessage, setLocalMessage] = useState<string | null>(null);
   const [theme, setTheme] = useState<'light' | 'dark'>('light');
-  const [prefs, setPrefs] = useState<{ open: boolean; section: PreferencesSection }>(
-    { open: false, section: 'appearance' },
-  );
+  const [prefs, setPrefs] = useState<{
+    open: boolean;
+    section: PreferencesSection;
+    pluginDetailId: string | null;
+    pluginDetailName: string | null;
+  }>({ open: false, section: 'appearance', pluginDetailId: null, pluginDetailName: null });
   /** Bumped to re-read a stylesheet whose contents changed but whose path did not. */
   const [themeReload, setThemeReload] = useState(0);
   const [themeProblem, setThemeProblem] = useState('');
@@ -442,9 +445,9 @@ function NotoWorkspace({ platform }: { platform: NotoPlatform }) {
       : { open: true, view }));
   }, []);
   const openPreferences = useCallback((section: PreferencesSection) => {
-    setPrefs((current) => (current.open && current.section === section
-      ? { open: false, section }
-      : { open: true, section }));
+    setPrefs((current) => (current.open && current.section === section && current.pluginDetailId === null
+      ? { open: false, section, pluginDetailId: null, pluginDetailName: null }
+      : { open: true, section, pluginDetailId: null, pluginDetailName: null }));
   }, []);
   const [find, setFind] = useState<{ open: boolean; replace: boolean; query?: string }>(
     { open: false, replace: false },
@@ -1654,7 +1657,7 @@ function NotoWorkspace({ platform }: { platform: NotoPlatform }) {
   /** Closing preferences returns focus to whatever opened it, so keyboard
    *  users are not dropped at the top of the document. */
   const closePlugins = useCallback(() => {
-    setPrefs((current) => ({ ...current, open: false }));
+    setPrefs((current) => ({ ...current, open: false, pluginDetailId: null, pluginDetailName: null }));
     restorePluginTriggerFocus(pluginsButtonRef.current);
   }, []);
 
@@ -1927,7 +1930,7 @@ function NotoWorkspace({ platform }: { platform: NotoPlatform }) {
         editorRef.current?.history('redo');
         break;
       case 'settings':
-        setPrefs({ open: true, section: 'appearance' });
+        setPrefs({ open: true, section: 'appearance', pluginDetailId: null, pluginDetailName: null });
         break;
       case 'toggle-sidebar':
         toggleRail('files');
@@ -2194,15 +2197,26 @@ function NotoWorkspace({ platform }: { platform: NotoPlatform }) {
       <Preferences
         open={prefs.open}
         section={prefs.section}
-        onSection={(section) => setPrefs({ open: true, section })}
+        onSection={(section) => setPrefs({ open: true, section, pluginDetailId: null, pluginDetailName: null })}
         settings={settings}
         onChange={changeSettings}
         onClose={closePlugins}
+        pluginDetailId={prefs.pluginDetailId}
+        onPluginDetailClear={() => setPrefs((current) => ({
+          ...current, pluginDetailId: null, pluginDetailName: null,
+        }))}
+        pluginDetailName={prefs.pluginDetailName}
         themeProblem={themeProblem}
         onReloadCss={() => setThemeReload((current) => current + 1)}
         plugins={(
           <PluginCenter api={window.notoDesktop} snapshots={pluginSnapshots}
-            availability={pluginAvailability} open />
+            availability={pluginAvailability} open
+            detailId={prefs.pluginDetailId}
+            onOpenDetail={(pluginId, pluginName) => setPrefs((current) => ({
+              ...current, open: true, section: 'plugins',
+              pluginDetailId: pluginId, pluginDetailName: pluginName,
+            }))}
+          />
         )}
       />
 

@@ -1,16 +1,14 @@
 /**
- * Preferences.
+ * Settings (Cursor-style full page).
  *
- * One dialog with sections, rather than a settings sheet plus a plugin drawer
- * that lived on opposite sides of the window. Plugins are configuration: they
- * are turned on once and then forgotten, which is what a preferences section is
- * for and what a permanent right sidebar is not. That sidebar also pushed the
- * document sideways every time it opened.
+ * Left categories, right content — a full-page route rather than a floating
+ * modal that jumps height between Remote and Plugins. Plugins are still a
+ * section here; the list can drill into `Plugins > name` for detail/debug.
  *
  * Every control writes immediately rather than collecting changes behind a Save
- * button. A preferences dialog with an OK button asks the user to predict what a
- * setting does; applying it at once lets them see it and change their mind,
- * which is the whole reason these are visible settings and not a config file.
+ * button. Applying a setting at once lets the reader see it and change their
+ * mind, which is the whole reason these are visible settings and not a config
+ * file.
  */
 
 import { copyThroughSelection } from './editor/noto/clipboard';
@@ -38,6 +36,12 @@ export interface PreferencesProps {
   /** The plugin section's contents, supplied by the shell so this file stays
    *  free of plugin lifecycle concerns. */
   readonly plugins: ReactNode;
+  /** Active plugin detail id when section is plugins, else null. */
+  readonly pluginDetailId: string | null;
+  /** Clear plugin detail and return to the Plugins list. */
+  readonly onPluginDetailClear: () => void;
+  /** Display name for the open plugin detail, when known. */
+  readonly pluginDetailName: string | null;
   /** Why the custom stylesheet is not showing, if it is not. */
   readonly themeProblem: string;
   /** Re-read the stylesheet from disk, for when its contents changed but its
@@ -534,7 +538,9 @@ function Switch({ label, hint, checked, onChange, testId }: {
 }
 
 export function Preferences({
-  open, section, onSection, settings, onChange, onClose, plugins, themeProblem, onReloadCss,
+  open, section, onSection, settings, onChange, onClose, plugins,
+  pluginDetailId, onPluginDetailClear, pluginDetailName,
+  themeProblem, onReloadCss,
 }: PreferencesProps) {
   const dialogRef = useRef<HTMLElement>(null);
   const [query, setQuery] = useState('');
@@ -575,20 +581,23 @@ export function Preferences({
 
   if (!open) return null;
 
+  const sectionLabel = SECTIONS.find((entry) => entry.value === section)?.label ?? 'Settings';
+  const title = section === 'plugins' && pluginDetailId
+    ? (pluginDetailName ? `Plugins › ${pluginDetailName}` : 'Plugins › Detail')
+    : sectionLabel;
+
   return (
-    <div className="pref-scrim" data-testid="settings-scrim" onClick={onClose}>
+    <div className="settings-page" data-testid="settings-scrim">
       <section
         ref={dialogRef}
         tabIndex={-1}
-        className="pref-dialog"
+        className="settings-shell pref-dialog"
         data-testid="settings-panel"
         role="dialog"
         aria-modal="true"
-        aria-label="Preferences"
-        // The dialog swallows clicks so only the surrounding scrim closes it.
-        onClick={(event) => event.stopPropagation()}
+        aria-label="Settings"
       >
-        <nav className="pref-sections" aria-label="Preferences sections">
+        <nav className="pref-sections" aria-label="Settings categories">
           {/* Typora puts a search over its sections and it earns the room: a
               reader who knows the name of a setting should not have to know
               which pane somebody filed it under. */}
@@ -624,9 +633,18 @@ export function Preferences({
 
         <div className="pref-body">
           <header className="pref-body-header">
-            <h2>{SECTIONS.find((entry) => entry.value === section)?.label}</h2>
+            <h2 className="settings-title">
+              {section === 'plugins' && pluginDetailId ? (
+                <>
+                  <button type="button" className="settings-crumb" data-testid="plugins-crumb"
+                    onClick={onPluginDetailClear}>Plugins</button>
+                  <span className="settings-crumb-sep" aria-hidden="true">›</span>
+                  <span>{pluginDetailName ?? 'Detail'}</span>
+                </>
+              ) : title}
+            </h2>
             <button type="button" className="pref-close"
-              data-testid="settings-close" aria-label="Close preferences"
+              data-testid="settings-close" aria-label="Close settings"
               onClick={onClose}>Done</button>
           </header>
 
