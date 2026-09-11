@@ -50,21 +50,47 @@ for (const name of process.argv.slice(2).length ? process.argv.slice(2) : ['medi
   await page.waitForSelector('.ProseMirror', { state: 'visible', timeout: 180_000 });
   await page.waitForTimeout(1000);
 
-  // Scroll the real canvas scrollport to mid-document and wait for stub remount.
+  // Scroll mid, settle until a non-stub block is on screen, place caret there
+  // with a real mouse click (DOM click alone leaves selection at the top).
   const scrolled = await page.evaluate(async () => {
     const scroll = document.querySelector('.canvas-scroll');
     if (!(scroll instanceof HTMLElement)) return { ok: false, reason: 'no-canvas-scroll' };
-    scroll.scrollTop = Math.floor((scroll.scrollHeight - scroll.clientHeight) * 0.5);
-    for (let i = 0; i < 12; i += 1) {
-      await new Promise((r) => requestAnimationFrame(r));
+    let visible = null;
+    let click = null;
+    for (let attempt = 0; attempt < 24; attempt += 1) {
+      const mid = Math.floor((scroll.scrollHeight - scroll.clientHeight) * 0.5);
+      scroll.scrollTop = mid;
+      for (let i = 0; i < 8; i += 1) await new Promise((r) => requestAnimationFrame(r));
+      await new Promise((r) => setTimeout(r, 16));
+      const sc = scroll.getBoundingClientRect();
+      const pm = document.querySelector('.ProseMirror');
+      if (!(pm instanceof HTMLElement)) break;
+      for (const child of pm.children) {
+        if (!(child instanceof HTMLElement)) continue;
+        if (child.classList.contains('noto-block-stub')) continue;
+        const box = child.getBoundingClientRect();
+        if (box.height <= 0) continue;
+        if (box.bottom > sc.top + 4 && box.top < sc.bottom - 4) {
+          visible = {
+            tag: child.tagName,
+            className: child.className,
+            text: (child.textContent || '').slice(0, 40),
+          };
+          click = {
+            x: box.left + Math.min(24, Math.max(4, box.width / 2)),
+            y: (box.top + box.bottom) / 2,
+          };
+          break;
+        }
+      }
+      if (visible) break;
     }
-    await new Promise((r) => setTimeout(r, 50));
     const host = document.querySelector('.noto-editor-host');
-    const real = document.querySelector('.ProseMirror > p.noto-stub-real, .ProseMirror > p, .ProseMirror > h1, .ProseMirror > h2');
-    if (real instanceof HTMLElement) real.click();
     return {
       ok: true,
       scrollTop: scroll.scrollTop,
+      visible,
+      click,
       stub: host instanceof HTMLElement ? {
         enabled: host.dataset.stubEnabled ?? null,
         real: host.dataset.stubReal ?? null,
@@ -75,11 +101,18 @@ for (const name of process.argv.slice(2).length ? process.argv.slice(2) : ['medi
       stubs: document.querySelectorAll('.noto-block-stub').length,
     };
   });
-  process.stdout.write(`         scrolled: ${JSON.stringify(scrolled)}\n`);
+  process.stdout.write(`         scrolled: ${JSON.stringify({ ...scrolled, click: scrolled.click ? 'yes' : null })}\n`);
+
+  if (scrolled.click) {
+    await page.mouse.click(scrolled.click.x, scrolled.click.y);
+    await page.waitForTimeout(120);
+  }
 
   const samples = await page.evaluate(async () => {
     const script = [];
     const paint = [];
+    const pm = document.querySelector('.ProseMirror');
+    if (pm instanceof HTMLElement) pm.focus();
     for (let stroke = 0; stroke < 14; stroke += 1) {
       const begin = performance.now();
       document.execCommand('insertText', false, 'x');
@@ -94,16 +127,24 @@ for (const name of process.argv.slice(2).length ? process.argv.slice(2) : ['medi
 
   const scrollSamples = await page.evaluate(async () => {
     const element = document.querySelector('.canvas-scroll');
-    if (!(element instanceof HTMLElement)) return [];
-    const times = [];
-    const step = Math.max(40, Math.floor(element.clientHeight * 0.75));
-    for (let i = 0; i < 12; i += 1) {
-      const begin = performance.now();
-      element.scrollTop = Math.min(element.scrollHeight - element.clientHeight, element.scrollTop + step);
-      await new Promise((resolve) => requestAnimationFrame(() => resolve(undefined)));
-      times.push(performance.now() - begin);
-    }
-    return times;
+    if (!(element instanceof HTMLElement)) return { large: [], small: [] };
+    const run = async (fraction) => {
+      const times = [];
+      const step = Math.max(20, Math.floor(element.clientHeight * fraction));
+      for (let i = 0; i < 12; i += 1) {
+        const begin = performance.now();
+        element.scrollTop = Math.min(
+          element.scrollHeight - element.clientHeight,
+          element.scrollTop + step,
+        );
+        await new Promise((resolve) => requestAnimationFrame(() => resolve(undefined)));
+        times.push(performance.now() - begin);
+      }
+      return times;
+    };
+    const small = await run(0.25);
+    const large = await run(0.75);
+    return { small, large };
   });
 
   const stubAfter = await page.evaluate(() => {
@@ -121,13 +162,15 @@ for (const name of process.argv.slice(2).length ? process.argv.slice(2) : ['medi
 
   const script = median(samples.script.slice(3));
   const paint = median(samples.paint.slice(3));
-  const scroll = scrollSamples.length ? median(scrollSamples.slice(2)) : null;
+  const scrollSmall = scrollSamples.small.length ? median(scrollSamples.small.slice(2)) : null;
+  const scrollLarge = scrollSamples.large.length ? median(scrollSamples.large.slice(2)) : null;
   process.stdout.write(
     `${name.padEnd(7)} script ${script.toFixed(1).padStart(7)} ms   `
     + `layout and paint ${paint.toFixed(1).padStart(7)} ms   `
     + `total ${(script + paint).toFixed(1).padStart(7)} ms`,
   );
-  if (scroll != null) process.stdout.write(`   scroll-frame ${scroll.toFixed(1).padStart(7)} ms`);
+  if (scrollSmall != null) process.stdout.write(`   scroll-frame(0.25) ${scrollSmall.toFixed(1).padStart(7)} ms`);
+  if (scrollLarge != null) process.stdout.write(`   scroll-frame(0.75) ${scrollLarge.toFixed(1).padStart(7)} ms`);
   process.stdout.write('\n');
   if (stubAfter) {
     process.stdout.write(

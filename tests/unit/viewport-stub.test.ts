@@ -7,6 +7,8 @@ import {
   blockWindowForY,
   countRealIndices,
   cumulativeHeights,
+  STUB_BLOCK_GAP_EM,
+  blockGapPx,
   estimateAllHeights,
   estimateBlockHeight,
   isIndexReal,
@@ -16,6 +18,7 @@ import {
   stubbingEnabled,
   topLevelIndexAt,
   unionRanges,
+  viewportNeedsRemount,
   viewportStubKey,
   viewportStubPlugin,
 } from '../../src/renderer/editor/noto/viewport-stub';
@@ -151,6 +154,15 @@ describe('height estimates', () => {
       expect(estimateBlockHeight(doc.child(index), 16)).toBeGreaterThan(0);
     }
   });
+
+  it('folds the document block-rhythm gap into each estimate', () => {
+    expect(STUB_BLOCK_GAP_EM).toBeCloseTo(0.74);
+    expect(blockGapPx(16)).toBeCloseTo(16 * 0.74);
+    const doc = docFor('A short paragraph.\n');
+    const estimated = estimateBlockHeight(doc.child(0), 16);
+    // Content is one line (1.6em) plus the collapsed neighbour gap.
+    expect(estimated).toBeCloseTo(16 * 1.6 + 16 * 0.74);
+  });
 });
 
 describe('large-document real window', () => {
@@ -176,5 +188,16 @@ describe('large-document real window', () => {
     stub = viewportStubKey.getState(state)!;
     expect(stub.selection.from).toBeGreaterThan(70);
     expect(isIndexReal(stub, 80)).toBe(true);
+  });
+});
+
+describe('viewport remount hysteresis', () => {
+  it('stays put while the visible band is inside the buffered window', () => {
+    expect(viewportNeedsRemount({ from: 100, to: 200 }, { from: 120, to: 180 })).toBe(false);
+  });
+
+  it('remounts when the visible band crosses an edge', () => {
+    expect(viewportNeedsRemount({ from: 100, to: 200 }, { from: 90, to: 180 })).toBe(true);
+    expect(viewportNeedsRemount({ from: 100, to: 200 }, { from: 120, to: 210 })).toBe(true);
   });
 });
