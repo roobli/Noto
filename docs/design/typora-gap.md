@@ -1443,7 +1443,14 @@ code / link widgets are unchanged.
 Residual, named rather than queued: heading level still uses the margin `hN`
 badge rather than revealing `#` hashes in the line (intentional, matching the
 author's Typora theme); wiki brackets still appear for every wiki link inside
-one paragraph when that paragraph is focused (block scope, not span scope).
+one paragraph when that paragraph is focused (block scope, not span scope —
+graber deferred span-level wiki).
+
+Feel acceptance (lightweight): `tests/unit/source-editing.test.ts` covers sibling
+list items not lighting and the multi-wiki paragraph case; packaged
+`tests/e2e/focus-source-packaged.spec.ts` checks computed `display` on
+`.noto-wiki-bracket` in a MOC-shaped list (caret in one item hides siblings;
+focused intro paragraph reveals its brackets).
 
 The Typora-habit queue is soft-empty as of 2026-09-11 aside from the residuals
 named on gap 70. What remains named rather

@@ -1,9 +1,15 @@
 /**
- * Textblock-scoped source reveal.
+ * Textblock-scoped source reveal (feel acceptance for list / MOC indexes).
  *
  * Wiki-link brackets must not light up every sibling in a list when the caret
  * is in one item. The active-node plugin marks only the caret's own textblock
  * with `.noto-source-editing`; the stylesheet hides brackets elsewhere.
+ *
+ * Acceptance (block scope; span-level wiki deferred):
+ * - Caret in one list item → only that item's paragraph is `.noto-source-editing`
+ * - Caret moves to a sibling → the mark moves with it
+ * - Focused paragraph with several `[[…]]` → whole paragraph marked (all brackets
+ *   in that paragraph may reveal; not span-scoped yet)
  */
 
 import { describe, expect, it } from 'vitest';
@@ -12,15 +18,17 @@ import { DecorationSet } from 'prosemirror-view';
 import { notoSchema } from '../../src/shared/markdown/v3/pm/schema';
 import { activeNodePlugin, activeNodeKey } from '../../src/renderer/editor/noto/active-node-plugin';
 
-function listOfLinks(): EditorState {
+function listOfLinks(kind: 'bullet_list' | 'ordered_list' = 'bullet_list'): EditorState {
   const item = (text: string) => notoSchema.node('list_item', null, [
     notoSchema.node('paragraph', null, [notoSchema.text(text)]),
   ]);
   const doc = notoSchema.node('doc', null, [
-    notoSchema.node('bullet_list', null, [
+    notoSchema.node(kind, null, [
       item('[[a|Alpha]]'),
       item('[[b|Beta]]'),
       item('[[c|Gamma]]'),
+      item('[[d|Delta]]'),
+      item('[[e|Epsilon]]'),
     ]),
   ]);
   return EditorState.create({
@@ -50,26 +58,57 @@ function sourceEditingRanges(state: EditorState): Array<{ from: number; to: numb
     .map((decoration) => ({ from: decoration.from, to: decoration.to }));
 }
 
+function caretInText(state: EditorState, needle: string): EditorState {
+  let pos = -1;
+  state.doc.descendants((node, p) => {
+    if (node.isText && node.text?.includes(needle)) {
+      pos = p + 1;
+      return false;
+    }
+    return true;
+  });
+  expect(pos).toBeGreaterThan(0);
+  return state.apply(state.tr.setSelection(TextSelection.create(state.doc, pos)));
+}
+
 describe('source-editing textblock mark', () => {
   it('marks only the list item paragraph that holds the caret', () => {
-    const base = listOfLinks();
-    let betaPos = -1;
-    base.doc.descendants((node, pos) => {
-      if (node.isText && node.text?.includes('Beta')) {
-        betaPos = pos + 1;
-        return false;
-      }
-      return true;
-    });
-    expect(betaPos).toBeGreaterThan(0);
-
-    const state = base.apply(base.tr.setSelection(TextSelection.create(base.doc, betaPos)));
+    const state = caretInText(listOfLinks(), 'Beta');
     const ranges = sourceEditingRanges(state);
     expect(ranges).toHaveLength(1);
     const text = state.doc.textBetween(ranges[0].from, ranges[0].to);
     expect(text).toContain('Beta');
     expect(text).not.toContain('Alpha');
     expect(text).not.toContain('Gamma');
+    expect(text).not.toContain('Delta');
+    expect(text).not.toContain('Epsilon');
+  });
+
+  it('moves the mark when the caret moves to a sibling item (MOC feel)', () => {
+    const base = listOfLinks();
+    const onBeta = caretInText(base, 'Beta');
+    expect(onBeta.doc.textBetween(
+      sourceEditingRanges(onBeta)[0].from,
+      sourceEditingRanges(onBeta)[0].to,
+    )).toContain('Beta');
+
+    const onDelta = caretInText(onBeta, 'Delta');
+    const ranges = sourceEditingRanges(onDelta);
+    expect(ranges).toHaveLength(1);
+    const text = onDelta.doc.textBetween(ranges[0].from, ranges[0].to);
+    expect(text).toContain('Delta');
+    expect(text).not.toContain('Beta');
+    expect(text).not.toContain('Alpha');
+  });
+
+  it('scopes the same way in an ordered list', () => {
+    const state = caretInText(listOfLinks('ordered_list'), 'Gamma');
+    const ranges = sourceEditingRanges(state);
+    expect(ranges).toHaveLength(1);
+    const text = state.doc.textBetween(ranges[0].from, ranges[0].to);
+    expect(text).toContain('Gamma');
+    expect(text).not.toContain('Alpha');
+    expect(text).not.toContain('Epsilon');
   });
 
   it('marks a top-level paragraph when that is where the caret sits', () => {
@@ -78,17 +117,26 @@ describe('source-editing textblock mark', () => {
       notoSchema.node('paragraph', null, [notoSchema.text('plain')]),
     ]);
     const base = EditorState.create({ doc, plugins: [activeNodePlugin()] });
-    let pos = -1;
-    base.doc.descendants((node, p) => {
-      if (node.isText && node.text?.includes('One')) {
-        pos = p + 1;
-        return false;
-      }
-      return true;
-    });
-    const state = base.apply(base.tr.setSelection(TextSelection.create(base.doc, pos)));
+    const state = caretInText(base, 'One');
     const ranges = sourceEditingRanges(state);
     expect(ranges).toHaveLength(1);
     expect(state.doc.textBetween(ranges[0].from, ranges[0].to)).toContain('One');
+  });
+
+  it('marks the whole focused paragraph when it holds several wiki links (span scope deferred)', () => {
+    const doc = notoSchema.node('doc', null, [
+      notoSchema.node('paragraph', null, [
+        notoSchema.text('See [[a|Alpha]] and [[b|Beta]] together.'),
+      ]),
+      notoSchema.node('paragraph', null, [notoSchema.text('[[c|Gamma]] alone.')]),
+    ]);
+    const base = EditorState.create({ doc, plugins: [activeNodePlugin()] });
+    const state = caretInText(base, 'Alpha');
+    const ranges = sourceEditingRanges(state);
+    expect(ranges).toHaveLength(1);
+    const text = state.doc.textBetween(ranges[0].from, ranges[0].to);
+    expect(text).toContain('Alpha');
+    expect(text).toContain('Beta');
+    expect(text).not.toContain('Gamma');
   });
 });
