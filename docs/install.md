@@ -59,3 +59,21 @@ Packaged builds can check GitHub Releases from **Settings → Updates**:
 
 Check-on-launch and auto-download are off by default. Details:
 `docs/architecture/updates.md`.
+
+## Blurb for GitHub Releases
+
+Paste something like this at the top of every release body until notarization ships:
+
+```markdown
+## First open (macOS / Windows)
+
+Builds are not Apple-notarized yet. **That is expected** — not a broken download.
+
+**macOS:** unzip, then Right-click → Open, or:
+
+`xattr -cr Noto.app && open Noto.app`
+
+Full steps: https://github.com/roobli/Noto/blob/main/docs/install.md
+
+**Windows:** SmartScreen → More info → Run anyway.
+```
