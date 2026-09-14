@@ -7,7 +7,7 @@ import {
 const TOKEN = 'a'.repeat(43);
 
 const deps = (patch: Partial<RemoteDeps> = {}): RemoteDeps => ({
-  token: TOKEN,
+  getToken: () => TOKEN,
   port: 37610,
   status: () => ({ version: '1.2.3', vault: '/vault', note: '/vault/a.md', dirty: false }),
   readCurrent: async () => ({ path: '/vault/a.md', markdown: '# A\n', source: 'editor' as const, dirty: false }),

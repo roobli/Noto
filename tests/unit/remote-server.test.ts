@@ -7,7 +7,7 @@ afterEach(async () => { for (const server of running.splice(0)) await server.sto
 
 const token = newToken();
 const deps: Omit<RemoteDeps, 'port'> = {
-  token,
+  getToken: () => token,
   status: () => ({ version: '1.0.0', vault: '/vault', note: null, dirty: false }),
   readCurrent: async () => null,
   open: async () => ({ opened: true }),

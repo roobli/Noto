@@ -104,7 +104,15 @@ export interface RemoteMatch {
 }
 
 export interface RemoteDeps {
-  readonly token: string;
+  /**
+   * The token the socket accepts right now.
+   *
+   * A function rather than a string so the listening socket and the preferences
+   * pane always check the same value TokenStore holds — a snapshot taken at
+   * listen time could disagree with a concurrent first `current()` that minted
+   * a second token for the UI.
+   */
+  readonly getToken: () => string;
   /** The port it is listening on, so the `Host` header can be checked against it. */
   readonly port: number;
   readonly status: () => RemoteStatus;
@@ -208,7 +216,7 @@ export async function handleRemote(request: RemoteRequest, deps: RemoteDeps): Pr
   }
 
   const given = bearerOf(request.headers);
-  if (given === null || !tokenMatches(given, deps.token)) {
+  if (given === null || !tokenMatches(given, deps.getToken())) {
     return refuse(401, 'unauthorized', 'Bad or missing token.');
   }
   if (Buffer.byteLength(request.body, 'utf8') > MAX_BODY_BYTES) {

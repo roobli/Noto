@@ -522,7 +522,11 @@ async function run(): Promise<void> {
     version: NOTO_SETTINGS_VERSION,
     listening: remote !== null,
     port: remote?.port ?? null,
-    token: settings.current().remoteControl ? await tokens.current() : '',
+    // Prefer peek() when the socket is up so the pane shows exactly what
+    // getToken() accepts — never a second mint that raced the listen path.
+    token: settings.current().remoteControl
+      ? (tokens.peek() ?? await tokens.current())
+      : '',
     problem: remoteProblem,
   });
 
@@ -565,9 +569,12 @@ async function run(): Promise<void> {
     }
     if (remote) return;
     try {
+      // Load once so peek() is set before the first request; the socket then
+      // reads through getToken so it stays aligned with whatever the pane shows.
+      await tokens.current();
       remote = await startRemoteServer({
         deps: {
-          token: await tokens.current(),
+          getToken: () => tokens.peek() ?? '',
           status: () => ({
             version: app.getVersion(),
             vault: session?.folder ?? null,

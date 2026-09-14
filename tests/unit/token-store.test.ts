@@ -50,6 +50,19 @@ describe("the remote control's token", () => {
     expect((await stat(file)).mode & 0o777).toBe(0o600);
   });
 
+
+  it('hands the same token to concurrent first readers, not two regenerates', async () => {
+    // Turning the control on asks from the socket and the preferences pane at
+    // once; both must see one token or the socket keeps A and the pane shows B.
+    const file = path.join(await folder(), 'remote-token');
+    const store = new TokenStore(file);
+    const [a, b, c] = await Promise.all([store.current(), store.current(), store.current()]);
+    expect(a).toBe(b);
+    expect(b).toBe(c);
+    expect((await readFile(file, 'utf8')).trim()).toBe(a);
+    expect(store.peek()).toBe(a);
+  });
+
   it('is replaced on request, and the old one stops being the token', async () => {
     const store = new TokenStore(path.join(await folder(), 'remote-token'));
     const first = await store.current();
