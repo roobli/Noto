@@ -14,7 +14,7 @@
  */
 
 import { Plugin, PluginKey, type EditorState, type Transaction } from 'prosemirror-state';
-import type { Node as ProseNode } from 'prosemirror-model';
+import type { Node as ProseNode, ResolvedPos } from 'prosemirror-model';
 import { Decoration, DecorationSet } from 'prosemirror-view';
 
 export const wikiLinkKey = new PluginKey<DecorationSet>('noto-wiki-links');
@@ -84,17 +84,21 @@ export function findWikiLinks(text: string, offset: number): WikiLinkMatch[] {
 /**
  * The link's decorations.
  *
- * Brackets (and, when present, `target|`) carry `.noto-wiki-bracket` so the
- * stylesheet can hide them outside the caret's textblock and show them dimmed
- * while that block is being edited. The visible name is the label — or the
- * bare target when nobody wrote a pipe — styled as a link either way.
+ * Brackets (and, when present, `target|`) carry `.noto-wiki-bracket`. The
+ * stylesheet hides those unless the caret's textblock has `.noto-source-editing`
+ * *and* this match is the one under the caret (`.noto-wiki-source-active`).
+ * Sibling wiki links in the same paragraph keep their labels only. The visible
+ * name is the label — or the bare target when nobody wrote a pipe.
  */
-function decorateLink(match: WikiLinkMatch): Decoration[] {
+function decorateLink(match: WikiLinkMatch, active: boolean): Decoration[] {
+  const bracketClass = active
+    ? 'noto-wiki-bracket noto-wiki-source-active'
+    : 'noto-wiki-bracket';
   const openTo = match.from + 2;
   const closeFrom = match.to - 2;
   const decorations: Decoration[] = [
-    Decoration.inline(match.from, openTo, { class: 'noto-wiki-bracket' }),
-    Decoration.inline(closeFrom, match.to, { class: 'noto-wiki-bracket' }),
+    Decoration.inline(match.from, openTo, { class: bracketClass }),
+    Decoration.inline(closeFrom, match.to, { class: bracketClass }),
     Decoration.inline(match.linkFrom, match.linkTo, {
       class: 'noto-wiki-link',
       'data-wiki-target': match.target,
@@ -102,7 +106,7 @@ function decorateLink(match: WikiLinkMatch): Decoration[] {
   ];
   if (match.muteFrom !== null && match.muteTo !== null && match.muteTo > match.muteFrom) {
     decorations.push(Decoration.inline(match.muteFrom, match.muteTo, {
-      class: 'noto-wiki-bracket',
+      class: bracketClass,
     }));
   }
   return decorations;
@@ -113,7 +117,7 @@ function wikiDecorations(state: EditorState): DecorationSet {
   state.doc.descendants((node, position) => {
     if (!node.isText || node.text === undefined) return true;
     for (const match of findWikiLinks(node.text, position)) {
-      decorations.push(...decorateLink(match));
+      decorations.push(...decorateLink(match, false));
     }
     return true;
   });
@@ -138,16 +142,100 @@ function textblocksIn(doc: ProseNode, from: number, to: number): Map<number, Pro
   return blocks;
 }
 
-function blockWikiDecorations(block: ProseNode, position: number): Decoration[] {
-  const decorations: Decoration[] = [];
+/** Wiki matches inside one textblock (no document-wide walk). */
+export function wikiMatchesInBlock(block: ProseNode, position: number): WikiLinkMatch[] {
+  const matches: WikiLinkMatch[] = [];
   const contentStart = position + 1;
   block.forEach((child, offset) => {
     if (!child.isText || child.text === undefined) return;
-    for (const match of findWikiLinks(child.text, contentStart + offset)) {
-      decorations.push(...decorateLink(match));
-    }
+    matches.push(...findWikiLinks(child.text, contentStart + offset));
   });
+  return matches;
+}
+
+/** Caret inside `[from, to)` of the match — after `]]` is outside. */
+export function wikiMatchAt(caret: number, matches: readonly WikiLinkMatch[]): WikiLinkMatch | null {
+  for (const match of matches) {
+    if (caret >= match.from && caret < match.to) return match;
+  }
+  return null;
+}
+
+function textblockAt($pos: ResolvedPos): { pos: number; node: ProseNode } | null {
+  for (let depth = $pos.depth; depth >= 1; depth -= 1) {
+    const node = $pos.node(depth);
+    if (node.isTextblock && !node.type.spec.code) {
+      return { pos: $pos.before(depth), node };
+    }
+  }
+  return null;
+}
+
+function blockWikiDecorations(
+  block: ProseNode,
+  position: number,
+  active: WikiLinkMatch | null,
+): Decoration[] {
+  const decorations: Decoration[] = [];
+  for (const match of wikiMatchesInBlock(block, position)) {
+    const isActive = active !== null && match.from === active.from && match.to === active.to;
+    decorations.push(...decorateLink(match, isActive));
+  }
   return decorations;
+}
+
+function replaceBlockWikiDecorations(
+  set: DecorationSet,
+  doc: ProseNode,
+  blockPos: number,
+  block: ProseNode,
+  active: WikiLinkMatch | null,
+): DecorationSet {
+  let next = set;
+  const from = blockPos + 1;
+  const to = blockPos + block.nodeSize - 1;
+  const stale = next.find(from, to);
+  if (stale.length > 0) next = next.remove(stale);
+  const fresh = blockWikiDecorations(block, blockPos, active);
+  if (fresh.length > 0) next = next.add(doc, fresh);
+  return next;
+}
+
+/**
+ * Span-level source reveal: only the wiki match under a collapsed caret gets
+ * `.noto-wiki-source-active`. Refreshes the previous and current caret
+ * textblocks only — never a full `descendants` walk.
+ */
+function applyWikiSourceActive(
+  set: DecorationSet,
+  oldState: EditorState,
+  newState: EditorState,
+  mapping: Transaction['mapping'] | null,
+): DecorationSet {
+  let next = set;
+  const touched = new Map<number, ProseNode>();
+
+  const oldBlock = textblockAt(oldState.selection.$head);
+  if (oldBlock) {
+    const mapped = mapping ? mapping.map(oldBlock.pos) : oldBlock.pos;
+    const node = newState.doc.nodeAt(mapped);
+    if (node?.isTextblock && !node.type.spec.code) touched.set(mapped, node);
+  }
+
+  const newBlock = textblockAt(newState.selection.$head);
+  if (newBlock) touched.set(newBlock.pos, newBlock.node);
+
+  const caret = newState.selection.empty ? newState.selection.head : null;
+  const activePos = newBlock?.pos ?? -1;
+
+  for (const [pos, node] of touched) {
+    let active: WikiLinkMatch | null = null;
+    if (caret !== null && pos === activePos) {
+      active = wikiMatchAt(caret, wikiMatchesInBlock(node, pos));
+    }
+    next = replaceBlockWikiDecorations(next, newState.doc, pos, node, active);
+  }
+  return next;
 }
 
 function applyWiki(
@@ -173,7 +261,7 @@ function applyWiki(
   for (const [position, block] of blocks) {
     const stale = next.find(position + 1, position + block.nodeSize - 1);
     if (stale.length > 0) next = next.remove(stale);
-    const fresh = blockWikiDecorations(block, position);
+    const fresh = blockWikiDecorations(block, position, null);
     if (fresh.length > 0) next = next.add(state.doc, fresh);
   }
   return next;
@@ -188,13 +276,29 @@ export function wikiLinkPlugin(options: WikiLinkOptions): Plugin<DecorationSet> 
   return new Plugin<DecorationSet>({
     key: wikiLinkKey,
     state: {
-      init: (_config, state) => wikiDecorations(state),
-      // Document change only: a link's position moves when text does. Map the
-      // existing set and rescan the textblocks the edit touched — a full
-      // descendants walk on every keystroke was on the caret-in-viewport path
-      // for multi-megabyte notes.
-      apply: (transaction, previous, _oldState, newState) =>
-        applyWiki(transaction, previous, newState),
+      init: (_config, state) => {
+        // Full scan once at load (inactive). Then mark the caret match if any.
+        const base = wikiDecorations(state);
+        return applyWikiSourceActive(base, state, state, null);
+      },
+      // Doc edits: map + rescan only the textblocks the edit touched.
+      // Selection moves: refresh only previous/current caret textblocks for
+      // `.noto-wiki-source-active` — never a full descendants walk.
+      apply: (transaction, previous, oldState, newState) => {
+        let next = previous;
+        if (transaction.docChanged) {
+          next = applyWiki(transaction, previous, newState);
+        }
+        if (transaction.docChanged || transaction.selectionSet) {
+          next = applyWikiSourceActive(
+            next,
+            oldState,
+            newState,
+            transaction.docChanged ? transaction.mapping : null,
+          );
+        }
+        return next;
+      },
     },
     props: {
       decorations: (state) => wikiLinkKey.getState(state),

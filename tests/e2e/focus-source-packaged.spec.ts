@@ -1,9 +1,9 @@
 /**
- * Feel acceptance for focused-block wiki source (#48).
+ * Feel acceptance for focused-block + span-level wiki source.
  *
  * A MOC / DailyNews-style list of `[[path|title]]` rows must not show every
  * pair of brackets while the caret is in one item. Only the focused textblock
- * reveals wiki brackets; siblings stay title-only. Span-level wiki is deferred.
+ * may reveal, and within that block only the wiki match under the caret.
  */
 
 import { mkdir, rm, writeFile } from 'node:fs/promises';
@@ -16,7 +16,7 @@ const resultRoot = path.join(process.cwd(), 'test-results', 'focus-source');
 const MOC = [
   '# Index',
   '',
-  'Intro with [[hub|Hub]] and [[other|Other]] in one paragraph.',
+  'Intro with [[hub|Hub]] and [[other|Other]] plus [[third|Third]] in one paragraph.',
   '',
   '- [[a/00_索引|Alpha]]',
   '- [[b/00_索引|Beta]]',
@@ -52,29 +52,58 @@ test.describe('focused-block wiki source', () => {
       await expect(editor).toContainText('Beta');
 
       const betaItem = editor.locator('li').filter({ hasText: 'Beta' });
-      await placeCaret(page, betaItem.locator('p'));
+      // Place caret inside the wiki match (on the label) so span-active fires.
+      await placeCaret(page, betaItem.locator('.noto-wiki-link'));
       await expect(betaItem.locator('.noto-source-editing')).toHaveCount(1);
 
       const alphaBrackets = editor.locator('li').filter({ hasText: 'Alpha' }).locator('.noto-wiki-bracket');
       const betaBrackets = betaItem.locator('.noto-wiki-bracket');
+      const betaActive = betaItem.locator('.noto-wiki-bracket.noto-wiki-source-active');
       const gammaBrackets = editor.locator('li').filter({ hasText: 'Gamma' }).locator('.noto-wiki-bracket');
 
-      await expect(betaBrackets.first()).toBeVisible({ timeout: 5_000 });
-      expect(await bracketDisplay(betaBrackets)).toContain('inline');
-      expect(await bracketDisplay(alphaBrackets)).toEqual(
-        expect.arrayContaining([expect.stringMatching(/^none$/)]),
-      );
+      await expect(betaActive.first()).toBeVisible({ timeout: 5_000 });
+      expect(await bracketDisplay(betaActive)).toContain('inline');
       expect((await bracketDisplay(alphaBrackets)).every((d) => d === 'none')).toBe(true);
       expect((await bracketDisplay(gammaBrackets)).every((d) => d === 'none')).toBe(true);
+      // Non-active brackets in the focused item (if any) stay hidden.
+      const betaHidden = await bracketDisplay(betaBrackets);
+      expect(betaHidden.filter((d) => d === 'inline').length).toBe(
+        (await betaActive.count()),
+      );
+    } finally {
+      await app.close();
+    }
+  });
 
-      // Focused paragraph with two wiki links: block scope reveals both pairs.
+  test('three wikis in one paragraph: only the caret match reveals source', async () => {
+    const { app, page } = await launch();
+    try {
+      const editor = page.locator('.canvas-slot:not([hidden]) .ProseMirror');
       const intro = editor.locator('p').filter({ hasText: 'Intro with' });
-      await placeCaret(page, intro);
+
+      // Caret on Other → only that match's brackets/target| visible.
+      await placeCaret(page, intro.locator('.noto-wiki-link').filter({ hasText: 'Other' }));
       await expect(intro).toHaveClass(/noto-source-editing/);
-      const introBrackets = intro.locator('.noto-wiki-bracket');
-      await expect.poll(async () => (await bracketDisplay(introBrackets)).filter((d) => d === 'inline').length)
-        .toBeGreaterThanOrEqual(4);
-      expect((await bracketDisplay(betaBrackets)).every((d) => d === 'none')).toBe(true);
+
+      const active = intro.locator('.noto-wiki-bracket.noto-wiki-source-active');
+      await expect.poll(async () => (await bracketDisplay(active)).filter((d) => d === 'inline').length)
+        .toBeGreaterThanOrEqual(2);
+
+      const allBrackets = intro.locator('.noto-wiki-bracket');
+      const displays = await bracketDisplay(allBrackets);
+      const inlineCount = displays.filter((d) => d === 'inline').length;
+      const noneCount = displays.filter((d) => d === 'none').length;
+      expect(inlineCount).toBeGreaterThanOrEqual(2);
+      expect(noneCount).toBeGreaterThanOrEqual(4); // Hub + Third brackets stay hidden
+
+      // Caret in the paragraph but off every wiki → all source hidden.
+      // Click near the start ("Intro with") so we miss every [[…]] span.
+      await intro.click({ position: { x: 12, y: 8 } });
+      await expect(intro).toHaveClass(/noto-source-editing/);
+      await expect.poll(async () => {
+        const d = await bracketDisplay(intro.locator('.noto-wiki-bracket'));
+        return d.length > 0 && d.every((x) => x === 'none');
+      }).toBe(true);
     } finally {
       await app.close();
     }
