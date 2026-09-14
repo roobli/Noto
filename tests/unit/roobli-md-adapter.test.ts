@@ -1,5 +1,5 @@
 /**
- * Parity and adapter coverage for `@roobli/md` v0.1.1.
+ * Parity and adapter coverage for `@roobli/md` v0.1.2.
  *
  * Default product path stays micromark. These tests force the adapter and
  * compare structural spans against the micromark baseline on synthetic
@@ -40,6 +40,9 @@ const SYNTHETIC = [
   '[^1]: note\n\nPara\n',
   '[id]: https://example.com\n\nPara\n',
   '<div>\nhello\n</div>\n\nPara\n',
+  '    indented();\n',
+  'Para\n\n    code();\n',
+  '    line1\n\n    line2\n',
 ];
 
 /** g002 fixtures where native offsets currently match micromark. */
@@ -158,6 +161,33 @@ describe('@roobli/md adapter — reparseBlocks window', () => {
     expect(enriched.spans[1]!.markdown).toBe('Deux');
     expect(enriched.spans[1]!.node).toBeTruthy();
     expect(enriched.spans[1]!.semanticKey.length).toBeGreaterThan(0);
+  });
+});
+
+describe('@roobli/md adapter — indented-code (v0.1.2)', () => {
+  it('natively labels indented code and matches micromark offsets', () => {
+    const samples = [
+      '    indented();\n',
+      '\tindented();\n',
+      '    line1\n\n    line2\n',
+      'Para\n\n    code();\n',
+      '    - not list\n',
+    ];
+    for (const sample of samples) {
+      structuralParity(sample);
+      const engine = parseBlocksStructural(sample);
+      expect(engine.spans.some((s) => s.kind === 'indented-code')).toBe(true);
+    }
+  });
+
+  it('routes indented-code through the adapter when flagged', () => {
+    setMarkdownEngineForTests('roobli-md');
+    const text = 'Para\n\n    code();\n';
+    const viaFlag = splitBlocks(text);
+    expect(viaFlag.spans.map((s) => s.kind)).toEqual(['paragraph', 'indented-code']);
+    expect(viaFlag.spans[1]!.markdown).toBe('    code();');
+    expect(viaFlag.spans[1]!.node?.type).toBe('code');
+    expect(parseSingleBlock('    indented();')?.kind).toBe('indented-code');
   });
 });
 

@@ -2,7 +2,7 @@
 
 Noto’s markdown v3 stack (`src/shared/markdown/v3/`) still defaults to micromark.
 The long-term engine that should own that hot path is the public MIT package
-**[@roobli/md](https://github.com/roobli/md)** v0.1.1 (“WYSIWYG-first markdown
+**[@roobli/md](https://github.com/roobli/md)** v0.1.2 (“WYSIWYG-first markdown
 engine for Noto”).
 
 ## Why
@@ -16,7 +16,7 @@ mdast dump.
 ## Dependency
 
 ```
-"@roobli/md": "github:roobli/md#v0.1.1"
+"@roobli/md": "github:roobli/md#v0.1.2"
 ```
 
 pnpm must allow its `prepare` (tsc) build — see `allowBuilds` in
@@ -45,7 +45,7 @@ NOTO_MARKDOWN_ENGINE=roobli-md pnpm test
 ```
 
 Product / CI stay on micromark until broader golden gates pass; tight adjacent
-quotes/callouts now match micromark (`@roobli/md` v0.1.1).
+quotes/callouts and native indented-code match micromark (`@roobli/md` v0.1.2).
 
 ## Adapter mapping
 
@@ -75,6 +75,8 @@ ProseMirror-ready node is required.
 
 Tight adjacent quotes/callouts (`quote-callout.md`, g004 quote→callout) match
 micromark as of `@roobli/md` v0.1.1 (CommonMark: unprefixed blank ends a quote).
+Native **indented-code** spans (exact offsets, internal blanks kept) shipped in
+`@roobli/md` v0.1.2 and are covered by the adapter parity suite.
 
 ## Bridge docs (engine repo)
 
@@ -85,11 +87,12 @@ micromark as of `@roobli/md` v0.1.1 (CommonMark: unprefixed blank ends a quote).
 
 ## Status
 
-**Adapter spike landed (default-off).** `@roobli/md` v0.1.1 Phase 6 native
-scanner is the flagged backend; micromark remains the product default. Quote/
-callout split parity is closed. Next: optionally cache prior splits so
+**Adapter spike landed (default-off).** `@roobli/md` v0.1.2 native scanner is
+the flagged backend; micromark remains the product default. Quote/callout and
+indented-code split parity are closed. Next: optionally cache prior splits so
 `NotoEditor.replaceMarkdown` can call `reparseBlocks` instead of a full native
 split, then consider default-on behind broader golden gates.
 
-**Noto `0.0.2-alpha.9`** ships the adapter (#37) plus `@roobli/md` v0.1.1 quote/
-callout parity (#38). Optional: `NOTO_MARKDOWN_ENGINE=roobli-md` (micromark remains default).
+**Noto `0.0.2-alpha.9`** shipped the adapter (#37) plus `@roobli/md` v0.1.1 quote/
+callout parity (#38). Pin is now `@roobli/md` v0.1.2 (native indented-code).
+Optional: `NOTO_MARKDOWN_ENGINE=roobli-md` (micromark remains default).

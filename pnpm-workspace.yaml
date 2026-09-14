@@ -12,7 +12,7 @@ strictPeerDependencies: false
 
 allowBuilds:
   '@roobli/md': true
-  '@roobli/md@https://codeload.github.com/roobli/md/tar.gz/7f21f1961d835a832962dcea3ab7dde85d5c9e41': true
+  '@roobli/md@https://codeload.github.com/roobli/md/tar.gz/16919f1bf626b9cdd0a3279b885576215f8e981a': true
   '@parcel/watcher': true
   electron: true
   esbuild: true
@@ -20,4 +20,3 @@ allowBuilds:
   # Unpacks the Squirrel binaries used to build the Windows installer. Runs
   # only while packaging, never inside the app.
   electron-winstaller: true
-  '@roobli/md@https://codeload.github.com/roobli/md/tar.gz/432f2d6a34a55d141e3671efd966686f2bda5f0f': set this to true or false
