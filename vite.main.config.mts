@@ -12,7 +12,7 @@ export default defineConfig({
       formats: ['cjs'],
       fileName: () => 'main.js',
     },
-    rollupOptions: { external: ['electron', 'electron-updater', 'semver', /^node:/] },
+    rollupOptions: { external: ['electron', /^node:/] },
   },
   resolve: {
     conditions: ['node'],
