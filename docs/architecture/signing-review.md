@@ -27,9 +27,18 @@ with `script-src` and `style-src` limited to `'self'`, `connect-src 'none'` and
 KaTeX broke ten tests because one of its fonts was being inlined as a `data:`
 URL, and the fix was to stop inlining rather than to widen `font-src`.
 
-Signing is gated on credentials being present, so a local build produces an
-unsigned app rather than failing. `resources/entitlements.plist` is valid and is
-passed for every file in the bundle.
+Signing is gated on credentials being present, so a local or CI build without
+`NOTO_APPLE_SIGNING_IDENTITY` does not use a Developer ID. Packager still
+rewrites `Info.plist` and the fuses plugin flips bits in the Electron binary,
+which invalidates Electron's stock signature. The Forge `postPackage` hook
+therefore adhoc-resigns (`codesign --force --deep --sign - Noto.app`) whenever
+that identity env var is unset. That binds the product bundle id
+(`dev.lr00rl.noto`) and stops Gatekeeper from calling the release zip
+"damaged". Users may still need right-click Open or `xattr -cr` until the build
+is notarized. True Developer ID signing and notarization need
+`NOTO_APPLE_SIGNING_IDENTITY` plus `APPLE_ID` / `APPLE_PASSWORD` /
+`APPLE_TEAM_ID`. `resources/entitlements.plist` is valid and is passed for
+every file in the bundle when a real identity is used.
 
 ## One entitlement worth a second look
 

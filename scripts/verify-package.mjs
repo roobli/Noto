@@ -167,6 +167,34 @@ async function verifyPlatformIdentity(packageDirectory, platform) {
   }
 }
 
+
+/**
+ * On a macOS host, the packaged `.app` must pass a strict codesign check.
+ *
+ * Without an adhoc resign after pack, Info.plist / fuse changes leave the
+ * stock Electron signature invalid and Gatekeeper reports the zip as
+ * "damaged". Cross-host verification (e.g. reading a darwin tree on Linux)
+ * skips this: `codesign` is only available on macOS.
+ */
+async function verifyCodesign(packageDirectory, platform) {
+  if (platform !== 'darwin' || process.platform !== 'darwin') return;
+  const app = path.join(packageDirectory, 'Noto.app');
+  if (!await exists(app)) {
+    check('Noto.app is present for codesign', false, app);
+    return;
+  }
+  try {
+    await run('codesign', ['-vv', '--deep', '--strict', app]);
+    check('codesign --deep --strict passes', true);
+  } catch (error) {
+    const detail = [error.stderr, error.stdout, error.message]
+      .filter(Boolean)
+      .map((part) => String(part).trim())
+      .join('\n');
+    check('codesign --deep --strict passes', false, detail);
+  }
+}
+
 async function main() {
   const target = process.argv[2];
   if (!target) throw new Error('Usage: node scripts/verify-package.mjs <package directory>');
@@ -179,6 +207,7 @@ async function main() {
 
   await verifyAsar(packageDirectory, platform);
   await verifyPlatformIdentity(packageDirectory, platform);
+  await verifyCodesign(packageDirectory, platform);
   if (await exists(executable)) await verifyFuses(executable, variant);
 
   console.log(`${platform} ${variant}: ${checks.length - failures.length}/${checks.length} checks passed`);

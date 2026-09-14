@@ -1,3 +1,4 @@
+import { execFileSync } from 'node:child_process';
 import path from 'node:path';
 import type { ForgeConfig } from '@electron-forge/shared-types';
 import { FusesPlugin } from '@electron-forge/plugin-fuses';
@@ -16,9 +17,12 @@ const e2eFuseVariant = packageVariant === 'e2e';
 
 /**
  * Code signing is configured from the environment so that an unsigned local
- * build and a signed release build run the same packaging path. When the
- * credentials are absent the build still succeeds and simply is not signed,
- * which is what a contributor without certificates needs.
+ * build and a signed release build run the same packaging path. When
+ * `NOTO_APPLE_SIGNING_IDENTITY` is set, `@electron/osx-sign` signs with that
+ * identity. When it is absent, the `postPackage` hook below adhoc-resigns the
+ * `.app` so Gatekeeper does not report the zip as "damaged" (Info.plist /
+ * fuses invalidate Electron's stock signature otherwise). True Developer ID
+ * notarization still needs the Apple identity and notarize env vars.
  */
 const appleIdentity = process.env.NOTO_APPLE_SIGNING_IDENTITY;
 const appleNotarize = process.env.APPLE_ID && process.env.APPLE_PASSWORD && process.env.APPLE_TEAM_ID
@@ -99,6 +103,28 @@ const config: ForgeConfig = {
       },
     }, ['linux']),
   ],
+  hooks: {
+    /**
+     * Adhoc-resign after pack when no Developer ID is configured.
+     *
+     * Packager rewrites Info.plist (bundle id) and the fuses plugin flips bits
+     * in the Electron binary. Both invalidate the stock Electron signature, so
+     * `codesign -vv --deep --strict` fails with "invalid Info.plist" and macOS
+     * calls the downloaded zip "damaged". Re-signing with `-` binds the current
+     * plist and binary under `dev.lr00rl.noto`. Gatekeeper still wants
+     * right-click Open / `xattr -cr` without notarization; "damaged" goes away.
+     */
+    postPackage: async (_forgeConfig, packageResult) => {
+      if (packageResult.platform !== 'darwin') return;
+      if (process.env.NOTO_APPLE_SIGNING_IDENTITY) return;
+      for (const outputPath of packageResult.outputPaths) {
+        const appPath = path.join(outputPath, 'Noto.app');
+        execFileSync('codesign', ['--force', '--deep', '--sign', '-', appPath], {
+          stdio: 'inherit',
+        });
+      }
+    },
+  },
   plugins: [
     new VitePlugin({
       concurrent: 2,
