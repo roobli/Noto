@@ -28,6 +28,15 @@ export const wikiLinkKey = new PluginKey<DecorationSet>('noto-wiki-links');
  */
 const WIKI_LINK = /\[\[([^[\]\n|]+)(?:\|([^[\]\n]*))?\]\]/g;
 
+
+/**
+ * RTFS-style array text such as `[[100, 101, ...]]` — digits and commas only,
+ * not a note path. A bare `[[100]]` still counts; a real title can be a number.
+ */
+export function isCommaSeparatedIntegerList(target: string): boolean {
+  return /^\d+(?:\s*,\s*\d+)+$/.test(target);
+}
+
 export interface WikiLinkMatch {
   readonly from: number;
   readonly to: number;
@@ -51,6 +60,7 @@ export function findWikiLinks(text: string, offset: number): WikiLinkMatch[] {
     const rawTarget = match[1];
     const target = rawTarget.trim();
     if (target.length === 0) continue;
+    if (isCommaSeparatedIntegerList(target)) continue;
     const from = offset + match.index;
     const to = from + match[0].length;
     const innerFrom = from + 2;
