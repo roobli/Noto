@@ -232,7 +232,7 @@ export interface FileTruthDiagnosticsV1 {
 
 export type FileTruthResultV1<T> =
   | { readonly ok: true; readonly requestId: string; readonly value: T }
-  | { readonly ok: false; readonly requestId: string; readonly error: { readonly code: 'BAD_REQUEST' | 'FILE_TRUTH_TRANSPORT_FAILED'; readonly message: string } };
+  | { readonly ok: false; readonly requestId: string; readonly error: { readonly code: 'BAD_REQUEST' | 'NO_DOCUMENT_OPEN' | 'FILE_TRUTH_TRANSPORT_FAILED'; readonly message: string } };
 
 /**
  * What happened to the file behind an open document.

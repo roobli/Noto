@@ -211,7 +211,7 @@ function isResult<T>(value: unknown, expectedRequestId: string, validateValue: (
   if (value.ok) return exact(value, ['ok', 'requestId', 'value']) && validateValue(value.value);
   return exact(value, ['ok', 'requestId', 'error']) && record(value.error)
     && exact(value.error, ['code', 'message'])
-    && ['BAD_REQUEST', 'FILE_TRUTH_TRANSPORT_FAILED'].includes(String(value.error.code))
+    && ['BAD_REQUEST', 'NO_DOCUMENT_OPEN', 'FILE_TRUTH_TRANSPORT_FAILED'].includes(String(value.error.code))
     && typeof value.error.message === 'string' && value.error.message.length > 0 && value.error.message.length <= 2048;
 }
 

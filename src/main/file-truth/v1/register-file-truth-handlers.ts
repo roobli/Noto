@@ -44,8 +44,14 @@ export function registerFileTruthHandlers(deps: {
       }
       try { return { ok: true, requestId: value.requestId, value: await operation(value) }; }
       catch (error) {
+        const message = error instanceof Error ? error.message.slice(0, 2048) : 'Unknown transport failure';
+        // Folder-only restore / empty window: open (and recover/diagnostics) with
+        // no document is ordinary, not a broken transport. Keep the log quiet.
+        if (message.startsWith('NO_DOCUMENT_OPEN:')) {
+          return { ok: false, requestId: value.requestId, error: { code: 'NO_DOCUMENT_OPEN', message } };
+        }
         deps.logger.log('file_truth_transport_failed', { channel, requestId: value.requestId });
-        return { ok: false, requestId: value.requestId, error: { code: 'FILE_TRUTH_TRANSPORT_FAILED', message: error instanceof Error ? error.message.slice(0, 2048) : 'Unknown transport failure' } };
+        return { ok: false, requestId: value.requestId, error: { code: 'FILE_TRUTH_TRANSPORT_FAILED', message } };
       }
     });
   };
@@ -72,6 +78,8 @@ export function registerFileTruthHandlers(deps: {
     return store;
   };
 
+  // Startup always asks to reopen. Folder-only restore has no current path —
+  // that is a quiet no-op (NO_DOCUMENT_OPEN), not a transport failure.
   register<FileTruthRequestV1, Awaited<ReturnType<FileTruthStoreV1['open']>>>(FILE_TRUTH_CHANNELS.open, isFileTruthRequestV1, () => {
     const current = deps.session.currentPath;
     if (!current) throw new Error('NO_DOCUMENT_OPEN: open a document first');
