@@ -90,20 +90,22 @@ jobs:
         run: |
           version=$(node -p "require('./package.json').version")
           mkdir -p upload
-          # No `.nupkg` and no `RELEASES`: those are Squirrel's own update
-          # feed, and Noto has no updater to feed. On a release page they are
-          # two files nobody can use beside the one everybody wants.
-          find out/make -type f \( -name '*.zip' -o -name '*.exe' -o -name '*.deb' -o -name '*.rpm' \) -print0 |
+          # Installers people download, plus Squirrel's update feed (RELEASES +
+          # nupkg) and electron-updater yml metadata so packaged apps can
+          # auto-update from this release. See docs/architecture/updates.md.
+          find out/make -type f \( -name '*.zip' -o -name '*.exe' -o -name '*.deb' -o -name '*.rpm' -o -name '*.nupkg' -o -name 'RELEASES' \) -print0 |
             while IFS= read -r -d '' file; do
               base=$(basename "$file")
               case "$base" in
                 Noto-darwin-arm64-*.zip) name="Noto-$version-macos-arm64.zip" ;;
                 Noto-darwin-x64-*.zip) name="Noto-$version-macos-x64.zip" ;;
+                RELEASES) name="RELEASES" ;;
                 *"$version"*) name="$base" ;;
                 *) name="${base%.*}-$version.${base##*.}" ;;
               esac
               cp "$file" "upload/$name"
             done
+          node scripts/write-update-metadata.mjs upload
           ls -l upload
 
       # One at a time, and never over something already there. The archives on

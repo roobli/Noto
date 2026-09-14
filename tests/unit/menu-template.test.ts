@@ -23,6 +23,7 @@ function template(platform: NodeJS.Platform, recent: readonly RecentFileV1[] = [
       chooseTheme: noop,
       openThemeFolder: noop,
       clearRecent: noop,
+      checkUpdates: noop,
     },
     sendCommand: noop,
     openExternal: noop,
@@ -199,6 +200,7 @@ describe('the Themes menu', () => {
       openFolder: noop, closeTab: noop, openDialog: noop, openPath: noop, importDocument: noop,
       print: noop, pastePlain: noop, reopenClosed: noop, chooseTheme: noop, openThemeFolder: noop,
       clearRecent: noop,
+      checkUpdates: noop,
     },
     sendCommand: noop,
     openExternal: noop,
@@ -231,5 +233,14 @@ describe('the Themes menu', () => {
       themeItems(template).filter((item) => item.checked).map((item) => item.label);
     expect(ticked(withThemes(''))).toEqual(['Noto']);
     expect(ticked(withThemes('/themes/newsprint.css'))).toEqual(['Newsprint']);
+  });
+});
+
+describe('Help carries a quiet update check', () => {
+  it('lists Check for Updates on every platform', () => {
+    for (const platform of ['darwin', 'win32', 'linux'] as const) {
+      const help = menu(template(platform), 'help');
+      expect(labels(help)).toContain('Check for Updates…');
+    }
   });
 });

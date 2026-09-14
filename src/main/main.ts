@@ -47,6 +47,8 @@ import { WorkspaceSession } from './workspace/session';
 import { installApplicationMenu, sendPasteText } from './workspace/menu';
 import { registerWorkspaceHandlers } from './workspace/register-workspace-handlers';
 import { registerAssetHandlers } from './workspace/register-asset-handlers';
+import { AppUpdater } from './updates/app-updater';
+import { registerUpdateHandlers } from './updates/register-update-handlers';
 
 registerNotoScheme();
 
@@ -287,6 +289,12 @@ async function run(): Promise<void> {
   await recentFolders.load();
   const settings = new SettingsStore(path.join(userData, 'settings.json'));
   await settings.load();
+  const updater = new AppUpdater({
+    getWindow: () => editorWindow,
+    logger,
+    getChannel: () => settings.current().updateChannel,
+    getAutoDownload: () => settings.current().autoDownloadUpdates,
+  });
   session = new WorkspaceSession(
     createStore, recent, () => editorWindow, logger, recentFolders,
     () => settings.current().treeSort,
@@ -389,6 +397,9 @@ async function run(): Promise<void> {
     },
     clearRecent: () => {
       void Promise.all(recent.list().map((file) => recent.forget(file.path))).then(refreshMenu);
+    },
+    checkUpdates: () => {
+      void updater.check('manual').catch(() => logger.log('update_menu_check_failed', {}));
     },
   }, { ...menuState, ...documentShape() }, (command) => {
     // The renderer owns whether the editor is read-only, and this menu shows a
@@ -703,7 +714,13 @@ async function run(): Promise<void> {
         // what you have is stale.
         session?.announceTreeChanged();
       }
+      updater.applyPreferences();
     },
+  });
+  registerUpdateHandlers({
+    updater,
+    getWindow: () => editorWindow,
+    logger,
   });
   registerWorkspaceHandlers({
     session,
@@ -719,6 +736,12 @@ async function run(): Promise<void> {
   nativeTheme.on('updated', () => {
     if (settings.current().theme === 'system') syncWindowChromeTheme('system');
   });
+  // Optional quiet launch check. Finds nothing → stays silent; Settings shows status.
+  if (settings.current().checkUpdatesOnLaunch) {
+    window.webContents.once('did-finish-load', () => {
+      void updater.check('launch').catch(() => logger.log('update_launch_check_failed', {}));
+    });
+  }
   const disposeRendererAuthority = () => {
     const leases = rendererLeaseBridge.activeLeases();
     rendererLeaseBridge.rendererDisposed();
