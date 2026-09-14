@@ -31,6 +31,8 @@ import {
   type SystemFontsReplyV1,
   type TreeSortV1,
   type RemoteStatusReplyV1,
+  UPDATE_CHANNEL_SETTINGS,
+  type UpdateChannelSettingV1,
 } from './contracts';
 
 const requestId = /^[A-Za-z0-9._:-]{1,96}$/;
@@ -179,6 +181,15 @@ export function coerceSettings(value: unknown): NotoSettingsV1 {
     railLinks: typeof value.railLinks === 'boolean'
       ? value.railLinks
       : DEFAULT_SETTINGS.railLinks,
+    updateChannel: UPDATE_CHANNEL_SETTINGS.includes(value.updateChannel as UpdateChannelSettingV1)
+      ? value.updateChannel as UpdateChannelSettingV1
+      : DEFAULT_SETTINGS.updateChannel,
+    checkUpdatesOnLaunch: typeof value.checkUpdatesOnLaunch === 'boolean'
+      ? value.checkUpdatesOnLaunch
+      : DEFAULT_SETTINGS.checkUpdatesOnLaunch,
+    autoDownloadUpdates: typeof value.autoDownloadUpdates === 'boolean'
+      ? value.autoDownloadUpdates
+      : DEFAULT_SETTINGS.autoDownloadUpdates,
   };
 }
 
@@ -208,6 +219,9 @@ export function isSettingsWriteRequestV1(value: unknown): value is SettingsWrite
     if (key === 'customCssPath') return isCssPath(patch.customCssPath);
     if (key === 'imageDestination') return IMAGE_DESTINATIONS.includes(patch.imageDestination as ImageDestinationV1);
     if (key === 'imageCustomFolder') return isImageFolder(patch.imageCustomFolder);
+    if (key === 'updateChannel') {
+      return UPDATE_CHANNEL_SETTINGS.includes(patch.updateChannel as UpdateChannelSettingV1);
+    }
     // Out of range is refused rather than clamped: a write says what it wants,
     // and silently storing something else is the kind of disagreement that
     // shows up later as a control that will not move.
@@ -265,6 +279,9 @@ export function isSettingsReplyV1(value: unknown): value is SettingsReplyV1 {
     && typeof settings.sidenotes === 'boolean'
     && typeof settings.fileTags === 'boolean'
     && typeof settings.railLinks === 'boolean'
+    && UPDATE_CHANNEL_SETTINGS.includes(settings.updateChannel as UpdateChannelSettingV1)
+    && typeof settings.checkUpdatesOnLaunch === 'boolean'
+    && typeof settings.autoDownloadUpdates === 'boolean'
     && typeof settings.autoPair === 'boolean'
     && typeof settings.todoCheckTime === 'boolean'
     && typeof settings.focusMode === 'boolean'

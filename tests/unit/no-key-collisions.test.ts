@@ -65,6 +65,7 @@ describe('no key is claimed twice', () => {
       openFolder: () => {}, closeTab: () => {}, openDialog: () => {},
       openPath: () => {},
     importDocument: () => {}, clearRecent: () => {}, print: () => {}, pastePlain: () => {}, reopenClosed: () => {}, chooseTheme: () => {}, openThemeFolder: () => {},
+      checkUpdates: () => {},
     },
     sendCommand: () => {},
     openExternal: () => {},

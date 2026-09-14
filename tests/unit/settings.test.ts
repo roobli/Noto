@@ -173,3 +173,20 @@ describe('the document font', () => {
     expect(isSettingsWriteRequestV1({ version: 1, requestId: 'a', patch: { proseFace: 'Songti SC' } })).toBe(false);
   });
 });
+
+describe('update preferences', () => {
+  it('defaults to Stable with launch check and auto-download off', () => {
+    expect(DEFAULT_SETTINGS.updateChannel).toBe('stable');
+    expect(DEFAULT_SETTINGS.checkUpdatesOnLaunch).toBe(false);
+    expect(DEFAULT_SETTINGS.autoDownloadUpdates).toBe(false);
+  });
+
+  it('accepts a Testing channel write', () => {
+    expect(isSettingsWriteRequestV1({
+      version: 1, requestId: 'settings-1', patch: { updateChannel: 'testing' },
+    })).toBe(true);
+    expect(isSettingsWriteRequestV1({
+      version: 1, requestId: 'settings-1', patch: { updateChannel: 'nightly' },
+    })).toBe(false);
+  });
+});

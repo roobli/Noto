@@ -1441,9 +1441,10 @@ keep labels only; caret in the paragraph but off every wiki hides all source.
 List sibling isolation is unchanged. Inline mark widgets and Typora-mark
 delimiters keep the same blur gate.
 
-Residual, named rather than queued: heading level still uses the margin `hN`
-badge rather than revealing `#` hashes in the line (intentional, matching the
-author's Typora theme).
+Residual, named rather than queued (graber): span-level wiki source symbols are
+done; only the heading level still uses the margin `hN` badge rather than
+revealing `#` hashes in the line (intentional, matching the author's Typora
+theme).
 
 Feel acceptance (lightweight): `tests/unit/source-editing.test.ts` covers sibling
 list items, three-wiki paragraphs (only the caret match activates), and

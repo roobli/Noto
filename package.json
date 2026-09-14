@@ -6,13 +6,13 @@
   "private": true,
   "description": "Noto, a Markdown editor that keeps your file byte for byte",
   "author": "lr00rl",
-  "homepage": "https://github.com/lr00rl/Noto",
+  "homepage": "https://github.com/roobli/Noto",
   "repository": {
     "type": "git",
-    "url": "git+https://github.com/lr00rl/Noto.git"
+    "url": "git+https://github.com/roobli/Noto.git"
   },
   "bugs": {
-    "url": "https://github.com/lr00rl/Noto/issues"
+    "url": "https://github.com/roobli/Noto/issues"
   },
   "main": ".vite/build/main.js",
   "packageManager": "pnpm@11.18.0",
@@ -37,6 +37,7 @@
   },
   "dependencies": {
     "@roobli/md": "github:roobli/md#v0.1.2",
+    "electron-updater": "6.8.9",
     "mdast-util-from-markdown": "^2.0.3",
     "mdast-util-frontmatter": "^2.0.1",
     "mdast-util-gfm": "^3.1.0",
@@ -62,7 +63,8 @@
     "prosemirror-transform": "^1.12.0",
     "prosemirror-view": "^1.42.3",
     "react": "19.2.8",
-    "react-dom": "19.2.8"
+    "react-dom": "19.2.8",
+    "semver": "7.7.3"
   },
   "devDependencies": {
     "@electron-forge/cli": "7.11.2",
@@ -79,11 +81,22 @@
     "@types/prismjs": "^1.26.6",
     "@types/react": "19.2.18",
     "@types/react-dom": "19.2.5",
+    "@types/semver": "7.7.1",
     "@vitejs/plugin-react": "6.1.1",
     "electron": "44.0.0",
     "sass": "1.103.1",
     "typescript": "7.0.2",
     "vite": "8.2.2",
     "vitest": "4.1.11"
+  },
+  "build": {
+    "appId": "dev.lr00rl.noto",
+    "publish": [
+      {
+        "provider": "github",
+        "owner": "roobli",
+        "repo": "Noto"
+      }
+    ]
   }
 }

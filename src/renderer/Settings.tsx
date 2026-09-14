@@ -24,9 +24,11 @@ import {
   type WidthModeV1,
   type ProseFaceV1,
   type RemoteStatusReplyV1,
+  type UpdateChannelSettingV1,
 } from '../shared/settings/v1/contracts';
+import type { UpdateStatusV1 } from '../shared/updates/v1/contracts';
 
-export type SettingsSection = 'appearance' | 'editor' | 'markdown' | 'images' | 'remote' | 'plugins';
+export type SettingsSection = 'appearance' | 'editor' | 'markdown' | 'images' | 'updates' | 'remote' | 'plugins';
 
 export interface SettingsProps {
   readonly open: boolean;
@@ -64,6 +66,7 @@ function SectionGlyph({ name }: { name: SettingsSection }) {
     editor: 'M2.5 12.5h11 M4 9.8 10.2 3.6a1.4 1.4 0 0 1 2 2L6 11.8l-2.6.6Z',
     markdown: 'M2.5 4.5h11v7h-11z M4.5 10V6.5l2 2 2-2V10 M11 6.5V10 M9.8 8.6 11 10l1.2-1.4',
     images: 'M2.5 3.5h11v9h-11z M2.5 10.2 5.9 7.4l2.4 2 2-1.7 3.2 2.7 M10.4 5.9h.01',
+    updates: 'M8 2.5v6.2 M5.2 6.5 8 9.3l2.8-2.8 M3 11.5h10v2H3z',
     remote: 'M2.5 4.5h11v7h-11z M5.5 13.5h5 M8 11.5v2',
     plugins: 'M6 2.5v2.2a1.3 1.3 0 1 1-2.6 0V2.5 M2.5 6h11v7.5h-11z M2.5 6V3.4h1',
   };
@@ -80,6 +83,7 @@ const SECTIONS: readonly { value: SettingsSection; label: string; keywords: stri
   { value: 'editor', label: 'Editor', keywords: 'spell check images brackets pairs focus typewriter save autosave line numbers guides reload external disk sync watch file tags frontmatter' },
   { value: 'markdown', label: 'Markdown', keywords: 'smart quotes dashes ellipsis punctuation typography syntax' },
   { value: 'images', label: 'Images', keywords: 'image picture paste drop screenshot assets folder copy relative path escape url upload picgo bucket' },
+  { value: 'updates', label: 'Updates', keywords: 'update upgrade release version github alpha stable testing channel download auto check launch' },
   { value: 'remote', label: 'Remote', keywords: 'remote control api token port script agent automation', buried: true },
   { value: 'plugins', label: 'Plugins', keywords: 'plugin extension enable disable palette', buried: true },
 ];
@@ -88,6 +92,11 @@ const THEMES: readonly { value: NotoTheme; label: string }[] = [
   { value: 'system', label: 'System' },
   { value: 'light', label: 'Light' },
   { value: 'dark', label: 'Dark' },
+];
+
+const CHANNELS: readonly { value: UpdateChannelSettingV1; label: string; hint: string }[] = [
+  { value: 'stable', label: 'Stable', hint: 'Formal GitHub releases only.' },
+  { value: 'testing', label: 'Testing', hint: 'Includes prerelease alphas such as v0.0.2-alpha.x.' },
 ];
 
 /* The numbers are in the hints rather than the labels: the labels are what
@@ -477,6 +486,168 @@ function DocumentFont({ settings, onChange }: {
         </select>
       </div>
     </>
+  );
+}
+
+
+function updateStatusLine(status: UpdateStatusV1 | null, settings: NotoSettingsV1): string {
+  if (!status) return 'Not checked yet.';
+  const track = settings.updateChannel === 'testing' ? 'Testing (alphas)' : 'Stable';
+  const running = `Running ${status.currentVersion} on ${track}.`;
+  switch (status.phase) {
+    case 'checking':
+      return `${running} Checking…`;
+    case 'up-to-date':
+      return settings.updateChannel === 'stable'
+        ? `${running} No newer Stable release.`
+        : `${running} Up to date on Testing.`;
+    case 'available':
+      return `${running} ${status.availableVersion} is ready on this channel.`;
+    case 'downloading':
+      return `${running} Downloading ${status.availableVersion}…`;
+    case 'downloaded':
+      return `${running} ${status.availableVersion} downloaded — restart to install.`;
+    case 'error':
+      return status.problem || 'Update check failed.';
+    case 'unsupported':
+      return `${running} Updates open the release page on this platform.`;
+    default:
+      return running;
+  }
+}
+
+/**
+ * Release track and quiet update controls.
+ *
+ * Stable is the default for day-to-day use. Testing is opt-in and is the only
+ * way to follow alpha builds. Status lives in this pane; launch checks stay
+ * silent when nothing is new.
+ */
+function UpdatesPane({
+  settings,
+  onChange,
+}: {
+  settings: NotoSettingsV1;
+  onChange: (patch: Partial<NotoSettingsV1>) => void;
+}) {
+  const [status, setStatus] = useState<UpdateStatusV1 | null>(null);
+  const [busy, setBusy] = useState(false);
+
+  const read = useCallback(() => {
+    void window.notoUpdates.status({ version: 1, requestId: `upd-status:${crypto.randomUUID()}` })
+      .then((result) => { if (result.ok) setStatus(result.value); });
+  }, []);
+
+  useEffect(() => {
+    read();
+    return window.notoUpdates.onChanged((event) => setStatus(event));
+  }, [read]);
+
+  const run = async (action: 'check' | 'download' | 'install' | 'open') => {
+    setBusy(true);
+    try {
+      const request = { version: 1 as const, requestId: `upd-${action}:${crypto.randomUUID()}` };
+      const result = action === 'check' ? await window.notoUpdates.check(request)
+        : action === 'download' ? await window.notoUpdates.download(request)
+          : action === 'install' ? await window.notoUpdates.install(request)
+            : await window.notoUpdates.openRelease(request);
+      if (result.ok) setStatus(result.value);
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  const channelHint = settings.updateChannel === 'testing'
+    ? 'Next check can offer prerelease alphas and later Stable cuts.'
+    : 'Next check offers only formal GitHub releases — not alphas.';
+
+  return (
+    <div className="updates-pane" data-testid="updates-pane">
+      <Choices
+        label="Update channel"
+        hint={channelHint}
+        options={CHANNELS}
+        value={settings.updateChannel}
+        onPick={(value) => onChange({ updateChannel: value })}
+        testPrefix="update-channel"
+      />
+      <p className="pref-note" data-testid="update-channel-note">
+        {settings.updateChannel === 'stable'
+          ? 'Stable is the day-to-day track. Alphas stay off it until you switch to Testing.'
+          : 'Testing includes prereleases such as v0.0.2-alpha.x. Switch back to Stable when you want only formal releases.'}
+      </p>
+      <Switch
+        label="Check for updates on launch"
+        hint="Quiet: when nothing is new, nothing is shown."
+        checked={settings.checkUpdatesOnLaunch}
+        onChange={(value) => onChange({ checkUpdatesOnLaunch: value })}
+        testId="setting-check-updates-launch"
+      />
+      <Switch
+        label="Download updates automatically"
+        hint="When a check finds a build on this channel, fetch it without asking. Install still waits for you."
+        checked={settings.autoDownloadUpdates}
+        onChange={(value) => onChange({ autoDownloadUpdates: value })}
+        testId="setting-auto-download-updates"
+      />
+      <p className="pref-status" data-testid="update-status">{updateStatusLine(status, settings)}</p>
+      <div className="pref-row pref-actions">
+        <button
+          type="button"
+          className="pref-action"
+          data-testid="update-check"
+          disabled={busy}
+          onClick={() => { void run('check'); }}
+        >
+          Check now
+        </button>
+        {status?.phase === 'available' && status.canAutoInstall && (
+          <button
+            type="button"
+            className="pref-action"
+            data-testid="update-download"
+            disabled={busy}
+            onClick={() => { void run('download'); }}
+          >
+            Download
+          </button>
+        )}
+        {status?.phase === 'downloaded' && status.canAutoInstall && (
+          <button
+            type="button"
+            className="pref-action"
+            data-testid="update-install"
+            disabled={busy}
+            onClick={() => { void run('install'); }}
+          >
+            Restart and install
+          </button>
+        )}
+        {(status?.phase === 'available' || status?.phase === 'downloaded' || !status?.canAutoInstall)
+          && status?.availableVersion && (
+          <button
+            type="button"
+            className="pref-action"
+            data-testid="update-open-release"
+            disabled={busy}
+            onClick={() => { void run('open'); }}
+          >
+            Open release
+          </button>
+        )}
+      </div>
+      {!status?.packaged && (
+        <p className="pref-note">
+          Packaged builds can download and install on macOS and Windows. This development
+          copy can still check the chosen channel.
+        </p>
+      )}
+      {status?.packaged && !status.canAutoInstall && (
+        <p className="pref-note">
+          On this platform, updates open the matching installer from GitHub Releases.
+        </p>
+      )}
+    </div>
   );
 }
 
@@ -896,6 +1067,10 @@ export function Settings({
                   testId="setting-remote-images-image-pane"
                 />
               </>
+            )}
+
+            {section === 'updates' && (
+              <UpdatesPane settings={settings} onChange={onChange} />
             )}
 
             {section === 'remote' && (

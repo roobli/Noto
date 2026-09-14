@@ -49,6 +49,10 @@ Builds for macOS, Windows and Linux are on the
 installer for your system where there is one, or the archive, which needs no
 installing: unpack it and run what is inside.
 
+Packaged builds can check GitHub Releases from **Settings → Updates**. Stable
+(default) follows formal releases only; Testing includes alphas. See
+`docs/architecture/updates.md`.
+
 | Platform | Installer | Archive |
 | --- | --- | --- |
 | macOS, Apple silicon or Intel | | `Noto-<version>-macos-<arch>.zip` |

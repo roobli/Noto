@@ -41,6 +41,8 @@ export interface MenuActions {
   /** Show the themes folder in the file manager, so one can be added. */
   openThemeFolder: () => void;
   clearRecent: () => void;
+  /** Quiet check against the chosen GitHub Releases channel. */
+  checkUpdates: () => void;
 }
 
 export interface MenuTemplateOptions {
@@ -512,8 +514,12 @@ export function buildMenuTemplate(options: MenuTemplateOptions): MenuItemConstru
       command('What Noto Can Do', 'CmdOrCtrl+Shift+/', 'shortcuts'),
       { type: 'separator' },
       {
-        label: 'Noto on the web',
-        click: () => openExternal('https://github.com'),
+        label: 'Check for Updates…',
+        click: () => actions.checkUpdates(),
+      },
+      {
+        label: 'Noto on GitHub',
+        click: () => openExternal('https://github.com/roobli/Noto'),
       },
       // About lives in the application menu on macOS, so Help carries it only
       // on the platforms that have nowhere else to put it.

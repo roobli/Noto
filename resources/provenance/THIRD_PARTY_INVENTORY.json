@@ -1,5 +1,5 @@
 {
-  "lockfileSha256": "37b854161bd9637d942079f8efaaac801d4bd54f61a4c1b1607882e618286a6a",
+  "lockfileSha256": "f1e8d7015966fcde75ff00a14402c337746da5a4cfa3e6845f5f2b0f35fefd9b",
   "packages": [
     {
       "name": "@antfu/install-pkg",
@@ -1158,6 +1158,15 @@
       ]
     },
     {
+      "name": "@types/semver",
+      "version": "7.7.1",
+      "license": "MIT",
+      "repository": "https://github.com/DefinitelyTyped/DefinitelyTyped.git",
+      "noticeFiles": [
+        "LICENSE"
+      ]
+    },
+    {
       "name": "@types/trusted-types",
       "version": "2.0.7",
       "license": "MIT",
@@ -1580,6 +1589,15 @@
       ]
     },
     {
+      "name": "argparse",
+      "version": "2.0.1",
+      "license": "Python-2.0",
+      "repository": "nodeca/argparse",
+      "noticeFiles": [
+        "LICENSE"
+      ]
+    },
+    {
       "name": "assertion-error",
       "version": "2.0.1",
       "license": "MIT",
@@ -1719,6 +1737,15 @@
       "version": "5.7.1",
       "license": "MIT",
       "repository": "git://github.com/feross/buffer.git",
+      "noticeFiles": [
+        "LICENSE"
+      ]
+    },
+    {
+      "name": "builder-util-runtime",
+      "version": "9.7.0",
+      "license": "MIT",
+      "repository": "git+https://github.com/electron-userland/electron-builder.git",
       "noticeFiles": [
         "LICENSE"
       ]
@@ -2622,6 +2649,15 @@
       "version": "1.5.415",
       "license": "ISC",
       "repository": "git+https://github.com/Kilian/electron-to-chromium.git",
+      "noticeFiles": [
+        "LICENSE"
+      ]
+    },
+    {
+      "name": "electron-updater",
+      "version": "6.8.9",
+      "license": "MIT",
+      "repository": "git+https://github.com/electron-userland/electron-builder.git",
       "noticeFiles": [
         "LICENSE"
       ]
@@ -3594,6 +3630,15 @@
       ]
     },
     {
+      "name": "js-yaml",
+      "version": "4.3.2",
+      "license": "MIT",
+      "repository": "nodeca/js-yaml",
+      "noticeFiles": [
+        "LICENSE"
+      ]
+    },
+    {
       "name": "json-buffer",
       "version": "3.0.1",
       "license": "MIT",
@@ -3691,6 +3736,13 @@
       ]
     },
     {
+      "name": "lazy-val",
+      "version": "1.0.5",
+      "license": "MIT",
+      "repository": "develar/lazy-val",
+      "noticeFiles": []
+    },
+    {
       "name": "lightningcss-linux-x64-gnu",
       "version": "1.33.0",
       "license": "MPL-2.0",
@@ -3754,8 +3806,26 @@
       ]
     },
     {
+      "name": "lodash.escaperegexp",
+      "version": "4.1.2",
+      "license": "MIT",
+      "repository": "lodash/lodash",
+      "noticeFiles": [
+        "LICENSE"
+      ]
+    },
+    {
       "name": "lodash.get",
       "version": "4.4.2",
+      "license": "MIT",
+      "repository": "lodash/lodash",
+      "noticeFiles": [
+        "LICENSE"
+      ]
+    },
+    {
+      "name": "lodash.isequal",
+      "version": "4.5.0",
       "license": "MIT",
       "repository": "lodash/lodash",
       "noticeFiles": [
@@ -5507,6 +5577,15 @@
       ]
     },
     {
+      "name": "sax",
+      "version": "1.6.1",
+      "license": "BlueOak-1.0.0",
+      "repository": "git+ssh://git@github.com/isaacs/sax-js.git",
+      "noticeFiles": [
+        "LICENSE.md"
+      ]
+    },
+    {
       "name": "scheduler",
       "version": "0.27.0",
       "license": "MIT",
@@ -5547,6 +5626,24 @@
       "version": "6.3.1",
       "license": "ISC",
       "repository": "https://github.com/npm/node-semver.git",
+      "noticeFiles": [
+        "LICENSE"
+      ]
+    },
+    {
+      "name": "semver",
+      "version": "7.7.3",
+      "license": "ISC",
+      "repository": "git+https://github.com/npm/node-semver.git",
+      "noticeFiles": [
+        "LICENSE"
+      ]
+    },
+    {
+      "name": "semver",
+      "version": "7.7.4",
+      "license": "ISC",
+      "repository": "git+https://github.com/npm/node-semver.git",
       "noticeFiles": [
         "LICENSE"
       ]
@@ -5925,6 +6022,15 @@
       "license": "MIT",
       "repository": "alessioalex/tiny-each-async",
       "noticeFiles": []
+    },
+    {
+      "name": "tiny-typed-emitter",
+      "version": "2.1.0",
+      "license": "MIT",
+      "repository": "https://github.com/binier/tiny-typed-emitter.git",
+      "noticeFiles": [
+        "LICENSE"
+      ]
     },
     {
       "name": "tinybench",

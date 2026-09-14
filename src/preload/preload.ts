@@ -42,6 +42,14 @@ import {
   isSettingsWriteRequestV1,
   isRemoteStatusResultV1,
 } from '../shared/settings/v1/validate';
+import {
+  UPDATE_CHANNELS,
+  type NotoUpdatesApiV1,
+  type UpdateRequestV1,
+  type UpdateResultV1,
+  type UpdateStatusV1,
+} from '../shared/updates/v1/contracts';
+import { isUpdateRequestV1, isUpdateResultV1, isUpdateStatusV1 } from '../shared/updates/v1/validate';
 import type {
   FileTruthBootstrapReplyV1,
   FileTruthRequestV1,
@@ -535,9 +543,60 @@ const assetsApi: NotoAssetsApiV1 = Object.freeze({
   },
 });
 
+
+async function invokeUpdate(
+  channel: string,
+  request: UpdateRequestV1,
+): Promise<UpdateResultV1<UpdateStatusV1>> {
+  const value: unknown = await ipcRenderer.invoke(channel, request);
+  return isUpdateResultV1(value, request.requestId)
+    ? value
+    : {
+        ok: false as const,
+        requestId: request.requestId,
+        error: { code: 'BAD_REQUEST', message: 'Main returned an invalid update response' },
+      };
+}
+
+const updatesApi: NotoUpdatesApiV1 = Object.freeze({
+  status: (request: UpdateRequestV1) => isUpdateRequestV1(request)
+    ? invokeUpdate(UPDATE_CHANNELS.status, request)
+    : Promise.resolve({
+        ok: false as const, requestId: 'invalid',
+        error: { code: 'BAD_REQUEST', message: 'Invalid update status request' },
+      }),
+  check: (request: UpdateRequestV1) => isUpdateRequestV1(request)
+    ? invokeUpdate(UPDATE_CHANNELS.check, request)
+    : Promise.resolve({
+        ok: false as const, requestId: 'invalid',
+        error: { code: 'BAD_REQUEST', message: 'Invalid update check request' },
+      }),
+  download: (request: UpdateRequestV1) => isUpdateRequestV1(request)
+    ? invokeUpdate(UPDATE_CHANNELS.download, request)
+    : Promise.resolve({
+        ok: false as const, requestId: 'invalid',
+        error: { code: 'BAD_REQUEST', message: 'Invalid update download request' },
+      }),
+  install: (request: UpdateRequestV1) => isUpdateRequestV1(request)
+    ? invokeUpdate(UPDATE_CHANNELS.install, request)
+    : Promise.resolve({
+        ok: false as const, requestId: 'invalid',
+        error: { code: 'BAD_REQUEST', message: 'Invalid update install request' },
+      }),
+  openRelease: (request: UpdateRequestV1) => isUpdateRequestV1(request)
+    ? invokeUpdate(UPDATE_CHANNELS.openRelease, request)
+    : Promise.resolve({
+        ok: false as const, requestId: 'invalid',
+        error: { code: 'BAD_REQUEST', message: 'Invalid open-release request' },
+      }),
+  onChanged: (listener: (event: UpdateStatusV1) => void) =>
+    subscribe(UPDATE_CHANNELS.changed, isUpdateStatusV1, listener),
+});
+
 contextBridge.exposeInMainWorld('notoWorkspace', workspaceApi);
 contextBridge.exposeInMainWorld('notoSettings', settingsApi);
 contextBridge.exposeInMainWorld('notoAssets', assetsApi);
+contextBridge.exposeInMainWorld('notoUpdates', updatesApi);
 
 /**
  * The user's home directory, used only to shorten a displayed path to a leading

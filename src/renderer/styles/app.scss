@@ -2405,6 +2405,34 @@ button:disabled { color: var(--muted); opacity: 0.7; }
   font-variant-numeric: tabular-nums;
 }
 
+.pref-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin: 4px 0 0;
+}
+
+.pref-action {
+  min-height: 28px;
+  padding: 4px 12px;
+  border: 1px solid var(--hairline);
+  border-radius: 6px;
+  background: var(--raised);
+  color: var(--ink);
+  font: inherit;
+  font-size: 12.5px;
+  cursor: pointer;
+
+  &:disabled {
+    opacity: 0.55;
+    cursor: default;
+  }
+
+  &:not(:disabled):hover {
+    background: color-mix(in srgb, var(--raised) 70%, var(--ink) 8%);
+  }
+}
+
 .remote-token {
   display: grid;
   grid-template-columns: auto minmax(0, 1fr) auto auto;

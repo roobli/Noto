@@ -138,6 +138,16 @@ export const TREE_SORTS = ['name', 'name-desc', 'modified', 'modified-old'] as c
 
 export type TreeSortV1 = (typeof TREE_SORTS)[number];
 
+/**
+ * Which GitHub Releases track to follow.
+ *
+ * `stable` is only formal releases. `testing` includes prereleases (alphas).
+ * Day-to-day default is stable; testing is an explicit choice.
+ */
+export const UPDATE_CHANNEL_SETTINGS = ['stable', 'testing'] as const;
+
+export type UpdateChannelSettingV1 = (typeof UPDATE_CHANNEL_SETTINGS)[number];
+
 export interface NotoSettingsV1 {
   readonly theme: NotoTheme;
   /** The order of the rows in the file tree. See `TREE_SORTS`. */
@@ -334,7 +344,28 @@ export interface NotoSettingsV1 {
    * Settings. The graph reader and seed path stay in the build either way.
    */
   readonly railLinks: boolean;
+  /**
+   * GitHub Releases track: Stable (formal only) or Testing (includes alphas).
+   *
+   * Default Stable. A build that is itself an alpha will not see newer alphas
+   * until Testing is chosen.
+   */
+  readonly updateChannel: UpdateChannelSettingV1;
+  /**
+   * Ask GitHub for a newer build when the app finishes launching.
+   *
+   * Off by default. A quiet check: when nothing is new, nothing is shown.
+   */
+  readonly checkUpdatesOnLaunch: boolean;
+  /**
+   * When a launch or manual check finds a build, download it without asking.
+   *
+   * Off by default. Install still waits for the reader (Restart in Settings, or
+   * quit). Linux opens the release download instead of swapping the package.
+   */
+  readonly autoDownloadUpdates: boolean;
 }
+
 
 export const DEFAULT_SETTINGS: NotoSettingsV1 = Object.freeze({
   theme: 'system',
@@ -383,7 +414,11 @@ export const DEFAULT_SETTINGS: NotoSettingsV1 = Object.freeze({
   imageEscapeUrl: true,
   fileTags: true,
   railLinks: false,
+  updateChannel: 'stable',
+  checkUpdatesOnLaunch: false,
+  autoDownloadUpdates: false,
 });
+
 
 /** Clamp to the declared range and drop anything that is not a real number. */
 export function clampSetting(key: NotoNumericSetting, value: unknown): number {
