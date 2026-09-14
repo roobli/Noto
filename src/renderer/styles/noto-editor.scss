@@ -1214,12 +1214,13 @@
 /* Wiki links
    -------------------------------------------------------------------------
    Brackets and a labelled link's `target|` are real characters in the file.
-   They stay hidden while the caret is elsewhere so a list of `[[path|title]]`
-   reads as titles, which is Typora's focused-block source rule. While the
-   caret's own textblock is being edited (and the editor has focus) they return
-   dimmed — `display` rather than opacity, so unread links do not leave a gap
-   the width of the path. The caret still walks the real characters once they
-   are shown; that is the trade the dimming used to buy for every link at once. */
+   They stay hidden so a list of `[[path|title]]` reads as titles. Reveal is
+   span-scoped: the caret's textblock must carry `.noto-source-editing` *and*
+   that wiki match must carry `.noto-wiki-source-active` (caret inside that
+   `[[…]]`), with the editor focused. Sibling wiki links in the same paragraph
+   keep labels only; caret in the paragraph but off every wiki hides all
+   source. `display` rather than opacity, so unread links leave no path-width
+   gap. */
 
 .ProseMirror .noto-wiki-bracket {
   display: none;
@@ -1227,8 +1228,8 @@
   opacity: 0.35;
 }
 
-.noto-editor-host:focus-within .ProseMirror .noto-source-editing .noto-wiki-bracket,
-.noto-editor-host[data-semantic-focus='true'] .ProseMirror .noto-source-editing .noto-wiki-bracket {
+.noto-editor-host:focus-within .ProseMirror .noto-source-editing .noto-wiki-bracket.noto-wiki-source-active,
+.noto-editor-host[data-semantic-focus='true'] .ProseMirror .noto-source-editing .noto-wiki-bracket.noto-wiki-source-active {
   display: inline;
 }
 

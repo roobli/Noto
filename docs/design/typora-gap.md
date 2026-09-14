@@ -1433,24 +1433,22 @@ characters, so they used to stay dimmed rather than hidden; the top-level
 caret was in one item. That is reading the source of the page, not of the block
 being edited.
 
-The caret's own textblock now carries `.noto-source-editing`. Wiki brackets
-(and labelled `target|`) `display: none` until that textblock is focused and the
-editor has the caret — the same focus gate heading markers already used. Inline
-mark widgets and Typora-mark delimiters take the same blur gate so leaving the
-editor hides source rather than freezing it mid-reveal. Span-scoped emphasis /
-code / link widgets are unchanged.
+The caret's own textblock carries `.noto-source-editing`. Wiki brackets
+(and labelled `target|`) stay `display: none` unless that textblock is focused
+**and** the wiki match under the caret carries `.noto-wiki-source-active` —
+span-level source symbols (graber). Sibling wiki links in the same paragraph
+keep labels only; caret in the paragraph but off every wiki hides all source.
+List sibling isolation is unchanged. Inline mark widgets and Typora-mark
+delimiters keep the same blur gate.
 
 Residual, named rather than queued: heading level still uses the margin `hN`
 badge rather than revealing `#` hashes in the line (intentional, matching the
-author's Typora theme); wiki brackets still appear for every wiki link inside
-one paragraph when that paragraph is focused (block scope, not span scope —
-graber deferred span-level wiki).
+author's Typora theme).
 
 Feel acceptance (lightweight): `tests/unit/source-editing.test.ts` covers sibling
-list items not lighting and the multi-wiki paragraph case; packaged
-`tests/e2e/focus-source-packaged.spec.ts` checks computed `display` on
-`.noto-wiki-bracket` in a MOC-shaped list (caret in one item hides siblings;
-focused intro paragraph reveals its brackets).
+list items, three-wiki paragraphs (only the caret match activates), and
+off-wiki caret hides source; packaged `tests/e2e/focus-source-packaged.spec.ts`
+checks computed `display` on `.noto-wiki-bracket` / `.noto-wiki-source-active`.
 
 The Typora-habit queue is soft-empty as of 2026-09-11 aside from the residuals
 named on gap 70. What remains named rather

@@ -141,8 +141,8 @@ want:
   is `.noto-inline-break`. A text block whose selection is touching any of
   these carries `.noto-marks-editing`, and that is when the syntax shows
   (editor focus required). Wiki-link brackets use `.noto-wiki-bracket` and
-  reveal only inside the caret's `.noto-source-editing` textblock while the
-  editor is focused.
+  reveal only when the caret's `.noto-source-editing` textblock is focused
+  *and* that match carries `.noto-wiki-source-active` (span-level).
 - Task list items are `li.noto-task-item` with `data-checked`; the box is drawn
   with `::before` and `::after`.
 
