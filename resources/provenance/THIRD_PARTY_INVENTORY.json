@@ -1,5 +1,5 @@
 {
-  "lockfileSha256": "b4a39e97c4d2a5067db66d3146a7ee06135af574600717003d76083600239f8a",
+  "lockfileSha256": "37b854161bd9637d942079f8efaaac801d4bd54f61a4c1b1607882e618286a6a",
   "packages": [
     {
       "name": "@antfu/install-pkg",
@@ -646,7 +646,7 @@
     },
     {
       "name": "@roobli/md",
-      "version": "0.1.1",
+      "version": "0.1.2",
       "license": "MIT",
       "repository": "git+https://github.com/roobli/md.git",
       "noticeFiles": [
