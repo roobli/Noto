@@ -33,9 +33,10 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        # macos-14 is Apple silicon and macos-13 is Intel, so the release
-        # carries a build for each rather than one that runs translated.
-        os: [macos-14, macos-13, windows-latest, ubuntu-latest]
+        # macos-14 = Apple silicon. macos-13 (Intel) runners are scarce and
+        # leave Release jobs queued for hours; ship arm64 only until we have a
+        # reliable Intel runner (Rosetta covers most Intel Macs for now).
+        os: [macos-14, windows-latest, ubuntu-latest]
     steps:
       - uses: actions/checkout@v4
         with:
