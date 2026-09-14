@@ -49,8 +49,9 @@ async function turnOn(page: Page): Promise<{ port: number; token: string }> {
   const state = await page.getByTestId('remote-state').textContent() ?? '';
   const port = Number(/:(\d+)/.exec(state)?.[1]);
   const token = await page.getByTestId('remote-token').inputValue();
-  // UI can show Listening a beat before the socket accepts the token it just
-  // wrote; without this poll, CI on macos-14 flakes 401 on the first ask.
+  // Belt-and-suspenders: wait until the socket answers 200 with the token the
+  // pane shows. The durable fix is TokenStore single-flight + live getToken;
+  // this poll only covers a brief listen race, not a permanent token mismatch.
   await expect.poll(async () => (await ask(port, '/v1/status', token)).status, { timeout: 10_000 }).toBe(200);
   await page.getByTestId('settings-close').click();
   return { port, token };

@@ -24,13 +24,37 @@ export class TokenStore {
    * the permission check below is meaningless, every read looked like a file
    * anyone could read, and the token was replaced on each call. The socket
    * kept the first one and refused every request made with the ones after it.
+   *
+   * Concurrent first calls are coalesced on `loading` for the same reason:
+   * turning the control on asks for the token from both the socket start and
+   * the preferences pane at once. Two regenerates in flight would leave the
+   * socket holding A while the pane showed B, and every request would 401
+   * until the control was restarted — which is exactly the packaged e2e flake
+   * that a longer poll could not cure.
    */
   private held: string | null = null;
+  private loading: Promise<string> | null = null;
 
   constructor(private readonly filePath: string) {}
 
+  /** Sync view of the token this run is using; null until one has been loaded. */
+  peek(): string | null {
+    return this.held;
+  }
+
   /** The token this run is using, from the file or newly written. */
   async current(): Promise<string> {
+    if (this.held !== null) return this.held;
+    if (this.loading !== null) return this.loading;
+    this.loading = this.loadOrCreate().finally(() => {
+      this.loading = null;
+    });
+    return this.loading;
+  }
+
+  private async loadOrCreate(): Promise<string> {
+    // Another caller may have finished (or regenerate() may have run) while
+    // we were waiting to start; prefer that answer over minting a second one.
     if (this.held !== null) return this.held;
     try {
       const info = await stat(this.filePath);
@@ -40,6 +64,8 @@ export class TokenStore {
       if (process.platform === 'win32' || (info.mode & 0o077) === 0) {
         const written = (await readFile(this.filePath, 'utf8')).trim();
         if (written.length >= 20) {
+          // regenerate() may have won the race while we read; keep its token.
+          if (this.held !== null) return this.held;
           this.held = written;
           return written;
         }
@@ -47,6 +73,7 @@ export class TokenStore {
     } catch {
       // Not there yet, which is the ordinary first run.
     }
+    if (this.held !== null) return this.held;
     return this.regenerate();
   }
 
