@@ -35,7 +35,7 @@ therefore adhoc-resigns (`codesign --force --deep --sign - Noto.app`) whenever
 that identity env var is unset. That binds the product bundle id
 (`dev.lr00rl.noto`) and stops Gatekeeper from calling the release zip
 "damaged". Users may still need right-click Open or `xattr -cr` until the build
-is notarized. True Developer ID signing and notarization need
+is notarized — see [`docs/install.md`](../install.md) for the first-open steps we put on releases. True Developer ID signing and notarization need
 `NOTO_APPLE_SIGNING_IDENTITY` plus `APPLE_ID` / `APPLE_PASSWORD` /
 `APPLE_TEAM_ID`. `resources/entitlements.plist` is valid and is passed for
 every file in the bundle when a real identity is used.

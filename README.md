@@ -45,9 +45,21 @@ numbers are below.
 ## Download
 
 Builds for macOS, Windows and Linux are on the
-[releases page](https://github.com/lr00rl/Noto/releases/latest). Take the
-installer for your system where there is one, or the archive, which needs no
-installing: unpack it and run what is inside.
+[releases page](https://github.com/roobli/Noto/releases). Take the installer
+for your system where there is one, or the archive, which needs no installing:
+unpack it and run what is inside.
+
+**First open:** until we ship Apple notarization and a Windows code-signing
+certificate, each OS warns once on a fresh download. That is expected — not a
+broken build. Follow [`docs/install.md`](docs/install.md) (short, per platform).
+
+macOS one-liner after unzip (from the folder that contains `Noto.app`):
+
+```sh
+xattr -cr Noto.app && open Noto.app
+```
+
+Or Right-click → Open. Prefer that over double-click the first time.
 
 Packaged builds can check GitHub Releases from **Settings → Updates**. Stable
 (default) follows formal releases only; Testing includes alphas. See
@@ -59,11 +71,6 @@ Packaged builds can check GitHub Releases from **Settings → Updates**. Stable
 | Windows, x64 | `NotoSetup-<version>.exe` | `Noto-<version>-windows-<arch>.zip` |
 | Linux, Debian and Ubuntu | `noto_<version>_amd64.deb` | `Noto-<version>-linux-<arch>.tar.gz` |
 | Linux, Fedora and openSUSE | `noto-<version>-1.x86_64.rpm` | `Noto-<version>-linux-<arch>.tar.gz` |
-
-Nothing is signed by a paid certificate, so each system says so once. On macOS
-the first open needs Control-click then Open, or
-`xattr -dr com.apple.quarantine /Applications/Noto.app`. On Windows, SmartScreen
-shows "Windows protected your PC": choose More info, then Run anyway.
 
 ## Getting started
 
