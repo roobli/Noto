@@ -114,7 +114,8 @@ so rebuilt `graph.json` carries hub edges for the rail.
 - **Risk:** Performance/UX on very large **single** index widgets still not
   measured in-app; #17 stub scroller does not slice inside one widget.
   Related vs index chrome is no longer conflated (#14). False-positive
-  `[[...]]` in code-heavy notes (vllm sample) still decorates as a wiki link.
+  `[[digits, digits, ...]]` array text in code-heavy notes (vllm sample) is
+  ignored by the wiki decoration scanner.
 
 ### C. Byte-for-byte unchanged
 
@@ -136,8 +137,9 @@ so rebuilt `graph.json` carries hub edges for the rail.
 2. **Keep marker families distinct:** **Done in #14** (`index` vs `related`
    chrome in `index-block.ts`).
 3. **QuickOpen Alt+Enter parity:** **Done in #14** (`wikiTargetFor` + `\|title`).
-4. **Optional:** Ignore `[[digits, digits]]` / obvious non-path targets in
-   the wiki decoration scanner to reduce noise in RTFS notes.
+4. **Ignore digit-array false positives:** **Done** — `findWikiLinks` skips
+   targets that are only a comma-separated list of integers (optional spaces),
+   so RTFS-style `[[100, 101, ...]]` no longer decorates as a wiki link.
 5. **Do not** commit RooB `.note-assistant/graph.json`; rebuild locally for
    tests as done here.
 

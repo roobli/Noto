@@ -69,4 +69,24 @@ describe('finding wiki links', () => {
     expect(targets('[[a]]')).toEqual(['a']);
     expect(targets('[[a]]')).toEqual(['a']);
   });
+
+  it('ignores comma-separated integer lists (RTFS array text, not note paths)', () => {
+    expect(targets('[[100, 101]]')).toEqual([]);
+    expect(targets('[[100,101,102]]')).toEqual([]);
+    expect(targets('see [[100 , 101 , 102]] nearby')).toEqual([]);
+  });
+
+  it('still decorates a bare number, and a list that is not only integers', () => {
+    expect(targets('[[100]]')).toEqual(['100']);
+    expect(targets('[[100, note]]')).toEqual(['100, note']);
+    expect(targets('[[note, 100]]')).toEqual(['note, 100']);
+  });
+
+  it('ignores an integer list even when a label is written after the pipe', () => {
+    expect(targets('[[100, 101|pages]]')).toEqual([]);
+  });
+
+  it('still decorates real note paths and labelled links', () => {
+    expect(targets('[[note]] and [[path/note|title]]')).toEqual(['note', 'path/note']);
+  });
 });
