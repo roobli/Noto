@@ -274,6 +274,12 @@ export function WorkspaceRail({
         <button type="button" data-testid="rail-search"
           className={view === 'search' ? 'icon-button rail-search is-on' : 'icon-button rail-search'}
           aria-label="Search in notes" aria-pressed={view === 'search'} title="Search in notes (⇧⌘F)"
+          onMouseDown={(event) => {
+            // Search field is focused while this is on. Without preventDefault
+            // the input blurs first; on ubuntu CI that could drop the click so
+            // the magnifier appeared stuck on. Keep focus put until click runs.
+            if (view === 'search') event.preventDefault();
+          }}
           onClick={() => onView(view === 'search' ? 'files' : 'search')}>
           <svg viewBox="0 0 16 16" aria-hidden="true">
             <circle cx="7" cy="7" r="4.25" />

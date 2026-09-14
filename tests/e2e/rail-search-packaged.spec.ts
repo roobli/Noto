@@ -97,9 +97,13 @@ test.describe('search in the rail', () => {
     const { app, page } = await launch('chord');
     try {
       await invokeMenu(app, 'search-content');
+      await expect(page.getByTestId('search-panel')).toBeVisible();
       await expect(page.getByTestId('search-input')).toBeFocused();
       await expect(page.getByTestId('rail-search')).toHaveAttribute('aria-pressed', 'true');
+      // Magnifier closes on mousedown; wait for the panel to go, not only the
+      // tree — ubuntu CI was flaking when the assertion raced the unmount.
       await page.getByTestId('rail-search').click();
+      await expect(page.getByTestId('search-panel')).toHaveCount(0);
       await expect(page.getByTestId('file-tree')).toBeVisible();
       await expect(page.getByTestId('rail-search')).toHaveAttribute('aria-pressed', 'false');
     } finally {
