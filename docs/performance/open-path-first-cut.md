@@ -1,6 +1,6 @@
 # Open-path / `parseDocument` — measured cuts
 
-Status: **lazy / deferred wire nodes + viewport-driven enrich + incremental PM patch + kind-aware stand-ins + engine-owned IR→PM (common blocks)** under the flagged `@roobli/md` path.
+Status: **lazy / deferred wire nodes + viewport-driven enrich + incremental PM patch + kind-aware stand-ins + engine-owned IR→PM (common blocks + simple quotes)** under the flagged `@roobli/md` path.
 Product default remains micromark. Do **not** flip `NOTO_MARKDOWN_ENGINE`
 default-on from this work.
 
@@ -146,24 +146,27 @@ but avoids resetting viewport-stub / alert / history on every tick.
 ### Cut 5 — engine-owned IR → PM (common blocks)
 
 Leaf kinds (`fenced-code` / `indented-code` / `thematic-break` / `frontmatter` /
-`html` / `display-math`), **parseable link-definitions**, and **plain**
-paragraph/heading (no inline dialect markers) build ProseMirror directly from
-engine kind + source (`pm/from-engine.ts`) — **no mdast**. `blockFromSpan`
-prefers that path; `enrichSpansInRange` finalizes those spans without
-`parseMarkdown`; deferred enrich flags mark them done past the first-paint
-prefix.
+`html` / `display-math`), **parseable link-definitions**, **plain**
+paragraph/heading (no inline dialect markers), and **simple blockquotes**
+(every line `>`-prefixed; inner content is one or more plain paragraphs)
+build ProseMirror directly from engine kind + source (`pm/from-engine.ts`) —
+**no mdast**. `blockFromSpan` prefers that path; `enrichSpansInRange` finalizes
+those spans without `parseMarkdown`; deferred enrich flags mark them done past
+the first-paint prefix.
 
 Plain paragraph IR→PM `trimEnd()`s the source slice so trailing spaces that
 are not hard breaks match CommonMark/mdast (avoids `See  [[` after open+type).
-Hard-break paragraphs still take the dialect path.
+Hard-break paragraphs still take the dialect path. Setext `===` headings are
+already engine-owned via `parseHeadingSource` (setext-`---` vs hr remains an
+engine split gap — see markdown-golden README).
 
-Lists / tables / quotes / footnotes / marked-up phrasing still need dialect
-enrich + `from-mdast`. Does **not** flip default-on. No alpha bump.
+Lists / tables / nested or marked quotes / footnotes / marked-up phrasing still
+need dialect enrich + `from-mdast`. Does **not** flip default-on. No alpha bump.
 
 ## API (additions for Cut 5)
 
 - `pm/from-engine.ts` — `blockFromEngineSpan` / `canSkipDialectEnrich` /
-  `engineSemanticKey` / fence+heading source parsers
+  `engineSemanticKey` / fence+heading+simple-quote source parsers
 - `createEnrichFlags(length, enrichedExclusiveTo, spans?)` — optional spans
   mark engine-owned remainder as already enriched
 - `enrichSpansInRange` — skips micromark for engine-owned spans; contiguous
@@ -172,14 +175,14 @@ enrich + `from-mdast`. Does **not** flip default-on. No alpha bump.
 ## Next residual (not this PR)
 
 1. ~~Engine-owned IR → PM (common blocks)~~ — shipped: leaf + plain
-   paragraph/heading + parseable link-definition skip mdast
+   paragraph/heading + parseable link-definition + simple quote skip mdast
    (`pm/from-engine.ts`); enrich flags + `enrichSpansInRange` honour the skip.
 2. ~~Kind-aware structural stand-ins (heading/fence/…)~~ — shipped (#90).
-3. Extend IR→PM to more kinds when safe (lists/tables/quotes still dialect);
-   optional lightweight inline IR later.
+3. Extend IR→PM to more kinds when safe (lists/tables/nested quotes still
+   dialect); optional lightweight inline IR later — not this cycle.
 4. Keep growing `tests/fixtures/markdown-golden/` before default-on; GFM inline,
-   nested lists, HTML blocks, callout edges, hr/setext, link-defs landed;
-   intentional engine gaps documented in that README.
+   nested lists, HTML blocks, callout edges, hr/setext, link-defs, simple
+   quotes landed; intentional engine gaps documented in that README.
 
 Do not defer main’s file-truth structural parse; do not flip the product
 default from this doc.

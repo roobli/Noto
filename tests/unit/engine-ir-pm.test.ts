@@ -1,6 +1,7 @@
 /**
- * Engine-owned IR → PM for common blocks (leaf + plain paragraph/heading).
- * Flagged `@roobli/md` path; does not flip product default.
+ * Engine-owned IR → PM for common blocks (leaf + plain paragraph/heading +
+ * parseable link-def + simple quote). Flagged `@roobli/md` path; does not flip
+ * product default.
  */
 
 import { describe, expect, it } from 'vitest';
@@ -12,6 +13,7 @@ import {
   parseFenceSource,
   parseHeadingSource,
   parseLinkDefinitionSource,
+  parseSimpleQuoteSource,
 } from '../../src/shared/markdown/v3/pm/from-engine';
 import { blockFromSpan, docFromSpans } from '../../src/shared/markdown/v3/pm/from-mdast';
 import {
@@ -40,13 +42,17 @@ describe('from-engine IR helpers', () => {
     expect(needsDialectInline('soft\nwrap')).toBe(false);
   });
 
-  it('canSkipDialectEnrich for leaf + plain phrasing only', () => {
+  it('canSkipDialectEnrich for leaf + plain phrasing + simple quote', () => {
     expect(canSkipDialectEnrich('fenced-code', '```js\nx\n```')).toBe(true);
     expect(canSkipDialectEnrich('thematic-break', '---')).toBe(true);
     expect(canSkipDialectEnrich('paragraph', 'Hello')).toBe(true);
     expect(canSkipDialectEnrich('heading', '# Title')).toBe(true);
+    expect(canSkipDialectEnrich('heading', 'Setext\n===')).toBe(true);
     expect(canSkipDialectEnrich('paragraph', 'Hello **x**')).toBe(false);
     expect(canSkipDialectEnrich('link-definition', '[id]: https://example.com')).toBe(true);
+    expect(canSkipDialectEnrich('quote', '> Hello')).toBe(true);
+    expect(canSkipDialectEnrich('quote', '> Hello **x**')).toBe(false);
+    expect(canSkipDialectEnrich('quote', '> [!NOTE]\n> body')).toBe(false);
     expect(canSkipDialectEnrich('bullet-list', '- a')).toBe(false);
     expect(canSkipDialectEnrich('table', '| a |\n| - |\n| 1 |')).toBe(false);
   });
@@ -73,6 +79,15 @@ describe('from-engine IR helpers', () => {
     expect(parseLinkDefinitionSource('[angled]: <https://example.com/a> \'T\'')).toEqual({
       identifier: 'angled', label: 'angled', url: 'https://example.com/a', title: 'T',
     });
+    expect(parseSimpleQuoteSource('> Hello')).toEqual(['Hello']);
+    expect(parseSimpleQuoteSource('> line1\n> line2')).toEqual(['line1\nline2']);
+    expect(parseSimpleQuoteSource('> para1\n>\n> para2')).toEqual(['para1', 'para2']);
+    expect(parseSimpleQuoteSource('> trailing ')).toEqual(['trailing']);
+    expect(parseSimpleQuoteSource('>  spaced')).toEqual(['spaced']);
+    expect(parseSimpleQuoteSource('> **bold**')).toBeNull();
+    expect(parseSimpleQuoteSource('> > nested')).toBeNull();
+    expect(parseSimpleQuoteSource('> - item')).toBeNull();
+    expect(parseSimpleQuoteSource('> [!NOTE]\n> x')).toBeNull();
   });
 });
 
@@ -99,6 +114,40 @@ describe('blockFromEngineSpan', () => {
     expect(link?.attrs).toMatchObject({
       identifier: 'alpha', label: 'alpha', url: 'https://example.com/alpha', title: 'Alpha Title',
     });
+  });
+
+  it('builds setext heading from underline when source is engine-owned', () => {
+    const h = blockFromEngineSpan('heading', 'Setext Title\n============');
+    expect(h?.type.name).toBe('heading');
+    expect(h?.attrs.level).toBe(1);
+    expect(h?.textContent).toBe('Setext Title');
+    expect(blockFromEngineSpan('heading', 'Setext *x*\n=======')).toBeNull();
+  });
+
+  it('builds simple quotes; refuses nested / marked / callout / list', () => {
+    const q = blockFromEngineSpan('quote', '> Hello world');
+    expect(q?.type.name).toBe('blockquote');
+    expect(q?.childCount).toBe(1);
+    expect(q?.child(0).type.name).toBe('paragraph');
+    expect(q?.textContent).toBe('Hello world');
+
+    const cont = blockFromEngineSpan('quote', '> Second plain quote\n> with a continuation line.');
+    expect(cont?.childCount).toBe(1);
+    expect(cont?.textContent).toBe('Second plain quote\nwith a continuation line.');
+
+    const multi = blockFromEngineSpan('quote', '> para1\n>\n> para2');
+    expect(multi?.childCount).toBe(2);
+    expect(multi?.child(0).textContent).toBe('para1');
+    expect(multi?.child(1).textContent).toBe('para2');
+
+    expect(blockFromEngineSpan('quote', '> trailing ')?.textContent).toBe('trailing');
+    expect(blockFromEngineSpan('quote', '> Hello **bold**')).toBeNull();
+    expect(blockFromEngineSpan('quote', '> [!NOTE]\n> body')).toBeNull();
+    expect(blockFromEngineSpan('quote', '> > nested')).toBeNull();
+    expect(blockFromEngineSpan('quote', '> - item')).toBeNull();
+    expect(blockFromEngineSpan('quote', '> # heading')).toBeNull();
+    expect(blockFromEngineSpan('quote', '> a  \n> b')).toBeNull();
+    expect(blockFromEngineSpan('quote', '>')).toBeNull();
   });
 
   it('builds plain paragraph / heading; refuses marked-up phrasing', () => {
@@ -133,7 +182,13 @@ describe('blockFromEngineSpan', () => {
       'Hello world\n',
       'See \n',
       '# Plain title\n',
+      'Setext Title\n============\n',
       '[alpha]: https://example.com/alpha "Alpha Title"\n',
+      '> Hello world\n',
+      '> Second plain quote\n> with a continuation line.\n',
+      '> para1\n>\n> para2\n',
+      '> trailing \n',
+      '   > indented quote\n',
     ];
     for (const md of samples) {
       setMarkdownEngineForTests('micromark');
@@ -152,6 +207,13 @@ describe('blockFromEngineSpan', () => {
       }
       if (engine.type.name === 'link_definition') {
         expect(engine.attrs).toEqual(micro.attrs);
+      }
+      if (engine.type.name === 'blockquote') {
+        expect(engine.childCount).toBe(micro.childCount);
+        for (let i = 0; i < engine.childCount; i += 1) {
+          expect(engine.child(i).type.name).toBe(micro.child(i).type.name);
+          expect(engine.child(i).textContent).toBe(micro.child(i).textContent);
+        }
       }
     }
   });
@@ -182,31 +244,35 @@ describe('enrich skip for engine-owned spans', () => {
       'Plain para\n\n',
       '# Heading\n\n',
       '[id]: https://example.com\n\n',
+      '> Simple quote\n\n',
       'More **marks**\n\n',
     ].join('');
     const none = splitBlocksViaRoobli(text, { enrich: 'none' });
-    // Prefix 0 enriched; remainder should skip leaf + plain + link-def.
+    // Prefix 0 enriched; remainder should skip leaf + plain + link-def + simple quote.
     const flags = createEnrichFlags(none.spans.length, 0, none.spans);
-    // Indices: 0 bold, 1 fence (skip), 2 plain (skip), 3 heading (skip), 4 link-def (skip), 5 bold
+    // Indices: 0 bold, 1 fence (skip), 2 plain (skip), 3 heading (skip), 4 link-def (skip), 5 quote (skip), 6 bold
     expect(flags[0]).toBe(0);
     expect(flags[1]).toBe(1);
     expect(flags[2]).toBe(1);
     expect(flags[3]).toBe(1);
     expect(flags[4]).toBe(1);
-    expect(flags[5]).toBe(0);
+    expect(flags[5]).toBe(1);
+    expect(flags[6]).toBe(0);
     expect(countDeferredFlags(flags)).toBe(2);
   });
 
-  it('docFromSpans uses engine path for mixed leaf + plain under enrich none', () => {
-    const text = '# Title\n\n```\nbody\n```\n\nHello\n';
+  it('docFromSpans uses engine path for mixed leaf + plain + simple quote under enrich none', () => {
+    const text = '# Title\n\n```\nbody\n```\n\nHello\n\n> quoted\n';
     const none = splitBlocksViaRoobli(text, { enrich: 'none' });
     const doc = docFromSpans(none.spans as never);
-    expect(doc.childCount).toBe(3);
+    expect(doc.childCount).toBe(4);
     expect(doc.child(0).type.name).toBe('heading');
     expect(doc.child(0).textContent).toBe('Title');
     expect(doc.child(1).type.name).toBe('code_block');
     expect(doc.child(1).textContent).toBe('body');
     expect(doc.child(2).type.name).toBe('paragraph');
     expect(doc.child(2).textContent).toBe('Hello');
+    expect(doc.child(3).type.name).toBe('blockquote');
+    expect(doc.child(3).textContent).toBe('quoted');
   });
 });

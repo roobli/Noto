@@ -2,10 +2,12 @@
  * Engine-owned IR → ProseMirror for common blocks (flagged `@roobli/md` path).
  *
  * Native spans are kind + source offsets only. For leaf kinds (fence, hr, math,
- * frontmatter, html), parseable link-definitions, and for plain paragraph/
- * heading with no inline dialect markers, the PM node is fully determined by
- * that IR — no micromark / mdast pass. Lists, tables, quotes, footnotes, and
- * marked-up phrasing still go through `from-mdast.ts` after dialect enrich.
+ * frontmatter, html), parseable link-definitions, plain paragraph/heading with
+ * no inline dialect markers, and **simple** blockquotes (every line `>`-prefixed,
+ * inner content is plain paragraphs only), the PM node is fully determined by
+ * that IR — no micromark / mdast pass. Lists, tables, nested/marked quotes,
+ * footnotes, and marked-up phrasing still go through `from-mdast.ts` after
+ * dialect enrich.
  *
  * See docs/performance/open-path-first-cut.md and docs/design/roobli-md-engine.md.
  */
@@ -40,13 +42,17 @@ export function needsDialectInline(markdown: string): boolean {
 }
 
 /**
- * True when dialect enrich can be skipped: leaf kinds always; paragraph /
- * heading only when the source has no inline dialect markers.
+ * True when dialect enrich can be skipped: leaf kinds always; parseable
+ * link-definitions; simple quotes; paragraph / heading only when the source
+ * has no inline dialect markers.
  */
 export function canSkipDialectEnrich(kind: NotoBlockKind, markdown: string): boolean {
   if (ENGINE_LEAF_KINDS.has(kind)) return true;
   if (kind === 'link-definition') {
     return parseLinkDefinitionSource(markdown) !== null;
+  }
+  if (kind === 'quote') {
+    return parseSimpleQuoteSource(markdown) !== null;
   }
   if (kind === 'paragraph' || kind === 'heading') {
     return !needsDialectInline(markdown);
@@ -99,6 +105,66 @@ export function parseHeadingSource(md: string): ParsedHeading | null {
     };
   }
   return null;
+}
+
+const QUOTE_LINE_RE = /^( {0,3})>([ \t]?)(.*)$/u;
+
+/**
+ * Inner line (after `>` + optional space) that is still paragraph text.
+ * Nested quotes, lists, ATX, fences, HTML, tables, hr/setext, link-defs,
+ * and indented-code fall through to dialect enrich.
+ */
+function quoteInnerIsParagraphLine(rest: string): boolean {
+  if (/^[ \t]*$/u.test(rest)) return true;
+  if (/^(?: {4}|\t)/u.test(rest)) return false;
+  const t = rest.replace(/^ {0,3}/u, '');
+  if (t.startsWith('>')) return false;
+  if (/^#{1,6}(?:[ \t]|$)/u.test(t)) return false;
+  if (/^(`{3,}|~{3,})/u.test(t)) return false;
+  if (/^([-+*])(?:[ \t]|$)/u.test(t)) return false;
+  if (/^[0-9]{1,9}[.)](?:[ \t]|$)/u.test(t)) return false;
+  if (t.startsWith('<')) return false;
+  if (t.startsWith('|')) return false;
+  if (/^\[([^\]]+)\]:/u.test(t)) return false;
+  if (/^([*\-_])(?:[ \t]*\1){2,}[ \t]*$/u.test(t)) return false;
+  if (/^=+[ \t]*$/u.test(t)) return false;
+  return true;
+}
+
+/**
+ * Simple blockquote: every line is `>`-prefixed (no lazy continuation), inner
+ * content is one or more plain paragraphs. Returns paragraph bodies matching
+ * CommonMark / mdast (leading indent skipped, trailing spaces trimmed), or
+ * `null` when the span still needs dialect enrich.
+ */
+export function parseSimpleQuoteSource(md: string): string[] | null {
+  const trimmed = md.replace(/\r\n/g, '\n').trimEnd();
+  if (trimmed.length === 0) return null;
+  const lines = trimmed.split('\n');
+  const inner: string[] = [];
+  for (const line of lines) {
+    const m = QUOTE_LINE_RE.exec(line);
+    if (!m) return null;
+    const rest = m[3]!;
+    if (!quoteInnerIsParagraphLine(rest)) return null;
+    inner.push(rest);
+  }
+  const paragraphs: string[] = [];
+  let buf: string[] = [];
+  const flush = (): void => {
+    if (buf.length === 0) return;
+    const text = buf.map((l) => l.replace(/^ {0,3}/u, '')).join('\n').trimEnd();
+    if (text.length > 0) paragraphs.push(text);
+    buf = [];
+  };
+  for (const rest of inner) {
+    if (/^[ \t]*$/u.test(rest)) flush();
+    else buf.push(rest);
+  }
+  flush();
+  if (paragraphs.length === 0) return null;
+  if (paragraphs.some((p) => needsDialectInline(p))) return null;
+  return paragraphs;
 }
 
 function parseIndentedCode(md: string): string {
@@ -231,6 +297,12 @@ export function blockFromEngineSpan(kind: NotoBlockKind, markdown: string): Pros
         url: d.url,
         title: d.title,
       });
+    }
+    case 'quote': {
+      const paras = parseSimpleQuoteSource(markdown);
+      if (!paras) return null;
+      const children = paras.map((p) => schema.nodes.paragraph.create(null, textNodes(p)));
+      return schema.nodes.blockquote.create(null, children);
     }
     default:
       return null;

@@ -24,6 +24,7 @@ Small public fixtures for comparing the **micromark** product path against
 | `hr-setext.md` | setext `===` heading + thematic breaks (`***` / `---` / `___`) |
 | `link-defs.md` | reference links + link definition blocks |
 | `trailing-spaces.md` | trailing spaces stripped; soft break (single newline, no hard break) |
+| `simple-quotes.md` | simple `>` quotes (single / continuation / multi-para / indent / trailing spaces / CJK); no nested, lists, or callouts |
 
 ## Intentional diffs
 
