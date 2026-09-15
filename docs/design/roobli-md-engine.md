@@ -90,6 +90,45 @@ autolink; Phase 9 (`v0.1.5`) table delimiter widening (vault three-dash);
 Phase 10 (`v0.1.6`) line-prefix offset alignment; Phase 11 (`v0.1.7`)
 `sourceEditBetween` / `reparseFromText` on the flagged backend.
 
+## Golden gates (option B — before default-on)
+
+Curated A/B fixtures live under `tests/fixtures/markdown-golden/` and are
+wired by `tests/unit/markdown-golden-gates.test.ts`. They compare the
+**micromark** product path against an explicit `roobli-md` override on the same
+sources — they do **not** flip `NOTO_MARKDOWN_ENGINE` for the rest of the suite.
+
+| Gate | Assertion |
+| ---- | --------- |
+| Split boundaries | `kind` / `start` / `end` / `markdown` + leading/gaps/trailing equal |
+| Identity serialize (#82) | flagged `serializeDocument` `outputBytes` equal micromark identity |
+
+Coverage today: headings, lists (bullet/ordered/task), tables, wiki links,
+math fences + code fences, YAML frontmatter, CJK mixed inline. Intentional
+diffs must be listed in `tests/fixtures/markdown-golden/README.md`; silent
+divergence fails the gate loudly (`GOLDEN GATE FAIL …`).
+
+### How to run
+
+```bash
+# golden gates only
+pnpm exec vitest run tests/unit/markdown-golden-gates.test.ts
+
+# full unit suite (default engine still micromark)
+pnpm test
+
+# exercise the flagged product path locally (does not change CI default)
+NOTO_MARKDOWN_ENGINE=roobli-md pnpm start
+```
+
+### What “green gates” mean
+
+Green means every fixture in `markdown-golden/` matches on split boundaries and
+identity serialize under both engines. That is necessary but **not** sufficient
+for default-on: multi-block serialize, open-path / `parseDocument` wire nodes,
+and a broader corpus still block flipping the product default. Expand the
+fixture set (and document any intentional diffs) before considering
+`NOTO_MARKDOWN_ENGINE` default `roobli-md`.
+
 ## Bridge docs (engine repo)
 
 - Vision: https://github.com/roobli/md/blob/main/docs/design/vision.md
@@ -125,9 +164,11 @@ Multi-block inserts/deletes and `source` mode stay on the Noto serializer.
 Micromark path unchanged when the flag is off. Unit coverage:
 `tests/unit/roobli-md-serialize-host.test.ts`.
 
-Next: broaden flagged serialize to multi-block edits; consider default-on
-behind broader golden gates (open-path / `parseDocument` still needs design +
-gates — see `docs/performance/measurements.md`).
+Next: broaden flagged serialize to multi-block edits; expand
+`tests/fixtures/markdown-golden/` until default-on is defensible (open-path /
+`parseDocument` still needs design + gates — see
+`docs/performance/measurements.md`). Option B golden scaffolding is in place;
+do **not** flip the product default until those gates grow.
 
 **Noto `0.0.2-alpha.9`** shipped the adapter (#37) plus `@roobli/md` v0.1.1 quote/
 callout parity (#38). Pin is now `@roobli/md` v0.1.7 (Phase 11 reparse helpers
