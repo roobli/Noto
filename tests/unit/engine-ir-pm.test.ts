@@ -55,6 +55,9 @@ describe('from-engine IR helpers', () => {
     expect(parseFenceSource('```ts\nconst x = 1;\n```')).toEqual({
       lang: 'ts', meta: '', value: 'const x = 1;',
     });
+    expect(parseFenceSource('```\n```')).toEqual({
+      lang: '', meta: '', value: '',
+    });
     expect(parseFenceSource('```rust linenums\nfn main() {}\n```')).toEqual({
       lang: 'rust', meta: 'linenums', value: 'fn main() {}',
     });

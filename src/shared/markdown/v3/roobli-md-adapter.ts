@@ -451,13 +451,13 @@ function standInNode(span: EngineBlockSpan): RootContent {
       };
     }
     case 'fenced-code': {
-      const fence = /^(?: {0,3})(`{3,}|~{3,})([^\n]*)\r?\n([\s\S]*?)\r?\n(?: {0,3})\1[ \t]*\r?$/s.exec(md);
+      const fence = /^(?: {0,3})(`{3,}|~{3,})([^\n]*)\r?\n(?:([\s\S]*?)\r?\n)?(?: {0,3})\1[ \t]*\r?$/s.exec(md);
       if (fence) {
         const info = fence[2]!.trim();
         const infoMatch = info.length > 0 ? /^(\S+)(?:[ \t]+(.*))?$/u.exec(info) : null;
         const lang = infoMatch?.[1] ?? null;
         const meta = infoMatch?.[2]?.trim() || null;
-        return { type: 'code', lang, meta, value: fence[3]! };
+        return { type: 'code', lang, meta, value: fence[3] ?? '' };
       }
       // Unclosed / odd fence: still a code block so PM paints a fence shell.
       return { type: 'code', lang: null, meta: null, value: md };

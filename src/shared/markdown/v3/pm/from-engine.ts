@@ -66,14 +66,16 @@ export interface ParsedFence {
 
 /** Parse a fenced code source slice (ATX fence open/close). */
 export function parseFenceSource(md: string): ParsedFence | null {
-  const fence = /^(?: {0,3})(`{3,}|~{3,})([^\n]*)\r?\n([\s\S]*?)\r?\n(?: {0,3})\1[ \t]*\r?$/s.exec(md);
+  // Empty fence is open\\nclose (no content line). Content fences keep the
+  // newline before the closing fence out of `value`.
+  const fence = /^(?: {0,3})(`{3,}|~{3,})([^\n]*)\r?\n(?:([\s\S]*?)\r?\n)?(?: {0,3})\1[ \t]*\r?$/s.exec(md);
   if (!fence) return null;
   const info = fence[2]!.trim();
   const infoMatch = info.length > 0 ? /^(\S+)(?:[ \t]+(.*))?$/u.exec(info) : null;
   return {
     lang: infoMatch?.[1] ?? '',
     meta: infoMatch?.[2]?.trim() ?? '',
-    value: fence[3]!,
+    value: fence[3] ?? '',
   };
 }
 
