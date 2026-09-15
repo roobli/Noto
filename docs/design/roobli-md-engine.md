@@ -51,7 +51,7 @@ quotes/callouts and native indented-code match micromark (`@roobli/md` v0.1.2+).
 
 | Noto | `@roobli/md` |
 | ---- | ------------ |
-| `splitBlocks` / `parseBlocks` | `parseBlocks` (+ dialect enrichment for `node` / `semanticKey`) |
+| `splitBlocks` / `parseBlocks` | `parseBlocks` (+ bulk dialect enrich by default; `per-span` / `none` modes) |
 | edited verify / middle replace | `reparseBlocks` / `reparseFromText` (Phase 11) |
 | block-mode save (identity / single / multi insert-delete) | `serializeDocument` / `joinSplit` / `identityUnits` |
 
@@ -166,9 +166,14 @@ revision ids. `source` mode stays on the Noto serializer (host escape hatch).
 Micromark path unchanged when the flag is off. Unit coverage:
 `tests/unit/roobli-md-serialize-host.test.ts`.
 
-Next: grow `tests/fixtures/markdown-golden/` and open-path / `parseDocument`
-wire-node design until default-on is defensible (see
-`docs/performance/measurements.md`). Do **not** flip the product default yet.
+**Open-path first cut (flagged).** `splitBlocksViaRoobli` defaults to bulk
+mdast attach (one dialect parse, not N× per span). Modes: `bulk` | `per-span` |
+`none` — see `docs/performance/open-path-first-cut.md`. Product default stays
+micromark.
+
+Next: lazy / viewport wire nodes on `enrich: 'none'`, grow
+`tests/fixtures/markdown-golden/`, then reconsider default-on. Do **not** flip
+the product default yet.
 
 **Noto `0.0.2-alpha.9`** shipped the adapter (#37) plus `@roobli/md` v0.1.1 quote/
 callout parity (#38). Pin is now `@roobli/md` v0.1.7 (Phase 11 reparse helpers
