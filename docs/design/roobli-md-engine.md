@@ -148,7 +148,7 @@ reviewed:
 | ---- | ------ |
 | Split / identity / multi-block golden on current `markdown-golden/` | Green (expanded; keep growing) |
 | Broader corpus / vault-shaped edges (GFM inline, nested lists, HTML, callout edges, link-defs, simple quotes, simple flat lists, simple GFM tables, simple footnote-defs, empty footnote-defs, CJK emphasis, hard-breaks, images, empty/meta fences, escapes, table-align, ordered-start, inline HTML) in golden | Landed this cycle; more edges welcome |
-| Flagged open-path deferred + viewport enrich + IR→PM leaf/plain/link-def/simple-footnote(incl. empty)/simple-quote/flat-list/simple-table | Landed (still flagged-only) |
+| Flagged open-path deferred + viewport enrich + IR→PM leaf/plain(incl. hard-break)/link-def/simple-footnote(incl. empty)/simple-quote/flat-list/simple-table | Landed (still flagged-only) |
 | Flagged serialize (identity / single / multi) + `reparseFromText` host wiring | Landed |
 | Packaged / e2e open feel on medium under the flag | Not a flip gate alone; measure before flip |
 | Intentional diffs documented in `markdown-golden/README.md` | Setext-`---` vs hr; mixed-marker nested lists (excluded from strict dir) |
@@ -197,7 +197,8 @@ attach for paste / non-open. Flagged `parseDocument` uses `enrich: 'none'`
 (`nodesEnrichment: 'deferred'`); the renderer calls `enrichSpansInRange` for a
 first-paint window then viewport / idle `enrichNextDeferredInRange` with
 incremental PM patch. **Engine-owned IR → PM** (`pm/from-engine.ts`) skips
-mdast for leaf kinds + plain paragraph/heading + parseable link-definitions +
+mdast for leaf kinds + plain paragraph/heading (incl. hard breaks as
+`hard_break` nodes) + parseable link-definitions +
 simple footnote-definitions (plain or empty single-paragraph body; optional soft-wrap) +
 simple blockquotes (every line `>`-prefixed, plain inner paragraphs only) +
 simple flat lists (no nest, consistent markers, plain single-paragraph items) +
@@ -205,7 +206,8 @@ simple GFM tables (alignment row; plain text cells; consistent columns);
 enrich flags mark those done — see `docs/performance/open-path-first-cut.md`.
 Nested lists, multi-block items, nested / marked / callout quotes, complex /
 ragged / marked tables, marked footnote bodies, and marked-up phrasing stay
-on dialect (empty footnote bodies are engine-owned).
+on dialect (empty footnote bodies are engine-owned; hard breaks inside quotes /
+lists / footnotes still dialect).
 Product default stays micromark.
 
 Next: keep growing `markdown-golden/` (more GFM / vault edges), extend IR→PM

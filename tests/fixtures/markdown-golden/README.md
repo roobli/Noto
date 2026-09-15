@@ -30,7 +30,7 @@ Small public fixtures for comparing the **micromark** product path against
 | `simple-footnote-defs.md` | simple `[^id]:` footnote definitions (plain body, soft-wrap, cased label) |
 | `empty-footnote-defs.md` | empty / whitespace-only `[^id]:` footnote definitions (cased label) |
 | `cjk-emphasis.md` | Typora-shaped CJK flanking strong (`**注意：**…`) + mixed emphasis |
-| `hard-breaks.md` | hard break (two trailing spaces) + soft break |
+| `hard-breaks.md` | hard break (two trailing spaces) + soft break + mixed soft/hard |
 | `images.md` | inline image + reference image + link-def |
 | `empty-fence.md` | empty fenced code (plain + language) |
 | `escapes.md` | backslash-escaped emphasis / code / brackets / pipe |

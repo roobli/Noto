@@ -1,7 +1,8 @@
 /**
- * Engine-owned IR → PM for common blocks (leaf + plain paragraph/heading +
- * parseable link-def + simple footnote-def + simple quote + simple flat list +
- * simple GFM table). Flagged `@roobli/md` path; does not flip product default.
+ * Engine-owned IR → PM for common blocks (leaf + plain paragraph/heading
+ * including hard breaks + parseable link-def + simple footnote-def + simple
+ * quote + simple flat list + simple GFM table). Flagged `@roobli/md` path;
+ * does not flip product default.
  */
 
 import { describe, expect, it } from 'vitest';
@@ -10,6 +11,8 @@ import {
   canSkipDialectEnrich,
   engineSemanticKey,
   needsDialectInline,
+  hasHardBreak,
+  inlineNodesFromPlainSource,
   parseFenceSource,
   parseHeadingSource,
   parseLinkDefinitionSource,
@@ -41,8 +44,10 @@ describe('from-engine IR helpers', () => {
     expect(needsDialectInline('see [[wiki]]')).toBe(true);
     expect(needsDialectInline('`code`')).toBe(true);
     expect(needsDialectInline('https://example.com')).toBe(true);
-    expect(needsDialectInline('one  \ntwo')).toBe(true);
+    expect(needsDialectInline('one  \ntwo')).toBe(false);
     expect(needsDialectInline('soft\nwrap')).toBe(false);
+    expect(hasHardBreak('one  \ntwo')).toBe(true);
+    expect(hasHardBreak('soft\nwrap')).toBe(false);
   });
 
   it('canSkipDialectEnrich for leaf + plain phrasing + simple quote + flat list + table + footnote', () => {
@@ -51,7 +56,9 @@ describe('from-engine IR helpers', () => {
     expect(canSkipDialectEnrich('paragraph', 'Hello')).toBe(true);
     expect(canSkipDialectEnrich('heading', '# Title')).toBe(true);
     expect(canSkipDialectEnrich('heading', 'Setext\n===')).toBe(true);
+    expect(canSkipDialectEnrich('paragraph', 'Break  \nline')).toBe(true);
     expect(canSkipDialectEnrich('paragraph', 'Hello **x**')).toBe(false);
+    expect(canSkipDialectEnrich('paragraph', 'Break  \n**x**')).toBe(false);
     expect(canSkipDialectEnrich('link-definition', '[id]: https://example.com')).toBe(true);
     expect(canSkipDialectEnrich('footnote-definition', '[^1]: plain note')).toBe(true);
     expect(canSkipDialectEnrich('footnote-definition', '[^1]: has *emphasis*')).toBe(false);
@@ -321,12 +328,40 @@ describe('blockFromEngineSpan', () => {
 
   it('strips trailing spaces on plain paragraphs like CommonMark / mdast', () => {
     // Wiki-trigger e2e fixture is `See ` then types ` [[`. Keeping the open
-    // space would save `See  [[…]]`. Hard breaks (two spaces + newline) still
-    // refuse the engine path.
+    // space would save `See  [[…]]`. Hard breaks are engine-owned separately.
     expect(blockFromEngineSpan('paragraph', 'See ')?.textContent).toBe('See');
     expect(blockFromEngineSpan('paragraph', 'See  ')?.textContent).toBe('See');
     expect(blockFromEngineSpan('paragraph', 'Hello world\n')?.textContent).toBe('Hello world');
-    expect(blockFromEngineSpan('paragraph', 'Break  \nline')).toBeNull();
+  });
+
+  it('builds plain hard-break paragraphs as hard_break nodes; marked still dialect', () => {
+    const p = blockFromEngineSpan('paragraph', 'Break  \nline');
+    expect(p?.type.name).toBe('paragraph');
+    expect(p?.childCount).toBe(3);
+    expect(p?.child(0).isText).toBe(true);
+    expect(p?.child(0).text).toBe('Break');
+    expect(p?.child(1).type.name).toBe('hard_break');
+    expect(p?.child(2).text).toBe('line');
+    expect(p?.textContent).toBe('Breakline');
+
+    const mixed = blockFromEngineSpan('paragraph', 'A  \nB\nC  \nD');
+    expect(mixed?.childCount).toBe(5);
+    expect(mixed?.child(0).text).toBe('A');
+    expect(mixed?.child(1).type.name).toBe('hard_break');
+    expect(mixed?.child(2).text).toBe('B\nC');
+    expect(mixed?.child(3).type.name).toBe('hard_break');
+    expect(mixed?.child(4).text).toBe('D');
+
+    const soft = blockFromEngineSpan('paragraph', 'Soft\nbreak stays soft.');
+    expect(soft?.childCount).toBe(1);
+    expect(soft?.textContent).toBe('Soft\nbreak stays soft.');
+
+    expect(blockFromEngineSpan('paragraph', 'Break  \n**bold**')).toBeNull();
+    expect(blockFromEngineSpan('paragraph', 'see [[wiki]]  \nhere')).toBeNull();
+
+    const inline = inlineNodesFromPlainSource('x  \ny');
+    expect(inline).toHaveLength(3);
+    expect(inline[1]!.type.name).toBe('hard_break');
   });
 
   it('matches micromark PM for engine-owned samples via blockFromSpan', () => {
@@ -337,6 +372,8 @@ describe('blockFromEngineSpan', () => {
       '---\ntitle: x\n---\n',
       'Hello world\n',
       'See \n',
+      'Line with hard break  \ncontinues here.\n',
+      'A  \nB\nC  \nD\n',
       '# Plain title\n',
       'Setext Title\n============\n',
       '[alpha]: https://example.com/alpha "Alpha Title"\n',
@@ -372,6 +409,14 @@ describe('blockFromEngineSpan', () => {
       const engine = blockFromSpan(none.spans[0]!);
       expect(engine.type.name).toBe(micro.type.name);
       expect(engine.textContent).toBe(micro.textContent);
+      if (engine.type.name === 'paragraph' || engine.type.name === 'heading') {
+        const countHard = (n: { forEach: (fn: (c: { type: { name: string } }) => void) => void }) => {
+          let c = 0;
+          n.forEach((child) => { if (child.type.name === 'hard_break') c += 1; });
+          return c;
+        };
+        expect(countHard(engine)).toBe(countHard(micro));
+      }
       if (engine.type.name === 'heading' || micro.type.name === 'heading') {
         expect(engine.attrs.level).toBe(micro.attrs.level);
       }
