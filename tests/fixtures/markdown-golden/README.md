@@ -27,7 +27,9 @@ Small public fixtures for comparing the **micromark** product path against
 | `simple-quotes.md` | simple `>` quotes (single / continuation / multi-para / indent / trailing spaces / CJK); no nested, lists, or callouts |
 | `simple-flat-lists.md` | flat bullet/ordered/task lists (markers `-*+`, `.`/`)`, start≠1, loose, soft-wrap); no nest or marked items |
 | `simple-gfm-tables.md` | simple GFM pipe tables (align row; plain cells; indent; compact); no marked/ragged cells |
-| `simple-footnote-defs.md` | simple `[^id]:` footnote definitions (plain body, soft-wrap, cased label); no marked/empty bodies |
+| `simple-footnote-defs.md` | simple `[^id]:` footnote definitions (plain body, soft-wrap, cased label) |
+| `empty-footnote-defs.md` | empty / whitespace-only `[^id]:` footnote definitions (cased label) |
+| `cjk-emphasis.md` | Typora-shaped CJK flanking strong (`**注意：**…`) + mixed emphasis |
 | `hard-breaks.md` | hard break (two trailing spaces) + soft break |
 | `images.md` | inline image + reference image + link-def |
 | `empty-fence.md` | empty fenced code (plain + language) |

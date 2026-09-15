@@ -55,7 +55,7 @@ describe('from-engine IR helpers', () => {
     expect(canSkipDialectEnrich('link-definition', '[id]: https://example.com')).toBe(true);
     expect(canSkipDialectEnrich('footnote-definition', '[^1]: plain note')).toBe(true);
     expect(canSkipDialectEnrich('footnote-definition', '[^1]: has *emphasis*')).toBe(false);
-    expect(canSkipDialectEnrich('footnote-definition', '[^1]:')).toBe(false);
+    expect(canSkipDialectEnrich('footnote-definition', '[^1]:')).toBe(true);
     expect(canSkipDialectEnrich('quote', '> Hello')).toBe(true);
     expect(canSkipDialectEnrich('quote', '> Hello **x**')).toBe(false);
     expect(canSkipDialectEnrich('quote', '> [!NOTE]\n> body')).toBe(false);
@@ -245,7 +245,7 @@ describe('blockFromEngineSpan', () => {
     expect(blockFromEngineSpan('bullet-list', '- a  \n  b')).toBeNull();
   });
 
-  it('builds simple footnote definitions; refuses empty / marked', () => {
+  it('builds simple footnote definitions incl. empty; refuses marked / hard-break', () => {
     expect(parseSimpleFootnoteDefinitionSource('[^1]: plain note')).toEqual({
       identifier: '1', label: '1', text: 'plain note',
     });
@@ -255,9 +255,13 @@ describe('blockFromEngineSpan', () => {
     expect(parseSimpleFootnoteDefinitionSource('[^y]: line1\n  continued')).toEqual({
       identifier: 'y', label: 'y', text: 'line1\ncontinued',
     });
+    expect(parseSimpleFootnoteDefinitionSource('[^c]:')).toEqual({
+      identifier: 'c', label: 'c', text: '',
+    });
+    expect(parseSimpleFootnoteDefinitionSource('[^c]:  ')).toEqual({
+      identifier: 'c', label: 'c', text: '',
+    });
     expect(parseSimpleFootnoteDefinitionSource('[^x]: has *emphasis*')).toBeNull();
-    expect(parseSimpleFootnoteDefinitionSource('[^c]:')).toBeNull();
-    expect(parseSimpleFootnoteDefinitionSource('[^c]:  ')).toBeNull();
     expect(parseSimpleFootnoteDefinitionSource('[^h]: a  \n  b')).toBeNull();
 
     const plain = blockFromEngineSpan('footnote-definition', '[^1]: plain note');
@@ -268,8 +272,14 @@ describe('blockFromEngineSpan', () => {
     const wrap = blockFromEngineSpan('footnote-definition', '[^y]: line1\n  continued');
     expect(wrap?.textContent).toBe('line1\ncontinued');
 
+    const empty = blockFromEngineSpan('footnote-definition', '[^c]:');
+    expect(empty?.type.name).toBe('footnote_definition');
+    expect(empty?.attrs).toEqual({ identifier: 'c', label: 'c' });
+    expect(empty?.childCount).toBe(1);
+    expect(empty?.child(0).type.name).toBe('paragraph');
+    expect(empty?.textContent).toBe('');
+
     expect(blockFromEngineSpan('footnote-definition', '[^x]: has *emphasis*')).toBeNull();
-    expect(blockFromEngineSpan('footnote-definition', '[^c]:')).toBeNull();
   });
 
   it('builds simple GFM tables; refuses marked / ragged / no delimiter', () => {
