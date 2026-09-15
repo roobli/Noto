@@ -242,7 +242,9 @@ function isWireMdastNode(value: unknown): boolean {
 }
 
 export function isNotoDocumentWire(value: unknown): value is NotoDocumentWire {
-  if (!record(value) || !exact(value, ['version', 'documentId', 'revisionId', 'envelope', 'text', 'origins', 'spans', 'nodes'])
+  const wireKeys = ['version', 'documentId', 'revisionId', 'envelope', 'text', 'origins', 'spans', 'nodes'] as const;
+  const withEnrichment = record(value) && Object.prototype.hasOwnProperty.call(value, 'nodesEnrichment');
+  if (!record(value) || !exact(value, withEnrichment ? [...wireKeys, 'nodesEnrichment'] : [...wireKeys])
     || value.version !== 3
     || typeof value.documentId !== 'string' || !value.documentId.startsWith('noto-doc-v3:')
     || typeof value.revisionId !== 'string' || !value.revisionId.startsWith('noto-rev-v3:')
@@ -264,7 +266,10 @@ export function isNotoDocumentWire(value: unknown): value is NotoDocumentWire {
       && Number(span.end) <= (value.text as string).length)
     || !(value.nodes === null
       || (Array.isArray(value.nodes) && value.nodes.length === value.origins.length
-        && value.nodes.every(isWireMdastNode)))) return false;
+        && value.nodes.every(isWireMdastNode)))
+    // Optional open-path flag; only meaningful when nodes are present.
+    || (withEnrichment && (value.nodes === null
+      || (value.nodesEnrichment !== 'full' && value.nodesEnrichment !== 'deferred')))) return false;
 
   const bytes = originalBytesOf(value.text, String(value.envelope.bom));
   return value.envelope.byteLength === bytes.byteLength

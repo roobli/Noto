@@ -33,6 +33,10 @@ import { blockToMarkdown } from '../../../shared/markdown/v3/pm/to-mdast';
 import { blockSpansFromWire, parseSingleBlock, splitBlocks, type BlockSpan } from '../../../shared/markdown/v3/blocks';
 import { isRoobliMdEngine } from '../../../shared/markdown/v3/engine-flag';
 import { PriorSplitCache } from '../../../shared/markdown/v3/prior-split-cache';
+import {
+  enrichSpansInRange,
+  resolveDeferredOpenSpans,
+} from '../../../shared/markdown/v3/roobli-md-adapter';
 import { parseDocumentSpans } from './parse-document';
 import { toLf } from '../../../shared/markdown/v3/line-endings';
 import {
@@ -1211,6 +1215,39 @@ export class NotoEditor implements NotoEditorPort {
   }
 
   /**
+   * Apply dialect-enriched spans after a flagged lazy open.
+   *
+   * Replaces the ProseMirror document in place when the user has not edited
+   * yet, so the remainder enrich after first paint does not clobber typing.
+   * No-op when dirty or when the editor was torn down.
+   */
+  applyDialectEnrichedSpans(spans: readonly BlockSpan[]): void {
+    const view = this.view;
+    if (!view || this.dirty) return;
+    if (spans.length !== this.document.spans.length) return;
+    const doc = docFromSpans(spans);
+    this.pristine = new Map();
+    doc.forEach((node, _offset, index) => {
+      const origin = this.document.origins[index];
+      const span = spans[index];
+      if (origin && span) this.pristine.set(origin.blockId, { node, markdown: toLf(span.markdown) });
+    });
+    if (isRoobliMdEngine()) {
+      this.priorSplit.seedFromSpans(this.document.text, spans);
+    }
+    this.baselineDoc = doc;
+    const { anchor, head } = view.state.selection;
+    const next = EditorState.create({ doc, plugins: this.plugins(this.document) });
+    let selection: Selection;
+    try {
+      selection = TextSelection.create(doc, Math.min(anchor, doc.content.size), Math.min(head, doc.content.size));
+    } catch {
+      selection = Selection.atStart(doc);
+    }
+    view.updateState(next.apply(next.tr.setSelection(selection)));
+  }
+
+  /**
    * Replace the whole document, for example after an external file change.
    *
    * Parses off the UI thread the same way open does, then swaps the editor
@@ -1219,7 +1256,11 @@ export class NotoEditor implements NotoEditorPort {
   async reload(document: NotoDocumentWire): Promise<void> {
     const view = this.view;
     if (!view) return;
-    const spans = blockSpansFromWire(document) ?? await parseDocumentSpans(document.text);
+    let spans = blockSpansFromWire(document) ?? await parseDocumentSpans(document.text);
+    const prepared = resolveDeferredOpenSpans(spans, document.text, {
+      deferred: document.nodesEnrichment === 'deferred',
+    });
+    spans = prepared.spans as BlockSpan[];
     // A newer reload or a teardown may have landed while the worker ran.
     if (this.view !== view) return;
     this.document = document;
@@ -1230,6 +1271,18 @@ export class NotoEditor implements NotoEditorPort {
     if (this.dirty) {
       this.dirty = false;
       this.options.onDirtyChange?.(false);
+    }
+    if (prepared.remainderFrom !== null) {
+      const partial = spans;
+      const from = prepared.remainderFrom;
+      requestAnimationFrame(() => {
+        if (this.view !== view) return;
+        const full = enrichSpansInRange(partial, document.text, {
+          from,
+          to: partial.length,
+        });
+        this.applyDialectEnrichedSpans(full);
+      });
     }
   }
 

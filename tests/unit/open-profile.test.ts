@@ -9,6 +9,8 @@ import { setMarkdownEngineForTests } from '../../src/shared/markdown/v3/engine-f
 import {
   parseBlocksStructural,
   splitBlocksViaRoobli,
+  enrichSpansInRange,
+  resolveDeferredOpenSpans,
 } from '../../src/shared/markdown/v3/roobli-md-adapter';
 
 /**
@@ -32,10 +34,11 @@ import {
  * spans without a second micromark pass; that path is timed against the old
  * renderer `splitBlocks` so the dual-parse removal stays measurable on Linux.
  *
- * Flagged `@roobli/md` open: native structural split is cheap; the old adapter
- * paid N× `parseMarkdown` per span. Bulk enrich (default) is timed against
- * per-span and structural-only (`enrich: 'none'`) so the first cut and the
- * next residual stay visible — see docs/performance/open-path-first-cut.md.
+ * Flagged `@roobli/md` open: native structural split is cheap; bulk enrich
+ * removed the N× penalty. Lazy open ships `enrich: 'none'` on main then
+ * `enrichSpansInRange` for a first-paint window (critical path) and the
+ * remainder after paint — timed here against bulk. See
+ * docs/performance/open-path-first-cut.md.
  *
  * Skipped by default because it is a measurement, not an assertion, and it
  * needs the generated corpus. Run it with:
@@ -82,15 +85,32 @@ it.skipIf(!enabled)('profiles the phases of opening a document', { timeout: 300_
     time('outline: outlineOf (old)', () => outlineOf(wire.text));
     time('outline: fromDocument', () => outlineFromDocument(wire));
 
-    // Flagged engine open phases (first cut + residual scaffolding).
+    // Flagged engine open phases (bulk cut + lazy first-paint window).
     setMarkdownEngineForTests('roobli-md');
     time('roobli: structural', () => { parseBlocksStructural(text); });
     time('roobli: enrich none', () => { splitBlocksViaRoobli(text, { enrich: 'none' }); });
     time('roobli: enrich per-span', () => { splitBlocksViaRoobli(text, { enrich: 'per-span' }); });
     time('roobli: enrich bulk', () => { splitBlocksViaRoobli(text, { enrich: 'bulk' }); });
-    time('roobli: parseDocument', () => {
+    time('roobli: lazy critical', () => {
+      const none = splitBlocksViaRoobli(text, { enrich: 'none' });
+      resolveDeferredOpenSpans(none.spans, text, { deferred: true });
+    });
+    time('roobli: lazy remainder', () => {
+      const none = splitBlocksViaRoobli(text, { enrich: 'none' });
+      const prepared = resolveDeferredOpenSpans(none.spans, text, { deferred: true });
+      if (prepared.remainderFrom !== null) {
+        enrichSpansInRange(prepared.spans, text, {
+          from: prepared.remainderFrom,
+          to: prepared.spans.length,
+        });
+      }
+    });
+    time('roobli: parseDocument (deferred)', () => {
       const result = parseDocument(bytes);
       if (result.status !== 'parsed') throw new Error(result.message);
+      if (result.document.nodesEnrichment !== 'deferred') {
+        throw new Error('expected deferred nodesEnrichment');
+      }
     });
     time('micromark: splitBlocksMicromark', () => { splitBlocksMicromark(text); });
   }

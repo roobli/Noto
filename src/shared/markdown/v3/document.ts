@@ -7,8 +7,10 @@
  */
 
 import { createHash } from 'node:crypto';
-import { splitBlocks } from './blocks';
+import { splitBlocksMicromark } from './blocks';
+import { isRoobliMdEngine } from './engine-flag';
 import { toLf } from './line-endings';
+import { splitBlocksViaRoobli } from './roobli-md-adapter';
 import {
   NOTO_MARKDOWN_VERSION,
   type NotoBlock,
@@ -71,6 +73,9 @@ export function toWire(document: NotoDocument): NotoDocumentWire {
     // leave null so the IPC payload stays small when the editor does not need
     // to remount.
     nodes: document.nodes,
+    ...(document.nodesEnrichment !== undefined
+      ? { nodesEnrichment: document.nodesEnrichment }
+      : {}),
   };
 }
 
@@ -108,7 +113,13 @@ export function parseDocument(bytes: Uint8Array): NotoParseResult {
     sourceSha256,
   };
 
-  const split = splitBlocks(text);
+  // Flagged open: structural / enrich none on the critical path; renderer
+  // fills dialect nodes for the first-paint window then the remainder.
+  // Micromark and non-open splitBlocks callers stay on full dialect attach.
+  const deferred = isRoobliMdEngine();
+  const split = deferred
+    ? splitBlocksViaRoobli(text, { enrich: 'none' })
+    : splitBlocksMicromark(text);
   const documentId = `noto-doc-v3:${sourceSha256}` as NotoDocumentId;
   const revisionId = `noto-rev-v3:${sourceSha256}` as NotoRevisionId;
 
@@ -144,6 +155,7 @@ export function parseDocument(bytes: Uint8Array): NotoParseResult {
       leading: split.leading,
       trailing: split.trailing,
       nodes: split.spans.map((span) => span.node),
+      nodesEnrichment: deferred ? 'deferred' : 'full',
     },
   };
 }

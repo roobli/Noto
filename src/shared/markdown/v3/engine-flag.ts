@@ -8,8 +8,9 @@
  * identity / single-block saves through `@roobli/md` `serializeDocument`.
  *
  * Product builds stay on micromark until parity gates and a broader open-path
- * corpus land; unit tests flip the override explicitly. Flagged open uses bulk
- * mdast attach (see docs/performance/open-path-first-cut.md).
+ * corpus land; unit tests flip the override explicitly. Flagged open uses
+ * deferred structural nodes + renderer range enrich (see
+ * docs/performance/open-path-first-cut.md).
  */
 
 export type MarkdownEngineId = 'micromark' | 'roobli-md';
