@@ -1,8 +1,8 @@
 /**
  * Engine-owned IR → PM for common blocks (leaf + plain paragraph/heading
  * including hard breaks + parseable link-def + simple footnote-def + simple
- * quote + simple flat list + simple GFM table). Flagged `@roobli/md` path;
- * does not flip product default.
+ * quote + simple flat / one-level nested list + simple GFM table). Flagged
+ * `@roobli/md` path; does not flip product default.
  */
 
 import { describe, expect, it } from 'vitest';
@@ -50,7 +50,7 @@ describe('from-engine IR helpers', () => {
     expect(hasHardBreak('soft\nwrap')).toBe(false);
   });
 
-  it('canSkipDialectEnrich for leaf + plain phrasing + simple quote + flat list + table + footnote', () => {
+  it('canSkipDialectEnrich for leaf + plain phrasing + simple quote + flat/nested list + table + footnote', () => {
     expect(canSkipDialectEnrich('fenced-code', '```js\nx\n```')).toBe(true);
     expect(canSkipDialectEnrich('thematic-break', '---')).toBe(true);
     expect(canSkipDialectEnrich('paragraph', 'Hello')).toBe(true);
@@ -69,7 +69,8 @@ describe('from-engine IR helpers', () => {
     expect(canSkipDialectEnrich('bullet-list', '- a\n- b')).toBe(true);
     expect(canSkipDialectEnrich('ordered-list', '1. a\n2. b')).toBe(true);
     expect(canSkipDialectEnrich('task-list', '- [ ] a\n- [x] b')).toBe(true);
-    expect(canSkipDialectEnrich('bullet-list', '- a\n  - nested')).toBe(false);
+    expect(canSkipDialectEnrich('bullet-list', '- a\n  - nested')).toBe(true);
+    expect(canSkipDialectEnrich('bullet-list', '- a\n  - nested\n    - deep')).toBe(false);
     expect(canSkipDialectEnrich('bullet-list', '- **bold**')).toBe(false);
     expect(canSkipDialectEnrich('table', '| a |\n| - |\n| 1 |')).toBe(true);
     expect(canSkipDialectEnrich('table', '| Left | Right |\n| :--- | ---: |\n| alpha | 1 |')).toBe(true);
@@ -110,7 +111,10 @@ describe('from-engine IR helpers', () => {
     expect(parseSimpleQuoteSource('> [!NOTE]\n> x')).toBeNull();
     expect(parseSimpleFlatListSource('- a\n- b')).toEqual({
       ordered: false, bullet: '-', delimiter: null, start: 1, spread: false,
-      items: [{ checked: null, text: 'a' }, { checked: null, text: 'b' }],
+      items: [
+        { checked: null, text: 'a', nested: null },
+        { checked: null, text: 'b', nested: null },
+      ],
     });
     expect(parseSimpleFlatListSource('* star\n* two')?.bullet).toBe('*');
     expect(parseSimpleFlatListSource('1. a\n2. b')).toMatchObject({
@@ -120,10 +124,21 @@ describe('from-engine IR helpers', () => {
     expect(parseSimpleFlatListSource('1) a\n2) b')?.delimiter).toBe(')');
     expect(parseSimpleFlatListSource('- a\n\n- b')?.spread).toBe(true);
     expect(parseSimpleFlatListSource('- [ ] todo\n- [x] done')?.items).toEqual([
-      { checked: false, text: 'todo' }, { checked: true, text: 'done' },
+      { checked: false, text: 'todo', nested: null },
+      { checked: true, text: 'done', nested: null },
     ]);
     expect(parseSimpleFlatListSource('- a\n  continued')?.items[0]?.text).toBe('a\ncontinued');
-    expect(parseSimpleFlatListSource('- a\n  - nested')).toBeNull();
+    expect(parseSimpleFlatListSource('- a\n  - nested')).toEqual({
+      ordered: false, bullet: '-', delimiter: null, start: 1, spread: false,
+      items: [{
+        checked: null, text: 'a',
+        nested: {
+          ordered: false, bullet: '-', delimiter: null, start: 1, spread: false,
+          items: [{ checked: null, text: 'nested', nested: null }],
+        },
+      }],
+    });
+    expect(parseSimpleFlatListSource('- a\n  - nested\n    - deep')).toBeNull();
     expect(parseSimpleFlatListSource('- **bold**')).toBeNull();
     expect(parseSimpleFlatListSource('- a\n* b')).toBeNull();
     expect(parseSimpleFlatListSource('- multi\n\n  para\n- next')).toBeNull();
@@ -210,7 +225,7 @@ describe('blockFromEngineSpan', () => {
     expect(blockFromEngineSpan('quote', '>')).toBeNull();
   });
 
-  it('builds simple flat lists; refuses nest / marked / mixed markers', () => {
+  it('builds simple flat lists; refuses marked / mixed markers / multi-para', () => {
     const ul = blockFromEngineSpan('bullet-list', '- bullet a\n- bullet b');
     expect(ul?.type.name).toBe('bullet_list');
     expect(ul?.attrs).toMatchObject({ spread: false, bullet: '-' });
@@ -245,11 +260,57 @@ describe('blockFromEngineSpan', () => {
     const wrap = blockFromEngineSpan('bullet-list', '- a\n  continued\n- b');
     expect(wrap?.child(0).textContent).toBe('a\ncontinued');
 
-    expect(blockFromEngineSpan('bullet-list', '- a\n  - nested')).toBeNull();
     expect(blockFromEngineSpan('bullet-list', '- **bold**')).toBeNull();
     expect(blockFromEngineSpan('bullet-list', '- a\n* b')).toBeNull();
     expect(blockFromEngineSpan('bullet-list', '- multi\n\n  para\n- next')).toBeNull();
     expect(blockFromEngineSpan('bullet-list', '- a  \n  b')).toBeNull();
+  });
+
+  it('builds one-level nested lists; refuses depth-2+ / cross-family nest', () => {
+    const nest = blockFromEngineSpan('bullet-list', '- outer one\n  - nested a\n  - nested b\n- outer two');
+    expect(nest?.type.name).toBe('bullet_list');
+    expect(nest?.childCount).toBe(2);
+    expect(nest?.child(0).childCount).toBe(2);
+    expect(nest?.child(0).child(0).type.name).toBe('paragraph');
+    expect(nest?.child(0).child(0).textContent).toBe('outer one');
+    expect(nest?.child(0).child(1).type.name).toBe('bullet_list');
+    expect(nest?.child(0).child(1).childCount).toBe(2);
+    expect(nest?.child(0).child(1).child(0).textContent).toBe('nested a');
+    expect(nest?.child(0).child(1).child(1).textContent).toBe('nested b');
+    expect(nest?.child(1).childCount).toBe(1);
+    expect(nest?.child(1).textContent).toBe('outer two');
+
+    const ordered = blockFromEngineSpan(
+      'ordered-list',
+      '1. ordered outer\n   1. nested ordered a\n   2. nested ordered b\n2. ordered outer two',
+    );
+    expect(ordered?.type.name).toBe('ordered_list');
+    expect(ordered?.child(0).childCount).toBe(2);
+    expect(ordered?.child(0).child(1).type.name).toBe('ordered_list');
+    expect(ordered?.child(0).child(1).child(0).textContent).toBe('nested ordered a');
+    expect(ordered?.child(1).textContent).toBe('ordered outer two');
+
+    const looseNest = blockFromEngineSpan('bullet-list', '- a\n  - n1\n\n  - n2\n- b');
+    expect(looseNest?.attrs.spread).toBe(false);
+    expect(looseNest?.child(0).child(1).attrs.spread).toBe(true);
+
+    const wrapThenNest = blockFromEngineSpan('bullet-list', '- a\n  continued\n  - nested');
+    expect(wrapThenNest?.child(0).child(0).textContent).toBe('a\ncontinued');
+    expect(wrapThenNest?.child(0).child(1).child(0).textContent).toBe('nested');
+
+    const tasks = blockFromEngineSpan('task-list', '- [ ] task outer\n  - [ ] nested task');
+    expect(tasks?.child(0).attrs.checked).toBe(false);
+    expect(tasks?.child(0).child(1).child(0).attrs.checked).toBe(false);
+    expect(tasks?.child(0).child(1).child(0).textContent).toBe('nested task');
+
+    // Depth 2+ stays dialect (nested-lists.md deep three).
+    expect(blockFromEngineSpan('bullet-list', '- a\n  - nested\n    - deep')).toBeNull();
+    expect(blockFromEngineSpan(
+      'bullet-list',
+      '- outer one\n  - nested a\n  - nested b\n    - deep three\n- outer two',
+    )).toBeNull();
+    // Cross-family nest (ordered under bullet) refused.
+    expect(blockFromEngineSpan('bullet-list', '- a\n  1. ordered nest')).toBeNull();
   });
 
   it('builds simple footnote definitions incl. empty; refuses marked / hard-break', () => {
@@ -394,6 +455,11 @@ describe('blockFromEngineSpan', () => {
       '- [ ] todo\n- [x] done\n',
       '- a\n\n- b\n',
       '- a\n  continued\n- b\n',
+      '- outer one\n  - nested a\n  - nested b\n- outer two\n',
+      '1. ordered outer\n   1. nested ordered a\n   2. nested ordered b\n2. ordered outer two\n',
+      '- a\n  - n1\n\n  - n2\n- b\n',
+      '- a\n  continued\n  - nested\n',
+      '- [ ] task outer\n  - [ ] nested task\n',
       '| Left | Right |\n| :--- | ---: |\n| alpha | 1 |\n| beta | 2 |\n',
       '| a | b | c |\n| --- | :---: | ---: |\n| 1 | 2 | 3 |\n',
       '| H1 | H2 |\n| --- | --- |\n',
@@ -440,13 +506,26 @@ describe('blockFromEngineSpan', () => {
         }
       }
       if (engine.type.name === 'bullet_list' || engine.type.name === 'ordered_list') {
-        expect(engine.attrs).toEqual(micro.attrs);
-        expect(engine.childCount).toBe(micro.childCount);
-        for (let i = 0; i < engine.childCount; i += 1) {
-          expect(engine.child(i).attrs.checked).toBe(micro.child(i).attrs.checked);
-          expect(engine.child(i).textContent).toBe(micro.child(i).textContent);
-          expect(engine.child(i).childCount).toBe(micro.child(i).childCount);
-        }
+        const assertList = (eng: typeof engine, mic: typeof micro): void => {
+          expect(eng.attrs).toEqual(mic.attrs);
+          expect(eng.childCount).toBe(mic.childCount);
+          for (let i = 0; i < eng.childCount; i += 1) {
+            expect(eng.child(i).attrs.checked).toBe(mic.child(i).attrs.checked);
+            expect(eng.child(i).textContent).toBe(mic.child(i).textContent);
+            expect(eng.child(i).childCount).toBe(mic.child(i).childCount);
+            for (let c = 0; c < eng.child(i).childCount; c += 1) {
+              const ec = eng.child(i).child(c);
+              const mc = mic.child(i).child(c);
+              expect(ec.type.name).toBe(mc.type.name);
+              if (ec.type.name === 'bullet_list' || ec.type.name === 'ordered_list') {
+                assertList(ec, mc);
+              } else {
+                expect(ec.textContent).toBe(mc.textContent);
+              }
+            }
+          }
+        };
+        assertList(engine, micro);
       }
       if (engine.type.name === 'table') {
         expect(engine.attrs).toEqual(micro.attrs);

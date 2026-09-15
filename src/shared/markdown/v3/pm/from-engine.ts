@@ -7,10 +7,11 @@
  * paragraph/heading with no inline dialect markers (hard breaks — two+ spaces
  * before newline — are engine-owned as `hard_break` nodes), **simple** blockquotes
  * (every line `>`-prefixed, inner content is plain paragraphs only), **simple
- * flat lists** (no nest, consistent markers, plain single-paragraph items), and
+ * flat lists** and **one-level nested lists** (same-family markers; plain
+ * single-paragraph items; nested children are flat — no depth-2+), and
  * **simple GFM tables** (alignment row; plain text cells; no nested blocks /
  * marked phrasing), the PM node is fully determined by that IR — no micromark /
- * mdast pass. Nested lists, multi-block items, nested/marked quotes, complex
+ * mdast pass. Deeper nests, multi-block items, nested/marked quotes, complex
  * tables, marked footnote bodies, and marked-up phrasing still go through
  * `from-mdast.ts` after dialect enrich.
  *
@@ -55,8 +56,8 @@ export function hasHardBreak(markdown: string): boolean {
 /**
  * True when dialect enrich can be skipped: leaf kinds always; parseable
  * link-definitions; simple footnote-definitions; simple quotes; simple flat
- * lists; simple GFM tables; paragraph / heading when the source has no inline
- * dialect markers (hard breaks allowed — engine-owned).
+ * or one-level nested lists; simple GFM tables; paragraph / heading when the
+ * source has no inline dialect markers (hard breaks allowed — engine-owned).
  */
 export function canSkipDialectEnrich(kind: NotoBlockKind, markdown: string): boolean {
   if (ENGINE_LEAF_KINDS.has(kind)) return true;
@@ -221,6 +222,8 @@ export type FlatListDelimiter = '.' | ')';
 export interface ParsedFlatListItem {
   readonly checked: boolean | null;
   readonly text: string;
+  /** One-level nested list under this item; null when the item is flat. */
+  readonly nested: ParsedFlatList | null;
 }
 
 export interface ParsedFlatList {
@@ -269,17 +272,33 @@ function splitTaskPrefix(rest: string): { checked: boolean | null; text: string 
 }
 
 /**
- * Simple flat list: top-level items only (no nest), consistent bullet or
- * ordered delimiter, each item a single plain paragraph (optional soft-wrap
- * continuation). Loose lists (blank between items) set `spread`. Task
- * checkboxes are allowed. Returns `null` when dialect enrich is still needed.
+ * Simple flat or one-level nested list: consistent bullet or ordered delimiter
+ * at each level, each item a single plain paragraph (optional soft-wrap
+ * continuation). Nested children are flat only (depth-2+ falls through).
+ * Parent and nested must share orderedness (same family); mixed-marker nests
+ * that split under micromark are refused. Loose lists (blank between sibling
+ * items) set `spread` on that level. Task checkboxes are allowed. Returns
+ * `null` when dialect enrich is still needed.
  */
 export function parseSimpleFlatListSource(md: string): ParsedFlatList | null {
   const trimmed = md.replace(/\r\n/g, '\n').trimEnd();
   if (trimmed.length === 0) return null;
   const lines = trimmed.split('\n');
 
-  type DraftItem = { checked: boolean | null; lines: string[] };
+  type DraftNestedItem = { checked: boolean | null; lines: string[] };
+  type DraftItem = {
+    checked: boolean | null;
+    lines: string[];
+    nestedOrdered: boolean | null;
+    nestedBullet: FlatListBullet | null;
+    nestedDelimiter: FlatListDelimiter | null;
+    nestedStart: number;
+    nestedSpread: boolean;
+    nestedIndent: string | null;
+    nestedItems: DraftNestedItem[];
+    nestedPendingBlank: boolean;
+  };
+
   const items: DraftItem[] = [];
   let ordered: boolean | null = null;
   let bullet: FlatListBullet | null = null;
@@ -290,10 +309,26 @@ export function parseSimpleFlatListSource(md: string): ParsedFlatList | null {
   let spread = false;
   let sawItem = false;
 
+  const pushTop = (checked: boolean | null, text: string): void => {
+    items.push({
+      checked,
+      lines: [text],
+      nestedOrdered: null,
+      nestedBullet: null,
+      nestedDelimiter: null,
+      nestedStart: 1,
+      nestedSpread: false,
+      nestedIndent: null,
+      nestedItems: [],
+      nestedPendingBlank: false,
+    });
+  };
+
   for (const line of lines) {
     if (/^[ \t]*$/u.test(line)) {
       if (!sawItem) return null;
       pendingBlank = true;
+      if (items.length > 0) items[items.length - 1]!.nestedPendingBlank = true;
       continue;
     }
 
@@ -302,49 +337,122 @@ export function parseSimpleFlatListSource(md: string): ParsedFlatList | null {
 
     if (bulletMatch || orderedMatch) {
       const indent = (bulletMatch ?? orderedMatch)![1]!;
-      if (baseIndent === null) baseIndent = indent;
-      if (indent !== baseIndent) return null;
 
-      let rest: string;
+      if (baseIndent === null) {
+        baseIndent = indent;
+      }
+
+      if (indent === baseIndent) {
+        // Top-level sibling.
+        let rest: string;
+        if (bulletMatch) {
+          const marker = bulletMatch[2] as FlatListBullet;
+          if (ordered === true) return null;
+          if (bullet !== null && bullet !== marker) return null;
+          ordered = false;
+          bullet = marker;
+          rest = line.slice(bulletMatch[0].length);
+        } else {
+          const m = orderedMatch!;
+          const num = Number(m[2]!);
+          const delim = m[3] as FlatListDelimiter;
+          if (ordered === false) return null;
+          if (delimiter !== null && delimiter !== delim) return null;
+          if (ordered === null) start = num;
+          ordered = true;
+          delimiter = delim;
+          bullet = null;
+          rest = line.slice(m[0].length);
+        }
+
+        const { checked, text: rawText } = splitTaskPrefix(rest);
+        const text = rawText.replace(/^[ \t]+/u, '');
+        if (pendingBlank && sawItem) spread = true;
+        pendingBlank = false;
+        sawItem = true;
+        pushTop(checked, text);
+        continue;
+      }
+
+      // Nested marker: must be strictly deeper than the top-level indent.
+      if (baseIndent === null || !sawItem || items.length === 0) return null;
+      if (!(indent.length > baseIndent.length && indent.startsWith(baseIndent))) return null;
+
+      const parent = items[items.length - 1]!;
+      if (parent.nestedIndent === null) {
+        parent.nestedIndent = indent;
+      } else if (indent !== parent.nestedIndent) {
+        // Deeper than one level, or inconsistent nest indent → dialect.
+        return null;
+      }
+
+      let nestRest: string;
       if (bulletMatch) {
         const marker = bulletMatch[2] as FlatListBullet;
-        if (ordered === true) return null;
-        if (bullet !== null && bullet !== marker) return null;
-        ordered = false;
-        bullet = marker;
-        rest = line.slice(bulletMatch[0].length);
+        // Same family as parent (unordered under unordered).
+        if (ordered !== false) return null;
+        if (parent.nestedOrdered === true) return null;
+        if (parent.nestedBullet !== null && parent.nestedBullet !== marker) return null;
+        parent.nestedOrdered = false;
+        parent.nestedBullet = marker;
+        parent.nestedDelimiter = null;
+        nestRest = line.slice(bulletMatch[0].length);
       } else {
         const m = orderedMatch!;
         const num = Number(m[2]!);
         const delim = m[3] as FlatListDelimiter;
-        if (ordered === false) return null;
-        if (delimiter !== null && delimiter !== delim) return null;
-        if (ordered === null) start = num;
-        ordered = true;
-        delimiter = delim;
-        bullet = null;
-        rest = line.slice(m[0].length);
+        if (ordered !== true) return null;
+        if (parent.nestedOrdered === false) return null;
+        if (parent.nestedDelimiter !== null && parent.nestedDelimiter !== delim) return null;
+        if (parent.nestedOrdered === null) parent.nestedStart = num;
+        parent.nestedOrdered = true;
+        parent.nestedDelimiter = delim;
+        parent.nestedBullet = null;
+        nestRest = line.slice(m[0].length);
       }
 
-      const { checked, text: rawText } = splitTaskPrefix(rest);
-      // Match CommonMark/mdast: padding spaces after the marker are not content.
+      const { checked, text: rawText } = splitTaskPrefix(nestRest);
       const text = rawText.replace(/^[ \t]+/u, '');
-      if (pendingBlank && sawItem) spread = true;
+      if (parent.nestedPendingBlank && parent.nestedItems.length > 0) {
+        parent.nestedSpread = true;
+      }
+      // Blank between parent text and first nested item does not spread the outer list.
       pendingBlank = false;
-      sawItem = true;
-      items.push({ checked, lines: [text] });
+      parent.nestedPendingBlank = false;
+      parent.nestedItems.push({ checked, lines: [text] });
       continue;
     }
 
-    // Indented soft-wrap continuation of the current item only.
+    // Soft-wrap continuation (top-level item or current nested item).
     if (!sawItem || items.length === 0) return null;
+    const parent = items[items.length - 1]!;
+
+    if (parent.nestedItems.length > 0) {
+      // Continuation of the current nested item only.
+      if (parent.nestedPendingBlank) return null;
+      if (listContinuationLooksStructural(line)) return null;
+      const nestIndent = parent.nestedIndent!;
+      if (!(line.startsWith(nestIndent) && line.length > nestIndent.length
+        && /[ \t]/.test(line[nestIndent.length]!))) {
+        return null;
+      }
+      const rest = line.slice(nestIndent.length).replace(/^[ \t]+/u, '');
+      if (needsDialectInline(rest) || HARD_BREAK_RE.test(line)) return null;
+      parent.nestedItems[parent.nestedItems.length - 1]!.lines.push(rest);
+      pendingBlank = false;
+      continue;
+    }
+
+    // Continuation of the top-level item (before any nested list).
     if (pendingBlank) return null; // blank then non-marker = multi-para item
     if (listContinuationLooksStructural(line)) return null;
     if (baseIndent !== null && line.startsWith(baseIndent) && line.length > baseIndent.length
       && /[ \t]/.test(line[baseIndent.length]!)) {
       const rest = line.slice(baseIndent.length).replace(/^[ \t]+/u, '');
       if (needsDialectInline(rest) || HARD_BREAK_RE.test(line)) return null;
-      items[items.length - 1]!.lines.push(rest);
+      parent.lines.push(rest);
+      pendingBlank = false;
+      parent.nestedPendingBlank = false;
       continue;
     }
     return null;
@@ -357,7 +465,28 @@ export function parseSimpleFlatListSource(md: string): ParsedFlatList | null {
     const joined = item.lines.join('\n');
     const text = joined.trimEnd();
     if (needsDialectInline(text) || HARD_BREAK_RE.test(joined)) return null;
-    parsedItems.push({ checked: item.checked, text });
+
+    let nested: ParsedFlatList | null = null;
+    if (item.nestedItems.length > 0) {
+      if (item.nestedOrdered === null) return null;
+      const nestedParsed: ParsedFlatListItem[] = [];
+      for (const n of item.nestedItems) {
+        const nJoined = n.lines.join('\n');
+        const nText = nJoined.trimEnd();
+        if (needsDialectInline(nText) || HARD_BREAK_RE.test(nJoined)) return null;
+        nestedParsed.push({ checked: n.checked, text: nText, nested: null });
+      }
+      nested = {
+        ordered: item.nestedOrdered,
+        bullet: item.nestedOrdered ? null : item.nestedBullet,
+        delimiter: item.nestedOrdered ? item.nestedDelimiter : null,
+        start: item.nestedOrdered ? item.nestedStart : 1,
+        spread: item.nestedSpread,
+        items: nestedParsed,
+      };
+    }
+
+    parsedItems.push({ checked: item.checked, text, nested });
   }
 
   return {
@@ -596,6 +725,28 @@ export function engineSemanticKey(kind: NotoBlockKind, markdown: string): string
   return parts.join('\u0000');
 }
 
+
+function pmListFromParsed(list: ParsedFlatList): ProseNode {
+  const items = list.items.map((item) => {
+    const children: ProseNode[] = [
+      schema.nodes.paragraph.create(null, textNodes(item.text)),
+    ];
+    if (item.nested) children.push(pmListFromParsed(item.nested));
+    return schema.nodes.list_item.create({ checked: item.checked }, children);
+  });
+  if (list.ordered) {
+    return schema.nodes.ordered_list.create({
+      start: list.start,
+      spread: list.spread,
+      delimiter: list.delimiter ?? '.',
+    }, items);
+  }
+  return schema.nodes.bullet_list.create({
+    spread: list.spread,
+    bullet: list.bullet ?? '-',
+  }, items);
+}
+
 /**
  * Build a ProseMirror block from engine kind + source when feasible.
  * Returns `null` when the span still needs dialect / mdast.
@@ -672,21 +823,7 @@ export function blockFromEngineSpan(kind: NotoBlockKind, markdown: string): Pros
     case 'task-list': {
       const list = parseSimpleFlatListSource(markdown);
       if (!list) return null;
-      const items = list.items.map((item) => schema.nodes.list_item.create(
-        { checked: item.checked },
-        [schema.nodes.paragraph.create(null, textNodes(item.text))],
-      ));
-      if (list.ordered) {
-        return schema.nodes.ordered_list.create({
-          start: list.start,
-          spread: list.spread,
-          delimiter: list.delimiter ?? '.',
-        }, items);
-      }
-      return schema.nodes.bullet_list.create({
-        spread: list.spread,
-        bullet: list.bullet ?? '-',
-      }, items);
+      return pmListFromParsed(list);
     }
     case 'table': {
       const table = parseSimpleTableSource(markdown);
