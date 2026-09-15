@@ -139,9 +139,11 @@ describe('markdown golden gates — fixture inventory', () => {
     expect(FIXTURES).toEqual([
       'alerts.md',
       'callouts-edge.md',
+      'cjk-emphasis.md',
       'cjk-wiki.md',
       'cjk.md',
       'empty-fence.md',
+      'empty-footnote-defs.md',
       'escapes.md',
       'fence-meta.md',
       'footnotes.md',

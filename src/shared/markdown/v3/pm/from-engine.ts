@@ -3,7 +3,7 @@
  *
  * Native spans are kind + source offsets only. For leaf kinds (fence, hr, math,
  * frontmatter, html), parseable link-definitions, **simple footnote-definitions**
- * (plain single-paragraph body; optional soft-wrap continuations), plain
+ * (plain or empty single-paragraph body; optional soft-wrap continuations), plain
  * paragraph/heading with no inline dialect markers, **simple** blockquotes
  * (every line `>`-prefixed, inner content is plain paragraphs only), **simple
  * flat lists** (no nest, consistent markers, plain single-paragraph items), and
@@ -475,10 +475,10 @@ export interface ParsedFootnoteDefinition {
 }
 
 /**
- * Simple footnote definition: `[^label]:` + plain single-paragraph body.
+ * Simple footnote definition: `[^label]:` + plain (or empty) single-paragraph body.
  * Optional soft-wrap continuation lines (indented) are joined with a newline
- * after leading whitespace is stripped (mdast parity). Empty bodies, hard breaks,
- * marked phrasing, and structural continuation lines fall through to dialect.
+ * after leading whitespace is stripped (mdast parity). Hard breaks, marked
+ * phrasing, and structural continuation lines fall through to dialect.
  */
 export function parseSimpleFootnoteDefinitionSource(md: string): ParsedFootnoteDefinition | null {
   const trimmed = md.replace(/\r\n/g, '\n').trimEnd();
@@ -498,7 +498,8 @@ export function parseSimpleFootnoteDefinitionSource(md: string): ParsedFootnoteD
     parts.push(line.replace(/^[ \t]+/u, ''));
   }
   const text = parts.join('\n').trimEnd();
-  if (text.length === 0) return null;
+  // Empty body (`[^id]:` / whitespace-only) is still engine-owned: one empty
+  // paragraph child (schema `block+`). Marked / hard-break / structural stay out.
   if (needsDialectInline(text)) return null;
   return {
     identifier: label.toLowerCase(),
