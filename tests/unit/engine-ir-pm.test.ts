@@ -1,7 +1,7 @@
 /**
  * Engine-owned IR → PM for common blocks (leaf + plain paragraph/heading +
- * parseable link-def + simple quote + simple flat list + simple GFM table).
- * Flagged `@roobli/md` path; does not flip product default.
+ * parseable link-def + simple footnote-def + simple quote + simple flat list +
+ * simple GFM table). Flagged `@roobli/md` path; does not flip product default.
  */
 
 import { describe, expect, it } from 'vitest';
@@ -13,6 +13,7 @@ import {
   parseFenceSource,
   parseHeadingSource,
   parseLinkDefinitionSource,
+  parseSimpleFootnoteDefinitionSource,
   parseSimpleQuoteSource,
   parseSimpleFlatListSource,
   parseSimpleTableSource,
@@ -44,7 +45,7 @@ describe('from-engine IR helpers', () => {
     expect(needsDialectInline('soft\nwrap')).toBe(false);
   });
 
-  it('canSkipDialectEnrich for leaf + plain phrasing + simple quote + flat list + table', () => {
+  it('canSkipDialectEnrich for leaf + plain phrasing + simple quote + flat list + table + footnote', () => {
     expect(canSkipDialectEnrich('fenced-code', '```js\nx\n```')).toBe(true);
     expect(canSkipDialectEnrich('thematic-break', '---')).toBe(true);
     expect(canSkipDialectEnrich('paragraph', 'Hello')).toBe(true);
@@ -52,6 +53,9 @@ describe('from-engine IR helpers', () => {
     expect(canSkipDialectEnrich('heading', 'Setext\n===')).toBe(true);
     expect(canSkipDialectEnrich('paragraph', 'Hello **x**')).toBe(false);
     expect(canSkipDialectEnrich('link-definition', '[id]: https://example.com')).toBe(true);
+    expect(canSkipDialectEnrich('footnote-definition', '[^1]: plain note')).toBe(true);
+    expect(canSkipDialectEnrich('footnote-definition', '[^1]: has *emphasis*')).toBe(false);
+    expect(canSkipDialectEnrich('footnote-definition', '[^1]:')).toBe(false);
     expect(canSkipDialectEnrich('quote', '> Hello')).toBe(true);
     expect(canSkipDialectEnrich('quote', '> Hello **x**')).toBe(false);
     expect(canSkipDialectEnrich('quote', '> [!NOTE]\n> body')).toBe(false);
@@ -241,6 +245,33 @@ describe('blockFromEngineSpan', () => {
     expect(blockFromEngineSpan('bullet-list', '- a  \n  b')).toBeNull();
   });
 
+  it('builds simple footnote definitions; refuses empty / marked', () => {
+    expect(parseSimpleFootnoteDefinitionSource('[^1]: plain note')).toEqual({
+      identifier: '1', label: '1', text: 'plain note',
+    });
+    expect(parseSimpleFootnoteDefinitionSource('[^Long-Name]: Hello world')).toEqual({
+      identifier: 'long-name', label: 'Long-Name', text: 'Hello world',
+    });
+    expect(parseSimpleFootnoteDefinitionSource('[^y]: line1\n  continued')).toEqual({
+      identifier: 'y', label: 'y', text: 'line1\ncontinued',
+    });
+    expect(parseSimpleFootnoteDefinitionSource('[^x]: has *emphasis*')).toBeNull();
+    expect(parseSimpleFootnoteDefinitionSource('[^c]:')).toBeNull();
+    expect(parseSimpleFootnoteDefinitionSource('[^c]:  ')).toBeNull();
+    expect(parseSimpleFootnoteDefinitionSource('[^h]: a  \n  b')).toBeNull();
+
+    const plain = blockFromEngineSpan('footnote-definition', '[^1]: plain note');
+    expect(plain?.type.name).toBe('footnote_definition');
+    expect(plain?.attrs).toEqual({ identifier: '1', label: '1' });
+    expect(plain?.textContent).toBe('plain note');
+
+    const wrap = blockFromEngineSpan('footnote-definition', '[^y]: line1\n  continued');
+    expect(wrap?.textContent).toBe('line1\ncontinued');
+
+    expect(blockFromEngineSpan('footnote-definition', '[^x]: has *emphasis*')).toBeNull();
+    expect(blockFromEngineSpan('footnote-definition', '[^c]:')).toBeNull();
+  });
+
   it('builds simple GFM tables; refuses marked / ragged / no delimiter', () => {
     const t = blockFromEngineSpan('table', '| Left | Right |\n| :--- | ---: |\n| alpha | 1 |\n| beta | 2 |');
     expect(t?.type.name).toBe('table');
@@ -299,6 +330,9 @@ describe('blockFromEngineSpan', () => {
       '# Plain title\n',
       'Setext Title\n============\n',
       '[alpha]: https://example.com/alpha "Alpha Title"\n',
+      '[^1]: plain note\n',
+      '[^Long-Name]: Hello world\n',
+      '[^y]: line1\n  continued\n',
       '> Hello world\n',
       '> Second plain quote\n> with a continuation line.\n',
       '> para1\n>\n> para2\n',
@@ -337,6 +371,11 @@ describe('blockFromEngineSpan', () => {
       }
       if (engine.type.name === 'link_definition') {
         expect(engine.attrs).toEqual(micro.attrs);
+      }
+      if (engine.type.name === 'footnote_definition') {
+        expect(engine.attrs).toEqual(micro.attrs);
+        expect(engine.childCount).toBe(micro.childCount);
+        expect(engine.textContent).toBe(micro.textContent);
       }
       if (engine.type.name === 'blockquote') {
         expect(engine.childCount).toBe(micro.childCount);
@@ -401,7 +440,7 @@ describe('enrich skip for engine-owned spans', () => {
       'More **marks**\n\n',
     ].join('');
     const none = splitBlocksViaRoobli(text, { enrich: 'none' });
-    // Prefix 0 enriched; remainder should skip leaf + plain + link-def + simple quote + flat list + table.
+    // Prefix 0 enriched; remainder should skip leaf + plain + link-def + footnote-def + simple quote + flat list + table.
     const flags = createEnrichFlags(none.spans.length, 0, none.spans);
     // Indices: 0 bold, 1 fence, 2 plain, 3 heading, 4 link-def, 5 quote, 6 list, 7 table, 8 bold
     expect(flags[0]).toBe(0);
@@ -416,7 +455,7 @@ describe('enrich skip for engine-owned spans', () => {
     expect(countDeferredFlags(flags)).toBe(2);
   });
 
-  it('docFromSpans uses engine path for mixed leaf + plain + simple quote + flat list + table under enrich none', () => {
+  it('docFromSpans uses engine path for mixed leaf + plain + simple quote + flat list + table + footnote under enrich none', () => {
     const text = '# Title\n\n```\nbody\n```\n\nHello\n\n> quoted\n\n- a\n- b\n\n| A | B |\n| - | - |\n| 1 | 2 |\n';
     const none = splitBlocksViaRoobli(text, { enrich: 'none' });
     const doc = docFromSpans(none.spans as never);

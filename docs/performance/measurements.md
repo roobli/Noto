@@ -577,8 +577,8 @@ Medium scroll/idle tick **~58 ms** vs full remainder **704 ms** (~12×). Large
 
 Next residual: keep growing markdown-golden before default-on; nested lists /
 complex tables / nested quotes / marked-up phrasing still dialect. Kind-aware
-stand-ins (#90), IR→PM common blocks (+ link-definition + simple quote + simple
-flat list + simple GFM table), and incremental PM patch per enrich tick shipped
+stand-ins (#90), IR→PM common blocks (+ link-definition + simple footnote-def +
+simple quote + simple flat list + simple GFM table), and incremental PM patch per enrich tick shipped
 (flagged). Plain paragraph IR→PM trims trailing spaces (wiki-trigger save
 flake). Golden set expanded with GFM/callout/HTML/nested-list/trailing-spaces/
 simple-quote/simple-flat-list/simple-gfm-table edges plus hard-breaks, images,

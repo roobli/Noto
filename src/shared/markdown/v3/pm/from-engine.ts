@@ -2,14 +2,16 @@
  * Engine-owned IR → ProseMirror for common blocks (flagged `@roobli/md` path).
  *
  * Native spans are kind + source offsets only. For leaf kinds (fence, hr, math,
- * frontmatter, html), parseable link-definitions, plain paragraph/heading with
- * no inline dialect markers, **simple** blockquotes (every line `>`-prefixed,
- * inner content is plain paragraphs only), **simple flat lists** (no nest,
- * consistent markers, plain single-paragraph items), and **simple GFM tables**
- * (alignment row; plain text cells; no nested blocks / marked phrasing), the PM
- * node is fully determined by that IR — no micromark / mdast pass. Nested lists,
- * multi-block items, nested/marked quotes, complex tables, footnotes, and
- * marked-up phrasing still go through `from-mdast.ts` after dialect enrich.
+ * frontmatter, html), parseable link-definitions, **simple footnote-definitions**
+ * (plain single-paragraph body; optional soft-wrap continuations), plain
+ * paragraph/heading with no inline dialect markers, **simple** blockquotes
+ * (every line `>`-prefixed, inner content is plain paragraphs only), **simple
+ * flat lists** (no nest, consistent markers, plain single-paragraph items), and
+ * **simple GFM tables** (alignment row; plain text cells; no nested blocks /
+ * marked phrasing), the PM node is fully determined by that IR — no micromark /
+ * mdast pass. Nested lists, multi-block items, nested/marked quotes, complex
+ * tables, marked footnote bodies, and marked-up phrasing still go through
+ * `from-mdast.ts` after dialect enrich.
  *
  * See docs/performance/open-path-first-cut.md and docs/design/roobli-md-engine.md.
  */
@@ -45,13 +47,17 @@ export function needsDialectInline(markdown: string): boolean {
 
 /**
  * True when dialect enrich can be skipped: leaf kinds always; parseable
- * link-definitions; simple quotes; simple flat lists; simple GFM tables;
- * paragraph / heading only when the source has no inline dialect markers.
+ * link-definitions; simple footnote-definitions; simple quotes; simple flat
+ * lists; simple GFM tables; paragraph / heading only when the source has no
+ * inline dialect markers.
  */
 export function canSkipDialectEnrich(kind: NotoBlockKind, markdown: string): boolean {
   if (ENGINE_LEAF_KINDS.has(kind)) return true;
   if (kind === 'link-definition') {
     return parseLinkDefinitionSource(markdown) !== null;
+  }
+  if (kind === 'footnote-definition') {
+    return parseSimpleFootnoteDefinitionSource(markdown) !== null;
   }
   if (kind === 'quote') {
     return parseSimpleQuoteSource(markdown) !== null;
@@ -462,6 +468,45 @@ export function parseLinkDefinitionSource(md: string): ParsedLinkDefinition | nu
   };
 }
 
+export interface ParsedFootnoteDefinition {
+  readonly identifier: string;
+  readonly label: string;
+  readonly text: string;
+}
+
+/**
+ * Simple footnote definition: `[^label]:` + plain single-paragraph body.
+ * Optional soft-wrap continuation lines (indented) are joined with a newline
+ * after leading whitespace is stripped (mdast parity). Empty bodies, hard breaks,
+ * marked phrasing, and structural continuation lines fall through to dialect.
+ */
+export function parseSimpleFootnoteDefinitionSource(md: string): ParsedFootnoteDefinition | null {
+  const trimmed = md.replace(/\r\n/g, '\n').trimEnd();
+  if (trimmed.length === 0) return null;
+  const lines = trimmed.split('\n');
+  const first = /^\[(\^[^\]]+)\]:[ \t]?(.*)$/u.exec(lines[0]!);
+  if (!first) return null;
+  const label = first[1]!.slice(1); // drop leading ^
+  if (label.length === 0) return null;
+  const parts: string[] = [first[2]!];
+  for (let i = 1; i < lines.length; i += 1) {
+    const line = lines[i]!;
+    if (/^[ \t]*$/u.test(line)) return null;
+    if (!/^(?: {1,}|\t)/u.test(line)) return null;
+    if (listContinuationLooksStructural(line.replace(/^(?: {1,}|\t)+/u, ''))) return null;
+    // Footnote body soft-wrap: strip leading indent like mdast.
+    parts.push(line.replace(/^[ \t]+/u, ''));
+  }
+  const text = parts.join('\n').trimEnd();
+  if (text.length === 0) return null;
+  if (needsDialectInline(text)) return null;
+  return {
+    identifier: label.toLowerCase(),
+    label,
+    text,
+  };
+}
+
 /**
  * Structural fingerprint matching dialect `semanticKeyOf` for engine-owned
  * kinds so save / reparse checks stay aligned when enrich is skipped.
@@ -485,6 +530,11 @@ export function engineSemanticKey(kind: NotoBlockKind, markdown: string): string
     case 'link-definition': {
       const d = parseLinkDefinitionSource(markdown);
       if (d) parts.push(d.identifier);
+      break;
+    }
+    case 'footnote-definition': {
+      const f = parseSimpleFootnoteDefinitionSource(markdown);
+      if (f) parts.push(f.identifier);
       break;
     }
     case 'bullet-list':
@@ -569,6 +619,14 @@ export function blockFromEngineSpan(kind: NotoBlockKind, markdown: string): Pros
         url: d.url,
         title: d.title,
       });
+    }
+    case 'footnote-definition': {
+      const f = parseSimpleFootnoteDefinitionSource(markdown);
+      if (!f) return null;
+      return schema.nodes.footnote_definition.create(
+        { identifier: f.identifier, label: f.label },
+        [schema.nodes.paragraph.create(null, textNodes(f.text))],
+      );
     }
     case 'quote': {
       const paras = parseSimpleQuoteSource(markdown);
