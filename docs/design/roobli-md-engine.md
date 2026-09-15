@@ -108,7 +108,7 @@ sources — they do **not** flip `NOTO_MARKDOWN_ENGINE` for the rest of the suit
 Coverage today: headings, lists (incl. same-family nested), tables, wiki,
 math/code fences, frontmatter, CJK, alerts/callout edges, footnotes,
 indented-code, tight quotes, GFM strikethrough/autolink, HTML blocks,
-setext+hr, link-definitions, simple quotes, hard-breaks/images/empty-fence/escapes/table-align/ordered-start/fence-meta/html-inline. Intentional diffs (setext-`---` vs hr; mixed-marker
+setext+hr, link-definitions, simple quotes, simple flat lists, hard-breaks/images/empty-fence/escapes/table-align/ordered-start/fence-meta/html-inline. Intentional diffs (setext-`---` vs hr; mixed-marker
 nested lists) are listed in `tests/fixtures/markdown-golden/README.md` and
 kept out of the strict directory; silent divergence fails the gate loudly
 (`GOLDEN GATE FAIL …`).
@@ -145,8 +145,8 @@ reviewed:
 | Gate | Status |
 | ---- | ------ |
 | Split / identity / multi-block golden on current `markdown-golden/` | Green (expanded; keep growing) |
-| Broader corpus / vault-shaped edges (GFM inline, nested lists, HTML, callout edges, link-defs, simple quotes, hard-breaks, images, empty/meta fences, escapes, table-align, ordered-start, inline HTML) in golden | Landed this cycle; more edges welcome |
-| Flagged open-path deferred + viewport enrich + IR→PM leaf/plain/link-def/simple-quote | Landed (still flagged-only) |
+| Broader corpus / vault-shaped edges (GFM inline, nested lists, HTML, callout edges, link-defs, simple quotes, simple flat lists, hard-breaks, images, empty/meta fences, escapes, table-align, ordered-start, inline HTML) in golden | Landed this cycle; more edges welcome |
+| Flagged open-path deferred + viewport enrich + IR→PM leaf/plain/link-def/simple-quote/flat-list | Landed (still flagged-only) |
 | Flagged serialize (identity / single / multi) + `reparseFromText` host wiring | Landed |
 | Packaged / e2e open feel on medium under the flag | Not a flip gate alone; measure before flip |
 | Intentional diffs documented in `markdown-golden/README.md` | Setext-`---` vs hr; mixed-marker nested lists (excluded from strict dir) |
@@ -196,15 +196,17 @@ attach for paste / non-open. Flagged `parseDocument` uses `enrich: 'none'`
 first-paint window then viewport / idle `enrichNextDeferredInRange` with
 incremental PM patch. **Engine-owned IR → PM** (`pm/from-engine.ts`) skips
 mdast for leaf kinds + plain paragraph/heading + parseable link-definitions +
-simple blockquotes (every line `>`-prefixed, plain inner paragraphs only);
+simple blockquotes (every line `>`-prefixed, plain inner paragraphs only) +
+simple flat lists (no nest, consistent markers, plain single-paragraph items);
 enrich flags mark those done — see `docs/performance/open-path-first-cut.md`.
-Nested / marked / callout quotes and marked-up phrasing stay on dialect.
-Product default stays micromark.
+Nested lists, multi-block items, nested / marked / callout quotes, tables,
+footnotes, and marked-up phrasing stay on dialect. Product default stays
+micromark.
 
 Next: keep growing `markdown-golden/` (more GFM / vault edges), extend IR→PM
 only where micromark parity is locked, then reconsider default-on. Hard-breaks,
-images, empty/meta fences, escapes, table-align, ordered-start, and inline HTML
-goldens landed this cycle. Do **not**
+images, empty/meta fences, escapes, table-align, ordered-start, inline HTML,
+and simple-flat-lists goldens landed. Do **not**
 flip the product default yet.
 
 **Noto `0.0.2-alpha.9`** shipped the adapter (#37) plus `@roobli/md` v0.1.1 quote/

@@ -3,11 +3,12 @@
  *
  * Native spans are kind + source offsets only. For leaf kinds (fence, hr, math,
  * frontmatter, html), parseable link-definitions, plain paragraph/heading with
- * no inline dialect markers, and **simple** blockquotes (every line `>`-prefixed,
- * inner content is plain paragraphs only), the PM node is fully determined by
- * that IR — no micromark / mdast pass. Lists, tables, nested/marked quotes,
- * footnotes, and marked-up phrasing still go through `from-mdast.ts` after
- * dialect enrich.
+ * no inline dialect markers, **simple** blockquotes (every line `>`-prefixed,
+ * inner content is plain paragraphs only), and **simple flat lists** (no nest,
+ * consistent markers, plain single-paragraph items), the PM node is fully
+ * determined by that IR — no micromark / mdast pass. Nested lists, multi-block
+ * items, tables, nested/marked quotes, footnotes, and marked-up phrasing still
+ * go through `from-mdast.ts` after dialect enrich.
  *
  * See docs/performance/open-path-first-cut.md and docs/design/roobli-md-engine.md.
  */
@@ -43,8 +44,8 @@ export function needsDialectInline(markdown: string): boolean {
 
 /**
  * True when dialect enrich can be skipped: leaf kinds always; parseable
- * link-definitions; simple quotes; paragraph / heading only when the source
- * has no inline dialect markers.
+ * link-definitions; simple quotes; simple flat lists; paragraph / heading
+ * only when the source has no inline dialect markers.
  */
 export function canSkipDialectEnrich(kind: NotoBlockKind, markdown: string): boolean {
   if (ENGINE_LEAF_KINDS.has(kind)) return true;
@@ -53,6 +54,9 @@ export function canSkipDialectEnrich(kind: NotoBlockKind, markdown: string): boo
   }
   if (kind === 'quote') {
     return parseSimpleQuoteSource(markdown) !== null;
+  }
+  if (kind === 'bullet-list' || kind === 'ordered-list' || kind === 'task-list') {
+    return parseSimpleFlatListSource(markdown) !== null;
   }
   if (kind === 'paragraph' || kind === 'heading') {
     return !needsDialectInline(markdown);
@@ -167,6 +171,161 @@ export function parseSimpleQuoteSource(md: string): string[] | null {
   return paragraphs;
 }
 
+export type FlatListBullet = '-' | '*' | '+';
+export type FlatListDelimiter = '.' | ')';
+
+export interface ParsedFlatListItem {
+  readonly checked: boolean | null;
+  readonly text: string;
+}
+
+export interface ParsedFlatList {
+  readonly ordered: boolean;
+  readonly bullet: FlatListBullet | null;
+  readonly delimiter: FlatListDelimiter | null;
+  readonly start: number;
+  readonly spread: boolean;
+  readonly items: readonly ParsedFlatListItem[];
+}
+
+/** Marker line without task/content yet: indent + bullet or ordered. */
+const BULLET_MARKER_RE = /^( {0,3})([-+*])(?:([ \t]+)|$)/u;
+const ORDERED_MARKER_RE = /^( {0,3})([0-9]{1,9})([.)])(?:([ \t]+)|$)/u;
+
+/**
+ * Nested list / fence / quote / heading / hr / table / HTML on a continuation
+ * line — fall through to dialect.
+ */
+function listContinuationLooksStructural(line: string): boolean {
+  if (/^[ \t]*$/u.test(line)) return false;
+  const t = line.replace(/^ {0,3}/u, '');
+  if (/^([-+*])(?:[ \t]|$)/u.test(t)) return true;
+  if (/^[0-9]{1,9}[.)](?:[ \t]|$)/u.test(t)) return true;
+  if (t.startsWith('>')) return true;
+  if (/^#{1,6}(?:[ \t]|$)/u.test(t)) return true;
+  if (/^(`{3,}|~{3,})/u.test(t)) return true;
+  if (t.startsWith('<')) return true;
+  if (t.startsWith('|')) return true;
+  if (/^([*\-_])(?:[ \t]*\1){2,}[ \t]*$/u.test(t)) return true;
+  if (/^(?: {4}|\t)/u.test(line)) return true;
+  return false;
+}
+
+/**
+ * GFM task checkbox after the list marker padding. Requires EOL or whitespace
+ * after `]` (`[x]done` stays literal).
+ */
+function splitTaskPrefix(rest: string): { checked: boolean | null; text: string } {
+  const m = /^\[([ xX])\](?:([ \t]+)|$)/u.exec(rest);
+  if (!m) return { checked: null, text: rest };
+  return {
+    checked: m[1]!.toLowerCase() === 'x',
+    text: rest.slice(m[0].length),
+  };
+}
+
+/**
+ * Simple flat list: top-level items only (no nest), consistent bullet or
+ * ordered delimiter, each item a single plain paragraph (optional soft-wrap
+ * continuation). Loose lists (blank between items) set `spread`. Task
+ * checkboxes are allowed. Returns `null` when dialect enrich is still needed.
+ */
+export function parseSimpleFlatListSource(md: string): ParsedFlatList | null {
+  const trimmed = md.replace(/\r\n/g, '\n').trimEnd();
+  if (trimmed.length === 0) return null;
+  const lines = trimmed.split('\n');
+
+  type DraftItem = { checked: boolean | null; lines: string[] };
+  const items: DraftItem[] = [];
+  let ordered: boolean | null = null;
+  let bullet: FlatListBullet | null = null;
+  let delimiter: FlatListDelimiter | null = null;
+  let start = 1;
+  let baseIndent: string | null = null;
+  let pendingBlank = false;
+  let spread = false;
+  let sawItem = false;
+
+  for (const line of lines) {
+    if (/^[ \t]*$/u.test(line)) {
+      if (!sawItem) return null;
+      pendingBlank = true;
+      continue;
+    }
+
+    const bulletMatch = BULLET_MARKER_RE.exec(line);
+    const orderedMatch = bulletMatch ? null : ORDERED_MARKER_RE.exec(line);
+
+    if (bulletMatch || orderedMatch) {
+      const indent = (bulletMatch ?? orderedMatch)![1]!;
+      if (baseIndent === null) baseIndent = indent;
+      if (indent !== baseIndent) return null;
+
+      let rest: string;
+      if (bulletMatch) {
+        const marker = bulletMatch[2] as FlatListBullet;
+        if (ordered === true) return null;
+        if (bullet !== null && bullet !== marker) return null;
+        ordered = false;
+        bullet = marker;
+        rest = line.slice(bulletMatch[0].length);
+      } else {
+        const m = orderedMatch!;
+        const num = Number(m[2]!);
+        const delim = m[3] as FlatListDelimiter;
+        if (ordered === false) return null;
+        if (delimiter !== null && delimiter !== delim) return null;
+        if (ordered === null) start = num;
+        ordered = true;
+        delimiter = delim;
+        bullet = null;
+        rest = line.slice(m[0].length);
+      }
+
+      const { checked, text: rawText } = splitTaskPrefix(rest);
+      // Match CommonMark/mdast: padding spaces after the marker are not content.
+      const text = rawText.replace(/^[ \t]+/u, '');
+      if (pendingBlank && sawItem) spread = true;
+      pendingBlank = false;
+      sawItem = true;
+      items.push({ checked, lines: [text] });
+      continue;
+    }
+
+    // Indented soft-wrap continuation of the current item only.
+    if (!sawItem || items.length === 0) return null;
+    if (pendingBlank) return null; // blank then non-marker = multi-para item
+    if (listContinuationLooksStructural(line)) return null;
+    if (baseIndent !== null && line.startsWith(baseIndent) && line.length > baseIndent.length
+      && /[ \t]/.test(line[baseIndent.length]!)) {
+      const rest = line.slice(baseIndent.length).replace(/^[ \t]+/u, '');
+      if (needsDialectInline(rest) || HARD_BREAK_RE.test(line)) return null;
+      items[items.length - 1]!.lines.push(rest);
+      continue;
+    }
+    return null;
+  }
+
+  if (items.length === 0 || ordered === null) return null;
+
+  const parsedItems: ParsedFlatListItem[] = [];
+  for (const item of items) {
+    const joined = item.lines.join('\n');
+    const text = joined.trimEnd();
+    if (needsDialectInline(text) || HARD_BREAK_RE.test(joined)) return null;
+    parsedItems.push({ checked: item.checked, text });
+  }
+
+  return {
+    ordered,
+    bullet: ordered ? null : bullet,
+    delimiter: ordered ? delimiter : null,
+    start: ordered ? start : 1,
+    spread,
+    items: parsedItems,
+  };
+}
+
 function parseIndentedCode(md: string): string {
   return md.replace(/^(?: {4}|\t)/gm, '').replace(/\r?\n$/u, '');
 }
@@ -231,6 +390,13 @@ export function engineSemanticKey(kind: NotoBlockKind, markdown: string): string
     case 'link-definition': {
       const d = parseLinkDefinitionSource(markdown);
       if (d) parts.push(d.identifier);
+      break;
+    }
+    case 'bullet-list':
+    case 'ordered-list':
+    case 'task-list': {
+      const list = parseSimpleFlatListSource(markdown);
+      if (list) parts.push(list.ordered, list.start, list.spread, list.items.length);
       break;
     }
     default:
@@ -303,6 +469,27 @@ export function blockFromEngineSpan(kind: NotoBlockKind, markdown: string): Pros
       if (!paras) return null;
       const children = paras.map((p) => schema.nodes.paragraph.create(null, textNodes(p)));
       return schema.nodes.blockquote.create(null, children);
+    }
+    case 'bullet-list':
+    case 'ordered-list':
+    case 'task-list': {
+      const list = parseSimpleFlatListSource(markdown);
+      if (!list) return null;
+      const items = list.items.map((item) => schema.nodes.list_item.create(
+        { checked: item.checked },
+        [schema.nodes.paragraph.create(null, textNodes(item.text))],
+      ));
+      if (list.ordered) {
+        return schema.nodes.ordered_list.create({
+          start: list.start,
+          spread: list.spread,
+          delimiter: list.delimiter ?? '.',
+        }, items);
+      }
+      return schema.nodes.bullet_list.create({
+        spread: list.spread,
+        bullet: list.bullet ?? '-',
+      }, items);
     }
     default:
       return null;

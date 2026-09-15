@@ -1,7 +1,7 @@
 /**
  * Engine-owned IR → PM for common blocks (leaf + plain paragraph/heading +
- * parseable link-def + simple quote). Flagged `@roobli/md` path; does not flip
- * product default.
+ * parseable link-def + simple quote + simple flat list). Flagged `@roobli/md`
+ * path; does not flip product default.
  */
 
 import { describe, expect, it } from 'vitest';
@@ -14,6 +14,7 @@ import {
   parseHeadingSource,
   parseLinkDefinitionSource,
   parseSimpleQuoteSource,
+  parseSimpleFlatListSource,
 } from '../../src/shared/markdown/v3/pm/from-engine';
 import { blockFromSpan, docFromSpans } from '../../src/shared/markdown/v3/pm/from-mdast';
 import {
@@ -42,7 +43,7 @@ describe('from-engine IR helpers', () => {
     expect(needsDialectInline('soft\nwrap')).toBe(false);
   });
 
-  it('canSkipDialectEnrich for leaf + plain phrasing + simple quote', () => {
+  it('canSkipDialectEnrich for leaf + plain phrasing + simple quote + flat list', () => {
     expect(canSkipDialectEnrich('fenced-code', '```js\nx\n```')).toBe(true);
     expect(canSkipDialectEnrich('thematic-break', '---')).toBe(true);
     expect(canSkipDialectEnrich('paragraph', 'Hello')).toBe(true);
@@ -53,7 +54,11 @@ describe('from-engine IR helpers', () => {
     expect(canSkipDialectEnrich('quote', '> Hello')).toBe(true);
     expect(canSkipDialectEnrich('quote', '> Hello **x**')).toBe(false);
     expect(canSkipDialectEnrich('quote', '> [!NOTE]\n> body')).toBe(false);
-    expect(canSkipDialectEnrich('bullet-list', '- a')).toBe(false);
+    expect(canSkipDialectEnrich('bullet-list', '- a\n- b')).toBe(true);
+    expect(canSkipDialectEnrich('ordered-list', '1. a\n2. b')).toBe(true);
+    expect(canSkipDialectEnrich('task-list', '- [ ] a\n- [x] b')).toBe(true);
+    expect(canSkipDialectEnrich('bullet-list', '- a\n  - nested')).toBe(false);
+    expect(canSkipDialectEnrich('bullet-list', '- **bold**')).toBe(false);
     expect(canSkipDialectEnrich('table', '| a |\n| - |\n| 1 |')).toBe(false);
   });
 
@@ -88,6 +93,25 @@ describe('from-engine IR helpers', () => {
     expect(parseSimpleQuoteSource('> > nested')).toBeNull();
     expect(parseSimpleQuoteSource('> - item')).toBeNull();
     expect(parseSimpleQuoteSource('> [!NOTE]\n> x')).toBeNull();
+    expect(parseSimpleFlatListSource('- a\n- b')).toEqual({
+      ordered: false, bullet: '-', delimiter: null, start: 1, spread: false,
+      items: [{ checked: null, text: 'a' }, { checked: null, text: 'b' }],
+    });
+    expect(parseSimpleFlatListSource('* star\n* two')?.bullet).toBe('*');
+    expect(parseSimpleFlatListSource('1. a\n2. b')).toMatchObject({
+      ordered: true, delimiter: '.', start: 1, spread: false,
+    });
+    expect(parseSimpleFlatListSource('3. a\n4. b')?.start).toBe(3);
+    expect(parseSimpleFlatListSource('1) a\n2) b')?.delimiter).toBe(')');
+    expect(parseSimpleFlatListSource('- a\n\n- b')?.spread).toBe(true);
+    expect(parseSimpleFlatListSource('- [ ] todo\n- [x] done')?.items).toEqual([
+      { checked: false, text: 'todo' }, { checked: true, text: 'done' },
+    ]);
+    expect(parseSimpleFlatListSource('- a\n  continued')?.items[0]?.text).toBe('a\ncontinued');
+    expect(parseSimpleFlatListSource('- a\n  - nested')).toBeNull();
+    expect(parseSimpleFlatListSource('- **bold**')).toBeNull();
+    expect(parseSimpleFlatListSource('- a\n* b')).toBeNull();
+    expect(parseSimpleFlatListSource('- multi\n\n  para\n- next')).toBeNull();
   });
 });
 
@@ -150,6 +174,48 @@ describe('blockFromEngineSpan', () => {
     expect(blockFromEngineSpan('quote', '>')).toBeNull();
   });
 
+  it('builds simple flat lists; refuses nest / marked / mixed markers', () => {
+    const ul = blockFromEngineSpan('bullet-list', '- bullet a\n- bullet b');
+    expect(ul?.type.name).toBe('bullet_list');
+    expect(ul?.attrs).toMatchObject({ spread: false, bullet: '-' });
+    expect(ul?.childCount).toBe(2);
+    expect(ul?.child(0).textContent).toBe('bullet a');
+    expect(ul?.child(1).textContent).toBe('bullet b');
+
+    const star = blockFromEngineSpan('bullet-list', '* star a\n* star b');
+    expect(star?.attrs.bullet).toBe('*');
+
+    const ol = blockFromEngineSpan('ordered-list', '1. ordered a\n2. ordered b');
+    expect(ol?.type.name).toBe('ordered_list');
+    expect(ol?.attrs).toMatchObject({ start: 1, spread: false, delimiter: '.' });
+    expect(ol?.child(0).textContent).toBe('ordered a');
+
+    const startAt = blockFromEngineSpan('ordered-list', '3. start three\n4. next');
+    expect(startAt?.attrs.start).toBe(3);
+
+    const paren = blockFromEngineSpan('ordered-list', '1) paren a\n2) paren b');
+    expect(paren?.attrs.delimiter).toBe(')');
+
+    const loose = blockFromEngineSpan('bullet-list', '- a\n\n- b');
+    expect(loose?.attrs.spread).toBe(true);
+
+    const tasks = blockFromEngineSpan('task-list', '- [ ] todo\n- [x] done');
+    expect(tasks?.type.name).toBe('bullet_list');
+    expect(tasks?.child(0).attrs.checked).toBe(false);
+    expect(tasks?.child(1).attrs.checked).toBe(true);
+    expect(tasks?.child(0).textContent).toBe('todo');
+    expect(tasks?.child(1).textContent).toBe('done');
+
+    const wrap = blockFromEngineSpan('bullet-list', '- a\n  continued\n- b');
+    expect(wrap?.child(0).textContent).toBe('a\ncontinued');
+
+    expect(blockFromEngineSpan('bullet-list', '- a\n  - nested')).toBeNull();
+    expect(blockFromEngineSpan('bullet-list', '- **bold**')).toBeNull();
+    expect(blockFromEngineSpan('bullet-list', '- a\n* b')).toBeNull();
+    expect(blockFromEngineSpan('bullet-list', '- multi\n\n  para\n- next')).toBeNull();
+    expect(blockFromEngineSpan('bullet-list', '- a  \n  b')).toBeNull();
+  });
+
   it('builds plain paragraph / heading; refuses marked-up phrasing', () => {
     const p = blockFromEngineSpan('paragraph', 'Hello world');
     expect(p?.type.name).toBe('paragraph');
@@ -189,6 +255,15 @@ describe('blockFromEngineSpan', () => {
       '> para1\n>\n> para2\n',
       '> trailing \n',
       '   > indented quote\n',
+      '- bullet a\n- bullet b\n',
+      '* star a\n* star b\n',
+      '+ plus a\n+ plus b\n',
+      '1. ordered a\n2. ordered b\n',
+      '1) paren a\n2) paren b\n',
+      '3. start three\n4. next\n',
+      '- [ ] todo\n- [x] done\n',
+      '- a\n\n- b\n',
+      '- a\n  continued\n- b\n',
     ];
     for (const md of samples) {
       setMarkdownEngineForTests('micromark');
@@ -213,6 +288,15 @@ describe('blockFromEngineSpan', () => {
         for (let i = 0; i < engine.childCount; i += 1) {
           expect(engine.child(i).type.name).toBe(micro.child(i).type.name);
           expect(engine.child(i).textContent).toBe(micro.child(i).textContent);
+        }
+      }
+      if (engine.type.name === 'bullet_list' || engine.type.name === 'ordered_list') {
+        expect(engine.attrs).toEqual(micro.attrs);
+        expect(engine.childCount).toBe(micro.childCount);
+        for (let i = 0; i < engine.childCount; i += 1) {
+          expect(engine.child(i).attrs.checked).toBe(micro.child(i).attrs.checked);
+          expect(engine.child(i).textContent).toBe(micro.child(i).textContent);
+          expect(engine.child(i).childCount).toBe(micro.child(i).childCount);
         }
       }
     }
@@ -245,27 +329,29 @@ describe('enrich skip for engine-owned spans', () => {
       '# Heading\n\n',
       '[id]: https://example.com\n\n',
       '> Simple quote\n\n',
+      '- flat a\n- flat b\n\n',
       'More **marks**\n\n',
     ].join('');
     const none = splitBlocksViaRoobli(text, { enrich: 'none' });
-    // Prefix 0 enriched; remainder should skip leaf + plain + link-def + simple quote.
+    // Prefix 0 enriched; remainder should skip leaf + plain + link-def + simple quote + flat list.
     const flags = createEnrichFlags(none.spans.length, 0, none.spans);
-    // Indices: 0 bold, 1 fence (skip), 2 plain (skip), 3 heading (skip), 4 link-def (skip), 5 quote (skip), 6 bold
+    // Indices: 0 bold, 1 fence, 2 plain, 3 heading, 4 link-def, 5 quote, 6 list, 7 bold
     expect(flags[0]).toBe(0);
     expect(flags[1]).toBe(1);
     expect(flags[2]).toBe(1);
     expect(flags[3]).toBe(1);
     expect(flags[4]).toBe(1);
     expect(flags[5]).toBe(1);
-    expect(flags[6]).toBe(0);
+    expect(flags[6]).toBe(1);
+    expect(flags[7]).toBe(0);
     expect(countDeferredFlags(flags)).toBe(2);
   });
 
-  it('docFromSpans uses engine path for mixed leaf + plain + simple quote under enrich none', () => {
-    const text = '# Title\n\n```\nbody\n```\n\nHello\n\n> quoted\n';
+  it('docFromSpans uses engine path for mixed leaf + plain + simple quote + flat list under enrich none', () => {
+    const text = '# Title\n\n```\nbody\n```\n\nHello\n\n> quoted\n\n- a\n- b\n';
     const none = splitBlocksViaRoobli(text, { enrich: 'none' });
     const doc = docFromSpans(none.spans as never);
-    expect(doc.childCount).toBe(4);
+    expect(doc.childCount).toBe(5);
     expect(doc.child(0).type.name).toBe('heading');
     expect(doc.child(0).textContent).toBe('Title');
     expect(doc.child(1).type.name).toBe('code_block');
@@ -274,5 +360,8 @@ describe('enrich skip for engine-owned spans', () => {
     expect(doc.child(2).textContent).toBe('Hello');
     expect(doc.child(3).type.name).toBe('blockquote');
     expect(doc.child(3).textContent).toBe('quoted');
+    expect(doc.child(4).type.name).toBe('bullet_list');
+    expect(doc.child(4).childCount).toBe(2);
+    expect(doc.child(4).textContent).toBe('ab');
   });
 });
