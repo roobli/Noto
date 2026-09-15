@@ -6,9 +6,10 @@
  * `nodes` (mdast) in this layer: native spans ship `node: null`, so we attach
  * mdast via Noto's dialect when a span needs a ProseMirror-ready node.
  *
- * Flagged identity / single-block saves map into engine shapes, call
- * `serializeDocument`, then the host re-attaches hashes and branded revision
- * ids (see `serialize.ts`).
+ * Flagged block-mode saves (identity, single-block, multi-block insert/delete)
+ * map into engine shapes, call `serializeDocument`, then the host re-attaches
+ * hashes and branded revision ids (see `serialize.ts`). Source mode stays in
+ * Noto.
  */
 
 import {
@@ -243,7 +244,7 @@ export function serializeViaRoobli(
 /**
  * Project a Noto document into the thinner engine document the serializer
  * accepts. Offsets stay on `text`; `markdown` keeps Noto's LF-normalised form
- * so pristine comparisons match identity / single-block transactions.
+ * so pristine comparisons match identity and edit transactions.
  */
 export function toEngineDocument(document: NotoDocument): EngineDocument {
   return {
@@ -283,9 +284,10 @@ export function toSerializeEnvelope(envelope: NotoTargetEnvelope): SerializeEnve
 }
 
 /**
- * True when every unit is a surviving origin (no inserts/deletes) and at most
- * one unit is dirty — the identity and single-block save surfaces the flagged
- * host path routes through `@roobli/md` first.
+ * Classification helper: every unit is a surviving origin (no inserts/deletes)
+ * and at most one unit is dirty. The flagged host path now routes *all*
+ * block-mode saves through `@roobli/md`; this remains useful for tests and
+ * callers that want the narrower identity / single-block shape.
  */
 export function isIdentityOrSingleBlockUnits(
   document: NotoDocument,

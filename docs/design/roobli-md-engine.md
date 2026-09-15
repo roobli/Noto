@@ -27,7 +27,7 @@ pnpm must allow its `prepare` (tsc) build — see `allowBuilds` in
 | Switch | Effect |
 | ------ | ------ |
 | unset / anything else | micromark path (product default) |
-| `NOTO_MARKDOWN_ENGINE=roobli-md` | route `splitBlocks` / `parseSingleBlock`, flagged `replaceMarkdown`, and identity / single-block `serializeDocument` through the adapter |
+| `NOTO_MARKDOWN_ENGINE=roobli-md` | route `splitBlocks` / `parseSingleBlock`, flagged `replaceMarkdown`, and block-mode `serializeDocument` (identity / single-block / multi-block insert-delete) through the adapter; `source` mode stays on Noto |
 | `setMarkdownEngineForTests('roobli-md' | 'micromark' | null)` | unit-test override |
 
 Implementation:
@@ -53,7 +53,7 @@ quotes/callouts and native indented-code match micromark (`@roobli/md` v0.1.2+).
 | ---- | ------------ |
 | `splitBlocks` / `parseBlocks` | `parseBlocks` (+ dialect enrichment for `node` / `semanticKey`) |
 | edited verify / middle replace | `reparseBlocks` / `reparseFromText` (Phase 11) |
-| identity / single-block save checks | `serializeDocument` / `joinSplit` / `identityUnits` |
+| block-mode save (identity / single / multi insert-delete) | `serializeDocument` / `joinSplit` / `identityUnits` |
 
 **Kept in the Noto layer:** branded IDs, `sha256`, envelope endings / BOM,
 `semanticKey` computation, wire `nodes` (mdast). Native engine spans ship
@@ -101,6 +101,7 @@ sources — they do **not** flip `NOTO_MARKDOWN_ENGINE` for the rest of the suit
 | ---- | --------- |
 | Split boundaries | `kind` / `start` / `end` / `markdown` + leading/gaps/trailing equal |
 | Identity serialize (#82) | flagged `serializeDocument` `outputBytes` equal micromark identity |
+| Multi-block serialize | multi-dirty / insert / delete `outputBytes` equal micromark on each fixture |
 
 Coverage today: headings, lists (bullet/ordered/task), tables, wiki links,
 math fences + code fences, YAML frontmatter, CJK mixed inline. Intentional
@@ -122,12 +123,13 @@ NOTO_MARKDOWN_ENGINE=roobli-md pnpm start
 
 ### What “green gates” mean
 
-Green means every fixture in `markdown-golden/` matches on split boundaries and
-identity serialize under both engines. That is necessary but **not** sufficient
-for default-on: multi-block serialize, open-path / `parseDocument` wire nodes,
-and a broader corpus still block flipping the product default. Expand the
-fixture set (and document any intentional diffs) before considering
-`NOTO_MARKDOWN_ENGINE` default `roobli-md`.
+Green means every fixture in `markdown-golden/` matches on split boundaries,
+identity serialize, and multi-block insert/delete/multi-dirty serialize under
+both engines. That is necessary but **not** sufficient for default-on:
+open-path / `parseDocument` wire nodes and a broader corpus still block
+flipping the product default. Expand the fixture set (and document any
+intentional diffs) before considering `NOTO_MARKDOWN_ENGINE` default
+`roobli-md`.
 
 ## Bridge docs (engine repo)
 
@@ -155,20 +157,18 @@ WYSIWYG typing / paste invalidates the cache (`apply` skips invalidation while
 Micromark path unchanged when the flag is off. Unit coverage:
 `tests/unit/prior-split-cache.test.ts`.
 
-**Host wiring (flagged identity / single-block serialize).** When the same
-flag is on, `serializeDocument` routes identity and single-block block-mode
-saves through `@roobli/md` `serializeDocument` (via `toEngineDocument` /
-`toSerializeUnits`). Noto still validates forged origins, re-attaches
-`sha256` on preserved ranges, and keeps branded `documentId` / revision ids.
-Multi-block inserts/deletes and `source` mode stay on the Noto serializer.
+**Host wiring (flagged block-mode serialize).** When the same flag is on,
+`serializeDocument` routes all block-mode saves — identity, single-block, and
+multi-block insert/delete — through `@roobli/md` `serializeDocument` (via
+`toEngineDocument` / `toSerializeUnits`). Noto still validates forged origins,
+re-attaches `sha256` on preserved ranges, and keeps branded `documentId` /
+revision ids. `source` mode stays on the Noto serializer (host escape hatch).
 Micromark path unchanged when the flag is off. Unit coverage:
 `tests/unit/roobli-md-serialize-host.test.ts`.
 
-Next: broaden flagged serialize to multi-block edits; expand
-`tests/fixtures/markdown-golden/` until default-on is defensible (open-path /
-`parseDocument` still needs design + gates — see
-`docs/performance/measurements.md`). Option B golden scaffolding is in place;
-do **not** flip the product default until those gates grow.
+Next: grow `tests/fixtures/markdown-golden/` and open-path / `parseDocument`
+wire-node design until default-on is defensible (see
+`docs/performance/measurements.md`). Do **not** flip the product default yet.
 
 **Noto `0.0.2-alpha.9`** shipped the adapter (#37) plus `@roobli/md` v0.1.1 quote/
 callout parity (#38). Pin is now `@roobli/md` v0.1.7 (Phase 11 reparse helpers

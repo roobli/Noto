@@ -19,6 +19,8 @@ None yet. Every fixture in this directory is expected to match on:
 
 1. split span boundaries (`start` / `end` / `markdown` / `kind`) and gaps
 2. identity `serializeDocument` `outputBytes` (flagged path from Noto #82)
+3. multi-block serialize `outputBytes` — multi-dirty (first+last), insert after
+   first block, and delete of the middle block when the fixture has ≥3 blocks
 
 If a future fixture must diverge, document it here and exclude it from the
 strict suite (or assert the documented delta explicitly) — silent drift is not
