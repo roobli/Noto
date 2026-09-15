@@ -1,6 +1,6 @@
 # Open-path / `parseDocument` — measured cuts
 
-Status: **lazy / deferred wire nodes + viewport-driven enrich + incremental PM patch** under the flagged `@roobli/md` path.
+Status: **lazy / deferred wire nodes + viewport-driven enrich + incremental PM patch + kind-aware stand-ins** under the flagged `@roobli/md` path.
 Product default remains micromark. Do **not** flip `NOTO_MARKDOWN_ENGINE`
 default-on from this work.
 
@@ -147,8 +147,9 @@ but avoids resetting viewport-stub / alert / history on every tick.
 
 1. **Engine-owned IR → PM** — avoid mdast entirely for common blocks once
    `@roobli/md` can feed `docFromSpans` without dialect trees.
-2. Kind-aware structural stand-ins (heading/fence/…) so a long remainder gap is
-   less visually raw if the user scrolls before idle enrich catches up.
+2. ~~Kind-aware structural stand-ins (heading/fence/…)~~ — shipped: `standInNode`
+   maps engine kind → cheap mdast shells (heading/fence/hr/quote/math/html/yaml;
+   paragraph fallback). Lists/tables still paragraph until a follow-up.
 3. Keep growing `tests/fixtures/markdown-golden/` (more dialect edges) before
    default-on; alerts / footnotes / indented-code / tight-quotes landed this cut.
 
