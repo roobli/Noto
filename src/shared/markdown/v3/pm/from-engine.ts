@@ -4,11 +4,12 @@
  * Native spans are kind + source offsets only. For leaf kinds (fence, hr, math,
  * frontmatter, html), parseable link-definitions, plain paragraph/heading with
  * no inline dialect markers, **simple** blockquotes (every line `>`-prefixed,
- * inner content is plain paragraphs only), and **simple flat lists** (no nest,
- * consistent markers, plain single-paragraph items), the PM node is fully
- * determined by that IR — no micromark / mdast pass. Nested lists, multi-block
- * items, tables, nested/marked quotes, footnotes, and marked-up phrasing still
- * go through `from-mdast.ts` after dialect enrich.
+ * inner content is plain paragraphs only), **simple flat lists** (no nest,
+ * consistent markers, plain single-paragraph items), and **simple GFM tables**
+ * (alignment row; plain text cells; no nested blocks / marked phrasing), the PM
+ * node is fully determined by that IR — no micromark / mdast pass. Nested lists,
+ * multi-block items, nested/marked quotes, complex tables, footnotes, and
+ * marked-up phrasing still go through `from-mdast.ts` after dialect enrich.
  *
  * See docs/performance/open-path-first-cut.md and docs/design/roobli-md-engine.md.
  */
@@ -44,8 +45,8 @@ export function needsDialectInline(markdown: string): boolean {
 
 /**
  * True when dialect enrich can be skipped: leaf kinds always; parseable
- * link-definitions; simple quotes; simple flat lists; paragraph / heading
- * only when the source has no inline dialect markers.
+ * link-definitions; simple quotes; simple flat lists; simple GFM tables;
+ * paragraph / heading only when the source has no inline dialect markers.
  */
 export function canSkipDialectEnrich(kind: NotoBlockKind, markdown: string): boolean {
   if (ENGINE_LEAF_KINDS.has(kind)) return true;
@@ -57,6 +58,9 @@ export function canSkipDialectEnrich(kind: NotoBlockKind, markdown: string): boo
   }
   if (kind === 'bullet-list' || kind === 'ordered-list' || kind === 'task-list') {
     return parseSimpleFlatListSource(markdown) !== null;
+  }
+  if (kind === 'table') {
+    return parseSimpleTableSource(markdown) !== null;
   }
   if (kind === 'paragraph' || kind === 'heading') {
     return !needsDialectInline(markdown);
@@ -326,6 +330,97 @@ export function parseSimpleFlatListSource(md: string): ParsedFlatList | null {
   };
 }
 
+export type TableAlign = 'left' | 'right' | 'center' | null;
+
+export interface ParsedSimpleTable {
+  readonly align: readonly TableAlign[];
+  /** Row 0 is the header; remaining rows are body. */
+  readonly rows: readonly (readonly string[])[];
+}
+
+const TABLE_DELIMITER_CELL = /^:?-+:?$/u;
+
+/**
+ * Split one GFM table row on unescaped, non-code `|` (mirrors table-align).
+ * Outer pipes are optional. Returns trimmed cell strings.
+ */
+function splitTableRow(line: string): string[] {
+  const cells: string[] = [];
+  let current = '';
+  let escaped = false;
+  let inCode = false;
+  const body = line.trim().replace(/^\|/, '').replace(/\|$/, '');
+  for (const character of body) {
+    if (escaped) { current += character; escaped = false; continue; }
+    if (character === '\\') { current += character; escaped = true; continue; }
+    if (character === '`') { inCode = !inCode; current += character; continue; }
+    if (character === '|' && !inCode) { cells.push(current); current = ''; continue; }
+    current += character;
+  }
+  cells.push(current);
+  return cells.map((cell) => cell.trim());
+}
+
+function alignmentOfDelimiterCell(cell: string): TableAlign | undefined {
+  if (!TABLE_DELIMITER_CELL.test(cell)) return undefined;
+  const left = cell.startsWith(':');
+  const right = cell.endsWith(':');
+  if (left && right) return 'center';
+  if (right) return 'right';
+  if (left) return 'left';
+  return null;
+}
+
+/**
+ * Simple GFM table: header + alignment row + optional body rows; every cell
+ * plain text (no inline dialect markers); consistent column counts; no blank
+ * lines inside the span. Ragged columns, escaped pipes, code/marks in cells,
+ * and missing delimiter fall through to dialect. Returns `null` when enrich
+ * is still needed.
+ */
+export function parseSimpleTableSource(md: string): ParsedSimpleTable | null {
+  const trimmed = md.replace(/\r\n/g, '\n').trimEnd();
+  if (trimmed.length === 0) return null;
+  const lines = trimmed.split('\n');
+  if (lines.length < 2) return null;
+
+  // Require a leading `|` after optional CommonMark indent (0–3 spaces).
+  const normalized: string[] = [];
+  for (const line of lines) {
+    if (/^[ \t]*$/u.test(line)) return null; // blank ends a GFM table
+    const m = /^( {0,3})(\|.*)$/u.exec(line);
+    if (!m) return null;
+    normalized.push(m[2]!);
+  }
+
+  const header = splitTableRow(normalized[0]!);
+  if (header.length === 0) return null;
+  const delimCells = splitTableRow(normalized[1]!);
+  if (delimCells.length !== header.length) return null;
+
+  const align: TableAlign[] = [];
+  for (const cell of delimCells) {
+    const a = alignmentOfDelimiterCell(cell);
+    if (a === undefined) return null;
+    align.push(a);
+  }
+
+  const rows: string[][] = [header];
+  for (let i = 2; i < normalized.length; i += 1) {
+    const cells = splitTableRow(normalized[i]!);
+    if (cells.length !== header.length) return null;
+    rows.push(cells);
+  }
+
+  for (const row of rows) {
+    for (const cell of row) {
+      if (needsDialectInline(cell)) return null;
+    }
+  }
+
+  return { align, rows };
+}
+
 function parseIndentedCode(md: string): string {
   return md.replace(/^(?: {4}|\t)/gm, '').replace(/\r?\n$/u, '');
 }
@@ -397,6 +492,17 @@ export function engineSemanticKey(kind: NotoBlockKind, markdown: string): string
     case 'task-list': {
       const list = parseSimpleFlatListSource(markdown);
       if (list) parts.push(list.ordered, list.start, list.spread, list.items.length);
+      break;
+    }
+    case 'table': {
+      const table = parseSimpleTableSource(markdown);
+      if (table) {
+        parts.push(
+          table.rows.length,
+          table.rows[0]?.length ?? 0,
+          table.align.map((value) => value ?? '-').join(''),
+        );
+      }
       break;
     }
     default:
@@ -490,6 +596,19 @@ export function blockFromEngineSpan(kind: NotoBlockKind, markdown: string): Pros
         spread: list.spread,
         bullet: list.bullet ?? '-',
       }, items);
+    }
+    case 'table': {
+      const table = parseSimpleTableSource(markdown);
+      if (!table) return null;
+      const pmRows = table.rows.map((row, rowIndex) => {
+        const cellType = rowIndex === 0 ? schema.nodes.table_header : schema.nodes.table_cell;
+        const cells = row.map((cell, columnIndex) => cellType.create(
+          { align: table.align[columnIndex] ?? null },
+          textNodes(cell),
+        ));
+        return schema.nodes.table_row.create(null, cells);
+      });
+      return schema.nodes.table.create(null, pmRows);
     }
     default:
       return null;

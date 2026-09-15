@@ -9,7 +9,7 @@
  * Flagged open uses `enrich: 'none'` on main then `enrichSpansInRange` in the
  * renderer for a first-paint window (and the remainder after paint) — see
  * `SpanEnrichMode` and docs/performance/open-path-first-cut.md. Engine-owned
- * leaf / plain paragraph+heading / simple quote / flat list skip mdast (IR → PM via `pm/from-engine.ts`).
+ * leaf / plain paragraph+heading / simple quote / flat list / simple table skip mdast (IR → PM via `pm/from-engine.ts`).
  *
  * Flagged block-mode saves (identity, single-block, multi-block insert/delete)
  * map into engine shapes, call `serializeDocument`, then the host re-attaches
@@ -576,7 +576,7 @@ function enrichSpan(span: EngineBlockSpan): AdapterBlockSpan {
 
 /**
  * Structural adapter spans: no dialect parse. Prep for deferred wire nodes.
- * Engine-owned leaf / link-definition / plain phrasing / simple quotes / flat lists get a final semanticKey so enrich can skip them.
+ * Engine-owned leaf / link-definition / plain phrasing / simple quotes / flat lists / simple tables get a final semanticKey so enrich can skip them.
  */
 function enrichSpanNone(span: EngineBlockSpan): AdapterBlockSpan {
   const kind = span.kind as NotoBlockKind;

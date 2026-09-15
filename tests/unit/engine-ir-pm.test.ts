@@ -1,7 +1,7 @@
 /**
  * Engine-owned IR → PM for common blocks (leaf + plain paragraph/heading +
- * parseable link-def + simple quote + simple flat list). Flagged `@roobli/md`
- * path; does not flip product default.
+ * parseable link-def + simple quote + simple flat list + simple GFM table).
+ * Flagged `@roobli/md` path; does not flip product default.
  */
 
 import { describe, expect, it } from 'vitest';
@@ -15,6 +15,7 @@ import {
   parseLinkDefinitionSource,
   parseSimpleQuoteSource,
   parseSimpleFlatListSource,
+  parseSimpleTableSource,
 } from '../../src/shared/markdown/v3/pm/from-engine';
 import { blockFromSpan, docFromSpans } from '../../src/shared/markdown/v3/pm/from-mdast';
 import {
@@ -43,7 +44,7 @@ describe('from-engine IR helpers', () => {
     expect(needsDialectInline('soft\nwrap')).toBe(false);
   });
 
-  it('canSkipDialectEnrich for leaf + plain phrasing + simple quote + flat list', () => {
+  it('canSkipDialectEnrich for leaf + plain phrasing + simple quote + flat list + table', () => {
     expect(canSkipDialectEnrich('fenced-code', '```js\nx\n```')).toBe(true);
     expect(canSkipDialectEnrich('thematic-break', '---')).toBe(true);
     expect(canSkipDialectEnrich('paragraph', 'Hello')).toBe(true);
@@ -59,7 +60,10 @@ describe('from-engine IR helpers', () => {
     expect(canSkipDialectEnrich('task-list', '- [ ] a\n- [x] b')).toBe(true);
     expect(canSkipDialectEnrich('bullet-list', '- a\n  - nested')).toBe(false);
     expect(canSkipDialectEnrich('bullet-list', '- **bold**')).toBe(false);
-    expect(canSkipDialectEnrich('table', '| a |\n| - |\n| 1 |')).toBe(false);
+    expect(canSkipDialectEnrich('table', '| a |\n| - |\n| 1 |')).toBe(true);
+    expect(canSkipDialectEnrich('table', '| Left | Right |\n| :--- | ---: |\n| alpha | 1 |')).toBe(true);
+    expect(canSkipDialectEnrich('table', '| a |\n| - |\n| **x** |')).toBe(false);
+    expect(canSkipDialectEnrich('table', '| a | b |\n| - |\n| 1 | 2 |')).toBe(false);
   });
 
   it('parses fence / heading source', () => {
@@ -112,6 +116,27 @@ describe('from-engine IR helpers', () => {
     expect(parseSimpleFlatListSource('- **bold**')).toBeNull();
     expect(parseSimpleFlatListSource('- a\n* b')).toBeNull();
     expect(parseSimpleFlatListSource('- multi\n\n  para\n- next')).toBeNull();
+    expect(parseSimpleTableSource('| Left | Right |\n| :--- | ---: |\n| alpha | 1 |\n| beta | 2 |')).toEqual({
+      align: ['left', 'right'],
+      rows: [['Left', 'Right'], ['alpha', '1'], ['beta', '2']],
+    });
+    expect(parseSimpleTableSource('| a | b | c |\n| --- | :---: | ---: |\n| 1 | 2 | 3 |')).toEqual({
+      align: [null, 'center', 'right'],
+      rows: [['a', 'b', 'c'], ['1', '2', '3']],
+    });
+    expect(parseSimpleTableSource('| H1 | H2 |\n| --- | --- |')).toEqual({
+      align: [null, null],
+      rows: [['H1', 'H2']],
+    });
+    expect(parseSimpleTableSource('  | a | b |\n  | - | - |\n  | 1 | 2 |')).toEqual({
+      align: [null, null],
+      rows: [['a', 'b'], ['1', '2']],
+    });
+    expect(parseSimpleTableSource('| x |\n| - |\n|  |')?.rows[1]).toEqual(['']);
+    expect(parseSimpleTableSource('| a |\n| - |\n| **x** |')).toBeNull();
+    expect(parseSimpleTableSource('| a | b |\n| - |\n| 1 | 2 |')).toBeNull();
+    expect(parseSimpleTableSource('| a | b |\n| - | - |\n| 1 |')).toBeNull();
+    expect(parseSimpleTableSource('| a \\| b |\n| - | - |')).toBeNull();
   });
 });
 
@@ -216,6 +241,30 @@ describe('blockFromEngineSpan', () => {
     expect(blockFromEngineSpan('bullet-list', '- a  \n  b')).toBeNull();
   });
 
+  it('builds simple GFM tables; refuses marked / ragged / no delimiter', () => {
+    const t = blockFromEngineSpan('table', '| Left | Right |\n| :--- | ---: |\n| alpha | 1 |\n| beta | 2 |');
+    expect(t?.type.name).toBe('table');
+    expect(t?.childCount).toBe(3);
+    expect(t?.child(0).child(0).type.name).toBe('table_header');
+    expect(t?.child(0).child(0).attrs.align).toBe('left');
+    expect(t?.child(0).child(0).textContent).toBe('Left');
+    expect(t?.child(0).child(1).attrs.align).toBe('right');
+    expect(t?.child(1).child(0).type.name).toBe('table_cell');
+    expect(t?.child(1).child(0).textContent).toBe('alpha');
+    expect(t?.child(2).child(1).textContent).toBe('2');
+
+    const empty = blockFromEngineSpan('table', '| x |\n| - |\n|  |');
+    expect(empty?.childCount).toBe(2);
+    expect(empty?.child(1).child(0).textContent).toBe('');
+
+    const headerOnly = blockFromEngineSpan('table', '| H1 | H2 |\n| --- | --- |');
+    expect(headerOnly?.childCount).toBe(1);
+
+    expect(blockFromEngineSpan('table', '| a |\n| - |\n| **x** |')).toBeNull();
+    expect(blockFromEngineSpan('table', '| a | b |\n| - |\n| 1 | 2 |')).toBeNull();
+    expect(blockFromEngineSpan('table', '| a | b |\n| - | - |\n| 1 |')).toBeNull();
+  });
+
   it('builds plain paragraph / heading; refuses marked-up phrasing', () => {
     const p = blockFromEngineSpan('paragraph', 'Hello world');
     expect(p?.type.name).toBe('paragraph');
@@ -264,6 +313,12 @@ describe('blockFromEngineSpan', () => {
       '- [ ] todo\n- [x] done\n',
       '- a\n\n- b\n',
       '- a\n  continued\n- b\n',
+      '| Left | Right |\n| :--- | ---: |\n| alpha | 1 |\n| beta | 2 |\n',
+      '| a | b | c |\n| --- | :---: | ---: |\n| 1 | 2 | 3 |\n',
+      '| H1 | H2 |\n| --- | --- |\n',
+      '| x |\n| - |\n|  |\n',
+      '  | a | b |\n  | - | - |\n  | 1 | 2 |\n',
+      '|a|b|\n|-|-|\n|1|2|\n',
     ];
     for (const md of samples) {
       setMarkdownEngineForTests('micromark');
@@ -299,6 +354,18 @@ describe('blockFromEngineSpan', () => {
           expect(engine.child(i).childCount).toBe(micro.child(i).childCount);
         }
       }
+      if (engine.type.name === 'table') {
+        expect(engine.attrs).toEqual(micro.attrs);
+        expect(engine.childCount).toBe(micro.childCount);
+        for (let r = 0; r < engine.childCount; r += 1) {
+          expect(engine.child(r).childCount).toBe(micro.child(r).childCount);
+          for (let c = 0; c < engine.child(r).childCount; c += 1) {
+            expect(engine.child(r).child(c).type.name).toBe(micro.child(r).child(c).type.name);
+            expect(engine.child(r).child(c).attrs.align).toBe(micro.child(r).child(c).attrs.align);
+            expect(engine.child(r).child(c).textContent).toBe(micro.child(r).child(c).textContent);
+          }
+        }
+      }
     }
   });
 });
@@ -330,12 +397,13 @@ describe('enrich skip for engine-owned spans', () => {
       '[id]: https://example.com\n\n',
       '> Simple quote\n\n',
       '- flat a\n- flat b\n\n',
+      '| A | B |\n| - | - |\n| 1 | 2 |\n\n',
       'More **marks**\n\n',
     ].join('');
     const none = splitBlocksViaRoobli(text, { enrich: 'none' });
-    // Prefix 0 enriched; remainder should skip leaf + plain + link-def + simple quote + flat list.
+    // Prefix 0 enriched; remainder should skip leaf + plain + link-def + simple quote + flat list + table.
     const flags = createEnrichFlags(none.spans.length, 0, none.spans);
-    // Indices: 0 bold, 1 fence, 2 plain, 3 heading, 4 link-def, 5 quote, 6 list, 7 bold
+    // Indices: 0 bold, 1 fence, 2 plain, 3 heading, 4 link-def, 5 quote, 6 list, 7 table, 8 bold
     expect(flags[0]).toBe(0);
     expect(flags[1]).toBe(1);
     expect(flags[2]).toBe(1);
@@ -343,15 +411,16 @@ describe('enrich skip for engine-owned spans', () => {
     expect(flags[4]).toBe(1);
     expect(flags[5]).toBe(1);
     expect(flags[6]).toBe(1);
-    expect(flags[7]).toBe(0);
+    expect(flags[7]).toBe(1);
+    expect(flags[8]).toBe(0);
     expect(countDeferredFlags(flags)).toBe(2);
   });
 
-  it('docFromSpans uses engine path for mixed leaf + plain + simple quote + flat list under enrich none', () => {
-    const text = '# Title\n\n```\nbody\n```\n\nHello\n\n> quoted\n\n- a\n- b\n';
+  it('docFromSpans uses engine path for mixed leaf + plain + simple quote + flat list + table under enrich none', () => {
+    const text = '# Title\n\n```\nbody\n```\n\nHello\n\n> quoted\n\n- a\n- b\n\n| A | B |\n| - | - |\n| 1 | 2 |\n';
     const none = splitBlocksViaRoobli(text, { enrich: 'none' });
     const doc = docFromSpans(none.spans as never);
-    expect(doc.childCount).toBe(5);
+    expect(doc.childCount).toBe(6);
     expect(doc.child(0).type.name).toBe('heading');
     expect(doc.child(0).textContent).toBe('Title');
     expect(doc.child(1).type.name).toBe('code_block');
@@ -363,5 +432,8 @@ describe('enrich skip for engine-owned spans', () => {
     expect(doc.child(4).type.name).toBe('bullet_list');
     expect(doc.child(4).childCount).toBe(2);
     expect(doc.child(4).textContent).toBe('ab');
+    expect(doc.child(5).type.name).toBe('table');
+    expect(doc.child(5).childCount).toBe(2);
+    expect(doc.child(5).textContent).toBe('AB12');
   });
 });

@@ -26,7 +26,7 @@ test('typing two brackets offers the notes, and writes the link where they were'
   const vault = path.join(workspace, 'vault');
   await mkdir(path.join(vault, 'topics'), { recursive: true });
   const file = path.join(vault, 'note.md');
-  await writeFile(file, '# Links\n\nSee \n', 'utf8');
+  await writeFile(file, '# Links\n\nSee\n', 'utf8');
   await writeFile(path.join(vault, 'topics', 'kestrels.md'), '# Kestrels\n', 'utf8');
   await writeFile(path.join(vault, 'sparrows.md'), '# Sparrows\n', 'utf8');
   const app = await electron.launch({
@@ -45,8 +45,9 @@ test('typing two brackets offers the notes, and writes the link where they were'
     await page.keyboard.press(process.platform === 'darwin' ? 'Meta+ArrowRight' : 'End');
     await expect(page.locator('.canvas-slot:not([hidden]) [data-testid="noto-editor"]'))
       .toHaveAttribute('data-caret', /\d+/);
-    // Type the space here: CommonMark / engine IR→PM drop a trailing space on
-    // open, so leaving it only in the fixture would yield `See[[` after `[[`.
+    // Separating space is typed (not left as a fixture trailing space): open may
+    // keep or drop a trailing space depending on enrich timing / engine path,
+    // and a fixture `See ` + typed ` [[` flakes as `See  [[` on save.
     await page.keyboard.type(' [[');
 
     // The palette opens, saying it is here to link rather than to open.
@@ -80,7 +81,7 @@ test('leaving the palette leaves the brackets as they were typed', async () => {
   await mkdir(path.join(workspace, 'user-data'), { recursive: true });
   const vault = path.join(workspace, 'vault');
   await mkdir(vault, { recursive: true });
-  await writeFile(path.join(vault, 'note.md'), '# Links\n\nSee \n', 'utf8');
+  await writeFile(path.join(vault, 'note.md'), '# Links\n\nSee\n', 'utf8');
   const app = await electron.launch({
     executablePath: packagedExecutable(),
     args: [`--user-data-dir=${path.join(workspace, 'user-data')}`, vault],
