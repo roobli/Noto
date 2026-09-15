@@ -1,6 +1,6 @@
 # Open-path / `parseDocument` — measured cuts
 
-Status: **lazy / deferred wire nodes + viewport-driven enrich** under the flagged `@roobli/md` path.
+Status: **lazy / deferred wire nodes + viewport-driven enrich + incremental PM patch** under the flagged `@roobli/md` path.
 Product default remains micromark. Do **not** flip `NOTO_MARKDOWN_ENGINE`
 default-on from this work.
 
@@ -80,7 +80,7 @@ Numbers also mirrored in `docs/performance/measurements.md`.
 - Viewport / idle: see **API (additions)** under Cut 3
 - Wire: `nodesEnrichment?: 'full' | 'deferred'`
 
-### Cut 3 — viewport-driven enrich (this PR)
+### Cut 3 — viewport-driven enrich
 
 A full remainder pass after paint still costs ≈ one dialect parse (medium
 ~663 ms / large ~3 s). Scrolling into stand-ins before that finishes showed raw
@@ -116,14 +116,41 @@ Does **not** flip default-on. No alpha bump.
 - Renderer: `DeferredViewportEnrichController`, `visibleBlockRangeFromScroll`,
   `NotoEditor.beginDeferredViewportEnrich`
 
+### Cut 4 — incremental PM patch per enrich tick
+
+Each viewport / idle tick used to call `applyDialectEnrichedSpans` with a full
+`docFromSpans` + `EditorState.create`. That rebuilt every top-level node and
+reset plugin state while only a budgeted window had changed.
+
+| phase (flagged) | role |
+| --------------- | ---- |
+| `enrichPmPatchForWindow` | top-level `replaceWith` range for the enriched window |
+| `applyDialectEnrichedSpans(spans, window)` | incremental dispatch; full rebuild only as fallback |
+
+Linux apply microbench (same corpus / window as Cut 3; no plugins in the
+harness — product path also keeps live plugin state):
+
+| apply path | small | medium | large |
+| ---------- | ----- | ------ | ----- |
+| full `EditorState` rebuild | 1.1 ms | 1.4 ms | 5.4 ms |
+| **incremental `replaceWith`** | **0.4 ms** | **1.1 ms** | **1.9 ms** |
+
+Large apply **~2.8×**; absolute save is small beside dialect enrich (tens of ms)
+but avoids resetting viewport-stub / alert / history on every tick.
+
+## API (additions for Cut 4)
+
+- `enrichPmPatchForWindow(doc, spans, window)`
+- `applyDialectEnrichedSpans(spans, window?)` — window enables incremental path
+
 ## Next residual (not this PR)
 
 1. **Engine-owned IR → PM** — avoid mdast entirely for common blocks once
    `@roobli/md` can feed `docFromSpans` without dialect trees.
-2. Grow `tests/fixtures/markdown-golden/` before default-on.
-3. Kind-aware structural stand-ins (heading/fence/…) so a long remainder gap is
+2. Kind-aware structural stand-ins (heading/fence/…) so a long remainder gap is
    less visually raw if the user scrolls before idle enrich catches up.
-4. Incremental PM patch on enrich (avoid full `EditorState` rebuild per tick).
+3. Keep growing `tests/fixtures/markdown-golden/` (more dialect edges) before
+   default-on; alerts / footnotes / indented-code / tight-quotes landed this cut.
 
 Do not defer main’s file-truth structural parse; do not flip the product
 default from this doc.

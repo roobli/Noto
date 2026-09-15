@@ -8,6 +8,8 @@
  *    `viewport-stub`'s membership window when stubbing is on.
  * 2. Idle chunks — drain remaining deferred indices without one full-document
  *    dialect pass on the critical post-paint frame.
+ * 3. Each tick passes the enriched window to the host for an incremental PM
+ *    patch (avoid full `EditorState` rebuild per tick).
  *
  * Flagged `@roobli/md` only. Does not flip product default. No-ops once dirty
  * so typing is never clobbered (same contract as `applyDialectEnrichedSpans`).
@@ -34,7 +36,10 @@ import {
 export interface DeferredViewportEnrichHost {
   getView(): EditorView | null;
   isDirtyNow(): boolean;
-  applyDialectEnrichedSpans(spans: readonly BlockSpan[]): void;
+  applyDialectEnrichedSpans(
+    spans: readonly BlockSpan[],
+    window?: { readonly from: number; readonly to: number },
+  ): void;
 }
 
 export interface DeferredViewportEnrichOptions {
@@ -191,7 +196,7 @@ export class DeferredViewportEnrichController {
     this.flags = result.flags;
     this.applying = true;
     try {
-      this.host.applyDialectEnrichedSpans(this.spans);
+      this.host.applyDialectEnrichedSpans(this.spans, result.window);
     } catch (error) {
       this.onError?.(error instanceof Error ? error.message : 'Dialect enrich after open failed.');
       return false;

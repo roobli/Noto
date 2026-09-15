@@ -12,6 +12,10 @@ Small public fixtures for comparing the **micromark** product path against
 | `math-fences.md` | display math `$$` + fenced code |
 | `frontmatter.md` | YAML frontmatter + body |
 | `cjk.md` | CJK + Latin mixed heading/lists/table/wiki |
+| `alerts.md` | GitHub alerts (`[!NOTE]` / `[!TIP]` / `[!WARNING]`) |
+| `footnotes.md` | footnote references + definitions |
+| `indented-code.md` | indented code block (not fenced) |
+| `tight-quotes.md` | adjacent plain quote, callout, multi-line quote |
 
 ## Intentional diffs
 

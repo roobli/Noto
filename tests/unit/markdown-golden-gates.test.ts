@@ -137,12 +137,16 @@ function deleteTransaction(document: NotoDocument): BlocksTransaction | null {
 describe('markdown golden gates — fixture inventory', () => {
   it('ships the expected public fixture set (no private vault content)', () => {
     expect(FIXTURES).toEqual([
+      'alerts.md',
       'cjk.md',
+      'footnotes.md',
       'frontmatter.md',
       'headings.md',
+      'indented-code.md',
       'lists.md',
       'math-fences.md',
       'tables.md',
+      'tight-quotes.md',
       'wiki.md',
     ]);
   });
