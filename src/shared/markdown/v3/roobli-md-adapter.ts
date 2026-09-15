@@ -12,7 +12,9 @@ import {
   parseBlocks as engineParseBlocks,
   parseSingleBlock as engineParseSingleBlock,
   reparseBlocks as engineReparseBlocks,
+  reparseFromText as engineReparseFromText,
   serializeDocument as engineSerializeDocument,
+  sourceEditBetween,
   identityUnits,
   type ReparseBlocksOptions,
   type ReparseBlocksResult,
@@ -21,6 +23,7 @@ import {
   type SplitDocument as EngineSplitDocument,
   type BlockSpan as EngineBlockSpan,
   type EngineDocument,
+  type SourceEdit,
 } from '@roobli/md';
 import type { RootContent } from 'mdast';
 import type { NotoBlockKind } from './contracts';
@@ -192,6 +195,23 @@ export function reparseBlocksViaRoobli(options: ReparseBlocksOptions): ReparseBl
   };
 }
 
+/** Phase 11: prior split + full next text → incremental reparse + enrichment. */
+export function reparseFromTextViaRoobli(
+  prior: EngineSplitDocument,
+  text: string,
+  options?: { readonly neighborSlack?: number },
+): ReparseBlocksResult & { readonly spans: readonly AdapterBlockSpan[] } {
+  const result = engineReparseFromText(
+    prior,
+    text,
+    options?.neighborSlack !== undefined ? { neighborSlack: options.neighborSlack } : undefined,
+  );
+  return {
+    ...result,
+    spans: result.spans.map(enrichSpan),
+  };
+}
+
 /** Identity / single-block save helper used by parity tests. */
 export function serializeIdentityViaRoobli(document: EngineDocument): SerializeResult {
   return engineSerializeDocument(document, {
@@ -212,6 +232,8 @@ export {
   identityUnits,
   engineParseBlocks as parseBlocks,
   engineReparseBlocks as reparseBlocks,
+  engineReparseFromText as reparseFromText,
+  sourceEditBetween,
 };
 
-export type { EngineDocument, EngineSplitDocument, ReparseBlocksOptions, SerializeResult };
+export type { EngineDocument, EngineSplitDocument, ReparseBlocksOptions, SerializeResult, SourceEdit };
