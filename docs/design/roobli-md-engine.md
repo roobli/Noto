@@ -93,9 +93,9 @@ Phase 10 (`v0.1.6`) line-prefix offset alignment; Phase 11 (`v0.1.7`)
 ## Golden gates (option B — before default-on)
 
 Curated A/B fixtures live under `tests/fixtures/markdown-golden/` and are
-wired by `tests/unit/markdown-golden-gates.test.ts` (headings/lists/tables/wiki/
-math-fences/frontmatter/cjk plus alerts/footnotes/indented-code/tight-quotes).
-They compare the
+wired by `tests/unit/markdown-golden-gates.test.ts` (core set plus GFM inline,
+nested lists, HTML blocks, denser CJK+wiki, callout edges, hr/setext,
+link-definitions). They compare the
 **micromark** product path against an explicit `roobli-md` override on the same
 sources — they do **not** flip `NOTO_MARKDOWN_ENGINE` for the rest of the suite.
 
@@ -105,10 +105,13 @@ sources — they do **not** flip `NOTO_MARKDOWN_ENGINE` for the rest of the suit
 | Identity serialize (#82) | flagged `serializeDocument` `outputBytes` equal micromark identity |
 | Multi-block serialize | multi-dirty / insert / delete `outputBytes` equal micromark on each fixture |
 
-Coverage today: headings, lists (bullet/ordered/task), tables, wiki links,
-math fences + code fences, YAML frontmatter, CJK mixed inline. Intentional
-diffs must be listed in `tests/fixtures/markdown-golden/README.md`; silent
-divergence fails the gate loudly (`GOLDEN GATE FAIL …`).
+Coverage today: headings, lists (incl. same-family nested), tables, wiki,
+math/code fences, frontmatter, CJK, alerts/callout edges, footnotes,
+indented-code, tight quotes, GFM strikethrough/autolink, HTML blocks,
+setext+hr, link-definitions. Intentional diffs (setext-`---` vs hr; mixed-marker
+nested lists) are listed in `tests/fixtures/markdown-golden/README.md` and
+kept out of the strict directory; silent divergence fails the gate loudly
+(`GOLDEN GATE FAIL …`).
 
 ### How to run
 
@@ -141,12 +144,12 @@ reviewed:
 
 | Gate | Status |
 | ---- | ------ |
-| Split / identity / multi-block golden on current `markdown-golden/` | Green (expand fixtures first) |
-| Broader corpus / vault-shaped edges (GFM tables edge cases, nested lists, mixed callouts) in golden | **Open** — grow fixtures |
-| Flagged open-path deferred + viewport enrich + IR→PM leaf/plain | Landed (still flagged-only) |
+| Split / identity / multi-block golden on current `markdown-golden/` | Green (expanded; keep growing) |
+| Broader corpus / vault-shaped edges (GFM inline, nested lists, HTML, callout edges, link-defs) in golden | Landed this cycle; more edges welcome |
+| Flagged open-path deferred + viewport enrich + IR→PM leaf/plain/link-def | Landed (still flagged-only) |
 | Flagged serialize (identity / single / multi) + `reparseFromText` host wiring | Landed |
 | Packaged / e2e open feel on medium under the flag | Not a flip gate alone; measure before flip |
-| Intentional diffs documented in `markdown-golden/README.md` | None yet |
+| Intentional diffs documented in `markdown-golden/README.md` | Setext-`---` vs hr; mixed-marker nested lists (excluded from strict dir) |
 
 **Prefer not flipping** until golden coverage is obviously broader than the
 current curated set and open-path IR→PM has a clear story for marked-up
@@ -192,12 +195,13 @@ attach for paste / non-open. Flagged `parseDocument` uses `enrich: 'none'`
 (`nodesEnrichment: 'deferred'`); the renderer calls `enrichSpansInRange` for a
 first-paint window then viewport / idle `enrichNextDeferredInRange` with
 incremental PM patch. **Engine-owned IR → PM** (`pm/from-engine.ts`) skips
-mdast for leaf kinds + plain paragraph/heading; enrich flags mark those done —
-see `docs/performance/open-path-first-cut.md`. Product default stays micromark.
+mdast for leaf kinds + plain paragraph/heading + parseable link-definitions;
+enrich flags mark those done — see `docs/performance/open-path-first-cut.md`.
+Product default stays micromark.
 
-Next: keep growing `markdown-golden/` (GFM / callout edges), extend IR→PM beyond
-leaf+plain when safe, then reconsider default-on. Do **not** flip the product
-default yet.
+Next: keep growing `markdown-golden/` (more GFM / vault edges), extend IR→PM
+beyond leaf+plain+link-def when safe, then reconsider default-on. Do **not**
+flip the product default yet.
 
 **Noto `0.0.2-alpha.9`** shipped the adapter (#37) plus `@roobli/md` v0.1.1 quote/
 callout parity (#38). Pin is now `@roobli/md` v0.1.7 (Phase 11 reparse helpers

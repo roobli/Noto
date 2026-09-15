@@ -2,10 +2,10 @@
  * Engine-owned IR → ProseMirror for common blocks (flagged `@roobli/md` path).
  *
  * Native spans are kind + source offsets only. For leaf kinds (fence, hr, math,
- * frontmatter, html) and for plain paragraph/heading with no inline dialect
- * markers, the PM node is fully determined by that IR — no micromark / mdast
- * pass. Lists, tables, quotes, and marked-up phrasing still go through
- * `from-mdast.ts` after dialect enrich.
+ * frontmatter, html), parseable link-definitions, and for plain paragraph/
+ * heading with no inline dialect markers, the PM node is fully determined by
+ * that IR — no micromark / mdast pass. Lists, tables, quotes, footnotes, and
+ * marked-up phrasing still go through `from-mdast.ts` after dialect enrich.
  *
  * See docs/performance/open-path-first-cut.md and docs/design/roobli-md-engine.md.
  */
@@ -45,6 +45,9 @@ export function needsDialectInline(markdown: string): boolean {
  */
 export function canSkipDialectEnrich(kind: NotoBlockKind, markdown: string): boolean {
   if (ENGINE_LEAF_KINDS.has(kind)) return true;
+  if (kind === 'link-definition') {
+    return parseLinkDefinitionSource(markdown) !== null;
+  }
   if (kind === 'paragraph' || kind === 'heading') {
     return !needsDialectInline(markdown);
   }
@@ -63,14 +66,16 @@ export interface ParsedFence {
 
 /** Parse a fenced code source slice (ATX fence open/close). */
 export function parseFenceSource(md: string): ParsedFence | null {
-  const fence = /^(?: {0,3})(`{3,}|~{3,})([^\n]*)\r?\n([\s\S]*?)\r?\n(?: {0,3})\1[ \t]*\r?$/s.exec(md);
+  // Empty fence is open\\nclose (no content line). Content fences keep the
+  // newline before the closing fence out of `value`.
+  const fence = /^(?: {0,3})(`{3,}|~{3,})([^\n]*)\r?\n(?:([\s\S]*?)\r?\n)?(?: {0,3})\1[ \t]*\r?$/s.exec(md);
   if (!fence) return null;
   const info = fence[2]!.trim();
   const infoMatch = info.length > 0 ? /^(\S+)(?:[ \t]+(.*))?$/u.exec(info) : null;
   return {
     lang: infoMatch?.[1] ?? '',
     meta: infoMatch?.[2]?.trim() ?? '',
-    value: fence[3]!,
+    value: fence[3] ?? '',
   };
 }
 
@@ -110,6 +115,33 @@ function parseFrontmatter(md: string): string {
   return m ? m[1]! : md;
 }
 
+export interface ParsedLinkDefinition {
+  readonly identifier: string;
+  readonly label: string;
+  readonly url: string;
+  readonly title: string | null;
+}
+
+/**
+ * Single-line CommonMark link reference definition.
+ * Multiline / exotic titles fall through to dialect enrich.
+ */
+export function parseLinkDefinitionSource(md: string): ParsedLinkDefinition | null {
+  const trimmed = md.replace(/\r\n/g, '\n').trimEnd();
+  const m = /^\[([^\]]+)\]:[ \t]+(?:<([^>\n]*)>|(\S+))(?:[ \t]+(?:"((?:\\.|[^"\\])*)"|'((?:\\.|[^'\\])*)'|\(((?:\\.|[^)\\])*)\)))?[ \t]*$/u.exec(trimmed);
+  if (!m) return null;
+  const label = m[1]!;
+  const url = (m[2] ?? m[3] ?? '').replace(/\\([\\()])/g, '$1');
+  const titleRaw = m[4] ?? m[5] ?? m[6] ?? null;
+  const title = titleRaw === null ? null : titleRaw.replace(/\\(["'()\\])/g, '$1');
+  return {
+    identifier: label.toLowerCase(),
+    label,
+    url,
+    title,
+  };
+}
+
 /**
  * Structural fingerprint matching dialect `semanticKeyOf` for engine-owned
  * kinds so save / reparse checks stay aligned when enrich is skipped.
@@ -130,6 +162,11 @@ export function engineSemanticKey(kind: NotoBlockKind, markdown: string): string
     case 'indented-code':
       parts.push('', '');
       break;
+    case 'link-definition': {
+      const d = parseLinkDefinitionSource(markdown);
+      if (d) parts.push(d.identifier);
+      break;
+    }
     default:
       break;
   }
@@ -180,6 +217,16 @@ export function blockFromEngineSpan(kind: NotoBlockKind, markdown: string): Pros
     case 'paragraph': {
       const body = markdown.replace(/\r\n/g, '\n');
       return schema.nodes.paragraph.create(null, textNodes(body));
+    }
+    case 'link-definition': {
+      const d = parseLinkDefinitionSource(markdown);
+      if (!d) return null;
+      return schema.nodes.link_definition.create({
+        identifier: d.identifier,
+        label: d.label,
+        url: d.url,
+        title: d.title,
+      });
     }
     default:
       return null;

@@ -576,5 +576,6 @@ Medium scroll/idle tick **~58 ms** vs full remainder **704 ms** (~12×). Large
 (~`OPEN_VIEWPORT_ENRICH_BUDGET` spans), not the full remainder.
 
 Next residual: keep growing markdown-golden before default-on; extend IR→PM
-beyond leaf+plain when safe. Kind-aware stand-ins (#90), IR→PM common blocks,
-and incremental PM patch per enrich tick shipped (flagged).
+beyond leaf+plain+link-def when safe. Kind-aware stand-ins (#90), IR→PM common
+blocks (+ link-definition), and incremental PM patch per enrich tick shipped
+(flagged). Golden set expanded with GFM/callout/HTML/nested-list edges.
