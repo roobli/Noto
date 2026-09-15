@@ -4,7 +4,8 @@
  * Native spans are kind + source offsets only. For leaf kinds (fence, hr, math,
  * frontmatter, html), parseable link-definitions, **simple footnote-definitions**
  * (plain or empty single-paragraph body; optional soft-wrap continuations), plain
- * paragraph/heading with no inline dialect markers, **simple** blockquotes
+ * paragraph/heading with no inline dialect markers (hard breaks — two+ spaces
+ * before newline — are engine-owned as `hard_break` nodes), **simple** blockquotes
  * (every line `>`-prefixed, inner content is plain paragraphs only), **simple
  * flat lists** (no nest, consistent markers, plain single-paragraph items), and
  * **simple GFM tables** (alignment row; plain text cells; no nested blocks /
@@ -34,22 +35,28 @@ export const ENGINE_LEAF_KINDS: ReadonlySet<NotoBlockKind> = new Set([
 
 /**
  * Conservative scan for markers that need the host dialect (emphasis, wiki,
- * links, code, math, HTML, autolink, hard breaks). Any hit → paragraph/heading
- * stay on mdast so serialize keeps vault hard-break form (two trailing spaces).
+ * links, code, math, HTML, autolink). Hard breaks alone do **not** force dialect
+ * for plain paragraph/heading — those become engine-owned `hard_break` nodes
+ * (serialize still writes two trailing spaces via `hardBreakAsTwoSpaces`).
  */
 const INLINE_DIALECT_RE = /[*_~`[\]<!$:\\]|https?:\/\//u;
 /** CommonMark / vault hard break: two+ spaces before newline. */
 const HARD_BREAK_RE = / {2,}\r?\n/;
 
 export function needsDialectInline(markdown: string): boolean {
-  return INLINE_DIALECT_RE.test(markdown) || HARD_BREAK_RE.test(markdown);
+  return INLINE_DIALECT_RE.test(markdown);
+}
+
+/** True when the source contains a CommonMark hard break (two+ spaces + newline). */
+export function hasHardBreak(markdown: string): boolean {
+  return HARD_BREAK_RE.test(markdown);
 }
 
 /**
  * True when dialect enrich can be skipped: leaf kinds always; parseable
  * link-definitions; simple footnote-definitions; simple quotes; simple flat
- * lists; simple GFM tables; paragraph / heading only when the source has no
- * inline dialect markers.
+ * lists; simple GFM tables; paragraph / heading when the source has no inline
+ * dialect markers (hard breaks allowed — engine-owned).
  */
 export function canSkipDialectEnrich(kind: NotoBlockKind, markdown: string): boolean {
   if (ENGINE_LEAF_KINDS.has(kind)) return true;
@@ -76,6 +83,33 @@ export function canSkipDialectEnrich(kind: NotoBlockKind, markdown: string): boo
 
 function textNodes(value: string): ProseNode[] {
   return value.length === 0 ? [] : [schema.text(value)];
+}
+
+/**
+ * Plain paragraph/heading inline content: soft newlines stay in text (pre-wrap);
+ * CommonMark hard breaks (` {2,}\n`) become `hard_break` nodes so serialize
+ * keeps vault form (two trailing spaces). Trailing spaces with no following
+ * newline are dropped like CommonMark / mdast.
+ */
+export function inlineNodesFromPlainSource(md: string): ProseNode[] {
+  const normalized = md.replace(/\r\n/g, '\n');
+  if (!HARD_BREAK_RE.test(normalized)) {
+    const body = normalized.trimEnd();
+    return textNodes(body);
+  }
+  const nodes: ProseNode[] = [];
+  const re = / {2,}\n/g;
+  let lastIndex = 0;
+  let match: RegExpExecArray | null;
+  while ((match = re.exec(normalized)) !== null) {
+    const before = normalized.slice(lastIndex, match.index);
+    if (before.length > 0) nodes.push(...textNodes(before));
+    nodes.push(schema.nodes.hard_break.create());
+    lastIndex = match.index + match[0].length;
+  }
+  const after = normalized.slice(lastIndex).replace(/[ \t\r\n]+$/u, '');
+  if (after.length > 0) nodes.push(...textNodes(after));
+  return nodes;
 }
 
 export interface ParsedFence {
@@ -177,7 +211,7 @@ export function parseSimpleQuoteSource(md: string): string[] | null {
   }
   flush();
   if (paragraphs.length === 0) return null;
-  if (paragraphs.some((p) => needsDialectInline(p))) return null;
+  if (paragraphs.some((p) => needsDialectInline(p) || hasHardBreak(p))) return null;
   return paragraphs;
 }
 
@@ -500,7 +534,7 @@ export function parseSimpleFootnoteDefinitionSource(md: string): ParsedFootnoteD
   const text = parts.join('\n').trimEnd();
   // Empty body (`[^id]:` / whitespace-only) is still engine-owned: one empty
   // paragraph child (schema `block+`). Marked / hard-break / structural stay out.
-  if (needsDialectInline(text)) return null;
+  if (needsDialectInline(text) || hasHardBreak(text) || HARD_BREAK_RE.test(parts.join('\n'))) return null;
   return {
     identifier: label.toLowerCase(),
     label,
@@ -599,17 +633,15 @@ export function blockFromEngineSpan(kind: NotoBlockKind, markdown: string): Pros
     case 'heading': {
       const h = parseHeadingSource(markdown);
       if (!h) {
-        return schema.nodes.heading.create({ level: 1 }, textNodes(markdown));
+        return schema.nodes.heading.create({ level: 1 }, inlineNodesFromPlainSource(markdown));
       }
-      return schema.nodes.heading.create({ level: h.level }, textNodes(h.text));
+      return schema.nodes.heading.create({ level: h.level }, inlineNodesFromPlainSource(h.text));
     }
     case 'paragraph': {
-      // CommonMark drops trailing spaces that are not a hard break; hard-break
-      // paragraphs already fall through to mdast via needsDialectInline. Trim
-      // the source slice so engine IR→PM matches that dialect path — otherwise
-      // open keeps a phantom trailing space and a typed ` [[` becomes `See  [[`.
-      const body = markdown.replace(/\r\n/g, '\n').trimEnd();
-      return schema.nodes.paragraph.create(null, textNodes(body));
+      // Soft newlines stay in text (pre-wrap). Hard breaks (` {2,}\n`) become
+      // `hard_break` nodes. Trailing spaces without a following newline are
+      // dropped like CommonMark / mdast (avoids `See  [[` after open+type).
+      return schema.nodes.paragraph.create(null, inlineNodesFromPlainSource(markdown));
     }
     case 'link-definition': {
       const d = parseLinkDefinitionSource(markdown);

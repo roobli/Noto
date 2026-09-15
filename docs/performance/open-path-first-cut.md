@@ -159,11 +159,13 @@ optional body; plain text cells; consistent column counts; leading `|` after
 those spans without `parseMarkdown`; deferred enrich flags mark them done past
 the first-paint prefix.
 
-Plain paragraph IR→PM `trimEnd()`s the source slice so trailing spaces that
-are not hard breaks match CommonMark/mdast (avoids `See  [[` after open+type).
-Hard-break paragraphs still take the dialect path. Setext `===` headings are
-already engine-owned via `parseHeadingSource` (setext-`---` vs hr remains an
-engine split gap — see markdown-golden README).
+Plain paragraph IR→PM drops trailing spaces that are not hard breaks
+(CommonMark/mdast; avoids `See  [[` after open+type). Hard breaks
+(` {2,}\n`) are engine-owned as `hard_break` nodes (serialize keeps two
+trailing spaces). Soft newlines stay in text (`pre-wrap`). Marked phrasing
+still takes the dialect path. Setext `===` headings are already engine-owned
+via `parseHeadingSource` (setext-`---` vs hr remains an engine split gap —
+see markdown-golden README).
 
 Nested lists, multi-block items, nested or marked quotes, complex / ragged /
 marked tables, marked footnote bodies, and marked-up phrasing still need
@@ -187,7 +189,9 @@ dialect enrich + `from-mdast` (empty footnote bodies are engine-owned). Does
    (`pm/from-engine.ts`); enrich flags + `enrichSpansInRange` honour the skip.
 2. ~~Kind-aware structural stand-ins (heading/fence/…)~~ — shipped (#90).
 3. Extend IR→PM to more kinds when safe (nested lists / complex tables / nested
-   quotes still dialect); optional lightweight inline IR later — not this cycle.
+   quotes / marked footnote bodies still dialect); optional lightweight inline
+   IR for marks later — not this cycle. Plain hard-break paragraphs/headings
+   are engine-owned.
 4. Keep growing `tests/fixtures/markdown-golden/` before default-on; GFM inline,
    nested lists, HTML blocks, callout edges, hr/setext, link-defs, simple
    quotes, simple flat lists, simple GFM tables, simple footnote-defs,
