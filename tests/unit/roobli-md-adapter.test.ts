@@ -1,5 +1,5 @@
 /**
- * Parity and adapter coverage for `@roobli/md` v0.1.2.
+ * Parity and adapter coverage for `@roobli/md` v0.1.7.
  *
  * Default product path stays micromark. These tests force the adapter and
  * compare structural spans against the micromark baseline on synthetic
@@ -15,7 +15,9 @@ import {
   parseSingleBlockViaRoobli,
   reparseBlocks,
   reparseBlocksViaRoobli,
+  reparseFromTextViaRoobli,
   serializeIdentityViaRoobli,
+  sourceEditBetween,
   splitBlocksViaRoobli,
 } from '../../src/shared/markdown/v3/roobli-md-adapter';
 import { splitBlocksMicromark, parseSingleBlock, splitBlocks } from '../../src/shared/markdown/v3/blocks';
@@ -188,6 +190,32 @@ describe('@roobli/md adapter — indented-code (v0.1.2)', () => {
     expect(viaFlag.spans[1]!.markdown).toBe('    code();');
     expect(viaFlag.spans[1]!.node?.type).toBe('code');
     expect(parseSingleBlock('    indented();')?.kind).toBe('indented-code');
+  });
+});
+
+describe('@roobli/md adapter — reparseFromText (Phase 11)', () => {
+  it('derives an edit and reparses with enrichment', () => {
+    const text = '# One\n\nTwo\n\nThree\n';
+    const prior = parseBlocksStructural(text);
+    const nextText = '# One\n\nDeux\n\nThree\n';
+    const edit = sourceEditBetween(text, nextText);
+    expect(edit).not.toBeNull();
+
+    const result = reparseFromTextViaRoobli(prior, nextText, { neighborSlack: 0 });
+    expect(result.spans).toHaveLength(3);
+    expect(result.spans[0]!.markdown).toBe('# One');
+    expect(result.spans[1]!.markdown).toBe('Deux');
+    expect(result.spans[1]!.node.type).toBe('paragraph');
+    expect(result.spans[2]!.markdown).toBe('Three');
+    expect(joinSplit(result, nextText)).toBe(nextText);
+  });
+
+  it('returns an empty dirty window when text is unchanged', () => {
+    const text = '# A\n\nB\n';
+    const prior = parseBlocksStructural(text);
+    const result = reparseFromTextViaRoobli(prior, text);
+    expect(result.dirtyTo).toBeLessThan(result.dirtyFrom);
+    expect(result.spans.map((s) => s.markdown)).toEqual(prior.spans.map((s) => s.markdown));
   });
 });
 

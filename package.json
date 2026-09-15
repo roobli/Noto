@@ -36,7 +36,7 @@
     "verify": "pnpm typecheck && pnpm test"
   },
   "dependencies": {
-    "@roobli/md": "github:roobli/md#v0.1.6",
+    "@roobli/md": "github:roobli/md#v0.1.7",
     "electron-updater": "6.8.9",
     "mdast-util-from-markdown": "^2.0.3",
     "mdast-util-frontmatter": "^2.0.1",
