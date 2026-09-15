@@ -12,10 +12,10 @@
  * edit which would silently merge or split blocks, for example a heading edited
  * into plain text that then absorbs the paragraph beneath it.
  *
- * When `NOTO_MARKDOWN_ENGINE=roobli-md`, identity and single-block saves route
- * the byte assembly through `@roobli/md` `serializeDocument` (micromark path
- * unchanged when the flag is off). Multi-block / insert / delete stays on the
- * Noto serializer until those surfaces are gated the same way.
+ * When `NOTO_MARKDOWN_ENGINE=roobli-md`, block-mode saves (identity, single-
+ * block, multi-block insert/delete) route the byte assembly through `@roobli/md`
+ * `serializeDocument` (micromark path unchanged when the flag is off). Source
+ * mode stays on the Noto serializer.
  */
 
 import { parseSingleBlock } from './blocks';
@@ -25,7 +25,6 @@ import { checkWindow, verificationWindows, type ReparsedBlock } from './incremen
 import { fromLf, parseDocument, sha256, toLf } from './document';
 import { isRoobliMdEngine } from './engine-flag';
 import {
-  isIdentityOrSingleBlockUnits,
   serializeViaRoobli,
   toEngineDocument,
   toSerializeEnvelope,
@@ -496,7 +495,8 @@ function hashPreservedRanges(
 }
 
 /**
- * Flagged path: identity / single-block byte assembly via `@roobli/md`.
+ * Flagged path: block-mode byte assembly via `@roobli/md` (identity, single-
+ * block, multi-block insert/delete).
  *
  * Noto still validates origins (forged block ids) before the engine sees
  * ordinals only. On success we re-attach sha256 evidence and branded revision
@@ -593,10 +593,7 @@ export function serializeDocument(
     };
   }
 
-  if (
-    isRoobliMdEngine()
-    && isIdentityOrSingleBlockUnits(document, transaction.units)
-  ) {
+  if (isRoobliMdEngine()) {
     return serializeBlocksViaRoobli(document, transaction.units, transaction.envelope);
   }
 

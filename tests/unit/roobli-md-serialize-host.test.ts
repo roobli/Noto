@@ -1,9 +1,10 @@
 /**
- * Host wiring: flagged identity / single-block serialize through `@roobli/md`.
+ * Host wiring: flagged block-mode serialize through `@roobli/md`.
  *
  * Product default stays micromark. These tests force the flag and compare
  * outputBytes (and preserved evidence) against the micromark serializer on
- * synthetic fixtures — no RooB private content.
+ * synthetic fixtures — no RooB private content. Covers identity, single-block,
+ * multi-dirty, insert, and delete.
  */
 
 import { readFileSync } from 'node:fs';
@@ -48,6 +49,22 @@ function editing(document: NotoDocument, ordinal: number, markdown: string): Blo
   };
 }
 
+function multiEditing(
+  document: NotoDocument,
+  edits: ReadonlyMap<number, string>,
+): BlocksTransaction {
+  return {
+    version: NOTO_MARKDOWN_VERSION,
+    mode: 'blocks',
+    documentId: document.documentId,
+    revisionId: document.revisionId,
+    units: document.blocks.map((block, index) => ({
+      origin: block.origin,
+      markdown: edits.has(index) ? edits.get(index)! : null,
+    })),
+    envelope: { lineEnding: 'mixed', hasFinalNewline: document.envelope.hasFinalNewline },
+  };
+}
 
 function blocksIdentity(document: NotoDocument) {
   const tx = identityTransaction(document);
@@ -61,6 +78,14 @@ function mustSerialize(document: NotoDocument, transaction: NotoTransaction) {
     throw new Error(`serialize failed: ${result.code}: ${result.message}`);
   }
   return result;
+}
+
+function abSerialize(document: NotoDocument, transaction: NotoTransaction) {
+  setMarkdownEngineForTests('micromark');
+  const micromark = mustSerialize(document, transaction);
+  setMarkdownEngineForTests('roobli-md');
+  const flagged = mustSerialize(document, transaction);
+  return { micromark, flagged };
 }
 
 afterEach(() => {
@@ -101,13 +126,9 @@ describe('flagged serializeDocument — identity / single-block', () => {
 
   it('identity outputBytes match micromark path on the same document', () => {
     for (const source of samples) {
-      setMarkdownEngineForTests('micromark');
       const document = parsed(source);
       const transaction = identityTransaction(document);
-      const micromark = mustSerialize(document, transaction);
-
-      setMarkdownEngineForTests('roobli-md');
-      const flagged = mustSerialize(document, transaction);
+      const { micromark, flagged } = abSerialize(document, transaction);
 
       expect(Buffer.from(flagged.outputBytes).equals(Buffer.from(micromark.outputBytes))).toBe(true);
       expect(flagged.outputSha256).toBe(micromark.outputSha256);
@@ -116,7 +137,6 @@ describe('flagged serializeDocument — identity / single-block', () => {
       for (const range of flagged.preserved) {
         expect(range.sha256).toMatch(/^[a-f0-9]{64}$/);
       }
-      // Preserved block digests match the accepted block hashes.
       for (const range of flagged.preserved.filter((r) => r.role === 'block')) {
         const block = document.blocks.find((b) => b.start === range.start && b.end === range.end);
         expect(block?.sha256).toBe(range.sha256);
@@ -126,7 +146,6 @@ describe('flagged serializeDocument — identity / single-block', () => {
 
   it('single-block edit outputBytes match micromark path on the same document', () => {
     for (const source of samples) {
-      setMarkdownEngineForTests('micromark');
       const document = parsed(source);
       if (document.blocks.length < 2) continue;
       const ordinal = Math.min(1, document.blocks.length - 1);
@@ -134,10 +153,7 @@ describe('flagged serializeDocument — identity / single-block', () => {
         ? '# Renamed'
         : 'Edited paragraph.';
       const transaction = editing(document, ordinal, nextMarkdown);
-      const micromark = mustSerialize(document, transaction);
-
-      setMarkdownEngineForTests('roobli-md');
-      const flagged = mustSerialize(document, transaction);
+      const { micromark, flagged } = abSerialize(document, transaction);
 
       expect(Buffer.from(flagged.outputBytes).equals(Buffer.from(micromark.outputBytes))).toBe(true);
       expect(flagged.outputSha256).toBe(sha256(flagged.outputBytes));
@@ -190,5 +206,120 @@ describe('flagged serializeDocument — identity / single-block', () => {
       { origin: 0, markdown: document.blocks[0]!.markdown },
       { origin: 1, markdown: document.blocks[1]!.markdown },
     ]);
+  });
+});
+
+describe('flagged serializeDocument — multi-block insert / delete / multi-dirty', () => {
+  it('multi-dirty edit outputBytes match micromark', () => {
+    const document = parsed('# A\n\nB\n\nC\n');
+    const transaction = multiEditing(document, new Map([
+      [0, '# AA'],
+      [2, 'Cee'],
+    ]));
+    const { micromark, flagged } = abSerialize(document, transaction);
+    expect(Buffer.from(flagged.outputBytes).equals(Buffer.from(micromark.outputBytes))).toBe(true);
+    expect(Buffer.from(flagged.outputBytes).toString('utf8')).toBe('# AA\n\nB\n\nCee\n');
+    expect(flagged.document.documentId).toBe(document.documentId);
+    expect(flagged.outputSha256).toBe(sha256(flagged.outputBytes));
+  });
+
+  it('insert outputBytes match micromark and keep branded documentId', () => {
+    const document = parsed('# Title\n\nBody.\n');
+    const identity = blocksIdentity(document);
+    const transaction: BlocksTransaction = {
+      ...identity,
+      units: [
+        identity.units[0]!,
+        { origin: null, markdown: 'Inserted.' },
+        identity.units[1]!,
+      ],
+    };
+    const { micromark, flagged } = abSerialize(document, transaction);
+    expect(Buffer.from(flagged.outputBytes).equals(Buffer.from(micromark.outputBytes))).toBe(true);
+    expect(Buffer.from(flagged.outputBytes).toString('utf8')).toBe('# Title\n\nInserted.\n\nBody.\n');
+    expect(flagged.document.documentId).toBe(document.documentId);
+    // Surviving pristine blocks keep sha256 evidence.
+    const preservedBlocks = flagged.preserved.filter((r) => r.role === 'block');
+    expect(preservedBlocks.length).toBeGreaterThanOrEqual(2);
+    for (const range of preservedBlocks) {
+      expect(range.sha256).toMatch(/^[a-f0-9]{64}$/);
+    }
+  });
+
+  it('delete outputBytes match micromark and re-attach sha256 on survivors', () => {
+    const document = parsed('# Title\n\nDoomed.\n\nKept.\n');
+    const identity = blocksIdentity(document);
+    const transaction: BlocksTransaction = {
+      ...identity,
+      units: [identity.units[0]!, identity.units[2]!],
+    };
+    const { micromark, flagged } = abSerialize(document, transaction);
+    expect(Buffer.from(flagged.outputBytes).equals(Buffer.from(micromark.outputBytes))).toBe(true);
+    expect(Buffer.from(flagged.outputBytes).toString('utf8')).toBe('# Title\n\nKept.\n');
+    expect(flagged.document.documentId).toBe(document.documentId);
+    for (const range of flagged.preserved.filter((r) => r.role === 'block')) {
+      const block = document.blocks.find((b) => b.start === range.start && b.end === range.end);
+      expect(block?.sha256).toBe(range.sha256);
+    }
+  });
+
+  it('insert + delete + edit combined match micromark', () => {
+    const document = parsed('# A\n\nB\n\nC\n\nD\n');
+    const identity = blocksIdentity(document);
+    // Drop B (1), edit C (2), insert between A and C, keep D.
+    const transaction: BlocksTransaction = {
+      ...identity,
+      units: [
+        { origin: identity.units[0]!.origin, markdown: '# AA' },
+        { origin: null, markdown: 'Inserted.' },
+        { origin: identity.units[2]!.origin, markdown: 'Cee' },
+        identity.units[3]!,
+      ],
+    };
+    const { micromark, flagged } = abSerialize(document, transaction);
+    expect(Buffer.from(flagged.outputBytes).equals(Buffer.from(micromark.outputBytes))).toBe(true);
+    expect(Buffer.from(flagged.outputBytes).toString('utf8')).toBe('# AA\n\nInserted.\n\nCee\n\nD\n');
+    expect(flagged.document.documentId).toBe(document.documentId);
+  });
+
+  it('rejects forged origins on multi-block insert transactions', () => {
+    setMarkdownEngineForTests('roobli-md');
+    const document = parsed('# Title\n\nBody.\n');
+    const identity = blocksIdentity(document);
+    const first = identity.units[0]!;
+    if (!first.origin) throw new Error('expected origin');
+    const forged: BlocksTransaction = {
+      ...identity,
+      units: [
+        {
+          origin: { ...first.origin, blockId: 'noto-block-v3:forged' as typeof first.origin.blockId },
+          markdown: null,
+        },
+        { origin: null, markdown: 'Inserted.' },
+        identity.units[1]!,
+      ],
+    };
+    const result = serializeDocument(document, forged);
+    expect(result.status).toBe('failed');
+    if (result.status === 'failed') expect(result.code).toBe('FORGED_ORIGIN');
+  });
+
+  it('source mode stays on the Noto serializer (flag on)', () => {
+    setMarkdownEngineForTests('roobli-md');
+    const document = parsed('# Title\n');
+    const replacement = encoder.encode('---\ntitle: t\n---\n\n# Title\n');
+    const result = serializeDocument(document, {
+      version: NOTO_MARKDOWN_VERSION,
+      mode: 'source',
+      documentId: document.documentId,
+      revisionId: document.revisionId,
+      expectedSourceSha256: document.envelope.sourceSha256,
+      sourceBytes: replacement,
+    });
+    expect(result.status).toBe('serialized');
+    if (result.status !== 'serialized') return;
+    expect(Buffer.from(result.outputBytes).equals(Buffer.from(replacement))).toBe(true);
+    expect(result.document.documentId).toBe(document.documentId);
+    expect(result.document.blocks.map((b) => b.kind)).toEqual(['frontmatter', 'heading']);
   });
 });
