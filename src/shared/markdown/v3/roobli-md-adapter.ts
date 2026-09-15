@@ -9,7 +9,7 @@
  * Flagged open uses `enrich: 'none'` on main then `enrichSpansInRange` in the
  * renderer for a first-paint window (and the remainder after paint) — see
  * `SpanEnrichMode` and docs/performance/open-path-first-cut.md. Engine-owned
- * leaf / plain paragraph+heading skip mdast (IR → PM via `pm/from-engine.ts`).
+ * leaf / plain paragraph+heading / simple quote skip mdast (IR → PM via `pm/from-engine.ts`).
  *
  * Flagged block-mode saves (identity, single-block, multi-block insert/delete)
  * map into engine shapes, call `serializeDocument`, then the host re-attaches
@@ -50,6 +50,7 @@ import {
   canSkipDialectEnrich,
   engineSemanticKey,
   parseLinkDefinitionSource,
+  parseSimpleQuoteSource,
 } from './pm/from-engine';
 
 export interface AdapterBlockSpan {
@@ -213,7 +214,7 @@ function enrichDialectRun(
 
 /**
  * Fill dialect mdast for `spans[from..to)` — but **skip** engine-owned leaf /
- * link-definition / plain paragraph+heading spans (IR → final stand-in + semanticKey, no
+ * link-definition / plain paragraph+heading / simple-quote spans (IR → final stand-in + semanticKey, no
  * micromark). Contiguous needs-dialect runs still use one `parseMarkdown` each.
  *
  * Spans outside the range are returned unchanged. When a dialect run's
@@ -301,8 +302,8 @@ export const OPEN_VIEWPORT_ENRICH_PAD = 40;
  * Parallel to spans: `1` = dialect-enriched or engine-owned (no further enrich),
  * `0` = structural stand-in still needing dialect.
  *
- * When `spans` is provided, leaf / link-definition / plain paragraph+heading
- * indices past the first-paint prefix are marked enriched immediately — IR → PM needs no mdast.
+ * When `spans` is provided, leaf / link-definition / plain paragraph+heading /
+ * simple-quote indices past the first-paint prefix are marked enriched immediately — IR → PM needs no mdast.
  */
 export function createEnrichFlags(
   length: number,
@@ -495,7 +496,18 @@ function standInNode(span: EngineBlockSpan): RootContent {
       };
     }
     case 'quote': {
-      const body = md.replace(/^(?: {0,3}>\s?)/gm, '');
+      const paras = parseSimpleQuoteSource(md);
+      if (paras) {
+        return {
+          type: 'blockquote',
+          children: paras.map((value) => ({
+            type: 'paragraph' as const,
+            children: value.length > 0 ? [{ type: 'text' as const, value }] : [],
+          })),
+        };
+      }
+      // Complex / marked quotes stay a single-paragraph shell until dialect enrich.
+      const body = md.replace(/^(?: {0,3}>[ \t]?)/gm, '');
       return {
         type: 'blockquote',
         children: [{
@@ -564,7 +576,7 @@ function enrichSpan(span: EngineBlockSpan): AdapterBlockSpan {
 
 /**
  * Structural adapter spans: no dialect parse. Prep for deferred wire nodes.
- * Engine-owned leaf / link-definition / plain phrasing get a final semanticKey so enrich can skip them.
+ * Engine-owned leaf / link-definition / plain phrasing / simple quotes get a final semanticKey so enrich can skip them.
  */
 function enrichSpanNone(span: EngineBlockSpan): AdapterBlockSpan {
   const kind = span.kind as NotoBlockKind;
