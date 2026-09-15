@@ -5,8 +5,10 @@
  * Noto keeps branded IDs, sha256, envelope hashing, `semanticKey`, and wire
  * `nodes` (mdast) in this layer: native spans ship `node: null`, so we attach
  * mdast via Noto's dialect when a span needs a ProseMirror-ready node.
- * Full-document splits default to one bulk dialect parse (not N× per span);
- * see `SpanEnrichMode` and docs/performance/open-path-first-cut.md.
+ * Full-document splits default to one bulk dialect parse (not N× per span).
+ * Flagged open uses `enrich: 'none'` on main then `enrichSpansInRange` in the
+ * renderer for a first-paint window (and the remainder after paint) — see
+ * `SpanEnrichMode` and docs/performance/open-path-first-cut.md.
  *
  * Flagged block-mode saves (identity, single-block, multi-block insert/delete)
  * map into engine shapes, call `serializeDocument`, then the host re-attaches
@@ -131,13 +133,108 @@ function semanticKeyOf(node: RootContent, kind: NotoBlockKind): string {
  * - `per-span`: legacy path — `parseMarkdown` each span.markdown. Kept for
  *   PROFILE_OPEN A/B and as the fallback when bulk counts disagree.
  * - `none`: structural only — paragraph stand-in nodes, `semanticKey === kind`.
- *   Prep hook for the next cut (file-truth without mdast / lazy wire nodes).
+ *   Flagged `parseDocument` open uses this on main; renderer calls
+ *   `enrichSpansInRange` for the first-paint window and remainder.
  */
 export type SpanEnrichMode = 'bulk' | 'per-span' | 'none';
 
 export interface SplitBlocksViaRoobliOptions {
   readonly enrich?: SpanEnrichMode;
 }
+
+/**
+ * First-paint span window for flagged lazy open.
+ *
+ * Long enough to cover a typical viewport of top-level blocks; short enough
+ * that the one dialect parse for the window stays far below a full-document
+ * bulk attach on medium/large corpus files.
+ */
+export const OPEN_LAZY_INITIAL_SPANS = 80;
+
+export interface EnrichSpansInRangeOptions {
+  /** Inclusive start index into `spans`. */
+  readonly from: number;
+  /** Exclusive end index into `spans`. */
+  readonly to: number;
+}
+
+/**
+ * Fill dialect mdast for `spans[from..to)` with **one** `parseMarkdown` over
+ * the contiguous source covering that range (not N× per span).
+ *
+ * Spans outside the range are returned unchanged. When top-level node count
+ * disagrees with the window length, falls back to per-span enrich for the
+ * window only (never silent).
+ */
+export function enrichSpansInRange<T extends AdapterBlockSpan>(
+  spans: readonly T[],
+  text: string,
+  range: EnrichSpansInRangeOptions,
+): T[] {
+  const from = Math.max(0, Math.min(range.from, spans.length));
+  const to = Math.max(from, Math.min(range.to, spans.length));
+  if (from === to || spans.length === 0) return spans.slice() as T[];
+
+  const windowSpans = spans.slice(from, to);
+  const sliceStart = windowSpans[0]!.start;
+  const sliceEnd = windowSpans[windowSpans.length - 1]!.end;
+  const slice = text.slice(sliceStart, sliceEnd);
+  const nodes = topLevelNodes(parseMarkdown(slice));
+
+  const enrichedWindow: AdapterBlockSpan[] =
+    nodes.length === windowSpans.length
+      ? windowSpans.map((span, index) => attachDialectNode(
+          {
+            kind: span.kind,
+            start: span.start,
+            end: span.end,
+            markdown: span.markdown,
+            node: null,
+          },
+          nodes[index]!,
+        ))
+      : windowSpans.map((span) => enrichSpan({
+          kind: span.kind,
+          start: span.start,
+          end: span.end,
+          markdown: span.markdown,
+          node: null,
+        }));
+
+  const out = spans.slice() as AdapterBlockSpan[];
+  for (let i = 0; i < enrichedWindow.length; i += 1) {
+    out[from + i] = enrichedWindow[i]!;
+  }
+  return out as T[];
+}
+
+
+export interface ResolveDeferredOpenSpansResult<T extends AdapterBlockSpan = AdapterBlockSpan> {
+  readonly spans: readonly T[];
+  /** When non-null, call `enrichSpansInRange` from this index to length after first paint. */
+  readonly remainderFrom: number | null;
+}
+
+/**
+ * First consumer for flagged lazy open: enrich `[0, initial)` with one range
+ * parse. Caller mounts with the result, then enriches the remainder.
+ */
+export function resolveDeferredOpenSpans<T extends AdapterBlockSpan>(
+  spans: readonly T[],
+  text: string,
+  options?: { readonly initialSpans?: number; readonly deferred?: boolean },
+): ResolveDeferredOpenSpansResult<T> {
+  if (!options?.deferred) {
+    return { spans, remainderFrom: null };
+  }
+  const initialTo = Math.min(options.initialSpans ?? OPEN_LAZY_INITIAL_SPANS, spans.length);
+  const enriched = enrichSpansInRange(spans, text, { from: 0, to: initialTo });
+  return {
+    spans: enriched,
+    remainderFrom: initialTo < enriched.length ? initialTo : null,
+  };
+}
+
 
 function standInNode(span: EngineBlockSpan): RootContent {
   return {

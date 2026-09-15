@@ -11,7 +11,11 @@ import { documentDirOf } from './image-source';
 import type { NotoDocumentWire, NotoTransaction } from '../../../shared/markdown/v3/contracts';
 import { NotoEditor, type InsertedImage } from './NotoEditor';
 import { parseDocumentSpans } from './parse-document';
-import { blockSpansFromWire } from '../../../shared/markdown/v3/blocks';
+import { blockSpansFromWire, type BlockSpan } from '../../../shared/markdown/v3/blocks';
+import {
+  enrichSpansInRange,
+  resolveDeferredOpenSpans,
+} from '../../../shared/markdown/v3/roobli-md-adapter';
 import type { DocumentCount } from './word-count';
 
 export interface NotoCanvasProps {
@@ -97,9 +101,18 @@ export function NotoCanvas({
       // Prefer mdast nodes main already sent on the wire (skips the second
       // micromark pass). Fall back to the Worker when nodes are null, which is
       // the incremental-save reply shape; open and reload carry nodes.
-      let spans;
+      let spans: readonly BlockSpan[];
+      let deferredRemainderFrom: number | null = null;
       try {
         spans = blockSpansFromWire(document) ?? await parseDocumentSpans(document.text);
+        // Flagged lazy open: main shipped structural stand-ins. Enrich a
+        // first-paint window with one range dialect parse (not N×), mount,
+        // then fill the remainder after the first frame.
+        const prepared = resolveDeferredOpenSpans(spans, document.text, {
+          deferred: document.nodesEnrichment === 'deferred',
+        });
+        spans = prepared.spans;
+        deferredRemainderFrom = prepared.remainderFrom;
       } catch (error) {
         if (!cancelled) {
           onError(error instanceof Error ? error.message : 'The editor failed to start.');
@@ -142,6 +155,26 @@ export function NotoCanvas({
 
       editorRef.current = editor;
       onReady(editor);
+
+      if (deferredRemainderFrom !== null) {
+        const partial = spans;
+        const from = deferredRemainderFrom;
+        const mounted = editor;
+        requestAnimationFrame(() => {
+          if (cancelled || editorRef.current !== mounted) return;
+          try {
+            const full = enrichSpansInRange(partial, document.text, {
+              from,
+              to: partial.length,
+            });
+            mounted.applyDialectEnrichedSpans(full);
+          } catch (error) {
+            if (!cancelled) {
+              onError(error instanceof Error ? error.message : 'Dialect enrich after open failed.');
+            }
+          }
+        });
+      }
     })();
 
     return () => {

@@ -106,6 +106,15 @@ export interface NotoDocument {
    * parse; they are not needed after the editor is mounted.
    */
   readonly nodes: readonly import('mdast').RootContent[] | null;
+  /**
+   * How `nodes` were produced on open/reload.
+   *
+   * - `full`: every node is dialect-enriched (micromark open, or flagged bulk).
+   * - `deferred`: structural / `enrich: 'none'` stand-ins — renderer enriches a
+   *   first-paint window then the remainder (flagged lazy open). Absent when
+   *   `nodes` is null (incremental save).
+   */
+  readonly nodesEnrichment?: 'full' | 'deferred';
 }
 
 /**
@@ -141,6 +150,11 @@ export interface NotoDocumentWire {
    * keeps its editor and only needs Worker/sync parse again on a full reload.
    */
   readonly nodes: readonly import('mdast').RootContent[] | null;
+  /**
+   * Mirrors `NotoDocument.nodesEnrichment`. Present with open/reload nodes;
+   * omitted when `nodes` is null.
+   */
+  readonly nodesEnrichment?: 'full' | 'deferred';
 }
 
 /**

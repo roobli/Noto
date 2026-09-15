@@ -541,6 +541,27 @@ Linux probe medians (5 runs after warm, same corpus files):
 Medium: bulk ~190 ms faster than per-span (~22%). Large: ~620 ms (~17%).
 Re-run: `PROFILE_OPEN=1 pnpm vitest run tests/unit/open-profile.test.ts`.
 
-Product default stays micromark. Next residual is lazy / viewport wire nodes
-(`enrich: 'none'` scaffolding) so the ~4 ms structural path can sit on the
-critical path — not another full dialect pass.
+Product default stays micromark.
+
+### Flagged `@roobli/md` open — lazy wire nodes (2026-09-15)
+
+Flagged `parseDocument` now ships `enrich: 'none'` (`nodesEnrichment:
+'deferred'`). The renderer enriches `OPEN_LAZY_INITIAL_SPANS` (80) with one
+range dialect parse before mount, then the remainder after the first frame.
+See `docs/performance/open-path-first-cut.md`.
+
+Linux medians (5 runs, 2026-09-15):
+
+| phase | small | medium | large |
+| ----- | ----- | ------ | ----- |
+| enrich none | 1 ms | 4 ms | 23 ms |
+| enrich bulk | 87 ms | 699 ms | 3080 ms |
+| lazy critical (none+80) | 20 ms | **26 ms** | **43 ms** |
+| lazy remainder | 78 ms | 663 ms | 3131 ms |
+| parseDocument (deferred) | **5 ms** | **14 ms** | **70 ms** |
+
+Medium main open **14 ms** vs prior bulk **699 ms**; first-paint enrich **26 ms**.
+Remainder ≈ one dialect pass after paint.
+
+Next residual: viewport-driven enrich (scroll into stand-ins) and/or
+engine-owned IR→PM; grow markdown-golden before default-on.
