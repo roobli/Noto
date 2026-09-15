@@ -31,6 +31,8 @@ import { notoSchema } from '../../../shared/markdown/v3/pm/schema';
 import { blockFromSpan, docFromSpans } from '../../../shared/markdown/v3/pm/from-mdast';
 import { blockToMarkdown } from '../../../shared/markdown/v3/pm/to-mdast';
 import { blockSpansFromWire, parseSingleBlock, splitBlocks, type BlockSpan } from '../../../shared/markdown/v3/blocks';
+import { isRoobliMdEngine } from '../../../shared/markdown/v3/engine-flag';
+import { PriorSplitCache } from '../../../shared/markdown/v3/prior-split-cache';
 import { parseDocumentSpans } from './parse-document';
 import { toLf } from '../../../shared/markdown/v3/line-endings';
 import {
@@ -183,6 +185,13 @@ export class NotoEditor implements NotoEditorPort {
   private readonly options: NotoEditorOptions;
   /** What each accepted block looked like, keyed by block id. */
   private pristine = new Map<string, PristineBlock>();
+  /**
+   * Last structural `@roobli/md` split for flagged `replaceMarkdown`.
+   * Unused while the micromark engine is selected.
+   */
+  private readonly priorSplit = new PriorSplitCache();
+  /** True while `replaceMarkdown` is dispatching, so typing invalidation skips. */
+  private replaceInFlight = false;
 
   /**
    * @param spans Pre-parsed block spans from `parseDocumentSpans`. Open and
@@ -341,6 +350,13 @@ export class NotoEditor implements NotoEditorPort {
       const span = resolved[index];
       if (origin && span) this.pristine.set(origin.blockId, { node, markdown: toLf(span.markdown) });
     });
+
+    // Flagged path: seed prior split from the open/reload spans (no extra parse).
+    if (isRoobliMdEngine()) {
+      this.priorSplit.seedFromSpans(document.text, resolved);
+    } else {
+      this.priorSplit.invalidate();
+    }
 
     return doc;
   }
@@ -535,6 +551,11 @@ export class NotoEditor implements NotoEditorPort {
     this.reportActiveBlock();
     if (!transaction.docChanged) return;
     this.docVersion += 1;
+    // WYSIWYG edits (and paste) diverge from the cached structural split.
+    // replaceMarkdown sets replaceInFlight so its own dispatch does not clear.
+    if (!this.replaceInFlight && isRoobliMdEngine()) {
+      this.priorSplit.invalidate();
+    }
     this.refreshDirty();
     // Every change, not only the transition into dirty. Automatic saving has to
     // debounce against typing, and a flag that flips once at the first
@@ -978,7 +999,13 @@ export class NotoEditor implements NotoEditorPort {
       pristine: this.pristine,
     });
 
-    const spans = splitBlocks(toLf(markdown)).spans;
+    const lf = toLf(markdown);
+    // Flagged `@roobli/md` path: incremental reparseFromText when a prior split
+    // is cached; full split + reseed after typing invalidation. Micromark
+    // stays on splitBlocks unchanged.
+    const spans = isRoobliMdEngine()
+      ? this.priorSplit.spansForReplace(lf).spans
+      : splitBlocks(lf).spans;
     const next = spans.map((span) => toLf(span.markdown));
     if (current.length === next.length && current.every((value, index) => value === next[index])) return false;
 
@@ -1000,7 +1027,12 @@ export class NotoEditor implements NotoEditorPort {
 
     const replacement = spans.slice(prefix, next.length - suffix).map(blockFromSpan);
     const transaction = view.state.tr.replaceWith(from, to, replacement);
-    view.dispatch(transaction.scrollIntoView());
+    this.replaceInFlight = true;
+    try {
+      view.dispatch(transaction.scrollIntoView());
+    } finally {
+      this.replaceInFlight = false;
+    }
     return true;
   }
 
@@ -1207,6 +1239,7 @@ export class NotoEditor implements NotoEditorPort {
     this.view?.destroy();
     this.view = null;
     this.pristine = new Map();
+    this.priorSplit.invalidate();
   }
 }
 
