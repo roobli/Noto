@@ -132,10 +132,11 @@ function semanticKeyOf(node: RootContent, kind: NotoBlockKind): string {
  *   without N× per-span reparses (see docs/performance/open-path-first-cut.md).
  * - `per-span`: legacy path — `parseMarkdown` each span.markdown. Kept for
  *   PROFILE_OPEN A/B and as the fallback when bulk counts disagree.
- * - `none`: structural only — paragraph stand-in nodes, `semanticKey === kind`.
- *   Flagged `parseDocument` open uses this on main; renderer calls
- *   `enrichSpansInRange` for the first-paint window, then viewport / idle
- *   `enrichNextDeferredInRange` for deferred stand-ins.
+ * - `none`: structural only — kind-aware stand-in nodes (heading/fence/hr/…;
+ *   paragraph fallback), `semanticKey === kind`. Flagged `parseDocument` open
+ *   uses this on main; renderer calls `enrichSpansInRange` for the first-paint
+ *   window, then viewport / idle `enrichNextDeferredInRange` for deferred
+ *   stand-ins.
  */
 export type SpanEnrichMode = 'bulk' | 'per-span' | 'none';
 
@@ -355,11 +356,86 @@ export function enrichNextDeferredInRange<T extends AdapterBlockSpan>(
 }
 
 
+/**
+ * Cheap mdast stand-in from engine kind + source slice (no dialect parse).
+ *
+ * Flagged deferred open ships these until viewport/idle enrich attaches real
+ * dialect trees. Kind-aware shapes (heading / fence / hr / …) keep a long
+ * remainder gap from looking like raw paragraph soup when the user scrolls
+ * ahead of enrich — see docs/performance/open-path-first-cut.md.
+ */
 function standInNode(span: EngineBlockSpan): RootContent {
-  return {
-    type: 'paragraph',
-    children: span.markdown.length > 0 ? [{ type: 'text', value: span.markdown }] : [],
-  };
+  const md = span.markdown;
+  const kind = span.kind as NotoBlockKind;
+  switch (kind) {
+    case 'heading': {
+      const atx = /^(#{1,6})[ \t]+(.+?)[ \t]*#*[ \t]*$/s.exec(md.trimEnd());
+      if (atx) {
+        const depth = Math.min(6, atx[1]!.length) as 1 | 2 | 3 | 4 | 5 | 6;
+        return {
+          type: 'heading',
+          depth,
+          children: [{ type: 'text', value: atx[2]! }],
+        };
+      }
+      const setext = /^([\s\S]+?)\n([=-])\2*[ \t]*$/s.exec(md.trimEnd());
+      if (setext) {
+        return {
+          type: 'heading',
+          depth: setext[2] === '=' ? 1 : 2,
+          children: [{ type: 'text', value: setext[1]!.replace(/\s+$/u, '') }],
+        };
+      }
+      return {
+        type: 'heading',
+        depth: 1,
+        children: md.length > 0 ? [{ type: 'text', value: md }] : [],
+      };
+    }
+    case 'fenced-code': {
+      const fence = /^(?: {0,3})(`{3,}|~{3,})([^\n]*)\r?\n([\s\S]*?)\r?\n(?: {0,3})\1[ \t]*\r?$/s.exec(md);
+      if (fence) {
+        const info = fence[2]!.trim();
+        const infoMatch = info.length > 0 ? /^(\S+)(?:[ \t]+(.*))?$/u.exec(info) : null;
+        const lang = infoMatch?.[1] ?? null;
+        const meta = infoMatch?.[2]?.trim() || null;
+        return { type: 'code', lang, meta, value: fence[3]! };
+      }
+      // Unclosed / odd fence: still a code block so PM paints a fence shell.
+      return { type: 'code', lang: null, meta: null, value: md };
+    }
+    case 'indented-code': {
+      const value = md.replace(/^(?: {4}|\t)/gm, '').replace(/\r?\n$/u, '');
+      return { type: 'code', lang: null, meta: null, value };
+    }
+    case 'thematic-break':
+      return { type: 'thematicBreak' };
+    case 'display-math': {
+      const m = /^\$\$\r?\n?([\s\S]*?)\r?\n?\$\$$/u.exec(md.trim());
+      return { type: 'math', value: m ? m[1]! : md, meta: null } as RootContent;
+    }
+    case 'html':
+      return { type: 'html', value: md };
+    case 'frontmatter': {
+      const m = /^---\r?\n([\s\S]*?)\r?\n(?:---|\.\.\.)[ \t]*$/u.exec(md);
+      return { type: 'yaml', value: m ? m[1]! : md } as RootContent;
+    }
+    case 'quote': {
+      const body = md.replace(/^(?: {0,3}>\s?)/gm, '');
+      return {
+        type: 'blockquote',
+        children: [{
+          type: 'paragraph',
+          children: body.length > 0 ? [{ type: 'text', value: body }] : [],
+        }],
+      };
+    }
+    default:
+      return {
+        type: 'paragraph',
+        children: md.length > 0 ? [{ type: 'text', value: md }] : [],
+      };
+  }
 }
 
 function attachDialectNode(span: EngineBlockSpan, node: RootContent): AdapterBlockSpan {
@@ -400,7 +476,7 @@ function enrichSpan(span: EngineBlockSpan): AdapterBlockSpan {
     return attachDialectNode(span, nodes[0]!);
   }
 
-  // Multi-node or empty slice: keep engine kind and a paragraph stand-in so
+  // Multi-node or empty slice: keep engine kind and a kind-aware stand-in so
   // the BlockSpan contract stays satisfied for paste / source toggles.
   return {
     kind,

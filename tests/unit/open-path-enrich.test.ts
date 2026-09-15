@@ -57,7 +57,7 @@ describe('open-path SpanEnrichMode', () => {
     }
   });
 
-  it('none keeps native offsets and stand-in nodes without dialect kinds drift on structure', () => {
+  it('none keeps native offsets and kind-aware stand-ins without dialect kinds drift on structure', () => {
     const text = '# Hi\n\nPara\n';
     const structural = parseBlocksStructural(text);
     const none = splitBlocksViaRoobli(text, { enrich: 'none' });
@@ -65,7 +65,31 @@ describe('open-path SpanEnrichMode', () => {
       structural.spans.map((s) => [s.start, s.end, s.markdown, s.kind]),
     );
     expect(none.spans.every((s) => s.semanticKey === s.kind)).toBe(true);
-    expect(none.spans.every((s) => s.node.type === 'paragraph')).toBe(true);
+    expect(none.spans.map((s) => s.node.type)).toEqual(['heading', 'paragraph']);
+    expect(none.spans[0]!).toMatchObject({
+      kind: 'heading',
+      node: { type: 'heading', depth: 1, children: [{ type: 'text', value: 'Hi' }] },
+    });
+  });
+
+  it('none stand-ins are kind-aware for fence / hr / quote / math shells', () => {
+    const samples: Array<{ text: string; types: string[] }> = [
+      { text: '```js\ncode\n```\n\nAfter\n', types: ['code', 'paragraph'] },
+      { text: '---\n\nPara\n', types: ['thematicBreak', 'paragraph'] },
+      { text: '> quote\n\nPara\n', types: ['blockquote', 'paragraph'] },
+      { text: '$$\nx\n$$\n\nAfter\n', types: ['math', 'paragraph'] },
+    ];
+    for (const { text, types } of samples) {
+      const none = splitBlocksViaRoobli(text, { enrich: 'none' });
+      expect(none.spans.map((s) => s.node.type)).toEqual(types);
+      expect(none.spans.every((s) => s.semanticKey === s.kind)).toBe(true);
+    }
+    const fence = splitBlocksViaRoobli('```ts\nconst x = 1;\n```\n', { enrich: 'none' });
+    expect(fence.spans[0]!.node).toMatchObject({ type: 'code', lang: 'ts', value: 'const x = 1;' });
+    const fenceMeta = splitBlocksViaRoobli('```rust linenums\nfn main() {}\n```\n', { enrich: 'none' });
+    expect(fenceMeta.spans[0]!.node).toMatchObject({
+      type: 'code', lang: 'rust', meta: 'linenums', value: 'fn main() {}',
+    });
   });
 
   it('default enrich is bulk (same shape as explicit bulk)', () => {
@@ -85,9 +109,9 @@ describe('open-path SpanEnrichMode', () => {
     expect(parsed.document.nodesEnrichment).toBe('deferred');
     expect(parsed.document.nodes).not.toBeNull();
     expect(parsed.document.nodes!.length).toBe(parsed.document.blocks.length);
-    // Structural stand-ins: kinds from the native scanner, paragraph mdast nodes.
+    // Structural stand-ins: kinds from the native scanner; kind-aware mdast shells.
     expect(parsed.document.blocks.map((b) => b.kind)).toEqual(['heading', 'paragraph']);
-    expect(parsed.document.nodes!.every((n) => n.type === 'paragraph')).toBe(true);
+    expect(parsed.document.nodes!.map((n) => n.type)).toEqual(['heading', 'paragraph']);
     expect(parsed.document.blocks.every((b) => b.semanticKey === b.kind)).toBe(true);
   });
 
@@ -110,8 +134,8 @@ describe('open-path SpanEnrichMode', () => {
     expect(partial.slice(0, 2).map((s) => [s.kind, s.node.type, s.semanticKey])).toEqual(
       bulk.spans.slice(0, 2).map((s) => [s.kind, s.node.type, s.semanticKey]),
     );
-    // Unenriched tail stays structural stand-ins.
-    expect(partial[2]!.node.type).toBe('paragraph');
+    // Unenriched tail stays kind-aware structural stand-ins (## B → heading).
+    expect(partial[2]!.node.type).toBe('heading');
     expect(partial[2]!.semanticKey).toBe(partial[2]!.kind);
     const full = enrichSpansInRange(partial, text, { from: 2, to: partial.length });
     expect(full.map((s) => [s.kind, s.node.type, s.semanticKey])).toEqual(
