@@ -93,7 +93,9 @@ Phase 10 (`v0.1.6`) line-prefix offset alignment; Phase 11 (`v0.1.7`)
 ## Golden gates (option B — before default-on)
 
 Curated A/B fixtures live under `tests/fixtures/markdown-golden/` and are
-wired by `tests/unit/markdown-golden-gates.test.ts`. They compare the
+wired by `tests/unit/markdown-golden-gates.test.ts` (headings/lists/tables/wiki/
+math-fences/frontmatter/cjk plus alerts/footnotes/indented-code/tight-quotes).
+They compare the
 **micromark** product path against an explicit `roobli-md` override on the same
 sources — they do **not** flip `NOTO_MARKDOWN_ENGINE` for the rest of the suite.
 
@@ -169,10 +171,10 @@ Micromark path unchanged when the flag is off. Unit coverage:
 **Open-path cuts (flagged).** `splitBlocksViaRoobli` defaults to bulk mdast
 attach for paste / non-open. Flagged `parseDocument` uses `enrich: 'none'`
 (`nodesEnrichment: 'deferred'`); the renderer calls `enrichSpansInRange` for a
-first-paint window then viewport / idle `enrichNextDeferredInRange` — see
+first-paint window then viewport / idle `enrichNextDeferredInRange` with incremental PM patch — see
 `docs/performance/open-path-first-cut.md`. Product default stays micromark.
 
-Next: engine IR→PM, grow `tests/fixtures/markdown-golden/`, then reconsider
+Next: engine IR→PM, kind-aware stand-ins, keep growing `markdown-golden/`, then reconsider
 default-on. Do **not** flip the product default yet.
 
 **Noto `0.0.2-alpha.9`** shipped the adapter (#37) plus `@roobli/md` v0.1.1 quote/

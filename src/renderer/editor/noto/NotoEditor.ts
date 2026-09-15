@@ -37,6 +37,7 @@ import {
   resolveDeferredOpenSpans,
 } from '../../../shared/markdown/v3/roobli-md-adapter';
 import { DeferredViewportEnrichController } from './deferred-viewport-enrich';
+import { enrichPmPatchForWindow, type EnrichPmWindow } from './enrich-pm-patch';
 import { parseDocumentSpans } from './parse-document';
 import { toLf } from '../../../shared/markdown/v3/line-endings';
 import {
@@ -1250,14 +1251,42 @@ export class NotoEditor implements NotoEditorPort {
   /**
    * Apply dialect-enriched spans after a flagged lazy open.
    *
-   * Replaces the ProseMirror document in place when the user has not edited
-   * yet, so viewport / idle enrich does not clobber typing.
-   * No-op when dirty or when the editor was torn down.
+   * Prefer an incremental top-level `replaceWith` for the enriched window so
+   * viewport / idle ticks do not rebuild the whole `EditorState` (keeps plugin
+   * state; avoids re-materialising untouched stand-ins). Falls back to a full
+   * rebuild when no window is supplied or the live doc shape diverges.
+   *
+   * No-op when dirty or when the editor was torn down — typing is never clobbered.
    */
-  applyDialectEnrichedSpans(spans: readonly BlockSpan[]): void {
+  applyDialectEnrichedSpans(spans: readonly BlockSpan[], window?: EnrichPmWindow): void {
     const view = this.view;
     if (!view || this.dirty) return;
     if (spans.length !== this.document.spans.length) return;
+
+    if (isRoobliMdEngine()) {
+      this.priorSplit.seedFromSpans(this.document.text, spans);
+    }
+
+    const patch = window ? enrichPmPatchForWindow(view.state.doc, spans, window) : null;
+    if (patch) {
+      const tr = view.state.tr
+        .replaceWith(patch.from, patch.to, patch.nodes)
+        .setMeta('addToHistory', false);
+      view.dispatch(tr);
+      // Refresh pristine only for the patched window; untouched blocks keep
+      // their open-time stand-in / first-paint entries until later ticks.
+      for (let index = window!.from; index < window!.to; index += 1) {
+        const node = view.state.doc.child(index);
+        const origin = this.document.origins[index];
+        const span = spans[index];
+        if (origin && span) {
+          this.pristine.set(origin.blockId, { node, markdown: toLf(span.markdown) });
+        }
+      }
+      this.baselineDoc = view.state.doc;
+      return;
+    }
+
     const doc = docFromSpans(spans);
     this.pristine = new Map();
     doc.forEach((node, _offset, index) => {
@@ -1265,9 +1294,6 @@ export class NotoEditor implements NotoEditorPort {
       const span = spans[index];
       if (origin && span) this.pristine.set(origin.blockId, { node, markdown: toLf(span.markdown) });
     });
-    if (isRoobliMdEngine()) {
-      this.priorSplit.seedFromSpans(this.document.text, spans);
-    }
     this.baselineDoc = doc;
     const { anchor, head } = view.state.selection;
     const next = EditorState.create({ doc, plugins: this.plugins(this.document) });

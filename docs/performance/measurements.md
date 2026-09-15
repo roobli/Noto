@@ -575,5 +575,6 @@ Medium scroll/idle tick **~58 ms** vs full remainder **704 ms** (~12×). Large
 **82 ms** vs **3084 ms** (~38×). Post-paint critical path is one budgeted window
 (~`OPEN_VIEWPORT_ENRICH_BUDGET` spans), not the full remainder.
 
-Next residual: engine-owned IR→PM; grow markdown-golden before default-on;
-kind-aware stand-ins; incremental PM patch per enrich tick.
+Next residual: engine-owned IR→PM; kind-aware stand-ins; keep growing
+markdown-golden before default-on (alerts/footnotes/indented-code/tight-quotes landed).
+Incremental PM patch per enrich tick shipped (flagged).
