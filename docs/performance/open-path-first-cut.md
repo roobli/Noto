@@ -146,14 +146,15 @@ but avoids resetting viewport-stub / alert / history on every tick.
 ### Cut 5 — engine-owned IR → PM (common blocks)
 
 Leaf kinds (`fenced-code` / `indented-code` / `thematic-break` / `frontmatter` /
-`html` / `display-math`) and **plain** paragraph/heading (no inline dialect
-markers) build ProseMirror directly from engine kind + source
-(`pm/from-engine.ts`) — **no mdast**. `blockFromSpan` prefers that path;
-`enrichSpansInRange` finalizes those spans without `parseMarkdown`; deferred
-enrich flags mark them done past the first-paint prefix.
+`html` / `display-math`), **parseable link-definitions**, and **plain**
+paragraph/heading (no inline dialect markers) build ProseMirror directly from
+engine kind + source (`pm/from-engine.ts`) — **no mdast**. `blockFromSpan`
+prefers that path; `enrichSpansInRange` finalizes those spans without
+`parseMarkdown`; deferred enrich flags mark them done past the first-paint
+prefix.
 
-Lists / tables / quotes / marked-up phrasing still need dialect enrich +
-`from-mdast`. Does **not** flip default-on. No alpha bump.
+Lists / tables / quotes / footnotes / marked-up phrasing still need dialect
+enrich + `from-mdast`. Does **not** flip default-on. No alpha bump.
 
 ## API (additions for Cut 5)
 
@@ -167,14 +168,14 @@ Lists / tables / quotes / marked-up phrasing still need dialect enrich +
 ## Next residual (not this PR)
 
 1. ~~Engine-owned IR → PM (common blocks)~~ — shipped: leaf + plain
-   paragraph/heading skip mdast (`pm/from-engine.ts`); enrich flags +
-   `enrichSpansInRange` honour the skip.
+   paragraph/heading + parseable link-definition skip mdast
+   (`pm/from-engine.ts`); enrich flags + `enrichSpansInRange` honour the skip.
 2. ~~Kind-aware structural stand-ins (heading/fence/…)~~ — shipped (#90).
-3. Extend IR→PM to more kinds when safe (lists/tables still dialect); optional
-   lightweight inline IR later.
-4. Keep growing `tests/fixtures/markdown-golden/` (GFM edges / more callouts)
-   before default-on; alerts / footnotes / indented-code / tight-quotes already
-   landed.
+3. Extend IR→PM to more kinds when safe (lists/tables/quotes still dialect);
+   optional lightweight inline IR later.
+4. Keep growing `tests/fixtures/markdown-golden/` before default-on; GFM inline,
+   nested lists, HTML blocks, callout edges, hr/setext, link-defs landed;
+   intentional engine gaps documented in that README.
 
 Do not defer main’s file-truth structural parse; do not flip the product
 default from this doc.

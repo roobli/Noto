@@ -11,6 +11,7 @@ import {
   needsDialectInline,
   parseFenceSource,
   parseHeadingSource,
+  parseLinkDefinitionSource,
 } from '../../src/shared/markdown/v3/pm/from-engine';
 import { blockFromSpan, docFromSpans } from '../../src/shared/markdown/v3/pm/from-mdast';
 import {
@@ -45,6 +46,7 @@ describe('from-engine IR helpers', () => {
     expect(canSkipDialectEnrich('paragraph', 'Hello')).toBe(true);
     expect(canSkipDialectEnrich('heading', '# Title')).toBe(true);
     expect(canSkipDialectEnrich('paragraph', 'Hello **x**')).toBe(false);
+    expect(canSkipDialectEnrich('link-definition', '[id]: https://example.com')).toBe(true);
     expect(canSkipDialectEnrich('bullet-list', '- a')).toBe(false);
     expect(canSkipDialectEnrich('table', '| a |\n| - |\n| 1 |')).toBe(false);
   });
@@ -59,6 +61,15 @@ describe('from-engine IR helpers', () => {
     expect(parseHeadingSource('# Hi')).toEqual({ level: 1, text: 'Hi' });
     expect(parseHeadingSource('### Nested')).toEqual({ level: 3, text: 'Nested' });
     expect(parseHeadingSource('Setext\n===')).toEqual({ level: 1, text: 'Setext' });
+    expect(parseLinkDefinitionSource('[alpha]: https://example.com/alpha "Alpha Title"')).toEqual({
+      identifier: 'alpha', label: 'alpha', url: 'https://example.com/alpha', title: 'Alpha Title',
+    });
+    expect(parseLinkDefinitionSource('[shortcut]: https://example.com/shortcut')).toEqual({
+      identifier: 'shortcut', label: 'shortcut', url: 'https://example.com/shortcut', title: null,
+    });
+    expect(parseLinkDefinitionSource('[angled]: <https://example.com/a> \'T\'')).toEqual({
+      identifier: 'angled', label: 'angled', url: 'https://example.com/a', title: 'T',
+    });
   });
 });
 
@@ -79,6 +90,12 @@ describe('blockFromEngineSpan', () => {
     const fm = blockFromEngineSpan('frontmatter', '---\ntitle: t\n---');
     expect(fm?.type.name).toBe('frontmatter');
     expect(fm?.textContent).toBe('title: t');
+
+    const link = blockFromEngineSpan('link-definition', '[alpha]: https://example.com/alpha "Alpha Title"');
+    expect(link?.type.name).toBe('link_definition');
+    expect(link?.attrs).toMatchObject({
+      identifier: 'alpha', label: 'alpha', url: 'https://example.com/alpha', title: 'Alpha Title',
+    });
   });
 
   it('builds plain paragraph / heading; refuses marked-up phrasing', () => {
@@ -102,6 +119,7 @@ describe('blockFromEngineSpan', () => {
       '---\ntitle: x\n---\n',
       'Hello world\n',
       '# Plain title\n',
+      '[alpha]: https://example.com/alpha "Alpha Title"\n',
     ];
     for (const md of samples) {
       setMarkdownEngineForTests('micromark');
@@ -117,6 +135,9 @@ describe('blockFromEngineSpan', () => {
       if (engine.type.name === 'code_block') {
         expect(engine.attrs.lang).toBe(micro.attrs.lang);
         expect(engine.attrs.fenced).toBe(micro.attrs.fenced);
+      }
+      if (engine.type.name === 'link_definition') {
+        expect(engine.attrs).toEqual(micro.attrs);
       }
     }
   });
@@ -146,17 +167,19 @@ describe('enrich skip for engine-owned spans', () => {
       '```js\ncode\n```\n\n',
       'Plain para\n\n',
       '# Heading\n\n',
+      '[id]: https://example.com\n\n',
       'More **marks**\n\n',
     ].join('');
     const none = splitBlocksViaRoobli(text, { enrich: 'none' });
-    // Prefix 0 enriched; remainder should skip leaf + plain.
+    // Prefix 0 enriched; remainder should skip leaf + plain + link-def.
     const flags = createEnrichFlags(none.spans.length, 0, none.spans);
-    // Indices: 0 bold para (deferred), 1 fence (skip), 2 plain (skip), 3 heading (skip), 4 bold (deferred)
+    // Indices: 0 bold, 1 fence (skip), 2 plain (skip), 3 heading (skip), 4 link-def (skip), 5 bold
     expect(flags[0]).toBe(0);
     expect(flags[1]).toBe(1);
     expect(flags[2]).toBe(1);
     expect(flags[3]).toBe(1);
-    expect(flags[4]).toBe(0);
+    expect(flags[4]).toBe(1);
+    expect(flags[5]).toBe(0);
     expect(countDeferredFlags(flags)).toBe(2);
   });
 

@@ -49,6 +49,7 @@ import { parseMarkdown, topLevelNodes } from './syntax';
 import {
   canSkipDialectEnrich,
   engineSemanticKey,
+  parseLinkDefinitionSource,
 } from './pm/from-engine';
 
 export interface AdapterBlockSpan {
@@ -212,7 +213,7 @@ function enrichDialectRun(
 
 /**
  * Fill dialect mdast for `spans[from..to)` — but **skip** engine-owned leaf /
- * plain paragraph+heading spans (IR → final stand-in + semanticKey, no
+ * link-definition / plain paragraph+heading spans (IR → final stand-in + semanticKey, no
  * micromark). Contiguous needs-dialect runs still use one `parseMarkdown` each.
  *
  * Spans outside the range are returned unchanged. When a dialect run's
@@ -300,8 +301,8 @@ export const OPEN_VIEWPORT_ENRICH_PAD = 40;
  * Parallel to spans: `1` = dialect-enriched or engine-owned (no further enrich),
  * `0` = structural stand-in still needing dialect.
  *
- * When `spans` is provided, leaf / plain paragraph+heading indices past the
- * first-paint prefix are marked enriched immediately — IR → PM needs no mdast.
+ * When `spans` is provided, leaf / link-definition / plain paragraph+heading
+ * indices past the first-paint prefix are marked enriched immediately — IR → PM needs no mdast.
  */
 export function createEnrichFlags(
   length: number,
@@ -477,6 +478,22 @@ function standInNode(span: EngineBlockSpan): RootContent {
       const m = /^---\r?\n([\s\S]*?)\r?\n(?:---|\.\.\.)[ \t]*$/u.exec(md);
       return { type: 'yaml', value: m ? m[1]! : md } as RootContent;
     }
+    case 'link-definition': {
+      const d = parseLinkDefinitionSource(md);
+      if (d) {
+        return {
+          type: 'definition',
+          identifier: d.identifier,
+          label: d.label,
+          url: d.url,
+          title: d.title,
+        };
+      }
+      return {
+        type: 'paragraph',
+        children: md.length > 0 ? [{ type: 'text', value: md }] : [],
+      };
+    }
     case 'quote': {
       const body = md.replace(/^(?: {0,3}>\s?)/gm, '');
       return {
@@ -547,7 +564,7 @@ function enrichSpan(span: EngineBlockSpan): AdapterBlockSpan {
 
 /**
  * Structural adapter spans: no dialect parse. Prep for deferred wire nodes.
- * Engine-owned leaf / plain phrasing get a final semanticKey so enrich can skip them.
+ * Engine-owned leaf / link-definition / plain phrasing get a final semanticKey so enrich can skip them.
  */
 function enrichSpanNone(span: EngineBlockSpan): AdapterBlockSpan {
   const kind = span.kind as NotoBlockKind;
