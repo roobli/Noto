@@ -23,6 +23,7 @@ Small public fixtures for comparing the **micromark** product path against
 | `callouts-edge.md` | IMPORTANT / CAUTION / multi-line / title-marker edge |
 | `hr-setext.md` | setext `===` heading + thematic breaks (`***` / `---` / `___`) |
 | `link-defs.md` | reference links + link definition blocks |
+| `trailing-spaces.md` | trailing spaces stripped; soft break (single newline, no hard break) |
 
 ## Intentional diffs
 

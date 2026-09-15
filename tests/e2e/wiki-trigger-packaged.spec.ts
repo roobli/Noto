@@ -45,8 +45,8 @@ test('typing two brackets offers the notes, and writes the link where they were'
     await page.keyboard.press(process.platform === 'darwin' ? 'Meta+ArrowRight' : 'End');
     await expect(page.locator('.canvas-slot:not([hidden]) [data-testid="noto-editor"]'))
       .toHaveAttribute('data-caret', /\d+/);
-    // The space is typed rather than left in the fixture: markdown drops one
-    // at the end of a line, so the paragraph would otherwise read `See[[`.
+    // Type the space here: CommonMark / engine IR→PM drop a trailing space on
+    // open, so leaving it only in the fixture would yield `See[[` after `[[`.
     await page.keyboard.type(' [[');
 
     // The palette opens, saying it is here to link rather than to open.
@@ -94,8 +94,8 @@ test('leaving the palette leaves the brackets as they were typed', async () => {
     await editor.waitFor({ state: 'visible' });
     await editor.locator('p').filter({ hasText: 'See' }).click();
     await page.keyboard.press(process.platform === 'darwin' ? 'Meta+ArrowRight' : 'End');
-    // The space is typed rather than left in the fixture: markdown drops one
-    // at the end of a line, so the paragraph would otherwise read `See[[`.
+    // Type the space here: CommonMark / engine IR→PM drop a trailing space on
+    // open, so leaving it only in the fixture would yield `See[[` after `[[`.
     await page.keyboard.type(' [[');
     await expect(page.getByTestId('quick-open')).toBeVisible();
     await page.keyboard.press('Escape');

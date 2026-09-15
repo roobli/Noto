@@ -153,6 +153,10 @@ prefers that path; `enrichSpansInRange` finalizes those spans without
 `parseMarkdown`; deferred enrich flags mark them done past the first-paint
 prefix.
 
+Plain paragraph IR→PM `trimEnd()`s the source slice so trailing spaces that
+are not hard breaks match CommonMark/mdast (avoids `See  [[` after open+type).
+Hard-break paragraphs still take the dialect path.
+
 Lists / tables / quotes / footnotes / marked-up phrasing still need dialect
 enrich + `from-mdast`. Does **not** flip default-on. No alpha bump.
 
