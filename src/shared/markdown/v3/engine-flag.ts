@@ -3,7 +3,8 @@
  *
  * Default is the existing micromark path (`micromark`). Set
  * `NOTO_MARKDOWN_ENGINE=roobli-md` to route `splitBlocks` / `parseSingleBlock`
- * through the thin adapter in `roobli-md-adapter.ts`.
+ * through the thin adapter in `roobli-md-adapter.ts`, and flagged
+ * `replaceMarkdown` through `PriorSplitCache` → `reparseFromText`.
  *
  * Product builds stay on micromark until parity gates and wire-node IR land;
  * unit tests flip the override explicitly.

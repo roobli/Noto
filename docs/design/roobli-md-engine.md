@@ -104,10 +104,21 @@ flagged backend; micromark remains the product default. Quote/callout and
 indented-code split parity are closed; engine serialize dialect (hard-break /
 list-marker / verbatim / bare autolink / table delimiters), Phase 10
 line-prefix offsets, and Phase 11 `reparseFromText` are available on the
-flagged path. Next: cache prior structural splits and route flagged
-`NotoEditor.replaceMarkdown` through `reparseFromTextViaRoobli` (needs host
-design for cache invalidation after typing), then consider default-on behind
-broader golden gates.
+flagged path.
+
+**Host wiring (flagged `replaceMarkdown`).** `PriorSplitCache`
+(`src/shared/markdown/v3/prior-split-cache.ts`) seeds a structural split on
+open / reload from the resolved spans (no extra parse). When
+`NOTO_MARKDOWN_ENGINE=roobli-md`, `NotoEditor.replaceMarkdown` calls
+`spansForReplace` → `reparseFromTextViaRoobli` with `neighborSlack: 1`.
+WYSIWYG typing / paste invalidates the cache (`apply` skips invalidation while
+`replaceInFlight`); the next replace falls back to a full split and reseeds.
+Micromark path unchanged when the flag is off. Unit coverage:
+`tests/unit/prior-split-cache.test.ts`.
+
+Next: consider default-on behind broader golden gates (open-path /
+`parseDocument` still needs design + gates — see
+`docs/performance/measurements.md`).
 
 **Noto `0.0.2-alpha.9`** shipped the adapter (#37) plus `@roobli/md` v0.1.1 quote/
 callout parity (#38). Pin is now `@roobli/md` v0.1.7 (Phase 11 reparse helpers
