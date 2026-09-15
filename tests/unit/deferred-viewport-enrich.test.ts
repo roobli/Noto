@@ -68,7 +68,7 @@ describe('enrichNextDeferredInRange', () => {
     const prepared = resolveDeferredOpenSpans(none.spans, text, { deferred: true });
     expect(prepared.remainderFrom).toBe(OPEN_LAZY_INITIAL_SPANS);
 
-    const flags = createEnrichFlags(prepared.spans.length, prepared.remainderFrom!);
+    const flags = createEnrichFlags(prepared.spans.length, prepared.remainderFrom!, prepared.spans);
     // Scroll into stand-ins around index 100 (pad 5 → exclusive [90, 116)).
     const visible = enrichRangeFromVisibleInclusive(95, 110, prepared.spans.length, 5);
     expect(visible).toEqual({ from: 90, to: 116 });
@@ -135,7 +135,7 @@ describe('enrichNextDeferredInRange', () => {
       expect(again.spans).toEqual(prepared.spans.slice());
       return;
     }
-    const flags = createEnrichFlags(prepared.spans.length, prepared.remainderFrom);
+    const flags = createEnrichFlags(prepared.spans.length, prepared.remainderFrom!, prepared.spans);
     const first = enrichNextDeferredInRange(prepared.spans, text, flags, {
       from: prepared.remainderFrom,
       to: prepared.spans.length,

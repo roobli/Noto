@@ -133,6 +133,25 @@ flipping the product default. Expand the fixture set (and document any
 intentional diffs) before considering `NOTO_MARKDOWN_ENGINE` default
 `roobli-md`.
 
+
+## Default-on checklist (do **not** flip yet)
+
+Product default stays micromark until **all** of the following are green and
+reviewed:
+
+| Gate | Status |
+| ---- | ------ |
+| Split / identity / multi-block golden on current `markdown-golden/` | Green (expand fixtures first) |
+| Broader corpus / vault-shaped edges (GFM tables edge cases, nested lists, mixed callouts) in golden | **Open** — grow fixtures |
+| Flagged open-path deferred + viewport enrich + IR→PM leaf/plain | Landed (still flagged-only) |
+| Flagged serialize (identity / single / multi) + `reparseFromText` host wiring | Landed |
+| Packaged / e2e open feel on medium under the flag | Not a flip gate alone; measure before flip |
+| Intentional diffs documented in `markdown-golden/README.md` | None yet |
+
+**Prefer not flipping** until golden coverage is obviously broader than the
+current curated set and open-path IR→PM has a clear story for marked-up
+paragraphs (still dialect today). Optional local: `NOTO_MARKDOWN_ENGINE=roobli-md`.
+
 ## Bridge docs (engine repo)
 
 - Vision: https://github.com/roobli/md/blob/main/docs/design/vision.md
@@ -171,11 +190,14 @@ Micromark path unchanged when the flag is off. Unit coverage:
 **Open-path cuts (flagged).** `splitBlocksViaRoobli` defaults to bulk mdast
 attach for paste / non-open. Flagged `parseDocument` uses `enrich: 'none'`
 (`nodesEnrichment: 'deferred'`); the renderer calls `enrichSpansInRange` for a
-first-paint window then viewport / idle `enrichNextDeferredInRange` with incremental PM patch — see
-`docs/performance/open-path-first-cut.md`. Product default stays micromark.
+first-paint window then viewport / idle `enrichNextDeferredInRange` with
+incremental PM patch. **Engine-owned IR → PM** (`pm/from-engine.ts`) skips
+mdast for leaf kinds + plain paragraph/heading; enrich flags mark those done —
+see `docs/performance/open-path-first-cut.md`. Product default stays micromark.
 
-Next: engine IR→PM, kind-aware stand-ins, keep growing `markdown-golden/`, then reconsider
-default-on. Do **not** flip the product default yet.
+Next: keep growing `markdown-golden/` (GFM / callout edges), extend IR→PM beyond
+leaf+plain when safe, then reconsider default-on. Do **not** flip the product
+default yet.
 
 **Noto `0.0.2-alpha.9`** shipped the adapter (#37) plus `@roobli/md` v0.1.1 quote/
 callout parity (#38). Pin is now `@roobli/md` v0.1.7 (Phase 11 reparse helpers

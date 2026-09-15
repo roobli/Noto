@@ -8,7 +8,8 @@
  * Full-document splits default to one bulk dialect parse (not N× per span).
  * Flagged open uses `enrich: 'none'` on main then `enrichSpansInRange` in the
  * renderer for a first-paint window (and the remainder after paint) — see
- * `SpanEnrichMode` and docs/performance/open-path-first-cut.md.
+ * `SpanEnrichMode` and docs/performance/open-path-first-cut.md. Engine-owned
+ * leaf / plain paragraph+heading skip mdast (IR → PM via `pm/from-engine.ts`).
  *
  * Flagged block-mode saves (identity, single-block, multi-block insert/delete)
  * map into engine shapes, call `serializeDocument`, then the host re-attaches
@@ -45,6 +46,10 @@ import type {
   NotoUnit,
 } from './contracts';
 import { parseMarkdown, topLevelNodes } from './syntax';
+import {
+  canSkipDialectEnrich,
+  engineSemanticKey,
+} from './pm/from-engine';
 
 export interface AdapterBlockSpan {
   readonly kind: NotoBlockKind;
@@ -161,12 +166,58 @@ export interface EnrichSpansInRangeOptions {
 }
 
 /**
- * Fill dialect mdast for `spans[from..to)` with **one** `parseMarkdown` over
- * the contiguous source covering that range (not N× per span).
+ * Finalize an engine-owned span without dialect parse (leaf / plain phrasing).
+ * Keeps the kind-aware stand-in node and stamps a dialect-aligned semanticKey.
+ */
+function finalizeEngineAdapterSpan(span: AdapterBlockSpan): AdapterBlockSpan {
+  return {
+    kind: span.kind,
+    start: span.start,
+    end: span.end,
+    markdown: span.markdown,
+    semanticKey: engineSemanticKey(span.kind, span.markdown),
+    node: span.node,
+  };
+}
+
+function enrichDialectRun(
+  run: readonly AdapterBlockSpan[],
+  text: string,
+): AdapterBlockSpan[] {
+  if (run.length === 0) return [];
+  const sliceStart = run[0]!.start;
+  const sliceEnd = run[run.length - 1]!.end;
+  const slice = text.slice(sliceStart, sliceEnd);
+  const nodes = topLevelNodes(parseMarkdown(slice));
+  if (nodes.length === run.length) {
+    return run.map((span, index) => attachDialectNode(
+      {
+        kind: span.kind,
+        start: span.start,
+        end: span.end,
+        markdown: span.markdown,
+        node: null,
+      },
+      nodes[index]!,
+    ));
+  }
+  return run.map((span) => enrichSpan({
+    kind: span.kind,
+    start: span.start,
+    end: span.end,
+    markdown: span.markdown,
+    node: null,
+  }));
+}
+
+/**
+ * Fill dialect mdast for `spans[from..to)` — but **skip** engine-owned leaf /
+ * plain paragraph+heading spans (IR → final stand-in + semanticKey, no
+ * micromark). Contiguous needs-dialect runs still use one `parseMarkdown` each.
  *
- * Spans outside the range are returned unchanged. When top-level node count
- * disagrees with the window length, falls back to per-span enrich for the
- * window only (never silent).
+ * Spans outside the range are returned unchanged. When a dialect run's
+ * top-level node count disagrees with the run length, falls back to per-span
+ * enrich for that run only (never silent).
  */
 export function enrichSpansInRange<T extends AdapterBlockSpan>(
   spans: readonly T[],
@@ -177,35 +228,24 @@ export function enrichSpansInRange<T extends AdapterBlockSpan>(
   const to = Math.max(from, Math.min(range.to, spans.length));
   if (from === to || spans.length === 0) return spans.slice() as T[];
 
-  const windowSpans = spans.slice(from, to);
-  const sliceStart = windowSpans[0]!.start;
-  const sliceEnd = windowSpans[windowSpans.length - 1]!.end;
-  const slice = text.slice(sliceStart, sliceEnd);
-  const nodes = topLevelNodes(parseMarkdown(slice));
-
-  const enrichedWindow: AdapterBlockSpan[] =
-    nodes.length === windowSpans.length
-      ? windowSpans.map((span, index) => attachDialectNode(
-          {
-            kind: span.kind,
-            start: span.start,
-            end: span.end,
-            markdown: span.markdown,
-            node: null,
-          },
-          nodes[index]!,
-        ))
-      : windowSpans.map((span) => enrichSpan({
-          kind: span.kind,
-          start: span.start,
-          end: span.end,
-          markdown: span.markdown,
-          node: null,
-        }));
-
   const out = spans.slice() as AdapterBlockSpan[];
-  for (let i = 0; i < enrichedWindow.length; i += 1) {
-    out[from + i] = enrichedWindow[i]!;
+  let i = from;
+  while (i < to) {
+    const span = out[i]!;
+    if (canSkipDialectEnrich(span.kind, span.markdown)) {
+      out[i] = finalizeEngineAdapterSpan(span);
+      i += 1;
+      continue;
+    }
+    let j = i + 1;
+    while (j < to && !canSkipDialectEnrich(out[j]!.kind, out[j]!.markdown)) {
+      j += 1;
+    }
+    const enriched = enrichDialectRun(out.slice(i, j), text);
+    for (let k = 0; k < enriched.length; k += 1) {
+      out[i + k] = enriched[k]!;
+    }
+    i = j;
   }
   return out as T[];
 }
@@ -256,11 +296,28 @@ export const OPEN_VIEWPORT_ENRICH_BUDGET = 120;
  */
 export const OPEN_VIEWPORT_ENRICH_PAD = 40;
 
-/** Parallel to spans: `1` = dialect-enriched, `0` = structural stand-in. */
-export function createEnrichFlags(length: number, enrichedExclusiveTo: number): Uint8Array {
+/**
+ * Parallel to spans: `1` = dialect-enriched or engine-owned (no further enrich),
+ * `0` = structural stand-in still needing dialect.
+ *
+ * When `spans` is provided, leaf / plain paragraph+heading indices past the
+ * first-paint prefix are marked enriched immediately — IR → PM needs no mdast.
+ */
+export function createEnrichFlags(
+  length: number,
+  enrichedExclusiveTo: number,
+  spans?: readonly { readonly kind: NotoBlockKind; readonly markdown: string }[],
+): Uint8Array {
   const flags = new Uint8Array(Math.max(0, length));
   const to = Math.max(0, Math.min(enrichedExclusiveTo, flags.length));
   if (to > 0) flags.fill(1, 0, to);
+  if (spans) {
+    const n = Math.min(spans.length, flags.length);
+    for (let i = to; i < n; i += 1) {
+      const span = spans[i]!;
+      if (canSkipDialectEnrich(span.kind, span.markdown)) flags[i] = 1;
+    }
+  }
   return flags;
 }
 
@@ -488,15 +545,19 @@ function enrichSpan(span: EngineBlockSpan): AdapterBlockSpan {
   };
 }
 
-/** Structural adapter spans: no dialect parse. Prep for deferred wire nodes. */
+/**
+ * Structural adapter spans: no dialect parse. Prep for deferred wire nodes.
+ * Engine-owned leaf / plain phrasing get a final semanticKey so enrich can skip them.
+ */
 function enrichSpanNone(span: EngineBlockSpan): AdapterBlockSpan {
   const kind = span.kind as NotoBlockKind;
+  const skip = canSkipDialectEnrich(kind, span.markdown);
   return {
     kind,
     start: span.start,
     end: span.end,
     markdown: span.markdown,
-    semanticKey: kind,
+    semanticKey: skip ? engineSemanticKey(kind, span.markdown) : kind,
     node: standInNode(span),
   };
 }

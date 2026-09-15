@@ -99,7 +99,7 @@ export class DeferredViewportEnrichController {
     this.text = options.text;
     this.onError = options.onError;
     this.spans = options.spans.slice();
-    this.flags = createEnrichFlags(options.spans.length, options.remainderFrom);
+    this.flags = createEnrichFlags(options.spans.length, options.remainderFrom, options.spans);
   }
 
   /** Remaining structural stand-in count (for tests / profiling). */

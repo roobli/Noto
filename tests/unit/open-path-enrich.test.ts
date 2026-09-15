@@ -16,6 +16,7 @@ import {
   resolveDeferredOpenSpans,
   OPEN_LAZY_INITIAL_SPANS,
 } from '../../src/shared/markdown/v3/roobli-md-adapter';
+import { canSkipDialectEnrich, engineSemanticKey } from '../../src/shared/markdown/v3/pm/from-engine';
 import { setMarkdownEngineForTests } from '../../src/shared/markdown/v3/engine-flag';
 import { parseDocument } from '../../src/shared/markdown/v3/document';
 import { splitBlocksMicromark } from '../../src/shared/markdown/v3/blocks';
@@ -64,7 +65,11 @@ describe('open-path SpanEnrichMode', () => {
     expect(none.spans.map((s) => [s.start, s.end, s.markdown, s.kind])).toEqual(
       structural.spans.map((s) => [s.start, s.end, s.markdown, s.kind]),
     );
-    expect(none.spans.every((s) => s.semanticKey === s.kind)).toBe(true);
+    // Engine-owned plain heading/para stamp final semanticKeys (no dialect needed).
+    expect(none.spans.every((s) => canSkipDialectEnrich(s.kind, s.markdown))).toBe(true);
+    expect(none.spans.map((s) => s.semanticKey)).toEqual(
+      none.spans.map((s) => engineSemanticKey(s.kind, s.markdown)),
+    );
     expect(none.spans.map((s) => s.node.type)).toEqual(['heading', 'paragraph']);
     expect(none.spans[0]!).toMatchObject({
       kind: 'heading',
@@ -82,7 +87,13 @@ describe('open-path SpanEnrichMode', () => {
     for (const { text, types } of samples) {
       const none = splitBlocksViaRoobli(text, { enrich: 'none' });
       expect(none.spans.map((s) => s.node.type)).toEqual(types);
-      expect(none.spans.every((s) => s.semanticKey === s.kind)).toBe(true);
+      for (const s of none.spans) {
+        if (canSkipDialectEnrich(s.kind, s.markdown)) {
+          expect(s.semanticKey).toBe(engineSemanticKey(s.kind, s.markdown));
+        } else {
+          expect(s.semanticKey).toBe(s.kind);
+        }
+      }
     }
     const fence = splitBlocksViaRoobli('```ts\nconst x = 1;\n```\n', { enrich: 'none' });
     expect(fence.spans[0]!.node).toMatchObject({ type: 'code', lang: 'ts', value: 'const x = 1;' });
@@ -110,9 +121,13 @@ describe('open-path SpanEnrichMode', () => {
     expect(parsed.document.nodes).not.toBeNull();
     expect(parsed.document.nodes!.length).toBe(parsed.document.blocks.length);
     // Structural stand-ins: kinds from the native scanner; kind-aware mdast shells.
+    // Plain heading is engine-owned (final key); marked paragraph stays deferred (key === kind).
     expect(parsed.document.blocks.map((b) => b.kind)).toEqual(['heading', 'paragraph']);
     expect(parsed.document.nodes!.map((n) => n.type)).toEqual(['heading', 'paragraph']);
-    expect(parsed.document.blocks.every((b) => b.semanticKey === b.kind)).toBe(true);
+    expect(parsed.document.blocks[0]!.semanticKey).toBe(
+      engineSemanticKey('heading', parsed.document.blocks[0]!.markdown),
+    );
+    expect(parsed.document.blocks[1]!.semanticKey).toBe('paragraph');
   });
 
   it('micromark parseDocument still ships full dialect nodes', () => {
@@ -135,8 +150,9 @@ describe('open-path SpanEnrichMode', () => {
       bulk.spans.slice(0, 2).map((s) => [s.kind, s.node.type, s.semanticKey]),
     );
     // Unenriched tail stays kind-aware structural stand-ins (## B → heading).
+    // Plain heading already carries engine semanticKey (IR-owned; enrich will no-op-finalize).
     expect(partial[2]!.node.type).toBe('heading');
-    expect(partial[2]!.semanticKey).toBe(partial[2]!.kind);
+    expect(partial[2]!.semanticKey).toBe(engineSemanticKey('heading', partial[2]!.markdown));
     const full = enrichSpansInRange(partial, text, { from: 2, to: partial.length });
     expect(full.map((s) => [s.kind, s.node.type, s.semanticKey])).toEqual(
       bulk.spans.map((s) => [s.kind, s.node.type, s.semanticKey]),
