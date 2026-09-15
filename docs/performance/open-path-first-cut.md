@@ -1,6 +1,6 @@
 # Open-path / `parseDocument` — measured cuts
 
-Status: **lazy / deferred wire nodes landed under the flagged `@roobli/md` path**.
+Status: **lazy / deferred wire nodes + viewport-driven enrich** under the flagged `@roobli/md` path.
 Product default remains micromark. Do **not** flip `NOTO_MARKDOWN_ENGINE`
 default-on from this work.
 
@@ -47,7 +47,7 @@ dialect enrich only for what first paint needs.
 | ----- | ---- |
 | `enrich: 'none'` on main `parseDocument` | structural file-truth + stand-in wire nodes (`nodesEnrichment: 'deferred'`) |
 | `enrichSpansInRange(0, OPEN_LAZY_INITIAL_SPANS)` in renderer | one dialect parse of the first-paint window (not N×) |
-| `enrichSpansInRange(remainder)` after `requestAnimationFrame` | one dialect parse of the tail; `applyDialectEnrichedSpans` if still clean |
+| viewport / idle `enrichNextDeferredInRange` | visible±pad on scroll (prefer `viewport-stub` membership); idle chunks of `OPEN_VIEWPORT_ENRICH_BUDGET`; `applyDialectEnrichedSpans` if still clean |
 
 `splitBlocks` / paste / single-block / reparse windows still use **bulk** (or
 per-span for small N) under the flag — only **open/reload `parseDocument`** is
@@ -77,17 +77,53 @@ Numbers also mirrored in `docs/performance/measurements.md`.
 - `enrichSpansInRange(spans, text, { from, to })` — one dialect parse for a
   contiguous span window; count mismatch → per-span for that window only
 - `resolveDeferredOpenSpans` — first consumer helper (`OPEN_LAZY_INITIAL_SPANS = 80`)
+- Viewport / idle: see **API (additions)** under Cut 3
 - Wire: `nodesEnrichment?: 'full' | 'deferred'`
+
+### Cut 3 — viewport-driven enrich (this PR)
+
+A full remainder pass after paint still costs ≈ one dialect parse (medium
+~663 ms / large ~3 s). Scrolling into stand-ins before that finishes showed raw
+paragraphs; the post-paint frame also competed with input.
+
+| phase (flagged) | role |
+| ----- | ---- |
+| `createEnrichFlags` + `enrichNextDeferredInRange` | track deferred indices; one budget-capped window per tick |
+| scroll / mount | enrich visible±`OPEN_VIEWPORT_ENRICH_PAD`, preferring `viewport-stub.viewport` when stubbing is on |
+| idle drain | chunked `OPEN_VIEWPORT_ENRICH_BUDGET` until flags are clear |
+
+Linux box, 2026-09-15, median of 5 `PROFILE_OPEN` runs after warm corpus:
+
+| phase (flagged) | small | medium | large |
+| ----- | ----- | ------ | ----- |
+| lazy critical (none + first 80) | 19 ms | 24 ms | 42 ms |
+| lazy remainder **(full, prior)** | 82 ms | 704 ms | 3084 ms |
+| **viewport enrich tick** | **49 ms** | **58 ms** | **82 ms** |
+| **idle enrich tick** | **45 ms** | **54 ms** | **71 ms** |
+| parseDocument (deferred) | 4 ms | 17 ms | 67 ms |
+
+Medium: one scroll/idle tick **~58 ms** vs full remainder **704 ms** (~12×).
+Large: **82 ms** vs **3084 ms** (~38×). Post-paint critical path is one budgeted
+window, not a full dialect pass.
+
+Does **not** flip default-on. No alpha bump.
+
+## API (additions)
+
+- `createEnrichFlags` / `countDeferredFlags` / `nextDeferredEnrichWindow`
+- `enrichNextDeferredInRange` / `enrichRangeFromVisibleInclusive`
+- `OPEN_VIEWPORT_ENRICH_BUDGET` (120) / `OPEN_VIEWPORT_ENRICH_PAD` (40)
+- Renderer: `DeferredViewportEnrichController`, `visibleBlockRangeFromScroll`,
+  `NotoEditor.beginDeferredViewportEnrich`
 
 ## Next residual (not this PR)
 
-1. **Viewport-driven enrich** — enrich on scroll into stand-in regions instead of
-   (or before) a full remainder pass; integrate with `viewport-stub` membership.
-2. **Engine-owned IR → PM** — avoid mdast entirely for common blocks once
+1. **Engine-owned IR → PM** — avoid mdast entirely for common blocks once
    `@roobli/md` can feed `docFromSpans` without dialect trees.
-3. Grow `tests/fixtures/markdown-golden/` before default-on.
-4. Kind-aware structural stand-ins (heading/fence/…) so a long remainder gap is
-   less visually raw if the user scrolls before the rAF enrich.
+2. Grow `tests/fixtures/markdown-golden/` before default-on.
+3. Kind-aware structural stand-ins (heading/fence/…) so a long remainder gap is
+   less visually raw if the user scrolls before idle enrich catches up.
+4. Incremental PM patch on enrich (avoid full `EditorState` rebuild per tick).
 
 Do not defer main’s file-truth structural parse; do not flip the product
 default from this doc.

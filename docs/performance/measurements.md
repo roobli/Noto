@@ -547,7 +547,8 @@ Product default stays micromark.
 
 Flagged `parseDocument` now ships `enrich: 'none'` (`nodesEnrichment:
 'deferred'`). The renderer enriches `OPEN_LAZY_INITIAL_SPANS` (80) with one
-range dialect parse before mount, then the remainder after the first frame.
+range dialect parse before mount, then fills deferred stand-ins via viewport /
+idle `enrichNextDeferredInRange` (not one full remainder on the first frame).
 See `docs/performance/open-path-first-cut.md`.
 
 Linux medians (5 runs, 2026-09-15):
@@ -557,11 +558,22 @@ Linux medians (5 runs, 2026-09-15):
 | enrich none | 1 ms | 4 ms | 23 ms |
 | enrich bulk | 87 ms | 699 ms | 3080 ms |
 | lazy critical (none+80) | 20 ms | **26 ms** | **43 ms** |
-| lazy remainder | 78 ms | 663 ms | 3131 ms |
+| lazy remainder (full, prior) | 78 ms | 663 ms | 3131 ms |
 | parseDocument (deferred) | **5 ms** | **14 ms** | **70 ms** |
 
 Medium main open **14 ms** vs prior bulk **699 ms**; first-paint enrich **26 ms**.
-Remainder ≈ one dialect pass after paint.
 
-Next residual: viewport-driven enrich (scroll into stand-ins) and/or
-engine-owned IR→PM; grow markdown-golden before default-on.
+### Flagged `@roobli/md` open — viewport enrich (2026-09-15)
+
+| phase | small | medium | large |
+| ----- | ----- | ------ | ----- |
+| viewport enrich tick | **49 ms** | **58 ms** | **82 ms** |
+| idle enrich tick | **45 ms** | **54 ms** | **71 ms** |
+| lazy remainder (full, prior) | 82 ms | 704 ms | 3084 ms |
+
+Medium scroll/idle tick **~58 ms** vs full remainder **704 ms** (~12×). Large
+**82 ms** vs **3084 ms** (~38×). Post-paint critical path is one budgeted window
+(~`OPEN_VIEWPORT_ENRICH_BUDGET` spans), not the full remainder.
+
+Next residual: engine-owned IR→PM; grow markdown-golden before default-on;
+kind-aware stand-ins; incremental PM patch per enrich tick.

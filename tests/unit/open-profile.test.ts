@@ -11,6 +11,10 @@ import {
   splitBlocksViaRoobli,
   enrichSpansInRange,
   resolveDeferredOpenSpans,
+  createEnrichFlags,
+  enrichNextDeferredInRange,
+  enrichRangeFromVisibleInclusive,
+  OPEN_VIEWPORT_ENRICH_BUDGET,
 } from '../../src/shared/markdown/v3/roobli-md-adapter';
 
 /**
@@ -36,8 +40,9 @@ import {
  *
  * Flagged `@roobli/md` open: native structural split is cheap; bulk enrich
  * removed the N× penalty. Lazy open ships `enrich: 'none'` on main then
- * `enrichSpansInRange` for a first-paint window (critical path) and the
- * remainder after paint — timed here against bulk. See
+ * `enrichSpansInRange` for a first-paint window (critical path). Remainder
+ * is viewport / idle chunked (`enrichNextDeferredInRange`) — timed here
+ * against a full remainder pass and bulk. See
  * docs/performance/open-path-first-cut.md.
  *
  * Skipped by default because it is a measurement, not an assertion, and it
@@ -95,7 +100,7 @@ it.skipIf(!enabled)('profiles the phases of opening a document', { timeout: 300_
       const none = splitBlocksViaRoobli(text, { enrich: 'none' });
       resolveDeferredOpenSpans(none.spans, text, { deferred: true });
     });
-    time('roobli: lazy remainder', () => {
+    time('roobli: lazy remainder (full)', () => {
       const none = splitBlocksViaRoobli(text, { enrich: 'none' });
       const prepared = resolveDeferredOpenSpans(none.spans, text, { deferred: true });
       if (prepared.remainderFrom !== null) {
@@ -104,6 +109,34 @@ it.skipIf(!enabled)('profiles the phases of opening a document', { timeout: 300_
           to: prepared.spans.length,
         });
       }
+    });
+    time('roobli: viewport enrich tick', () => {
+      const none = splitBlocksViaRoobli(text, { enrich: 'none' });
+      const prepared = resolveDeferredOpenSpans(none.spans, text, { deferred: true });
+      if (prepared.remainderFrom === null) return;
+      const flags = createEnrichFlags(prepared.spans.length, prepared.remainderFrom);
+      // Mid-document scroll into stand-ins (typical after open at top).
+      const mid = Math.min(
+        prepared.spans.length - 1,
+        Math.max(prepared.remainderFrom, Math.floor(prepared.spans.length * 0.4)),
+      );
+      const visible = enrichRangeFromVisibleInclusive(mid, mid + 40, prepared.spans.length);
+      enrichNextDeferredInRange(prepared.spans, text, flags, visible, {
+        budget: OPEN_VIEWPORT_ENRICH_BUDGET,
+      });
+    });
+    time('roobli: idle enrich tick', () => {
+      const none = splitBlocksViaRoobli(text, { enrich: 'none' });
+      const prepared = resolveDeferredOpenSpans(none.spans, text, { deferred: true });
+      if (prepared.remainderFrom === null) return;
+      const flags = createEnrichFlags(prepared.spans.length, prepared.remainderFrom);
+      enrichNextDeferredInRange(
+        prepared.spans,
+        text,
+        flags,
+        { from: prepared.remainderFrom, to: prepared.spans.length },
+        { budget: OPEN_VIEWPORT_ENRICH_BUDGET },
+      );
     });
     time('roobli: parseDocument (deferred)', () => {
       const result = parseDocument(bytes);

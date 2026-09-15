@@ -388,7 +388,7 @@ function buildState(
   };
 }
 
-function findScroller(view: EditorView): HTMLElement | null {
+export function findScroller(view: EditorView): HTMLElement | null {
   let element: HTMLElement | null = view.dom.parentElement;
   while (element) {
     const style = getComputedStyle(element);
@@ -460,7 +460,7 @@ function viewportFromScroll(view: EditorView, _heights: Float64Array): BlockRang
 }
 
 /** Strictly visible band (no buffer) — used to decide whether to remount. */
-function visibleWindowFromScroll(view: EditorView): BlockRange | null {
+export function visibleWindowFromScroll(view: EditorView): BlockRange | null {
   const scroller = findScroller(view);
   if (!scroller) return null;
   const last = view.state.doc.childCount - 1;
@@ -469,6 +469,28 @@ function visibleWindowFromScroll(view: EditorView): BlockRange | null {
   if (children.length === 0) return emptyRange();
   const sc = scroller.getBoundingClientRect();
   return blockWindowForClientY(children, last, sc.top, sc.bottom);
+}
+
+/**
+ * Inclusive top-level window covering the scroller plus `bufferScreens`.
+ *
+ * Used by flagged deferred open enrich when viewport-stub is off (documents
+ * below `STUB_MIN_TOP_LEVEL_BLOCKS`). When stubbing is on, prefer the stub
+ * plugin's `viewport` range instead — it already includes `STUB_SCREEN_BUFFER`.
+ */
+export function visibleBlockRangeFromScroll(
+  view: EditorView,
+  bufferScreens = 1,
+): BlockRange | null {
+  const scroller = findScroller(view);
+  if (!scroller) return null;
+  const last = view.state.doc.childCount - 1;
+  if (last < 0) return emptyRange();
+  const children = view.dom.children;
+  if (children.length === 0) return emptyRange();
+  const sc = scroller.getBoundingClientRect();
+  const buffer = scroller.clientHeight * Math.max(0, bufferScreens);
+  return blockWindowForClientY(children, last, sc.top - buffer, sc.bottom + buffer);
 }
 
 /**

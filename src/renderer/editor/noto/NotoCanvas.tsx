@@ -13,7 +13,6 @@ import { NotoEditor, type InsertedImage } from './NotoEditor';
 import { parseDocumentSpans } from './parse-document';
 import { blockSpansFromWire, type BlockSpan } from '../../../shared/markdown/v3/blocks';
 import {
-  enrichSpansInRange,
   resolveDeferredOpenSpans,
 } from '../../../shared/markdown/v3/roobli-md-adapter';
 import type { DocumentCount } from './word-count';
@@ -157,23 +156,13 @@ export function NotoCanvas({
       onReady(editor);
 
       if (deferredRemainderFrom !== null) {
-        const partial = spans;
-        const from = deferredRemainderFrom;
-        const mounted = editor;
-        requestAnimationFrame(() => {
-          if (cancelled || editorRef.current !== mounted) return;
-          try {
-            const full = enrichSpansInRange(partial, document.text, {
-              from,
-              to: partial.length,
-            });
-            mounted.applyDialectEnrichedSpans(full);
-          } catch (error) {
-            if (!cancelled) {
-              onError(error instanceof Error ? error.message : 'Dialect enrich after open failed.');
-            }
-          }
-        });
+        editor.beginDeferredViewportEnrich(
+          spans,
+          deferredRemainderFrom,
+          (message) => {
+            if (!cancelled) onError(message);
+          },
+        );
       }
     })();
 

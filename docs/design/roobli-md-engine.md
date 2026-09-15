@@ -169,12 +169,11 @@ Micromark path unchanged when the flag is off. Unit coverage:
 **Open-path cuts (flagged).** `splitBlocksViaRoobli` defaults to bulk mdast
 attach for paste / non-open. Flagged `parseDocument` uses `enrich: 'none'`
 (`nodesEnrichment: 'deferred'`); the renderer calls `enrichSpansInRange` for a
-first-paint window then the remainder — see
+first-paint window then viewport / idle `enrichNextDeferredInRange` — see
 `docs/performance/open-path-first-cut.md`. Product default stays micromark.
 
-Next: viewport-driven enrich / engine IR→PM, grow
-`tests/fixtures/markdown-golden/`, then reconsider default-on. Do **not** flip
-the product default yet.
+Next: engine IR→PM, grow `tests/fixtures/markdown-golden/`, then reconsider
+default-on. Do **not** flip the product default yet.
 
 **Noto `0.0.2-alpha.9`** shipped the adapter (#37) plus `@roobli/md` v0.1.1 quote/
 callout parity (#38). Pin is now `@roobli/md` v0.1.7 (Phase 11 reparse helpers
