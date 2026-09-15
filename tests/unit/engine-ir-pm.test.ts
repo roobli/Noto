@@ -114,6 +114,16 @@ describe('blockFromEngineSpan', () => {
     expect(blockFromEngineSpan('heading', '# *emph*')).toBeNull();
   });
 
+  it('strips trailing spaces on plain paragraphs like CommonMark / mdast', () => {
+    // Wiki-trigger e2e fixture is `See ` then types ` [[`. Keeping the open
+    // space would save `See  [[…]]`. Hard breaks (two spaces + newline) still
+    // refuse the engine path.
+    expect(blockFromEngineSpan('paragraph', 'See ')?.textContent).toBe('See');
+    expect(blockFromEngineSpan('paragraph', 'See  ')?.textContent).toBe('See');
+    expect(blockFromEngineSpan('paragraph', 'Hello world\n')?.textContent).toBe('Hello world');
+    expect(blockFromEngineSpan('paragraph', 'Break  \nline')).toBeNull();
+  });
+
   it('matches micromark PM for engine-owned samples via blockFromSpan', () => {
     const samples = [
       '```ts\nconst a = 1;\n```\n',
@@ -121,6 +131,7 @@ describe('blockFromEngineSpan', () => {
       '$$\nx\n$$\n',
       '---\ntitle: x\n---\n',
       'Hello world\n',
+      'See \n',
       '# Plain title\n',
       '[alpha]: https://example.com/alpha "Alpha Title"\n',
     ];

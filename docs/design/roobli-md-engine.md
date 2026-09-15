@@ -95,7 +95,7 @@ Phase 10 (`v0.1.6`) line-prefix offset alignment; Phase 11 (`v0.1.7`)
 Curated A/B fixtures live under `tests/fixtures/markdown-golden/` and are
 wired by `tests/unit/markdown-golden-gates.test.ts` (core set plus GFM inline,
 nested lists, HTML blocks, denser CJK+wiki, callout edges, hr/setext,
-link-definitions). They compare the
+link-definitions, trailing-spaces/soft-break). They compare the
 **micromark** product path against an explicit `roobli-md` override on the same
 sources — they do **not** flip `NOTO_MARKDOWN_ENGINE` for the rest of the suite.
 

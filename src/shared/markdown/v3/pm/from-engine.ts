@@ -215,7 +215,11 @@ export function blockFromEngineSpan(kind: NotoBlockKind, markdown: string): Pros
       return schema.nodes.heading.create({ level: h.level }, textNodes(h.text));
     }
     case 'paragraph': {
-      const body = markdown.replace(/\r\n/g, '\n');
+      // CommonMark drops trailing spaces that are not a hard break; hard-break
+      // paragraphs already fall through to mdast via needsDialectInline. Trim
+      // the source slice so engine IR→PM matches that dialect path — otherwise
+      // open keeps a phantom trailing space and a typed ` [[` becomes `See  [[`.
+      const body = markdown.replace(/\r\n/g, '\n').trimEnd();
       return schema.nodes.paragraph.create(null, textNodes(body));
     }
     case 'link-definition': {
