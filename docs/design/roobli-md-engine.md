@@ -2,7 +2,7 @@
 
 Noto’s markdown v3 stack (`src/shared/markdown/v3/`) still defaults to micromark.
 The long-term engine that should own that hot path is the public MIT package
-**[@roobli/md](https://github.com/roobli/md)** v0.1.4 (“WYSIWYG-first markdown
+**[@roobli/md](https://github.com/roobli/md)** v0.1.5 (“WYSIWYG-first markdown
 engine for Noto”).
 
 ## Why
@@ -16,7 +16,7 @@ mdast dump.
 ## Dependency
 
 ```
-"@roobli/md": "github:roobli/md#v0.1.4"
+"@roobli/md": "github:roobli/md#v0.1.5"
 ```
 
 pnpm must allow its `prepare` (tsc) build — see `allowBuilds` in
@@ -58,10 +58,11 @@ quotes/callouts and native indented-code match micromark (`@roobli/md` v0.1.2+).
 **Kept in the Noto layer:** branded IDs, `sha256`, envelope endings / BOM,
 `semanticKey` computation, wire `nodes` (mdast). Native engine spans ship
 `node: null`; the adapter attaches mdast via Noto’s `syntax.ts` dialect when a
-ProseMirror-ready node is required. Engine serialize dialect (Phase 7–8 in
-`@roobli/md` v0.1.4) owns hard-break → two spaces, list marker / delimiter from
-`node.data`, verbatim runs (wiki / alert / footnote / TOC / snake_case), and
-bare http(s) autolinks. Noto’s `syntax.ts` remains the micromark-default path
+ProseMirror-ready node is required. Engine serialize dialect (Phase 7–9 in
+`@roobli/md` v0.1.5) owns hard-break → two spaces, list marker / delimiter from
+`node.data`, verbatim runs (wiki / alert / footnote / TOC / snake_case), bare
+http(s) autolinks, and table delimiter widening (vault three-dash; content
+cells stay unpadded). Noto’s `syntax.ts` remains the micromark-default path
 serializer until the flagged backend is default-on.
 
 ## Parity tests
@@ -82,7 +83,8 @@ micromark as of `@roobli/md` v0.1.1 (CommonMark: unprefixed blank ends a quote).
 Native **indented-code** spans (exact offsets, internal blanks kept) shipped in
 `@roobli/md` v0.1.2 and are covered by the adapter parity suite. Phase 7
 (`v0.1.3`) hard-break + list-marker; Phase 8 (`v0.1.4`) verbatim runs + bare
-autolink on the flagged backend serialize path.
+autolink; Phase 9 (`v0.1.5`) table delimiter widening (vault three-dash) on
+the flagged backend serialize path.
 
 ## Bridge docs (engine repo)
 
@@ -93,15 +95,15 @@ autolink on the flagged backend serialize path.
 
 ## Status
 
-**Adapter spike landed (default-off).** `@roobli/md` v0.1.4 is the pinned
+**Adapter spike landed (default-off).** `@roobli/md` v0.1.5 is the pinned
 flagged backend; micromark remains the product default. Quote/callout and
 indented-code split parity are closed; engine serialize dialect (hard-break /
-list-marker / verbatim / bare autolink) is available on the flagged path. Next:
-optionally cache prior splits so `NotoEditor.replaceMarkdown` can call
-`reparseBlocks` instead of a full native split, then consider default-on behind
-broader golden gates.
+list-marker / verbatim / bare autolink / table delimiters) is available on the
+flagged path. Next: optionally cache prior splits so
+`NotoEditor.replaceMarkdown` can call `reparseBlocks` instead of a full native
+split, then consider default-on behind broader golden gates.
 
 **Noto `0.0.2-alpha.9`** shipped the adapter (#37) plus `@roobli/md` v0.1.1 quote/
-callout parity (#38). Pin is now `@roobli/md` v0.1.4 (Phase 8 serialize dialect
-on top of v0.1.3 / v0.1.2). Optional: `NOTO_MARKDOWN_ENGINE=roobli-md`
+callout parity (#38). Pin is now `@roobli/md` v0.1.5 (Phase 9 table delimiters
+on top of Phase 8 / 7 / v0.1.2). Optional: `NOTO_MARKDOWN_ENGINE=roobli-md`
 (micromark remains default).
