@@ -1,10 +1,15 @@
 import { it } from 'vitest';
 import { readFile, writeFile, mkdir } from 'node:fs/promises';
 import path from 'node:path';
-import { blockSpansFromWire, splitBlocks } from '../../src/shared/markdown/v3/blocks';
+import { blockSpansFromWire, splitBlocks, splitBlocksMicromark } from '../../src/shared/markdown/v3/blocks';
 import { docFromSpans } from '../../src/shared/markdown/v3/pm/from-mdast';
 import { parseDocument, toWire } from '../../src/shared/markdown/v3/document';
 import { outlineFromDocument, outlineOf } from '../../src/renderer/outline';
+import { setMarkdownEngineForTests } from '../../src/shared/markdown/v3/engine-flag';
+import {
+  parseBlocksStructural,
+  splitBlocksViaRoobli,
+} from '../../src/shared/markdown/v3/roobli-md-adapter';
 
 /**
  * Splits the open path into its phases, on demand.
@@ -27,6 +32,11 @@ import { outlineFromDocument, outlineOf } from '../../src/renderer/outline';
  * spans without a second micromark pass; that path is timed against the old
  * renderer `splitBlocks` so the dual-parse removal stays measurable on Linux.
  *
+ * Flagged `@roobli/md` open: native structural split is cheap; the old adapter
+ * paid N× `parseMarkdown` per span. Bulk enrich (default) is timed against
+ * per-span and structural-only (`enrich: 'none'`) so the first cut and the
+ * next residual stay visible — see docs/performance/open-path-first-cut.md.
+ *
  * Skipped by default because it is a measurement, not an assertion, and it
  * needs the generated corpus. Run it with:
  *
@@ -40,15 +50,17 @@ it.skipIf(!enabled)('profiles the phases of opening a document', { timeout: 300_
   const time = <T>(label: string, run: () => T): T => {
     const began = performance.now();
     const value = run();
-    lines.push(`  ${label.padEnd(28)} ${(performance.now() - began).toFixed(0).padStart(6)} ms`);
+    lines.push(`  ${label.padEnd(36)} ${(performance.now() - began).toFixed(0).padStart(6)} ms`);
     return value;
   };
 
   for (const name of ['small', 'medium', 'large']) {
     const file = path.join(corpus, `${name}.md`);
     const bytes = await readFile(file);
+    const text = bytes.toString('utf8');
     lines.push(`\n${name} (${bytes.length.toLocaleString()} bytes)`);
 
+    setMarkdownEngineForTests('micromark');
     // What the main process does, which is already finished by the time the
     // renderer starts its own copy of the same work.
     const parsed = time('main: parseDocument', () => parseDocument(bytes));
@@ -69,7 +81,21 @@ it.skipIf(!enabled)('profiles the phases of opening a document', { timeout: 300_
     // Outline on open: the old path reparsed; the new path reuses the wire.
     time('outline: outlineOf (old)', () => outlineOf(wire.text));
     time('outline: fromDocument', () => outlineFromDocument(wire));
+
+    // Flagged engine open phases (first cut + residual scaffolding).
+    setMarkdownEngineForTests('roobli-md');
+    time('roobli: structural', () => { parseBlocksStructural(text); });
+    time('roobli: enrich none', () => { splitBlocksViaRoobli(text, { enrich: 'none' }); });
+    time('roobli: enrich per-span', () => { splitBlocksViaRoobli(text, { enrich: 'per-span' }); });
+    time('roobli: enrich bulk', () => { splitBlocksViaRoobli(text, { enrich: 'bulk' }); });
+    time('roobli: parseDocument', () => {
+      const result = parseDocument(bytes);
+      if (result.status !== 'parsed') throw new Error(result.message);
+    });
+    time('micromark: splitBlocksMicromark', () => { splitBlocksMicromark(text); });
   }
+
+  setMarkdownEngineForTests(null);
 
   const out = path.resolve(__dirname, '../../out/bench/open-profile.txt');
   await mkdir(path.dirname(out), { recursive: true });

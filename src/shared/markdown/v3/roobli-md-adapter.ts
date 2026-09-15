@@ -5,6 +5,8 @@
  * Noto keeps branded IDs, sha256, envelope hashing, `semanticKey`, and wire
  * `nodes` (mdast) in this layer: native spans ship `node: null`, so we attach
  * mdast via Noto's dialect when a span needs a ProseMirror-ready node.
+ * Full-document splits default to one bulk dialect parse (not N× per span);
+ * see `SpanEnrichMode` and docs/performance/open-path-first-cut.md.
  *
  * Flagged block-mode saves (identity, single-block, multi-block insert/delete)
  * map into engine shapes, call `serializeDocument`, then the host re-attaches
@@ -121,7 +123,43 @@ function semanticKeyOf(node: RootContent, kind: NotoBlockKind): string {
 }
 
 /**
- * Attach mdast + semanticKey for a native engine span.
+ * How full-document adapter splits attach mdast for the wire / ProseMirror.
+ *
+ * - `bulk` (default): one dialect `parseMarkdown` over the whole text, then zip
+ *   top-level nodes onto native spans. Same asymptotic cost as micromark open,
+ *   without N× per-span reparses (see docs/performance/open-path-first-cut.md).
+ * - `per-span`: legacy path — `parseMarkdown` each span.markdown. Kept for
+ *   PROFILE_OPEN A/B and as the fallback when bulk counts disagree.
+ * - `none`: structural only — paragraph stand-in nodes, `semanticKey === kind`.
+ *   Prep hook for the next cut (file-truth without mdast / lazy wire nodes).
+ */
+export type SpanEnrichMode = 'bulk' | 'per-span' | 'none';
+
+export interface SplitBlocksViaRoobliOptions {
+  readonly enrich?: SpanEnrichMode;
+}
+
+function standInNode(span: EngineBlockSpan): RootContent {
+  return {
+    type: 'paragraph',
+    children: span.markdown.length > 0 ? [{ type: 'text', value: span.markdown }] : [],
+  };
+}
+
+function attachDialectNode(span: EngineBlockSpan, node: RootContent): AdapterBlockSpan {
+  const dialectKind = kindOf(node, span.markdown);
+  return {
+    kind: dialectKind,
+    start: span.start,
+    end: span.end,
+    markdown: span.markdown,
+    semanticKey: semanticKeyOf(node, dialectKind),
+    node,
+  };
+}
+
+/**
+ * Attach mdast + semanticKey for a native engine span (per-span path).
  *
  * Native hot path leaves `node` null. Prefer the engine's kind (offsets came
  * from it); derive semanticKey from the dialect node when the slice is exactly
@@ -143,34 +181,46 @@ function enrichSpan(span: EngineBlockSpan): AdapterBlockSpan {
   const root = parseMarkdown(span.markdown);
   const nodes = topLevelNodes(root);
   if (nodes.length === 1) {
-    const node = nodes[0]!;
-    // Prefer dialect kind when the slice itself is unambiguous — keeps
-    // ProseMirror / semanticKey aligned with existing micromark behaviour.
-    const dialectKind = kindOf(node, span.markdown);
-    return {
-      kind: dialectKind,
-      start: span.start,
-      end: span.end,
-      markdown: span.markdown,
-      semanticKey: semanticKeyOf(node, dialectKind),
-      node,
-    };
+    return attachDialectNode(span, nodes[0]!);
   }
 
   // Multi-node or empty slice: keep engine kind and a paragraph stand-in so
   // the BlockSpan contract stays satisfied for paste / source toggles.
-  const node: RootContent = {
-    type: 'paragraph',
-    children: span.markdown.length > 0 ? [{ type: 'text', value: span.markdown }] : [],
-  };
   return {
     kind,
     start: span.start,
     end: span.end,
     markdown: span.markdown,
     semanticKey: kind,
-    node,
+    node: standInNode(span),
   };
+}
+
+/** Structural adapter spans: no dialect parse. Prep for deferred wire nodes. */
+function enrichSpanNone(span: EngineBlockSpan): AdapterBlockSpan {
+  const kind = span.kind as NotoBlockKind;
+  return {
+    kind,
+    start: span.start,
+    end: span.end,
+    markdown: span.markdown,
+    semanticKey: kind,
+    node: standInNode(span),
+  };
+}
+
+/**
+ * One full-document dialect parse, zipped onto native spans by ordinal.
+ *
+ * Falls back to per-span enrich when top-level node count disagrees with the
+ * native scanner (should be rare on golden / corpus; never silent on open).
+ */
+function enrichSplitBulk(split: EngineSplitDocument, text: string): readonly AdapterBlockSpan[] {
+  const nodes = topLevelNodes(parseMarkdown(text));
+  if (nodes.length !== split.spans.length) {
+    return split.spans.map(enrichSpan);
+  }
+  return split.spans.map((span, index) => attachDialectNode(span, nodes[index]!));
 }
 
 /** Structural split only (no mdast). For parity / coverage checks. */
@@ -178,11 +228,24 @@ export function parseBlocksStructural(text: string): EngineSplitDocument {
   return engineParseBlocks(text);
 }
 
-/** Full Noto-shaped split via `@roobli/md` + dialect enrichment. */
-export function splitBlocksViaRoobli(text: string): AdapterSplitDocument {
+/**
+ * Full Noto-shaped split via `@roobli/md` + dialect enrichment.
+ *
+ * Default enrich mode is `bulk` (measured open-path cut). Pass `enrich: 'none'`
+ * for structural-only scaffolding, or `per-span` for the legacy A/B path.
+ */
+export function splitBlocksViaRoobli(
+  text: string,
+  options?: SplitBlocksViaRoobliOptions,
+): AdapterSplitDocument {
   const split = engineParseBlocks(text);
+  const mode: SpanEnrichMode = options?.enrich ?? 'bulk';
+  const spans =
+    mode === 'none' ? split.spans.map(enrichSpanNone)
+    : mode === 'per-span' ? split.spans.map(enrichSpan)
+    : enrichSplitBulk(split, text);
   return {
-    spans: split.spans.map(enrichSpan),
+    spans,
     leading: split.leading,
     gaps: split.gaps,
     trailing: split.trailing,

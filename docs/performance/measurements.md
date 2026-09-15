@@ -517,7 +517,30 @@ Re-measured on this Linux box after wire `nodes` landed
 | renderer: fromWire + doc      |   1 ms |    5 ms |   18 ms |
 | ipc: clone wire+nodes         |   4 ms |   33 ms |  190 ms |
 
-No clear first cut: the dual-parse and outline reparses are gone; what remains
-is one full micromark pass whose cost is proportional to the file. Picking among
-incremental first paint, early-text overlap, and a thinner extension set needs
-a design pass, not another opportunistic slice.
+On the **default micromark** path the dual-parse and outline reparses are gone;
+what remains is one full dialect pass proportional to the file.
+
+### Flagged `@roobli/md` open — first cut (2026-09-15)
+
+The native structural scanner is ~100× faster than micromark, but the adapter
+used to attach mdast with **N× `parseMarkdown` per span**, so flagged
+`parseDocument` was *slower* than micromark. First cut: default
+`splitBlocksViaRoobli` enrich mode is **`bulk`** (one dialect parse, zip by
+ordinal). See `docs/performance/open-path-first-cut.md`.
+
+Linux probe medians (5 runs after warm, same corpus files):
+
+| phase | small | medium | large |
+| ----- | ----- | ------ | ----- |
+| micromark `parseDocument` | 155 ms | 653 ms | 2958 ms |
+| roobli structural | 5 ms | 10 ms | 25 ms |
+| roobli enrich **none** | 1 ms | 6 ms | 21 ms |
+| roobli enrich **per-span** (old) | 119 ms | 846 ms | 3591 ms |
+| roobli enrich **bulk** (this cut) | 81 ms | 656 ms | 2967 ms |
+
+Medium: bulk ~190 ms faster than per-span (~22%). Large: ~620 ms (~17%).
+Re-run: `PROFILE_OPEN=1 pnpm vitest run tests/unit/open-profile.test.ts`.
+
+Product default stays micromark. Next residual is lazy / viewport wire nodes
+(`enrich: 'none'` scaffolding) so the ~4 ms structural path can sit on the
+critical path — not another full dialect pass.
