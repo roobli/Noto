@@ -9,7 +9,7 @@
  * Flagged open uses `enrich: 'none'` on main then `enrichSpansInRange` in the
  * renderer for a first-paint window (and the remainder after paint) — see
  * `SpanEnrichMode` and docs/performance/open-path-first-cut.md. Engine-owned
- * leaf / plain paragraph+heading / simple quote skip mdast (IR → PM via `pm/from-engine.ts`).
+ * leaf / plain paragraph+heading / simple quote / flat list skip mdast (IR → PM via `pm/from-engine.ts`).
  *
  * Flagged block-mode saves (identity, single-block, multi-block insert/delete)
  * map into engine shapes, call `serializeDocument`, then the host re-attaches
@@ -214,7 +214,7 @@ function enrichDialectRun(
 
 /**
  * Fill dialect mdast for `spans[from..to)` — but **skip** engine-owned leaf /
- * link-definition / plain paragraph+heading / simple-quote spans (IR → final stand-in + semanticKey, no
+ * link-definition / plain paragraph+heading / simple-quote / flat-list spans (IR → final stand-in + semanticKey, no
  * micromark). Contiguous needs-dialect runs still use one `parseMarkdown` each.
  *
  * Spans outside the range are returned unchanged. When a dialect run's
@@ -303,7 +303,7 @@ export const OPEN_VIEWPORT_ENRICH_PAD = 40;
  * `0` = structural stand-in still needing dialect.
  *
  * When `spans` is provided, leaf / link-definition / plain paragraph+heading /
- * simple-quote indices past the first-paint prefix are marked enriched immediately — IR → PM needs no mdast.
+ * simple-quote / flat-list indices past the first-paint prefix are marked enriched immediately — IR → PM needs no mdast.
  */
 export function createEnrichFlags(
   length: number,
@@ -576,7 +576,7 @@ function enrichSpan(span: EngineBlockSpan): AdapterBlockSpan {
 
 /**
  * Structural adapter spans: no dialect parse. Prep for deferred wire nodes.
- * Engine-owned leaf / link-definition / plain phrasing / simple quotes get a final semanticKey so enrich can skip them.
+ * Engine-owned leaf / link-definition / plain phrasing / simple quotes / flat lists get a final semanticKey so enrich can skip them.
  */
 function enrichSpanNone(span: EngineBlockSpan): AdapterBlockSpan {
   const kind = span.kind as NotoBlockKind;

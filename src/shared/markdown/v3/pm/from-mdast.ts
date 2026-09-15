@@ -239,7 +239,7 @@ function listHintsFromSource(markdown: string): Pick<BlockHints, 'bullet' | 'del
 }
 
 export function blockFromSpan(span: BlockSpan): ProseNode {
-  // Engine-owned IR → PM for leaf / plain paragraph+heading / link-definition / simple quote (skip mdast).
+  // Engine-owned IR → PM for leaf / plain paragraph+heading / link-definition / simple quote / flat list (skip mdast).
   const fromEngine = blockFromEngineSpan(span.kind, span.markdown);
   if (fromEngine) return fromEngine;
   const listStyle = span.kind === 'bullet-list' || span.kind === 'ordered-list' || span.kind === 'task-list'
