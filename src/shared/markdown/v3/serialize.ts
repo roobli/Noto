@@ -11,6 +11,11 @@
  * into exactly the blocks the transaction asked for. That is what catches an
  * edit which would silently merge or split blocks, for example a heading edited
  * into plain text that then absorbs the paragraph beneath it.
+ *
+ * When `NOTO_MARKDOWN_ENGINE=roobli-md`, identity and single-block saves route
+ * the byte assembly through `@roobli/md` `serializeDocument` (micromark path
+ * unchanged when the flag is off). Multi-block / insert / delete stays on the
+ * Noto serializer until those surfaces are gated the same way.
  */
 
 import { parseSingleBlock } from './blocks';
@@ -18,6 +23,15 @@ import { checkWindow, verificationWindows, type ReparsedBlock } from './incremen
 // `parseDocument` remains for source mode, where the whole file is replaced
 // and there is no per-block knowledge to build a revision from.
 import { fromLf, parseDocument, sha256, toLf } from './document';
+import { isRoobliMdEngine } from './engine-flag';
+import {
+  isIdentityOrSingleBlockUnits,
+  serializeViaRoobli,
+  toEngineDocument,
+  toSerializeEnvelope,
+  toSerializeUnits,
+  type EnginePreservedRange,
+} from './roobli-md-adapter';
 import {
   NOTO_MARKDOWN_VERSION,
   type NotoBlock,
@@ -449,6 +463,94 @@ function buildNextDocument(input: {
   };
 }
 
+
+const ENGINE_FAIL_CODES: ReadonlySet<string> = new Set([
+  'EMPTY_UNIT',
+  'FORGED_ORIGIN',
+  'DUPLICATE_ORIGIN',
+  'REORDERED_ORIGIN',
+  'MULTI_BLOCK_UNIT',
+]);
+
+function hashPreservedRanges(
+  document: NotoDocument,
+  ranges: readonly EnginePreservedRange[],
+): NotoPreservedRange[] {
+  return ranges.map((range) => {
+    let digest: string;
+    if (range.role === 'bom') {
+      digest = sha256(UTF8_BOM);
+    } else if (range.role === 'block') {
+      const block = document.blocks.find((b) => b.start === range.start && b.end === range.end);
+      digest = block?.sha256 ?? sha256(document.text.slice(range.start, range.end));
+    } else {
+      digest = sha256(document.text.slice(range.start, range.end));
+    }
+    return {
+      role: range.role,
+      start: range.start,
+      end: range.end,
+      sha256: digest,
+    };
+  });
+}
+
+/**
+ * Flagged path: identity / single-block byte assembly via `@roobli/md`.
+ *
+ * Noto still validates origins (forged block ids) before the engine sees
+ * ordinals only. On success we re-attach sha256 evidence and branded revision
+ * ids; identity keeps the accepted document object.
+ */
+function serializeBlocksViaRoobli(
+  document: NotoDocument,
+  units: readonly NotoUnit[],
+  target: NotoTargetEnvelope,
+): NotoSerializeResult {
+  const originFailure = validateOrigins(document, units);
+  if (originFailure) return originFailure;
+
+  const engineResult = serializeViaRoobli(toEngineDocument(document), {
+    units: toSerializeUnits(units),
+    envelope: toSerializeEnvelope(target),
+  });
+
+  if (engineResult.status === 'failed') {
+    const code: NotoSerializeFailureCode = ENGINE_FAIL_CODES.has(engineResult.code)
+      ? (engineResult.code as NotoSerializeFailureCode)
+      : 'MULTI_BLOCK_UNIT';
+    return fail(document, code, engineResult.message);
+  }
+
+  const preserved = hashPreservedRanges(document, engineResult.preserved);
+  const outputSha256 = sha256(engineResult.outputBytes);
+
+  if (engineResult.text === document.text) {
+    return {
+      status: 'serialized',
+      version: NOTO_MARKDOWN_VERSION,
+      outputBytes: engineResult.outputBytes,
+      outputSha256,
+      document,
+      preserved,
+    };
+  }
+
+  const reparsed = parseDocument(engineResult.outputBytes);
+  if (reparsed.status !== 'parsed') {
+    return fail(document, 'REPARSE_MISMATCH', reparsed.message);
+  }
+
+  return {
+    status: 'serialized',
+    version: NOTO_MARKDOWN_VERSION,
+    outputBytes: engineResult.outputBytes,
+    outputSha256,
+    document: { ...reparsed.document, documentId: document.documentId },
+    preserved,
+  };
+}
+
 /**
  * Apply a transaction and return the exact bytes to write.
  *
@@ -489,6 +591,13 @@ export function serializeDocument(
       document: { ...reparsed.document, documentId: document.documentId },
       preserved: [],
     };
+  }
+
+  if (
+    isRoobliMdEngine()
+    && isIdentityOrSingleBlockUnits(document, transaction.units)
+  ) {
+    return serializeBlocksViaRoobli(document, transaction.units, transaction.envelope);
   }
 
   return serializeBlocks(document, transaction.units, transaction.envelope);

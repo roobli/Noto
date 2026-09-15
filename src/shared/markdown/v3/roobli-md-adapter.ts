@@ -5,6 +5,10 @@
  * Noto keeps branded IDs, sha256, envelope hashing, `semanticKey`, and wire
  * `nodes` (mdast) in this layer: native spans ship `node: null`, so we attach
  * mdast via Noto's dialect when a span needs a ProseMirror-ready node.
+ *
+ * Flagged identity / single-block saves map into engine shapes, call
+ * `serializeDocument`, then the host re-attaches hashes and branded revision
+ * ids (see `serialize.ts`).
  */
 
 import {
@@ -20,13 +24,21 @@ import {
   type ReparseBlocksResult,
   type SerializeOptions,
   type SerializeResult,
+  type SerializeUnit,
+  type SerializeEnvelope,
+  type PreservedRange as EnginePreservedRange,
   type SplitDocument as EngineSplitDocument,
   type BlockSpan as EngineBlockSpan,
   type EngineDocument,
   type SourceEdit,
 } from '@roobli/md';
 import type { RootContent } from 'mdast';
-import type { NotoBlockKind } from './contracts';
+import type {
+  NotoBlockKind,
+  NotoDocument,
+  NotoTargetEnvelope,
+  NotoUnit,
+} from './contracts';
 import { parseMarkdown, topLevelNodes } from './syntax';
 
 export interface AdapterBlockSpan {
@@ -226,6 +238,74 @@ export function serializeViaRoobli(
 ): SerializeResult {
   return engineSerializeDocument(document, options);
 }
+
+
+/**
+ * Project a Noto document into the thinner engine document the serializer
+ * accepts. Offsets stay on `text`; `markdown` keeps Noto's LF-normalised form
+ * so pristine comparisons match identity / single-block transactions.
+ */
+export function toEngineDocument(document: NotoDocument): EngineDocument {
+  return {
+    envelope: {
+      byteLength: document.envelope.byteLength,
+      bom: document.envelope.bom,
+      lineEnding: document.envelope.lineEnding,
+      hasFinalNewline: document.envelope.hasFinalNewline,
+    },
+    text: document.text,
+    blocks: document.blocks.map((block) => ({
+      kind: block.kind,
+      start: block.start,
+      end: block.end,
+      markdown: block.markdown,
+      node: null,
+    })),
+    gaps: document.gaps.map((gap) => gap.text),
+    leading: document.leading,
+    trailing: document.trailing,
+  };
+}
+
+/** Map Noto editing units onto engine `SerializeUnit`s (ordinal + markdown). */
+export function toSerializeUnits(units: readonly NotoUnit[]): SerializeUnit[] {
+  return units.map((unit) => ({
+    origin: unit.origin ? unit.origin.ordinal : null,
+    markdown: unit.markdown,
+  }));
+}
+
+export function toSerializeEnvelope(envelope: NotoTargetEnvelope): SerializeEnvelope {
+  return {
+    lineEnding: envelope.lineEnding,
+    hasFinalNewline: envelope.hasFinalNewline,
+  };
+}
+
+/**
+ * True when every unit is a surviving origin (no inserts/deletes) and at most
+ * one unit is dirty — the identity and single-block save surfaces the flagged
+ * host path routes through `@roobli/md` first.
+ */
+export function isIdentityOrSingleBlockUnits(
+  document: NotoDocument,
+  units: readonly NotoUnit[],
+): boolean {
+  if (units.length !== document.blocks.length) return false;
+  let dirty = 0;
+  for (let index = 0; index < units.length; index += 1) {
+    const unit = units[index]!;
+    if (!unit.origin || unit.origin.ordinal !== index) return false;
+    const block = document.blocks[index];
+    if (block === undefined) return false;
+    const pristine = unit.markdown === null || unit.markdown === block.markdown;
+    if (!pristine) dirty += 1;
+    if (dirty > 1) return false;
+  }
+  return true;
+}
+
+export type { SerializeUnit, SerializeEnvelope, EnginePreservedRange };
 
 export {
   joinSplit,

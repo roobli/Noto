@@ -27,7 +27,7 @@ pnpm must allow its `prepare` (tsc) build — see `allowBuilds` in
 | Switch | Effect |
 | ------ | ------ |
 | unset / anything else | micromark path (product default) |
-| `NOTO_MARKDOWN_ENGINE=roobli-md` | route `splitBlocks` / `parseSingleBlock` through the adapter |
+| `NOTO_MARKDOWN_ENGINE=roobli-md` | route `splitBlocks` / `parseSingleBlock`, flagged `replaceMarkdown`, and identity / single-block `serializeDocument` through the adapter |
 | `setMarkdownEngineForTests('roobli-md' | 'micromark' | null)` | unit-test override |
 
 Implementation:
@@ -116,9 +116,18 @@ WYSIWYG typing / paste invalidates the cache (`apply` skips invalidation while
 Micromark path unchanged when the flag is off. Unit coverage:
 `tests/unit/prior-split-cache.test.ts`.
 
-Next: consider default-on behind broader golden gates (open-path /
-`parseDocument` still needs design + gates — see
-`docs/performance/measurements.md`).
+**Host wiring (flagged identity / single-block serialize).** When the same
+flag is on, `serializeDocument` routes identity and single-block block-mode
+saves through `@roobli/md` `serializeDocument` (via `toEngineDocument` /
+`toSerializeUnits`). Noto still validates forged origins, re-attaches
+`sha256` on preserved ranges, and keeps branded `documentId` / revision ids.
+Multi-block inserts/deletes and `source` mode stay on the Noto serializer.
+Micromark path unchanged when the flag is off. Unit coverage:
+`tests/unit/roobli-md-serialize-host.test.ts`.
+
+Next: broaden flagged serialize to multi-block edits; consider default-on
+behind broader golden gates (open-path / `parseDocument` still needs design +
+gates — see `docs/performance/measurements.md`).
 
 **Noto `0.0.2-alpha.9`** shipped the adapter (#37) plus `@roobli/md` v0.1.1 quote/
 callout parity (#38). Pin is now `@roobli/md` v0.1.7 (Phase 11 reparse helpers
