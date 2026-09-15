@@ -34,9 +34,9 @@ import { blockSpansFromWire, parseSingleBlock, splitBlocks, type BlockSpan } fro
 import { isRoobliMdEngine } from '../../../shared/markdown/v3/engine-flag';
 import { PriorSplitCache } from '../../../shared/markdown/v3/prior-split-cache';
 import {
-  enrichSpansInRange,
   resolveDeferredOpenSpans,
 } from '../../../shared/markdown/v3/roobli-md-adapter';
+import { DeferredViewportEnrichController } from './deferred-viewport-enrich';
 import { parseDocumentSpans } from './parse-document';
 import { toLf } from '../../../shared/markdown/v3/line-endings';
 import {
@@ -366,6 +366,7 @@ export class NotoEditor implements NotoEditorPort {
   }
 
   private countTimer: ReturnType<typeof setTimeout> | null = null;
+  private deferredEnrich: DeferredViewportEnrichController | null = null;
 
   /**
    * A paste or a drop that carries a picture.
@@ -626,6 +627,15 @@ export class NotoEditor implements NotoEditorPort {
   }
 
   get isDirty(): boolean {
+    return this.dirty;
+  }
+
+  /** Host surface for `DeferredViewportEnrichController`. */
+  getView(): EditorView | null {
+    return this.view;
+  }
+
+  isDirtyNow(): boolean {
     return this.dirty;
   }
 
@@ -1215,10 +1225,33 @@ export class NotoEditor implements NotoEditorPort {
   }
 
   /**
+   * After flagged lazy open: enrich deferred stand-ins from the viewport (and
+   * idle chunks) instead of one full-document remainder parse on the first
+   * animation frame.
+   */
+  beginDeferredViewportEnrich(
+    spans: readonly BlockSpan[],
+    remainderFrom: number,
+    onError?: (message: string) => void,
+  ): void {
+    this.deferredEnrich?.destroy();
+    this.deferredEnrich = null;
+    if (!this.view || remainderFrom >= spans.length) return;
+    const controller = new DeferredViewportEnrichController(this, {
+      spans,
+      text: this.document.text,
+      remainderFrom,
+      onError,
+    });
+    this.deferredEnrich = controller;
+    controller.start();
+  }
+
+  /**
    * Apply dialect-enriched spans after a flagged lazy open.
    *
    * Replaces the ProseMirror document in place when the user has not edited
-   * yet, so the remainder enrich after first paint does not clobber typing.
+   * yet, so viewport / idle enrich does not clobber typing.
    * No-op when dirty or when the editor was torn down.
    */
   applyDialectEnrichedSpans(spans: readonly BlockSpan[]): void {
@@ -1273,20 +1306,13 @@ export class NotoEditor implements NotoEditorPort {
       this.options.onDirtyChange?.(false);
     }
     if (prepared.remainderFrom !== null) {
-      const partial = spans;
-      const from = prepared.remainderFrom;
-      requestAnimationFrame(() => {
-        if (this.view !== view) return;
-        const full = enrichSpansInRange(partial, document.text, {
-          from,
-          to: partial.length,
-        });
-        this.applyDialectEnrichedSpans(full);
-      });
+      this.beginDeferredViewportEnrich(spans, prepared.remainderFrom);
     }
   }
 
   destroy(): void {
+    this.deferredEnrich?.destroy();
+    this.deferredEnrich = null;
     if (this.countTimer !== null) clearTimeout(this.countTimer);
     this.countTimer = null;
     this.view?.destroy();

@@ -111,8 +111,8 @@ export interface NotoDocument {
    *
    * - `full`: every node is dialect-enriched (micromark open, or flagged bulk).
    * - `deferred`: structural / `enrich: 'none'` stand-ins — renderer enriches a
-   *   first-paint window then the remainder (flagged lazy open). Absent when
-   *   `nodes` is null (incremental save).
+   *   first-paint window then viewport / idle deferred ranges (flagged lazy
+   *   open). Absent when `nodes` is null (incremental save).
    */
   readonly nodesEnrichment?: 'full' | 'deferred';
 }

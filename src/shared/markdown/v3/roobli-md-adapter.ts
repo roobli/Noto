@@ -134,7 +134,8 @@ function semanticKeyOf(node: RootContent, kind: NotoBlockKind): string {
  *   PROFILE_OPEN A/B and as the fallback when bulk counts disagree.
  * - `none`: structural only — paragraph stand-in nodes, `semanticKey === kind`.
  *   Flagged `parseDocument` open uses this on main; renderer calls
- *   `enrichSpansInRange` for the first-paint window and remainder.
+ *   `enrichSpansInRange` for the first-paint window, then viewport / idle
+ *   `enrichNextDeferredInRange` for deferred stand-ins.
  */
 export type SpanEnrichMode = 'bulk' | 'per-span' | 'none';
 
@@ -211,13 +212,18 @@ export function enrichSpansInRange<T extends AdapterBlockSpan>(
 
 export interface ResolveDeferredOpenSpansResult<T extends AdapterBlockSpan = AdapterBlockSpan> {
   readonly spans: readonly T[];
-  /** When non-null, call `enrichSpansInRange` from this index to length after first paint. */
+  /**
+   * When non-null, indices `[remainderFrom, length)` still need dialect enrich.
+   * Prefer viewport / idle `enrichNextDeferredInRange` over one full remainder
+   * pass (see docs/performance/open-path-first-cut.md).
+   */
   readonly remainderFrom: number | null;
 }
 
 /**
  * First consumer for flagged lazy open: enrich `[0, initial)` with one range
- * parse. Caller mounts with the result, then enriches the remainder.
+ * parse. Caller mounts with the result, then fills deferred stand-ins via
+ * viewport-driven / idle enrich (not one full-document remainder parse).
  */
 export function resolveDeferredOpenSpans<T extends AdapterBlockSpan>(
   spans: readonly T[],
@@ -233,6 +239,119 @@ export function resolveDeferredOpenSpans<T extends AdapterBlockSpan>(
     spans: enriched,
     remainderFrom: initialTo < enriched.length ? initialTo : null,
   };
+}
+
+/**
+ * Spans enriched in one viewport or idle tick (one contiguous dialect window).
+ *
+ * Sized so a mid-document scroll enrich stays far below a full-document bulk
+ * attach on the medium corpus, while covering more than one typical viewport.
+ */
+export const OPEN_VIEWPORT_ENRICH_BUDGET = 120;
+
+/**
+ * Extra top-level blocks around the visible band to enrich ahead of scroll.
+ * Exclusive-range pad applied on both sides of an inclusive visible window.
+ */
+export const OPEN_VIEWPORT_ENRICH_PAD = 40;
+
+/** Parallel to spans: `1` = dialect-enriched, `0` = structural stand-in. */
+export function createEnrichFlags(length: number, enrichedExclusiveTo: number): Uint8Array {
+  const flags = new Uint8Array(Math.max(0, length));
+  const to = Math.max(0, Math.min(enrichedExclusiveTo, flags.length));
+  if (to > 0) flags.fill(1, 0, to);
+  return flags;
+}
+
+export function countDeferredFlags(flags: Uint8Array): number {
+  let n = 0;
+  for (let i = 0; i < flags.length; i += 1) {
+    if (flags[i] === 0) n += 1;
+  }
+  return n;
+}
+
+/**
+ * First contiguous deferred run overlapping `[from, to)`, capped to `budget`.
+ */
+export function nextDeferredEnrichWindow(
+  flags: Uint8Array,
+  from: number,
+  to: number,
+  budget = OPEN_VIEWPORT_ENRICH_BUDGET,
+): EnrichSpansInRangeOptions | null {
+  const start = Math.max(0, Math.min(from, flags.length));
+  const end = Math.max(start, Math.min(to, flags.length));
+  let i = start;
+  while (i < end && flags[i] === 1) i += 1;
+  if (i >= end) return null;
+  const windowFrom = i;
+  const limit = Math.min(end, windowFrom + Math.max(1, budget));
+  let windowTo = windowFrom + 1;
+  while (windowTo < limit && flags[windowTo] === 0) windowTo += 1;
+  return { from: windowFrom, to: windowTo };
+}
+
+/**
+ * Scan for the next deferred window anywhere, starting at `fromHint`
+ * (idle remainder path). Does not wrap.
+ */
+export function nextDeferredEnrichWindowFrom(
+  flags: Uint8Array,
+  fromHint = 0,
+  budget = OPEN_VIEWPORT_ENRICH_BUDGET,
+): EnrichSpansInRangeOptions | null {
+  return nextDeferredEnrichWindow(flags, fromHint, flags.length, budget);
+}
+
+/**
+ * Inclusive visible block indices → exclusive enrich range with pad.
+ */
+export function enrichRangeFromVisibleInclusive(
+  visibleFrom: number,
+  visibleToInclusive: number,
+  spanCount: number,
+  pad = OPEN_VIEWPORT_ENRICH_PAD,
+): EnrichSpansInRangeOptions {
+  const from = Math.max(0, visibleFrom - pad);
+  const to = Math.min(spanCount, visibleToInclusive + 1 + pad);
+  return { from, to };
+}
+
+export interface EnrichNextDeferredResult<T extends AdapterBlockSpan = AdapterBlockSpan> {
+  readonly spans: T[];
+  readonly flags: Uint8Array;
+  /** Window that was enriched, or null when nothing deferred overlapped. */
+  readonly window: EnrichSpansInRangeOptions | null;
+}
+
+/**
+ * Enrich at most one deferred contiguous window overlapping `range`
+ * (budget-capped). Leaves already-enriched indices untouched.
+ */
+export function enrichNextDeferredInRange<T extends AdapterBlockSpan>(
+  spans: readonly T[],
+  text: string,
+  flags: Uint8Array,
+  range: EnrichSpansInRangeOptions,
+  options?: { readonly budget?: number },
+): EnrichNextDeferredResult<T> {
+  if (flags.length !== spans.length) {
+    throw new Error('enrich flags length must match spans');
+  }
+  const window = nextDeferredEnrichWindow(
+    flags,
+    range.from,
+    range.to,
+    options?.budget ?? OPEN_VIEWPORT_ENRICH_BUDGET,
+  );
+  if (!window) {
+    return { spans: spans.slice() as T[], flags: flags.slice(), window: null };
+  }
+  const nextSpans = enrichSpansInRange(spans, text, window);
+  const nextFlags = flags.slice();
+  nextFlags.fill(1, window.from, window.to);
+  return { spans: nextSpans, flags: nextFlags, window };
 }
 
 
