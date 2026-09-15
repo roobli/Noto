@@ -182,7 +182,9 @@ need dialect enrich + `from-mdast`. Does **not** flip default-on. No alpha bump.
    dialect); optional lightweight inline IR later — not this cycle.
 4. Keep growing `tests/fixtures/markdown-golden/` before default-on; GFM inline,
    nested lists, HTML blocks, callout edges, hr/setext, link-defs, simple
-   quotes landed; intentional engine gaps documented in that README.
+   quotes, hard-breaks, images, empty/meta fences, escapes, table-align,
+   ordered-start, inline HTML landed; intentional engine gaps documented in
+   that README.
 
 Do not defer main’s file-truth structural parse; do not flip the product
 default from this doc.
