@@ -114,7 +114,7 @@ it.skipIf(!enabled)('profiles the phases of opening a document', { timeout: 300_
       const none = splitBlocksViaRoobli(text, { enrich: 'none' });
       const prepared = resolveDeferredOpenSpans(none.spans, text, { deferred: true });
       if (prepared.remainderFrom === null) return;
-      const flags = createEnrichFlags(prepared.spans.length, prepared.remainderFrom);
+      const flags = createEnrichFlags(prepared.spans.length, prepared.remainderFrom, prepared.spans);
       // Mid-document scroll into stand-ins (typical after open at top).
       const mid = Math.min(
         prepared.spans.length - 1,
@@ -129,7 +129,7 @@ it.skipIf(!enabled)('profiles the phases of opening a document', { timeout: 300_
       const none = splitBlocksViaRoobli(text, { enrich: 'none' });
       const prepared = resolveDeferredOpenSpans(none.spans, text, { deferred: true });
       if (prepared.remainderFrom === null) return;
-      const flags = createEnrichFlags(prepared.spans.length, prepared.remainderFrom);
+      const flags = createEnrichFlags(prepared.spans.length, prepared.remainderFrom, prepared.spans);
       enrichNextDeferredInRange(
         prepared.spans,
         text,

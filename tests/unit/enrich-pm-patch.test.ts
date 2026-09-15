@@ -46,7 +46,7 @@ describe('enrichPmPatchForWindow', () => {
     const prepared = resolveDeferredOpenSpans(none.spans, text, { deferred: true });
     expect(prepared.remainderFrom).not.toBeNull();
 
-    const flags = createEnrichFlags(prepared.spans.length, prepared.remainderFrom!);
+    const flags = createEnrichFlags(prepared.spans.length, prepared.remainderFrom!, prepared.spans);
     const visible = enrichRangeFromVisibleInclusive(95, 110, prepared.spans.length, 5);
     const once = enrichNextDeferredInRange(prepared.spans, text, flags, visible, {
       budget: OPEN_VIEWPORT_ENRICH_BUDGET,

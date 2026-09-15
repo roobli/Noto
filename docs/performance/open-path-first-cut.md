@@ -1,6 +1,6 @@
 # Open-path / `parseDocument` — measured cuts
 
-Status: **lazy / deferred wire nodes + viewport-driven enrich + incremental PM patch + kind-aware stand-ins** under the flagged `@roobli/md` path.
+Status: **lazy / deferred wire nodes + viewport-driven enrich + incremental PM patch + kind-aware stand-ins + engine-owned IR→PM (common blocks)** under the flagged `@roobli/md` path.
 Product default remains micromark. Do **not** flip `NOTO_MARKDOWN_ENGINE`
 default-on from this work.
 
@@ -143,15 +143,38 @@ but avoids resetting viewport-stub / alert / history on every tick.
 - `enrichPmPatchForWindow(doc, spans, window)`
 - `applyDialectEnrichedSpans(spans, window?)` — window enables incremental path
 
+### Cut 5 — engine-owned IR → PM (common blocks)
+
+Leaf kinds (`fenced-code` / `indented-code` / `thematic-break` / `frontmatter` /
+`html` / `display-math`) and **plain** paragraph/heading (no inline dialect
+markers) build ProseMirror directly from engine kind + source
+(`pm/from-engine.ts`) — **no mdast**. `blockFromSpan` prefers that path;
+`enrichSpansInRange` finalizes those spans without `parseMarkdown`; deferred
+enrich flags mark them done past the first-paint prefix.
+
+Lists / tables / quotes / marked-up phrasing still need dialect enrich +
+`from-mdast`. Does **not** flip default-on. No alpha bump.
+
+## API (additions for Cut 5)
+
+- `pm/from-engine.ts` — `blockFromEngineSpan` / `canSkipDialectEnrich` /
+  `engineSemanticKey` / fence+heading source parsers
+- `createEnrichFlags(length, enrichedExclusiveTo, spans?)` — optional spans
+  mark engine-owned remainder as already enriched
+- `enrichSpansInRange` — skips micromark for engine-owned spans; contiguous
+  dialect runs still one parse each
+
 ## Next residual (not this PR)
 
-1. **Engine-owned IR → PM** — avoid mdast entirely for common blocks once
-   `@roobli/md` can feed `docFromSpans` without dialect trees.
-2. ~~Kind-aware structural stand-ins (heading/fence/…)~~ — shipped: `standInNode`
-   maps engine kind → cheap mdast shells (heading/fence/hr/quote/math/html/yaml;
-   paragraph fallback). Lists/tables still paragraph until a follow-up.
-3. Keep growing `tests/fixtures/markdown-golden/` (more dialect edges) before
-   default-on; alerts / footnotes / indented-code / tight-quotes landed this cut.
+1. ~~Engine-owned IR → PM (common blocks)~~ — shipped: leaf + plain
+   paragraph/heading skip mdast (`pm/from-engine.ts`); enrich flags +
+   `enrichSpansInRange` honour the skip.
+2. ~~Kind-aware structural stand-ins (heading/fence/…)~~ — shipped (#90).
+3. Extend IR→PM to more kinds when safe (lists/tables still dialect); optional
+   lightweight inline IR later.
+4. Keep growing `tests/fixtures/markdown-golden/` (GFM edges / more callouts)
+   before default-on; alerts / footnotes / indented-code / tight-quotes already
+   landed.
 
 Do not defer main’s file-truth structural parse; do not flip the product
 default from this doc.
