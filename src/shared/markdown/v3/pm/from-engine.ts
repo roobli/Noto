@@ -6,16 +6,16 @@
  * (plain or empty single-paragraph body; optional soft-wrap continuations), plain
  * paragraph/heading with no inline dialect markers (hard breaks — two+ spaces
  * before newline — are engine-owned as `hard_break` nodes), **simple** blockquotes
- * (every line `>`-prefixed; plain paragraphs, nested quotes, and simple flat /
- * same-family nested lists inside the quote at any reasonable depth; no lazy
- * continuation), **simple flat / nested lists** (same-family markers at every
- * depth; plain single-paragraph items; depth-2+ same-family nests are
- * engine-owned), and **simple GFM tables** (alignment row; plain text cells; no
- * nested blocks / marked phrasing), the PM node is fully determined by that IR
- * — no micromark / mdast pass. Cross-family nests, multi-block items, callout /
- * marked quotes, hard breaks inside quotes, complex tables, marked footnote
- * bodies, and marked-up phrasing still go through `from-mdast.ts` after dialect
- * enrich.
+ * (every line `>`-prefixed; plain paragraphs incl. hard breaks, nested quotes,
+ * and simple flat / same-family nested lists inside the quote at any reasonable
+ * depth; no lazy continuation), **simple flat / nested lists** (same-family
+ * markers at every depth; plain single-paragraph items; depth-2+ same-family
+ * nests are engine-owned), and **simple GFM tables** (alignment row; plain text
+ * cells; no nested blocks / marked phrasing), the PM node is fully determined by
+ * that IR — no micromark / mdast pass. Cross-family nests, multi-block items,
+ * callout / marked quotes, hard breaks inside lists / footnotes, complex tables,
+ * marked footnote bodies, and marked-up phrasing still go through `from-mdast.ts`
+ * after dialect enrich.
  *
  * See docs/performance/open-path-first-cut.md and docs/design/roobli-md-engine.md.
  */
@@ -58,9 +58,10 @@ export function hasHardBreak(markdown: string): boolean {
 /**
  * True when dialect enrich can be skipped: leaf kinds always; parseable
  * link-definitions; simple footnote-definitions; simple quotes (incl. nested
- * plain quotes and simple lists-in-quotes); simple flat or same-family nested
- * lists (any depth); simple GFM tables; paragraph / heading when the source has
- * no inline dialect markers (hard breaks allowed — engine-owned).
+ * plain quotes, hard breaks in quote paragraphs, and simple lists-in-quotes);
+ * simple flat or same-family nested lists (any depth); simple GFM tables;
+ * paragraph / heading when the source has no inline dialect markers (hard
+ * breaks allowed — engine-owned).
  */
 export function canSkipDialectEnrich(kind: NotoBlockKind, markdown: string): boolean {
   if (ENGINE_LEAF_KINDS.has(kind)) return true;
@@ -258,7 +259,8 @@ function parseQuoteChildren(
     const text = paraBuf.map((l) => l.replace(/^ {0,3}/u, '')).join('\n').trimEnd();
     paraBuf = [];
     if (text.length === 0) return true;
-    if (needsDialectInline(text) || hasHardBreak(text)) return false;
+    // Hard breaks in quote paragraphs are engine-owned (same as plain paras).
+    if (needsDialectInline(text)) return false;
     children.push({ type: 'paragraph', text });
     return true;
   };
@@ -337,11 +339,11 @@ function parseQuoteChildren(
 
 /**
  * Simple blockquote: every line is `>`-prefixed (no lazy continuation), inner
- * content is plain paragraphs, nested plain quotes, and/or simple flat /
- * same-family nested lists (any reasonable depth). Returns a child tree
- * matching CommonMark / mdast shape, or `null` when the span still needs
- * dialect enrich (callouts, marked phrasing, hard breaks, lazy continuations,
- * cross-family / multi-para lists, pathological depth).
+ * content is plain paragraphs (incl. hard breaks), nested plain quotes, and/or
+ * simple flat / same-family nested lists (any reasonable depth). Returns a child
+ * tree matching CommonMark / mdast shape, or `null` when the span still needs
+ * dialect enrich (callouts, marked phrasing, lazy continuations, cross-family /
+ * multi-para lists, pathological depth).
  */
 export function parseSimpleQuoteSource(md: string): ParsedQuoteChild[] | null {
   const trimmed = md.replace(/\r\n/g, '\n').trimEnd();
@@ -886,7 +888,7 @@ export function engineSemanticKey(kind: NotoBlockKind, markdown: string): string
 function pmQuoteFromParsed(children: readonly ParsedQuoteChild[]): ProseNode {
   const nodes = children.map((child) => {
     if (child.type === 'paragraph') {
-      return schema.nodes.paragraph.create(null, textNodes(child.text));
+      return schema.nodes.paragraph.create(null, inlineNodesFromPlainSource(child.text));
     }
     if (child.type === 'list') {
       return pmListFromParsed(child.list);

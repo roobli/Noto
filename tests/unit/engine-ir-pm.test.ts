@@ -1,8 +1,9 @@
 /**
  * Engine-owned IR → PM for common blocks (leaf + plain paragraph/heading
  * including hard breaks + parseable link-def + simple footnote-def + simple
- * quote incl. nested plain + simple lists-in-quotes + simple flat / same-family
- * nested list (any depth) + simple GFM table). Flagged `@roobli/md` path; does
+ * quote incl. nested plain + hard breaks in quotes + simple lists-in-quotes +
+ * simple flat / same-family nested list (any depth) + simple GFM table). Flagged
+ * `@roobli/md` path; does
  * not flip product default.
  */
 
@@ -69,6 +70,7 @@ describe('from-engine IR helpers', () => {
     expect(canSkipDialectEnrich('quote', '> > only nested')).toBe(true);
     expect(canSkipDialectEnrich('quote', '> - item\n> - two')).toBe(true);
     expect(canSkipDialectEnrich('quote', '> intro\n> - a\n> - b')).toBe(true);
+    expect(canSkipDialectEnrich('quote', '> a  \n> b')).toBe(true);
     expect(canSkipDialectEnrich('quote', '> Hello **x**')).toBe(false);
     expect(canSkipDialectEnrich('quote', '> [!NOTE]\n> body')).toBe(false);
     expect(canSkipDialectEnrich('quote', '> > nested\n> lazy')).toBe(false);
@@ -183,6 +185,13 @@ describe('from-engine IR helpers', () => {
         }],
       } },
     ]);
+    expect(parseSimpleQuoteSource('> a  \n> b')).toEqual([
+      { type: 'paragraph', text: 'a  \nb' },
+    ]);
+    expect(parseSimpleQuoteSource('> outer\n> > nested  \n> > deep')).toEqual([
+      { type: 'paragraph', text: 'outer' },
+      { type: 'quote', children: [{ type: 'paragraph', text: 'nested  \ndeep' }] },
+    ]);
     expect(parseSimpleQuoteSource('> **bold**')).toBeNull();
     expect(parseSimpleQuoteSource('> > nested\n> lazy')).toBeNull();
     expect(parseSimpleQuoteSource('> - **bold**')).toBeNull();
@@ -292,7 +301,7 @@ describe('blockFromEngineSpan', () => {
     expect(blockFromEngineSpan('heading', 'Setext *x*\n=======')).toBeNull();
   });
 
-  it('builds simple and nested plain quotes + lists-in-quotes; refuses callout / marked / lazy', () => {
+  it('builds simple and nested plain quotes + lists-in-quotes + hard breaks; refuses callout / marked / lazy', () => {
     const q = blockFromEngineSpan('quote', '> Hello world');
     expect(q?.type.name).toBe('blockquote');
     expect(q?.childCount).toBe(1);
@@ -356,12 +365,35 @@ describe('blockFromEngineSpan', () => {
     expect(tasks?.child(0).child(0).attrs.checked).toBe(false);
     expect(tasks?.child(0).child(1).attrs.checked).toBe(true);
 
+    const hb = blockFromEngineSpan('quote', '> a  \n> b');
+    expect(hb?.type.name).toBe('blockquote');
+    expect(hb?.childCount).toBe(1);
+    expect(hb?.child(0).type.name).toBe('paragraph');
+    expect(hb?.child(0).childCount).toBe(3);
+    expect(hb?.child(0).child(0).text).toBe('a');
+    expect(hb?.child(0).child(1).type.name).toBe('hard_break');
+    expect(hb?.child(0).child(2).text).toBe('b');
+
+    const hbNest = blockFromEngineSpan('quote', '> outer\n> > nested  \n> > deep');
+    expect(hbNest?.child(1).type.name).toBe('blockquote');
+    expect(hbNest?.child(1).child(0).child(1).type.name).toBe('hard_break');
+    expect(hbNest?.child(1).textContent).toBe('nesteddeep');
+
+    const hbMulti = blockFromEngineSpan('quote', '> A  \n> B\n> C  \n> D');
+    // Soft newlines stay in text; hard breaks are nodes (same as plain paras).
+    expect(hbMulti?.child(0).childCount).toBe(5);
+    expect(hbMulti?.child(0).child(0).text).toBe('A');
+    expect(hbMulti?.child(0).child(1).type.name).toBe('hard_break');
+    expect(hbMulti?.child(0).child(2).text).toBe('B\nC');
+    expect(hbMulti?.child(0).child(3).type.name).toBe('hard_break');
+    expect(hbMulti?.child(0).child(4).text).toBe('D');
+    expect(hbMulti?.textContent).toBe('AB\nCD');
+
     expect(blockFromEngineSpan('quote', '> Hello **bold**')).toBeNull();
     expect(blockFromEngineSpan('quote', '> [!NOTE]\n> body')).toBeNull();
     expect(blockFromEngineSpan('quote', '> > nested\n> lazy')).toBeNull();
     expect(blockFromEngineSpan('quote', '> - **bold**')).toBeNull();
     expect(blockFromEngineSpan('quote', '> # heading')).toBeNull();
-    expect(blockFromEngineSpan('quote', '> a  \n> b')).toBeNull();
     expect(blockFromEngineSpan('quote', '>')).toBeNull();
   });
 
