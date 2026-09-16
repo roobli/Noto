@@ -1,4 +1,4 @@
-import { mkdir, rm, writeFile } from 'node:fs/promises';
+import { mkdir, readFile, rm, writeFile } from 'node:fs/promises';
 import path from 'node:path';
 import { expect, test, _electron as electron, type ElectronApplication, type Page } from '@playwright/test';
 import { packagedExecutable } from './packaged-app';
@@ -100,6 +100,17 @@ test.describe('quick open, as the author built it', () => {
       await page.keyboard.press(process.platform === 'darwin' ? 'Meta+[' : 'Control+[');
       await expect(palette).toHaveAttribute('data-width', 'default');
       await page.keyboard.press(process.platform === 'darwin' ? 'Meta+]' : 'Control+]');
+      await expect(palette).toHaveAttribute('data-width', 'wide');
+      // Wait for main to persist the preference before tearing the window down —
+      // otherwise Windows CI can close mid-write and reopen at the default width.
+      await expect.poll(async () => {
+        try {
+          const stored = JSON.parse(await readFile(path.join(userData, 'settings.json'), 'utf8'));
+          return stored.quickOpenWidth ?? null;
+        } catch {
+          return null;
+        }
+      }, { timeout: 15_000 }).toBe('wide');
       await page.keyboard.press('Escape');
     } finally {
       await app.close();
@@ -113,8 +124,9 @@ test.describe('quick open, as the author built it', () => {
     try {
       const page = await again.firstWindow();
       await page.waitForSelector('[data-testid="file-tree"]', { state: 'visible', timeout: 30_000 });
+      // Settings load async after mount; poll until the palette reflects disk.
       await invokeMenu(again, 'quick-open');
-      await expect(page.getByTestId('quick-open')).toHaveAttribute('data-width', 'wide');
+      await expect(page.getByTestId('quick-open')).toHaveAttribute('data-width', 'wide', { timeout: 15_000 });
     } finally {
       await again.close();
     }

@@ -9,7 +9,7 @@
  * Flagged open uses `enrich: 'none'` on main then `enrichSpansInRange` in the
  * renderer for a first-paint window (and the remainder after paint) — see
  * `SpanEnrichMode` and docs/performance/open-path-first-cut.md. Engine-owned
- * leaf / plain paragraph+heading / simple quote (incl. nested plain) / flat or same-family nested list (any depth) / simple table skip mdast (IR → PM via `pm/from-engine.ts`).
+ * leaf / plain paragraph+heading / simple quote (incl. nested plain + lists-in-quotes) / flat or same-family nested list (any depth) / simple table skip mdast (IR → PM via `pm/from-engine.ts`).
  *
  * Flagged block-mode saves (identity, single-block, multi-block insert/delete)
  * map into engine shapes, call `serializeDocument`, then the host re-attaches
@@ -51,6 +51,7 @@ import {
   engineSemanticKey,
   parseLinkDefinitionSource,
   parseSimpleQuoteSource,
+  type ParsedFlatList,
   type ParsedQuoteChild,
 } from './pm/from-engine';
 
@@ -424,6 +425,28 @@ export function enrichNextDeferredInRange<T extends AdapterBlockSpan>(
  * remainder gap from looking like raw paragraph soup when the user scrolls
  * ahead of enrich — see docs/performance/open-path-first-cut.md.
  */
+function mdastListFromParsed(list: ParsedFlatList): Extract<RootContent, { type: 'list' }> {
+  return {
+    type: 'list',
+    ordered: list.ordered,
+    start: list.ordered ? list.start : null,
+    spread: list.spread,
+    children: list.items.map((item) => {
+      const kids: BlockContent[] = [{
+        type: 'paragraph',
+        children: item.text.length > 0 ? [{ type: 'text', value: item.text }] : [],
+      }];
+      if (item.nested) kids.push(mdastListFromParsed(item.nested));
+      return {
+        type: 'listItem' as const,
+        checked: item.checked,
+        spread: false,
+        children: kids,
+      };
+    }),
+  };
+}
+
 function mdastQuoteChildren(
   children: readonly ParsedQuoteChild[],
 ): Array<BlockContent | DefinitionContent> {
@@ -433,6 +456,9 @@ function mdastQuoteChildren(
         type: 'paragraph' as const,
         children: child.text.length > 0 ? [{ type: 'text' as const, value: child.text }] : [],
       };
+    }
+    if (child.type === 'list') {
+      return mdastListFromParsed(child.list);
     }
     return {
       type: 'blockquote' as const,

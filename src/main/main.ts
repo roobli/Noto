@@ -830,6 +830,11 @@ async function run(): Promise<void> {
       .then(() => serviceHost.stop().catch((error) => logger.log('service_stop_failed', {
         code: error instanceof Error ? error.message.split(':', 1)[0] : 'SERVICE_FAILED',
       })))
+      // Drain settings so a preference written moments before close (quick-open
+      // width, rail width, …) lands on disk before the process exits.
+      .then(() => settings.drain().catch((error) => logger.log('settings_drain_failed', {
+        code: error instanceof Error ? error.message.split(':', 1)[0] : 'SETTINGS_FAILED',
+      })))
       .finally(() => {
         rendererLeaseBridge.rendererDisposed();
         app.quit();
