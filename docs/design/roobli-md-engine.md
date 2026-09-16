@@ -200,21 +200,22 @@ incremental PM patch. **Engine-owned IR → PM** (`pm/from-engine.ts`) skips
 mdast for leaf kinds + plain paragraph/heading (incl. hard breaks as
 `hard_break` nodes) + parseable link-definitions +
 simple footnote-definitions (plain or empty single-paragraph body; optional soft-wrap) +
-simple blockquotes (every line `>`-prefixed, plain inner paragraphs only) +
+simple blockquotes (every line `>`-prefixed; plain paragraphs and nested plain
+quotes at any reasonable depth; no lazy continuation) +
 simple flat lists and same-family nested lists (any depth; nested children may nest
 only) + simple GFM tables (alignment row; plain text cells; consistent columns);
 enrich flags mark those done — see `docs/performance/open-path-first-cut.md`.
-Cross-family nests, multi-block items, nested / marked / callout quotes, complex /
-ragged / marked tables, marked footnote bodies, and marked-up phrasing stay
-on dialect (empty footnote bodies and same-family nests at any depth are
-engine-owned; hard breaks inside quotes / lists / footnotes still dialect).
-Product default stays micromark.
+Cross-family nests, multi-block items, callout / list-in-quote / marked quotes,
+complex / ragged / marked tables, marked footnote bodies, and marked-up phrasing
+stay on dialect (empty footnote bodies, same-family nests at any depth, and nested
+plain quotes are engine-owned; hard breaks inside quotes / lists / footnotes still
+dialect). Product default stays micromark.
 
 Next: keep growing `markdown-golden/` (more GFM / vault edges), extend IR→PM
-only where micromark parity is locked (complex tables / nested quotes / marked
-phrasing), then reconsider default-on. Hard-breaks,
-images, empty/meta fences, escapes, table-align, ordered-start, inline HTML,
-simple-flat-lists, simple-nested-lists, simple-gfm-tables, simple-footnote-defs,
+only where micromark parity is locked (complex tables / marked phrasing), then
+reconsider default-on. Hard-breaks, images, empty/meta fences, escapes,
+table-align, ordered-start, inline HTML, simple-flat-lists, simple-nested-lists,
+simple-nested-quotes, simple-gfm-tables, simple-footnote-defs,
 empty-footnote-defs, and cjk-emphasis goldens landed.
 Do **not** flip the product default yet.
 

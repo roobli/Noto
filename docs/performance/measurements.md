@@ -575,8 +575,9 @@ Medium scroll/idle tick **~58 ms** vs full remainder **704 ms** (~12×). Large
 **82 ms** vs **3084 ms** (~38×). Post-paint critical path is one budgeted window
 (~`OPEN_VIEWPORT_ENRICH_BUDGET` spans), not the full remainder.
 
-Next residual: keep growing markdown-golden before default-on; complex tables / nested quotes / marked phrasing /
-complex tables / nested quotes / marked-up phrasing still dialect. One-level nested lists are engine-owned (flagged). Kind-aware
+Next residual: keep growing markdown-golden before default-on; complex tables / marked phrasing /
+marked-up phrasing still dialect; callout / list-in-quote / marked quotes still dialect.
+Nested plain quotes and same-family nested lists (any depth) are engine-owned (flagged). Kind-aware
 stand-ins (#90), IR→PM common blocks (+ link-definition + simple footnote-def incl. empty +
 simple quote + simple flat list + simple GFM table), and incremental PM patch per enrich tick shipped
 (flagged). Plain paragraph IR→PM trims trailing spaces (wiki-trigger save
