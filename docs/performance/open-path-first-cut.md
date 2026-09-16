@@ -1,6 +1,6 @@
 # Open-path / `parseDocument` — measured cuts
 
-Status: **lazy / deferred wire nodes + viewport-driven enrich + incremental PM patch + kind-aware stand-ins + engine-owned IR→PM (common blocks + simple quotes incl. nested plain + lists-in-quotes + simple flat / same-family nested lists any depth + simple GFM tables + simple footnote-defs incl. empty)** under the flagged `@roobli/md` path.
+Status: **lazy / deferred wire nodes + viewport-driven enrich + incremental PM patch + kind-aware stand-ins + engine-owned IR→PM (common blocks + simple quotes incl. nested plain + lists-in-quotes + hard breaks in quotes + simple flat / same-family nested lists any depth + simple GFM tables + simple footnote-defs incl. empty)** under the flagged `@roobli/md` path.
 Product default remains micromark. Do **not** flip `NOTO_MARKDOWN_ENGINE`
 default-on from this work.
 
@@ -149,9 +149,9 @@ Leaf kinds (`fenced-code` / `indented-code` / `thematic-break` / `frontmatter` /
 `html` / `display-math`), **parseable link-definitions**, **simple
 footnote-definitions** (plain single-paragraph body; optional soft-wrap
 continuations), **plain** paragraph/heading (no inline dialect markers),
-**simple blockquotes** (every line `>`-prefixed; plain paragraphs, nested
-plain quotes, and simple flat / same-family nested lists inside the quote at any
-reasonable depth; no lazy continuation), **simple flat lists**
+**simple blockquotes** (every line `>`-prefixed; plain paragraphs incl. hard
+breaks, nested plain quotes, and simple flat / same-family nested lists inside
+the quote at any reasonable depth; no lazy continuation), **simple flat lists**
 and **same-family nested lists** (any depth; plain single-paragraph items; optional
 task checkboxes / loose / soft-wrap), and **simple GFM tables** (header + alignment row +
 optional body; plain text cells; consistent column counts; leading `|` after
@@ -163,21 +163,22 @@ the first-paint prefix.
 Plain paragraph IR→PM drops trailing spaces that are not hard breaks
 (CommonMark/mdast; avoids `See  [[` after open+type). Hard breaks
 (` {2,}\n`) are engine-owned as `hard_break` nodes (serialize keeps two
-trailing spaces). Soft newlines stay in text (`pre-wrap`). Marked phrasing
-still takes the dialect path. Setext `===` headings are already engine-owned
-via `parseHeadingSource` (setext-`---` vs hr remains an engine split gap —
-see markdown-golden README).
+trailing spaces), including inside simple quote paragraphs. Soft newlines stay
+in text (`pre-wrap`). Marked phrasing still takes the dialect path. Setext
+`===` headings are already engine-owned via `parseHeadingSource` (setext-`---`
+vs hr remains an engine split gap — see markdown-golden README).
 
 Cross-family nests, multi-block items, callout / marked quotes, hard breaks
-inside quotes, complex / ragged / marked tables, marked footnote bodies, and
-marked-up phrasing still need dialect enrich + `from-mdast` (empty footnote
-bodies, same-family nests at any depth, nested plain quotes, and simple
-lists-in-quotes are engine-owned). Does **not** flip default-on.
+inside lists / footnotes, complex / ragged / marked tables, marked footnote
+bodies, and marked-up phrasing still need dialect enrich + `from-mdast` (empty
+footnote bodies, same-family nests at any depth, nested plain quotes, simple
+lists-in-quotes, and hard breaks in quotes are engine-owned). Does **not** flip
+default-on.
 
 ## API (additions for Cut 5)
 
 - `pm/from-engine.ts` — `blockFromEngineSpan` / `canSkipDialectEnrich` /
-  `engineSemanticKey` / fence+heading+simple-quote (incl. nested plain + lists-in-quotes)+flat-or-nested-list+simple-table+simple-footnote-def (incl. empty) source parsers
+  `engineSemanticKey` / fence+heading+simple-quote (incl. nested plain + lists-in-quotes + hard breaks)+flat-or-nested-list+simple-table+simple-footnote-def (incl. empty) source parsers
 - `createEnrichFlags(length, enrichedExclusiveTo, spans?)` — optional spans
   mark engine-owned remainder as already enriched
 - `enrichSpansInRange` — skips micromark for engine-owned spans; contiguous
@@ -193,17 +194,17 @@ lists-in-quotes are engine-owned). Does **not** flip default-on.
 2. ~~Kind-aware structural stand-ins (heading/fence/…)~~ — shipped (#90).
 3. Extend IR→PM to more kinds when safe (complex tables / marked footnote
    bodies / marked phrasing still dialect; callout / marked quotes / hard-breaks-
-   in-quotes / lazy continuations still dialect); optional lightweight inline IR
-   for marks later — not this cycle. Plain hard-break paragraphs/headings,
-   same-family nested lists (any depth), nested plain quotes, and simple
-   lists-in-quotes are engine-owned.
+   in-lists-or-footnotes / lazy continuations still dialect); optional lightweight
+   inline IR for marks later — not this cycle. Plain hard-break paragraphs/headings,
+   same-family nested lists (any depth), nested plain quotes, simple
+   lists-in-quotes, and hard breaks in quotes are engine-owned.
 4. Keep growing `tests/fixtures/markdown-golden/` before default-on; GFM inline,
    nested lists, simple-nested-lists (depth-2+), simple-nested-quotes,
-   simple-lists-in-quotes, HTML blocks, callout edges, hr/setext, link-defs,
-   simple quotes, simple flat lists, simple GFM tables, simple footnote-defs,
-   empty footnote-defs, CJK emphasis, hard-breaks, images, empty/meta fences,
-   escapes, table-align, ordered-start, inline HTML landed; intentional engine
-   gaps documented in that README.
+   simple-lists-in-quotes, simple-hard-breaks-in-quotes, HTML blocks, callout
+   edges, hr/setext, link-defs, simple quotes, simple flat lists, simple GFM
+   tables, simple footnote-defs, empty footnote-defs, CJK emphasis, hard-breaks,
+   images, empty/meta fences, escapes, table-align, ordered-start, inline HTML
+   landed; intentional engine gaps documented in that README.
 
 Do not defer main’s file-truth structural parse; do not flip the product
 default from this doc.
