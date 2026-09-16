@@ -164,6 +164,7 @@ describe('markdown golden gates — fixture inventory', () => {
       'simple-flat-lists.md',
       'simple-footnote-defs.md',
       'simple-gfm-tables.md',
+      'simple-nested-lists.md',
       'simple-quotes.md',
       'table-align.md',
       'tables.md',
