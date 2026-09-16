@@ -72,6 +72,14 @@ describe('writing settings', () => {
     await store.update({ spellCheck: false });
     expect(JSON.parse(await readFile(file, 'utf8'))).toMatchObject({ spellCheck: false });
   });
+
+  it('drain waits for an in-flight persist to finish', async () => {
+    const { store, file } = await storeIn();
+    const pending = store.update({ quickOpenWidth: 'wide' });
+    await store.drain();
+    await pending;
+    expect(JSON.parse(await readFile(file, 'utf8'))).toMatchObject({ quickOpenWidth: 'wide' });
+  });
 });
 
 describe('validating a write from the renderer', () => {

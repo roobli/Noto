@@ -17,6 +17,8 @@ import { coerceSettings } from '../../shared/settings/v1/validate';
 export class SettingsStore {
   private settings: NotoSettingsV1 = DEFAULT_SETTINGS;
   private loaded = false;
+  /** Serializes disk writes so overlapping patches do not race the tmp rename. */
+  private writeChain: Promise<void> = Promise.resolve();
 
   constructor(private readonly filePath: string) {}
 
@@ -38,6 +40,15 @@ export class SettingsStore {
   }
 
   /**
+   * Wait for every in-flight `update` persist to finish. Used on quit so a
+   * preference changed a moment before close (quick-open width, rail width, …)
+   * is not lost when the window tears down mid-IPC.
+   */
+  async drain(): Promise<void> {
+    await this.writeChain;
+  }
+
+  /**
    * Apply a partial change.
    *
    * A patch rather than a whole object, so a renderer that knows about fewer
@@ -46,14 +57,17 @@ export class SettingsStore {
   async update(patch: Partial<NotoSettingsV1>): Promise<NotoSettingsV1> {
     await this.load();
     this.settings = coerceSettings({ ...this.settings, ...patch });
-    await this.persist();
-    return this.settings;
+    const snapshot = this.settings;
+    const persist = this.persistSnapshot(snapshot);
+    this.writeChain = this.writeChain.then(() => persist, () => persist);
+    await persist;
+    return snapshot;
   }
 
-  private async persist(): Promise<void> {
+  private async persistSnapshot(snapshot: NotoSettingsV1): Promise<void> {
     const temporary = `${this.filePath}.tmp`;
     await mkdir(path.dirname(this.filePath), { recursive: true });
-    await writeFile(temporary, `${JSON.stringify(this.settings, null, 2)}\n`, 'utf8');
+    await writeFile(temporary, `${JSON.stringify(snapshot, null, 2)}\n`, 'utf8');
     await rename(temporary, this.filePath);
   }
 }

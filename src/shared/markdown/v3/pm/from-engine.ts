@@ -6,13 +6,14 @@
  * (plain or empty single-paragraph body; optional soft-wrap continuations), plain
  * paragraph/heading with no inline dialect markers (hard breaks — two+ spaces
  * before newline — are engine-owned as `hard_break` nodes), **simple** blockquotes
- * (every line `>`-prefixed; plain paragraphs and nested quotes at any reasonable
- * depth; no lazy continuation), **simple flat / nested lists** (same-family
- * markers at every depth; plain single-paragraph items; depth-2+ same-family
- * nests are engine-owned), and **simple GFM tables** (alignment row; plain text
- * cells; no nested blocks / marked phrasing), the PM node is fully determined by
- * that IR — no micromark / mdast pass. Cross-family nests, multi-block items,
- * callout / list-in-quote / marked quotes, complex tables, marked footnote
+ * (every line `>`-prefixed; plain paragraphs, nested quotes, and simple flat /
+ * same-family nested lists inside the quote at any reasonable depth; no lazy
+ * continuation), **simple flat / nested lists** (same-family markers at every
+ * depth; plain single-paragraph items; depth-2+ same-family nests are
+ * engine-owned), and **simple GFM tables** (alignment row; plain text cells; no
+ * nested blocks / marked phrasing), the PM node is fully determined by that IR
+ * — no micromark / mdast pass. Cross-family nests, multi-block items, callout /
+ * marked quotes, hard breaks inside quotes, complex tables, marked footnote
  * bodies, and marked-up phrasing still go through `from-mdast.ts` after dialect
  * enrich.
  *
@@ -57,9 +58,9 @@ export function hasHardBreak(markdown: string): boolean {
 /**
  * True when dialect enrich can be skipped: leaf kinds always; parseable
  * link-definitions; simple footnote-definitions; simple quotes (incl. nested
- * plain quotes); simple flat or same-family nested lists (any depth); simple
- * GFM tables; paragraph / heading when the source has no inline dialect markers
- * (hard breaks allowed — engine-owned).
+ * plain quotes and simple lists-in-quotes); simple flat or same-family nested
+ * lists (any depth); simple GFM tables; paragraph / heading when the source has
+ * no inline dialect markers (hard breaks allowed — engine-owned).
  */
 export function canSkipDialectEnrich(kind: NotoBlockKind, markdown: string): boolean {
   if (ENGINE_LEAF_KINDS.has(kind)) return true;
@@ -160,12 +161,17 @@ export function parseHeadingSource(md: string): ParsedHeading | null {
 
 const QUOTE_LINE_RE = /^( {0,3})>([ \t]?)(.*)$/u;
 
+/** Marker line: indent (spaces) + bullet or ordered. Nested markers may exceed 3. */
+const BULLET_MARKER_RE = /^( *)([-+*])(?:([ \t]+)|$)/u;
+const ORDERED_MARKER_RE = /^( *)([0-9]{1,9})([.)])(?:([ \t]+)|$)/u;
+
 /** Cap nest depth so pathological `>>>>…` falls through to dialect. */
 const MAX_QUOTE_NEST_DEPTH = 16;
 
 export type ParsedQuoteChild =
   | { readonly type: 'paragraph'; readonly text: string }
-  | { readonly type: 'quote'; readonly children: readonly ParsedQuoteChild[] };
+  | { readonly type: 'quote'; readonly children: readonly ParsedQuoteChild[] }
+  | { readonly type: 'list'; readonly list: ParsedFlatList };
 
 interface QuoteLine {
   readonly depth: number;
@@ -213,6 +219,26 @@ function quoteInnerIsParagraphLine(rest: string): boolean {
   return true;
 }
 
+/** True when peeled quote content starts a bullet / ordered list item. */
+function quoteInnerIsListStart(rest: string): boolean {
+  if (/^[ \t]*$/u.test(rest)) return false;
+  // Nested list markers keep their indent after `>` peel (`>   - nest`).
+  if (BULLET_MARKER_RE.test(rest) || ORDERED_MARKER_RE.test(rest)) return true;
+  return false;
+}
+
+/**
+ * Same-depth quote line that continues an open list (blank, nested marker, or
+ * soft-wrap / nested indent). Non-indented prose ends the list.
+ */
+function quoteInnerContinuesList(rest: string): boolean {
+  if (/^[ \t]*$/u.test(rest)) return true;
+  if (quoteInnerIsListStart(rest)) return true;
+  // Indented continuation or nested marker under the list item.
+  if (/^[ \t]/.test(rest)) return true;
+  return false;
+}
+
 /**
  * Parse quote children at `level` (1 = outermost). Lines with greater depth open
  * nested quotes. A non-blank same-level line immediately after a nest would be
@@ -247,6 +273,38 @@ function parseQuoteChildren(
         i += 1;
         continue;
       }
+      // Simple list inside the quote: peel `>`, reuse flat/nested list parser.
+      if (quoteInnerIsListStart(line.rest)) {
+        if (!flushPara()) return null;
+        const listRests: string[] = [];
+        while (i < lines.length && lines[i]!.depth === level) {
+          const rest = lines[i]!.rest;
+          if (/^[ \t]*$/u.test(rest)) {
+            // Trailing blank after the list stays for the outer loop (separator).
+            let j = i + 1;
+            while (j < lines.length && lines[j]!.depth === level && /^[ \t]*$/u.test(lines[j]!.rest)) {
+              j += 1;
+            }
+            const next = j < lines.length && lines[j]!.depth === level ? lines[j]!.rest : null;
+            if (next !== null && quoteInnerContinuesList(next) && !/^[ \t]*$/u.test(next)) {
+              listRests.push(rest);
+              i += 1;
+              continue;
+            }
+            break;
+          }
+          if (!quoteInnerContinuesList(rest)) break;
+          // First collected line must be a marker; later may be soft-wrap / nest.
+          if (listRests.length === 0 && !quoteInnerIsListStart(rest)) return null;
+          listRests.push(rest);
+          i += 1;
+        }
+        if (listRests.length === 0) return null;
+        const list = parseSimpleFlatListSource(listRests.join('\n'));
+        if (!list) return null;
+        children.push({ type: 'list', list });
+        continue;
+      }
       if (!quoteInnerIsParagraphLine(line.rest)) return null;
       paraBuf.push(line.rest);
       i += 1;
@@ -279,10 +337,11 @@ function parseQuoteChildren(
 
 /**
  * Simple blockquote: every line is `>`-prefixed (no lazy continuation), inner
- * content is plain paragraphs and/or nested plain quotes (any reasonable depth).
- * Returns a child tree matching CommonMark / mdast shape, or `null` when the
- * span still needs dialect enrich (callouts, lists-in-quotes, marked phrasing,
- * hard breaks, lazy continuations, pathological depth).
+ * content is plain paragraphs, nested plain quotes, and/or simple flat /
+ * same-family nested lists (any reasonable depth). Returns a child tree
+ * matching CommonMark / mdast shape, or `null` when the span still needs
+ * dialect enrich (callouts, marked phrasing, hard breaks, lazy continuations,
+ * cross-family / multi-para lists, pathological depth).
  */
 export function parseSimpleQuoteSource(md: string): ParsedQuoteChild[] | null {
   const trimmed = md.replace(/\r\n/g, '\n').trimEnd();
@@ -314,10 +373,6 @@ export interface ParsedFlatList {
   readonly spread: boolean;
   readonly items: readonly ParsedFlatListItem[];
 }
-
-/** Marker line: indent (spaces) + bullet or ordered. Nested markers may exceed 3. */
-const BULLET_MARKER_RE = /^( *)([-+*])(?:([ \t]+)|$)/u;
-const ORDERED_MARKER_RE = /^( *)([0-9]{1,9})([.)])(?:([ \t]+)|$)/u;
 
 /** Cap nest indent / depth so pathological input falls through to dialect. */
 const MAX_LIST_MARKER_INDENT = 40;
@@ -832,6 +887,9 @@ function pmQuoteFromParsed(children: readonly ParsedQuoteChild[]): ProseNode {
   const nodes = children.map((child) => {
     if (child.type === 'paragraph') {
       return schema.nodes.paragraph.create(null, textNodes(child.text));
+    }
+    if (child.type === 'list') {
+      return pmListFromParsed(child.list);
     }
     return pmQuoteFromParsed(child.children);
   });

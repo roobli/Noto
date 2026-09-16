@@ -1,8 +1,9 @@
 /**
  * Engine-owned IR → PM for common blocks (leaf + plain paragraph/heading
  * including hard breaks + parseable link-def + simple footnote-def + simple
- * quote incl. nested plain + simple flat / same-family nested list (any depth)
- * + simple GFM table). Flagged `@roobli/md` path; does not flip product default.
+ * quote incl. nested plain + simple lists-in-quotes + simple flat / same-family
+ * nested list (any depth) + simple GFM table). Flagged `@roobli/md` path; does
+ * not flip product default.
  */
 
 import { describe, expect, it } from 'vitest';
@@ -50,7 +51,7 @@ describe('from-engine IR helpers', () => {
     expect(hasHardBreak('soft\nwrap')).toBe(false);
   });
 
-  it('canSkipDialectEnrich for leaf + plain phrasing + simple/nested quote + flat/nested list + table + footnote', () => {
+  it('canSkipDialectEnrich for leaf + plain phrasing + simple/nested quote + lists-in-quotes + flat/nested list + table + footnote', () => {
     expect(canSkipDialectEnrich('fenced-code', '```js\nx\n```')).toBe(true);
     expect(canSkipDialectEnrich('thematic-break', '---')).toBe(true);
     expect(canSkipDialectEnrich('paragraph', 'Hello')).toBe(true);
@@ -66,9 +67,12 @@ describe('from-engine IR helpers', () => {
     expect(canSkipDialectEnrich('quote', '> Hello')).toBe(true);
     expect(canSkipDialectEnrich('quote', '> outer\n> > nested')).toBe(true);
     expect(canSkipDialectEnrich('quote', '> > only nested')).toBe(true);
+    expect(canSkipDialectEnrich('quote', '> - item\n> - two')).toBe(true);
+    expect(canSkipDialectEnrich('quote', '> intro\n> - a\n> - b')).toBe(true);
     expect(canSkipDialectEnrich('quote', '> Hello **x**')).toBe(false);
     expect(canSkipDialectEnrich('quote', '> [!NOTE]\n> body')).toBe(false);
     expect(canSkipDialectEnrich('quote', '> > nested\n> lazy')).toBe(false);
+    expect(canSkipDialectEnrich('quote', '> - **bold**')).toBe(false);
     expect(canSkipDialectEnrich('bullet-list', '- a\n- b')).toBe(true);
     expect(canSkipDialectEnrich('ordered-list', '1. a\n2. b')).toBe(true);
     expect(canSkipDialectEnrich('task-list', '- [ ] a\n- [x] b')).toBe(true);
@@ -150,9 +154,38 @@ describe('from-engine IR helpers', () => {
       { type: 'quote', children: [{ type: 'paragraph', text: 'a' }] },
       { type: 'quote', children: [{ type: 'paragraph', text: 'b' }] },
     ]);
+    expect(parseSimpleQuoteSource('> - item')).toEqual([
+      { type: 'list', list: {
+        ordered: false, bullet: '-', delimiter: null, start: 1, spread: false,
+        items: [{ checked: null, text: 'item', nested: null }],
+      } },
+    ]);
+    expect(parseSimpleQuoteSource('> intro\n> - a\n> - b\n> out')).toEqual([
+      { type: 'paragraph', text: 'intro' },
+      { type: 'list', list: {
+        ordered: false, bullet: '-', delimiter: null, start: 1, spread: false,
+        items: [
+          { checked: null, text: 'a', nested: null },
+          { checked: null, text: 'b', nested: null },
+        ],
+      } },
+      { type: 'paragraph', text: 'out' },
+    ]);
+    expect(parseSimpleQuoteSource('> - outer\n>   - nested')).toEqual([
+      { type: 'list', list: {
+        ordered: false, bullet: '-', delimiter: null, start: 1, spread: false,
+        items: [{
+          checked: null, text: 'outer',
+          nested: {
+            ordered: false, bullet: '-', delimiter: null, start: 1, spread: false,
+            items: [{ checked: null, text: 'nested', nested: null }],
+          },
+        }],
+      } },
+    ]);
     expect(parseSimpleQuoteSource('> **bold**')).toBeNull();
     expect(parseSimpleQuoteSource('> > nested\n> lazy')).toBeNull();
-    expect(parseSimpleQuoteSource('> - item')).toBeNull();
+    expect(parseSimpleQuoteSource('> - **bold**')).toBeNull();
     expect(parseSimpleQuoteSource('> [!NOTE]\n> x')).toBeNull();
     expect(parseSimpleFlatListSource('- a\n- b')).toEqual({
       ordered: false, bullet: '-', delimiter: null, start: 1, spread: false,
@@ -259,7 +292,7 @@ describe('blockFromEngineSpan', () => {
     expect(blockFromEngineSpan('heading', 'Setext *x*\n=======')).toBeNull();
   });
 
-  it('builds simple and nested plain quotes; refuses callout / list / marked / lazy', () => {
+  it('builds simple and nested plain quotes + lists-in-quotes; refuses callout / marked / lazy', () => {
     const q = blockFromEngineSpan('quote', '> Hello world');
     expect(q?.type.name).toBe('blockquote');
     expect(q?.childCount).toBe(1);
@@ -293,10 +326,40 @@ describe('blockFromEngineSpan', () => {
     expect(deep?.child(1).child(1).textContent).toBe('deep');
 
     expect(blockFromEngineSpan('quote', '> trailing ')?.textContent).toBe('trailing');
+
+    const listed = blockFromEngineSpan('quote', '> - item a\n> - item b');
+    expect(listed?.type.name).toBe('blockquote');
+    expect(listed?.childCount).toBe(1);
+    expect(listed?.child(0).type.name).toBe('bullet_list');
+    expect(listed?.child(0).childCount).toBe(2);
+    expect(listed?.child(0).child(0).textContent).toBe('item a');
+    expect(listed?.child(0).child(1).textContent).toBe('item b');
+
+    const mixed = blockFromEngineSpan('quote', '> intro\n> - a\n> - b\n> out');
+    expect(mixed?.childCount).toBe(3);
+    expect(mixed?.child(0).type.name).toBe('paragraph');
+    expect(mixed?.child(0).textContent).toBe('intro');
+    expect(mixed?.child(1).type.name).toBe('bullet_list');
+    expect(mixed?.child(2).type.name).toBe('paragraph');
+    expect(mixed?.child(2).textContent).toBe('out');
+
+    const nestList = blockFromEngineSpan('quote', '> - outer\n>   - nested');
+    expect(nestList?.child(0).type.name).toBe('bullet_list');
+    expect(nestList?.child(0).child(0).child(1).type.name).toBe('bullet_list');
+    expect(nestList?.child(0).child(0).child(1).child(0).textContent).toBe('nested');
+
+    const ordered = blockFromEngineSpan('quote', '> 1. one\n> 2. two');
+    expect(ordered?.child(0).type.name).toBe('ordered_list');
+    expect(ordered?.child(0).child(0).textContent).toBe('one');
+
+    const tasks = blockFromEngineSpan('quote', '> - [ ] todo\n> - [x] done');
+    expect(tasks?.child(0).child(0).attrs.checked).toBe(false);
+    expect(tasks?.child(0).child(1).attrs.checked).toBe(true);
+
     expect(blockFromEngineSpan('quote', '> Hello **bold**')).toBeNull();
     expect(blockFromEngineSpan('quote', '> [!NOTE]\n> body')).toBeNull();
     expect(blockFromEngineSpan('quote', '> > nested\n> lazy')).toBeNull();
-    expect(blockFromEngineSpan('quote', '> - item')).toBeNull();
+    expect(blockFromEngineSpan('quote', '> - **bold**')).toBeNull();
     expect(blockFromEngineSpan('quote', '> # heading')).toBeNull();
     expect(blockFromEngineSpan('quote', '> a  \n> b')).toBeNull();
     expect(blockFromEngineSpan('quote', '>')).toBeNull();
