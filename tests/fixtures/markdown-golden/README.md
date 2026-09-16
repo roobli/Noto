@@ -26,7 +26,7 @@ Small public fixtures for comparing the **micromark** product path against
 | `trailing-spaces.md` | trailing spaces stripped; soft break (single newline, no hard break) |
 | `simple-quotes.md` | simple `>` quotes (single / continuation / multi-para / indent / trailing spaces / CJK); no nested, lists, or callouts |
 | `simple-flat-lists.md` | flat bullet/ordered/task lists (markers `-*+`, `.`/`)`, start≠1, loose, soft-wrap); no nest or marked items |
-| `simple-nested-lists.md` | one-level same-family nested bullet/ordered (plain items; soft-wrap then nest); no depth-2+ or marked items |
+| `simple-nested-lists.md` | same-family nested bullet/ordered at any depth (plain items; soft-wrap then nest; depth-2+); no cross-family or marked items |
 | `simple-gfm-tables.md` | simple GFM pipe tables (align row; plain cells; indent; compact); no marked/ragged cells |
 | `simple-footnote-defs.md` | simple `[^id]:` footnote definitions (plain body, soft-wrap, cased label) |
 | `empty-footnote-defs.md` | empty / whitespace-only `[^id]:` footnote definitions (cased label) |
