@@ -3,19 +3,20 @@
  *
  * Native spans are kind + source offsets only. For leaf kinds (fence, hr, math,
  * frontmatter, html), parseable link-definitions, **simple footnote-definitions**
- * (plain or empty single-paragraph body; optional soft-wrap continuations), plain
+ * (plain or empty single-paragraph body; optional soft-wrap / hard-break), plain
  * paragraph/heading with no inline dialect markers (hard breaks — two+ spaces
  * before newline — are engine-owned as `hard_break` nodes), **simple** blockquotes
  * (every line `>`-prefixed; plain paragraphs incl. hard breaks, nested quotes,
  * and simple flat / same-family nested lists inside the quote at any reasonable
  * depth; no lazy continuation), **simple flat / nested lists** (same-family
- * markers at every depth; plain single-paragraph items; depth-2+ same-family
- * nests are engine-owned), and **simple GFM tables** (alignment row; plain text
- * cells; no nested blocks / marked phrasing), the PM node is fully determined by
+ * markers at every depth; plain single-paragraph items incl. hard breaks;
+ * depth-2+ same-family nests are engine-owned), and **simple GFM tables**
+ * (alignment row; plain text cells; no nested blocks / marked phrasing), the
+ * PM node is fully determined by
  * that IR — no micromark / mdast pass. Cross-family nests, multi-block items,
- * callout / marked quotes, hard breaks inside lists / footnotes, complex tables,
- * marked footnote bodies, and marked-up phrasing still go through `from-mdast.ts`
- * after dialect enrich.
+ * callout / marked quotes, complex tables, marked footnote bodies, and
+ * marked-up phrasing still go through `from-mdast.ts` after dialect enrich.
+ * Hard breaks inside simple lists and simple footnotes are engine-owned.
  *
  * See docs/performance/open-path-first-cut.md and docs/design/roobli-md-engine.md.
  */
@@ -57,11 +58,12 @@ export function hasHardBreak(markdown: string): boolean {
 
 /**
  * True when dialect enrich can be skipped: leaf kinds always; parseable
- * link-definitions; simple footnote-definitions; simple quotes (incl. nested
- * plain quotes, hard breaks in quote paragraphs, and simple lists-in-quotes);
- * simple flat or same-family nested lists (any depth); simple GFM tables;
- * paragraph / heading when the source has no inline dialect markers (hard
- * breaks allowed — engine-owned).
+ * link-definitions; simple footnote-definitions (incl. hard breaks); simple
+ * quotes (incl. nested plain quotes, hard breaks in quote paragraphs, and
+ * simple lists-in-quotes); simple flat or same-family nested lists (any depth,
+ * incl. hard breaks in item paragraphs); simple GFM tables; paragraph /
+ * heading when the source has no inline dialect markers (hard breaks allowed
+ * — engine-owned).
  */
 export function canSkipDialectEnrich(kind: NotoBlockKind, markdown: string): boolean {
   if (ENGINE_LEAF_KINDS.has(kind)) return true;
@@ -426,10 +428,11 @@ function splitTaskPrefix(rest: string): { checked: boolean | null; text: string 
 /**
  * Simple flat or same-family nested list (any depth): consistent bullet or
  * ordered delimiter at each level, each item a single plain paragraph (optional
- * soft-wrap continuation). Parent and every nest share orderedness (same
- * family); mixed-marker nests that split under micromark are refused. Loose
- * lists (blank between sibling items) set `spread` on that level. Task
- * checkboxes are allowed. Returns `null` when dialect enrich is still needed.
+ * soft-wrap continuation; CommonMark hard breaks are engine-owned). Parent and
+ * every nest share orderedness (same family); mixed-marker nests that split
+ * under micromark are refused. Loose lists (blank between sibling items) set
+ * `spread` on that level. Task checkboxes are allowed. Returns `null` when
+ * dialect enrich is still needed (marked phrasing, cross-family / multi-para).
  */
 export function parseSimpleFlatListSource(md: string): ParsedFlatList | null {
   const trimmed = md.replace(/\r\n/g, '\n').trimEnd();
@@ -462,7 +465,8 @@ export function parseSimpleFlatListSource(md: string): ParsedFlatList | null {
     for (const item of level.items) {
       const joined = item.lines.join('\n');
       const text = joined.trimEnd();
-      if (needsDialectInline(text) || HARD_BREAK_RE.test(joined)) return null;
+      // Hard breaks in list item paragraphs are engine-owned (same as plain paras).
+      if (needsDialectInline(text)) return null;
       let nested: ParsedFlatList | null = null;
       if (item.nested) {
         nested = finalizeLevel(item.nested);
@@ -647,7 +651,7 @@ export function parseSimpleFlatListSource(md: string): ParsedFlatList | null {
     if (top.items.length === 0) return null;
     const rest = listContinuationRest(line, top.indent);
     if (rest === null) return null;
-    if (restLooksStructural(rest) || needsDialectInline(rest) || HARD_BREAK_RE.test(line)) {
+    if (restLooksStructural(rest) || needsDialectInline(rest)) {
       return null;
     }
     top.items[top.items.length - 1]!.lines.push(rest);
@@ -799,8 +803,9 @@ export interface ParsedFootnoteDefinition {
 /**
  * Simple footnote definition: `[^label]:` + plain (or empty) single-paragraph body.
  * Optional soft-wrap continuation lines (indented) are joined with a newline
- * after leading whitespace is stripped (mdast parity). Hard breaks, marked
- * phrasing, and structural continuation lines fall through to dialect.
+ * after leading whitespace is stripped (mdast parity). CommonMark hard breaks
+ * are engine-owned. Marked phrasing and structural continuation lines fall
+ * through to dialect.
  */
 export function parseSimpleFootnoteDefinitionSource(md: string): ParsedFootnoteDefinition | null {
   const trimmed = md.replace(/\r\n/g, '\n').trimEnd();
@@ -821,8 +826,9 @@ export function parseSimpleFootnoteDefinitionSource(md: string): ParsedFootnoteD
   }
   const text = parts.join('\n').trimEnd();
   // Empty body (`[^id]:` / whitespace-only) is still engine-owned: one empty
-  // paragraph child (schema `block+`). Marked / hard-break / structural stay out.
-  if (needsDialectInline(text) || hasHardBreak(text) || HARD_BREAK_RE.test(parts.join('\n'))) return null;
+  // paragraph child (schema `block+`). Hard breaks are engine-owned; marked /
+  // structural stay out.
+  if (needsDialectInline(text)) return null;
   return {
     identifier: label.toLowerCase(),
     label,
@@ -901,7 +907,7 @@ function pmQuoteFromParsed(children: readonly ParsedQuoteChild[]): ProseNode {
 function pmListFromParsed(list: ParsedFlatList): ProseNode {
   const items = list.items.map((item) => {
     const children: ProseNode[] = [
-      schema.nodes.paragraph.create(null, textNodes(item.text)),
+      schema.nodes.paragraph.create(null, inlineNodesFromPlainSource(item.text)),
     ];
     if (item.nested) children.push(pmListFromParsed(item.nested));
     return schema.nodes.list_item.create({ checked: item.checked }, children);
@@ -981,7 +987,7 @@ export function blockFromEngineSpan(kind: NotoBlockKind, markdown: string): Pros
       if (!f) return null;
       return schema.nodes.footnote_definition.create(
         { identifier: f.identifier, label: f.label },
-        [schema.nodes.paragraph.create(null, textNodes(f.text))],
+        [schema.nodes.paragraph.create(null, inlineNodesFromPlainSource(f.text))],
       );
     }
     case 'quote': {
