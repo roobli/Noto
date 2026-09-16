@@ -1,10 +1,10 @@
 /**
  * Engine-owned IR → PM for common blocks (leaf + plain paragraph/heading
- * including hard breaks + parseable link-def + simple footnote-def + simple
- * quote incl. nested plain + hard breaks in quotes + simple lists-in-quotes +
- * simple flat / same-family nested list (any depth) + simple GFM table). Flagged
- * `@roobli/md` path; does
- * not flip product default.
+ * including hard breaks + parseable link-def + simple footnote-def incl. hard
+ * breaks + simple quote incl. nested plain + hard breaks in quotes + simple
+ * lists-in-quotes + simple flat / same-family nested list (any depth, incl.
+ * hard breaks) + simple GFM table). Flagged `@roobli/md` path; does not flip
+ * product default.
  */
 
 import { describe, expect, it } from 'vitest';
@@ -65,6 +65,7 @@ describe('from-engine IR helpers', () => {
     expect(canSkipDialectEnrich('footnote-definition', '[^1]: plain note')).toBe(true);
     expect(canSkipDialectEnrich('footnote-definition', '[^1]: has *emphasis*')).toBe(false);
     expect(canSkipDialectEnrich('footnote-definition', '[^1]:')).toBe(true);
+    expect(canSkipDialectEnrich('footnote-definition', '[^1]: a  \n  b')).toBe(true);
     expect(canSkipDialectEnrich('quote', '> Hello')).toBe(true);
     expect(canSkipDialectEnrich('quote', '> outer\n> > nested')).toBe(true);
     expect(canSkipDialectEnrich('quote', '> > only nested')).toBe(true);
@@ -76,6 +77,7 @@ describe('from-engine IR helpers', () => {
     expect(canSkipDialectEnrich('quote', '> > nested\n> lazy')).toBe(false);
     expect(canSkipDialectEnrich('quote', '> - **bold**')).toBe(false);
     expect(canSkipDialectEnrich('bullet-list', '- a\n- b')).toBe(true);
+    expect(canSkipDialectEnrich('bullet-list', '- a  \n  b')).toBe(true);
     expect(canSkipDialectEnrich('ordered-list', '1. a\n2. b')).toBe(true);
     expect(canSkipDialectEnrich('task-list', '- [ ] a\n- [x] b')).toBe(true);
     expect(canSkipDialectEnrich('bullet-list', '- a\n  - nested')).toBe(true);
@@ -397,7 +399,7 @@ describe('blockFromEngineSpan', () => {
     expect(blockFromEngineSpan('quote', '>')).toBeNull();
   });
 
-  it('builds simple flat lists; refuses marked / mixed markers / multi-para', () => {
+  it('builds simple flat lists incl. hard breaks; refuses marked / mixed markers / multi-para', () => {
     const ul = blockFromEngineSpan('bullet-list', '- bullet a\n- bullet b');
     expect(ul?.type.name).toBe('bullet_list');
     expect(ul?.attrs).toMatchObject({ spread: false, bullet: '-' });
@@ -432,10 +434,38 @@ describe('blockFromEngineSpan', () => {
     const wrap = blockFromEngineSpan('bullet-list', '- a\n  continued\n- b');
     expect(wrap?.child(0).textContent).toBe('a\ncontinued');
 
+    const hb = blockFromEngineSpan('bullet-list', '- a  \n  b');
+    expect(hb?.type.name).toBe('bullet_list');
+    expect(hb?.child(0).child(0).childCount).toBe(3);
+    expect(hb?.child(0).child(0).child(0).textContent).toBe('a');
+    expect(hb?.child(0).child(0).child(1).type.name).toBe('hard_break');
+    expect(hb?.child(0).child(0).child(2).textContent).toBe('b');
+    expect(hb?.child(0).textContent).toBe('ab');
+
+    const hbOrdered = blockFromEngineSpan('ordered-list', '1. one  \n   two\n2. three');
+    expect(hbOrdered?.child(0).child(0).child(1).type.name).toBe('hard_break');
+    expect(hbOrdered?.child(0).textContent).toBe('onetwo');
+    expect(hbOrdered?.child(1).textContent).toBe('three');
+
+    const hbTask = blockFromEngineSpan('task-list', '- [ ] todo  \n  more');
+    expect(hbTask?.child(0).attrs.checked).toBe(false);
+    expect(hbTask?.child(0).child(0).child(1).type.name).toBe('hard_break');
+    expect(hbTask?.child(0).textContent).toBe('todomore');
+
+    const hbNest = blockFromEngineSpan('bullet-list', '- outer  \n  wrap\n  - nested  \n    deep');
+    expect(hbNest?.child(0).child(0).child(1).type.name).toBe('hard_break');
+    expect(hbNest?.child(0).child(1).child(0).child(0).child(1).type.name).toBe('hard_break');
+    expect(hbNest?.child(0).child(1).child(0).textContent).toBe('nesteddeep');
+
+    // Lists-in-quotes inherit list hard-break ownership.
+    const hbInQuote = blockFromEngineSpan('quote', '> - a  \n>   b');
+    expect(hbInQuote?.child(0).type.name).toBe('bullet_list');
+    expect(hbInQuote?.child(0).child(0).child(0).child(1).type.name).toBe('hard_break');
+
     expect(blockFromEngineSpan('bullet-list', '- **bold**')).toBeNull();
     expect(blockFromEngineSpan('bullet-list', '- a\n* b')).toBeNull();
     expect(blockFromEngineSpan('bullet-list', '- multi\n\n  para\n- next')).toBeNull();
-    expect(blockFromEngineSpan('bullet-list', '- a  \n  b')).toBeNull();
+    expect(blockFromEngineSpan('bullet-list', '- a  \n  **b**')).toBeNull();
   });
 
   it('builds same-family nested lists at any depth; refuses cross-family nest', () => {
@@ -500,7 +530,7 @@ describe('blockFromEngineSpan', () => {
     expect(blockFromEngineSpan('bullet-list', '- a\n  1. ordered nest')).toBeNull();
   });
 
-  it('builds simple footnote definitions incl. empty; refuses marked / hard-break', () => {
+  it('builds simple footnote definitions incl. empty + hard breaks; refuses marked', () => {
     expect(parseSimpleFootnoteDefinitionSource('[^1]: plain note')).toEqual({
       identifier: '1', label: '1', text: 'plain note',
     });
@@ -516,8 +546,10 @@ describe('blockFromEngineSpan', () => {
     expect(parseSimpleFootnoteDefinitionSource('[^c]:  ')).toEqual({
       identifier: 'c', label: 'c', text: '',
     });
+    expect(parseSimpleFootnoteDefinitionSource('[^h]: a  \n  b')).toEqual({
+      identifier: 'h', label: 'h', text: 'a  \nb',
+    });
     expect(parseSimpleFootnoteDefinitionSource('[^x]: has *emphasis*')).toBeNull();
-    expect(parseSimpleFootnoteDefinitionSource('[^h]: a  \n  b')).toBeNull();
 
     const plain = blockFromEngineSpan('footnote-definition', '[^1]: plain note');
     expect(plain?.type.name).toBe('footnote_definition');
@@ -534,7 +566,16 @@ describe('blockFromEngineSpan', () => {
     expect(empty?.child(0).type.name).toBe('paragraph');
     expect(empty?.textContent).toBe('');
 
+    const hb = blockFromEngineSpan('footnote-definition', '[^h]: a  \n  b');
+    expect(hb?.type.name).toBe('footnote_definition');
+    expect(hb?.child(0).childCount).toBe(3);
+    expect(hb?.child(0).child(0).textContent).toBe('a');
+    expect(hb?.child(0).child(1).type.name).toBe('hard_break');
+    expect(hb?.child(0).child(2).textContent).toBe('b');
+    expect(hb?.textContent).toBe('ab');
+
     expect(blockFromEngineSpan('footnote-definition', '[^x]: has *emphasis*')).toBeNull();
+    expect(blockFromEngineSpan('footnote-definition', '[^m]: a  \n  **b**')).toBeNull();
   });
 
   it('builds simple GFM tables; refuses marked / ragged / no delimiter', () => {

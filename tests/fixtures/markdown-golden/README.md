@@ -28,6 +28,8 @@ Small public fixtures for comparing the **micromark** product path against
 | `simple-nested-quotes.md` | nested plain `>` quotes (any reasonable depth; sibling nests; blank separators); no callouts, lists-in-quotes, marks, or lazy continuations |
 | `simple-lists-in-quotes.md` | simple bullet/ordered/task lists inside `>` quotes (incl. same-family nest); no callouts, marks, hard breaks, or lazy continuations |
 | `simple-hard-breaks-in-quotes.md` | hard breaks (two trailing spaces) inside simple `>` quotes (incl. nested plain); no callouts, marks, lists-in-quotes with hard breaks, or lazy continuations |
+| `simple-hard-breaks-in-lists.md` | hard breaks (two trailing spaces) inside simple flat / nested list items (incl. task / ordered); no marked items or multi-para |
+| `simple-hard-breaks-in-footnotes.md` | hard breaks inside simple `[^id]:` footnote definition bodies; soft-wrap still covered; no marked bodies |
 | `simple-flat-lists.md` | flat bullet/ordered/task lists (markers `-*+`, `.`/`)`, start≠1, loose, soft-wrap); no nest or marked items |
 | `simple-nested-lists.md` | same-family nested bullet/ordered at any depth (plain items; soft-wrap then nest; depth-2+); no cross-family or marked items |
 | `simple-gfm-tables.md` | simple GFM pipe tables (align row; plain cells; indent; compact); no marked/ragged cells |
