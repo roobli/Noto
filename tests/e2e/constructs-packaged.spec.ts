@@ -1,7 +1,7 @@
 import { mkdir, readFile, rm, writeFile } from 'node:fs/promises';
 import path from 'node:path';
 import { expect, test, _electron as electron, type ElectronApplication, type Page } from '@playwright/test';
-import { packagedExecutable, LINE_START, placeCaret } from './packaged-app';
+import { packagedExecutable, placeCaret } from './packaged-app';
 
 /**
  * The constructs the product promises are editable rather than read-only source
@@ -33,6 +33,27 @@ const SOURCE = [
   'A closing paragraph.',
   '',
 ].join('\n');
+
+/** Put the caret at the start of `target` via the selection itself.
+ *
+ * Home / Meta+ArrowLeft does not always reach a packaged macOS window (it can
+ * scroll or race after click — see block-edges-packaged). These fidelity tests
+ * care that the edit lands at the head of the closing paragraph, not how the
+ * caret got there.
+ */
+async function caretAtStart(page: Page, target: import('@playwright/test').Locator): Promise<void> {
+  await placeCaret(page, target);
+  await target.evaluate((node) => {
+    const text = node.firstChild;
+    if (!text) throw new Error('no text to put the caret in');
+    const range = document.createRange();
+    range.setStart(text, 0);
+    range.collapse(true);
+    const selection = window.getSelection();
+    selection?.removeAllRanges();
+    selection?.addRange(range);
+  });
+}
 
 async function launch(name: string): Promise<{ app: ElectronApplication; page: Page; file: string }> {
   const workspace = path.join(resultRoot, name);
@@ -140,8 +161,7 @@ test.describe('constructs stay editable', () => {
     const { app, page, file } = await launch('fidelity');
     try {
       // One edit somewhere unrelated, so there is something to save.
-      await placeCaret(page, page.locator('.ProseMirror p').last());
-      await page.keyboard.press(LINE_START);
+      await caretAtStart(page, page.locator('.ProseMirror p').last());
       await page.keyboard.type('Yes. ');
 
       await page.getByTestId('save-button').click();
@@ -170,8 +190,7 @@ test.describe('save a copy', () => {
     const { app, page, file } = await launch('save-copy');
     const destination = path.join(path.dirname(file), 'copy.md');
     try {
-      await placeCaret(page, page.locator('.ProseMirror p').last());
-      await page.keyboard.press(LINE_START);
+      await caretAtStart(page, page.locator('.ProseMirror p').last());
       await page.keyboard.type('Copied. ');
 
       // The dialog cannot be driven from a test, so it is answered directly.
