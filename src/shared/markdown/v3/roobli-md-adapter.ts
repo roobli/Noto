@@ -9,7 +9,7 @@
  * Flagged open uses `enrich: 'none'` on main then `enrichSpansInRange` in the
  * renderer for a first-paint window (and the remainder after paint) — see
  * `SpanEnrichMode` and docs/performance/open-path-first-cut.md. Engine-owned
- * leaf / plain paragraph+heading / simple quote / flat or same-family nested list (any depth) / simple table skip mdast (IR → PM via `pm/from-engine.ts`).
+ * leaf / plain paragraph+heading / simple quote (incl. nested plain) / flat or same-family nested list (any depth) / simple table skip mdast (IR → PM via `pm/from-engine.ts`).
  *
  * Flagged block-mode saves (identity, single-block, multi-block insert/delete)
  * map into engine shapes, call `serializeDocument`, then the host re-attaches
@@ -38,7 +38,7 @@ import {
   type EngineDocument,
   type SourceEdit,
 } from '@roobli/md';
-import type { RootContent } from 'mdast';
+import type { BlockContent, DefinitionContent, RootContent } from 'mdast';
 import type {
   NotoBlockKind,
   NotoDocument,
@@ -51,6 +51,7 @@ import {
   engineSemanticKey,
   parseLinkDefinitionSource,
   parseSimpleQuoteSource,
+  type ParsedQuoteChild,
 } from './pm/from-engine';
 
 export interface AdapterBlockSpan {
@@ -214,7 +215,7 @@ function enrichDialectRun(
 
 /**
  * Fill dialect mdast for `spans[from..to)` — but **skip** engine-owned leaf /
- * link-definition / plain paragraph+heading / simple-quote / flat-or-nested-list spans (IR → final stand-in + semanticKey, no
+ * link-definition / plain paragraph+heading / simple-quote (incl. nested) / flat-or-nested-list spans (IR → final stand-in + semanticKey, no
  * micromark). Contiguous needs-dialect runs still use one `parseMarkdown` each.
  *
  * Spans outside the range are returned unchanged. When a dialect run's
@@ -423,6 +424,23 @@ export function enrichNextDeferredInRange<T extends AdapterBlockSpan>(
  * remainder gap from looking like raw paragraph soup when the user scrolls
  * ahead of enrich — see docs/performance/open-path-first-cut.md.
  */
+function mdastQuoteChildren(
+  children: readonly ParsedQuoteChild[],
+): Array<BlockContent | DefinitionContent> {
+  return children.map((child) => {
+    if (child.type === 'paragraph') {
+      return {
+        type: 'paragraph' as const,
+        children: child.text.length > 0 ? [{ type: 'text' as const, value: child.text }] : [],
+      };
+    }
+    return {
+      type: 'blockquote' as const,
+      children: mdastQuoteChildren(child.children),
+    };
+  });
+}
+
 function standInNode(span: EngineBlockSpan): RootContent {
   const md = span.markdown;
   const kind = span.kind as NotoBlockKind;
@@ -496,14 +514,11 @@ function standInNode(span: EngineBlockSpan): RootContent {
       };
     }
     case 'quote': {
-      const paras = parseSimpleQuoteSource(md);
-      if (paras) {
+      const children = parseSimpleQuoteSource(md);
+      if (children) {
         return {
           type: 'blockquote',
-          children: paras.map((value) => ({
-            type: 'paragraph' as const,
-            children: value.length > 0 ? [{ type: 'text' as const, value }] : [],
-          })),
+          children: mdastQuoteChildren(children),
         };
       }
       // Complex / marked quotes stay a single-paragraph shell until dialect enrich.
@@ -576,7 +591,7 @@ function enrichSpan(span: EngineBlockSpan): AdapterBlockSpan {
 
 /**
  * Structural adapter spans: no dialect parse. Prep for deferred wire nodes.
- * Engine-owned leaf / link-definition / plain phrasing / simple quotes / flat or same-family nested lists / simple tables get a final semanticKey so enrich can skip them.
+ * Engine-owned leaf / link-definition / plain phrasing / simple quotes (incl. nested plain) / flat or same-family nested lists / simple tables get a final semanticKey so enrich can skip them.
  */
 function enrichSpanNone(span: EngineBlockSpan): AdapterBlockSpan {
   const kind = span.kind as NotoBlockKind;
