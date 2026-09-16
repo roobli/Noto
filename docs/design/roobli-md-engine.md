@@ -106,7 +106,7 @@ sources — they do **not** flip `NOTO_MARKDOWN_ENGINE` for the rest of the suit
 | Identity serialize (#82) | flagged `serializeDocument` `outputBytes` equal micromark identity |
 | Multi-block serialize | multi-dirty / insert / delete `outputBytes` equal micromark on each fixture |
 
-Coverage today: headings, lists (incl. same-family nested), tables, wiki,
+Coverage today: headings, lists (incl. same-family nested any depth), tables, wiki,
 math/code fences, frontmatter, CJK, alerts/callout edges, footnotes,
 indented-code, tight quotes, GFM strikethrough/autolink, HTML blocks,
 setext+hr, link-definitions, simple quotes, simple flat lists, simple-nested-lists, simple GFM
@@ -148,7 +148,7 @@ reviewed:
 | ---- | ------ |
 | Split / identity / multi-block golden on current `markdown-golden/` | Green (expanded; keep growing) |
 | Broader corpus / vault-shaped edges (GFM inline, nested lists, HTML, callout edges, link-defs, simple quotes, simple flat lists, simple GFM tables, simple footnote-defs, empty footnote-defs, CJK emphasis, hard-breaks, images, empty/meta fences, escapes, table-align, ordered-start, inline HTML) in golden | Landed this cycle; more edges welcome |
-| Flagged open-path deferred + viewport enrich + IR→PM leaf/plain(incl. hard-break)/link-def/simple-footnote(incl. empty)/simple-quote/flat-or-one-level-nested-list/simple-table | Landed (still flagged-only) |
+| Flagged open-path deferred + viewport enrich + IR→PM leaf/plain(incl. hard-break)/link-def/simple-footnote(incl. empty)/simple-quote/flat-or-nested-list(any depth)/simple-table | Landed (still flagged-only) |
 | Flagged serialize (identity / single / multi) + `reparseFromText` host wiring | Landed |
 | Packaged / e2e open feel on medium under the flag | Not a flip gate alone; measure before flip |
 | Intentional diffs documented in `markdown-golden/README.md` | Setext-`---` vs hr; mixed-marker nested lists (excluded from strict dir) |
@@ -201,17 +201,18 @@ mdast for leaf kinds + plain paragraph/heading (incl. hard breaks as
 `hard_break` nodes) + parseable link-definitions +
 simple footnote-definitions (plain or empty single-paragraph body; optional soft-wrap) +
 simple blockquotes (every line `>`-prefixed, plain inner paragraphs only) +
-simple flat lists and one-level nested lists (same-family; nested children flat
+simple flat lists and same-family nested lists (any depth; nested children may nest
 only) + simple GFM tables (alignment row; plain text cells; consistent columns);
 enrich flags mark those done — see `docs/performance/open-path-first-cut.md`.
-Depth-2+ nests, multi-block items, nested / marked / callout quotes, complex /
+Cross-family nests, multi-block items, nested / marked / callout quotes, complex /
 ragged / marked tables, marked footnote bodies, and marked-up phrasing stay
-on dialect (empty footnote bodies and one-level nests are engine-owned; hard
-breaks inside quotes / lists / footnotes still dialect).
+on dialect (empty footnote bodies and same-family nests at any depth are
+engine-owned; hard breaks inside quotes / lists / footnotes still dialect).
 Product default stays micromark.
 
 Next: keep growing `markdown-golden/` (more GFM / vault edges), extend IR→PM
-only where micromark parity is locked, then reconsider default-on. Hard-breaks,
+only where micromark parity is locked (complex tables / nested quotes / marked
+phrasing), then reconsider default-on. Hard-breaks,
 images, empty/meta fences, escapes, table-align, ordered-start, inline HTML,
 simple-flat-lists, simple-nested-lists, simple-gfm-tables, simple-footnote-defs,
 empty-footnote-defs, and cjk-emphasis goldens landed.

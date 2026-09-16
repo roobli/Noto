@@ -1,7 +1,7 @@
 /**
  * Engine-owned IR → PM for common blocks (leaf + plain paragraph/heading
  * including hard breaks + parseable link-def + simple footnote-def + simple
- * quote + simple flat / one-level nested list + simple GFM table). Flagged
+ * quote + simple flat / same-family nested list (any depth) + simple GFM table). Flagged
  * `@roobli/md` path; does not flip product default.
  */
 
@@ -70,7 +70,8 @@ describe('from-engine IR helpers', () => {
     expect(canSkipDialectEnrich('ordered-list', '1. a\n2. b')).toBe(true);
     expect(canSkipDialectEnrich('task-list', '- [ ] a\n- [x] b')).toBe(true);
     expect(canSkipDialectEnrich('bullet-list', '- a\n  - nested')).toBe(true);
-    expect(canSkipDialectEnrich('bullet-list', '- a\n  - nested\n    - deep')).toBe(false);
+    expect(canSkipDialectEnrich('bullet-list', '- a\n  - nested\n    - deep')).toBe(true);
+    expect(canSkipDialectEnrich('bullet-list', '- a\n  1. cross')).toBe(false);
     expect(canSkipDialectEnrich('bullet-list', '- **bold**')).toBe(false);
     expect(canSkipDialectEnrich('table', '| a |\n| - |\n| 1 |')).toBe(true);
     expect(canSkipDialectEnrich('table', '| Left | Right |\n| :--- | ---: |\n| alpha | 1 |')).toBe(true);
@@ -138,7 +139,22 @@ describe('from-engine IR helpers', () => {
         },
       }],
     });
-    expect(parseSimpleFlatListSource('- a\n  - nested\n    - deep')).toBeNull();
+    expect(parseSimpleFlatListSource('- a\n  - nested\n    - deep')).toEqual({
+      ordered: false, bullet: '-', delimiter: null, start: 1, spread: false,
+      items: [{
+        checked: null, text: 'a',
+        nested: {
+          ordered: false, bullet: '-', delimiter: null, start: 1, spread: false,
+          items: [{
+            checked: null, text: 'nested',
+            nested: {
+              ordered: false, bullet: '-', delimiter: null, start: 1, spread: false,
+              items: [{ checked: null, text: 'deep', nested: null }],
+            },
+          }],
+        },
+      }],
+    });
     expect(parseSimpleFlatListSource('- **bold**')).toBeNull();
     expect(parseSimpleFlatListSource('- a\n* b')).toBeNull();
     expect(parseSimpleFlatListSource('- multi\n\n  para\n- next')).toBeNull();
@@ -266,7 +282,7 @@ describe('blockFromEngineSpan', () => {
     expect(blockFromEngineSpan('bullet-list', '- a  \n  b')).toBeNull();
   });
 
-  it('builds one-level nested lists; refuses depth-2+ / cross-family nest', () => {
+  it('builds same-family nested lists at any depth; refuses cross-family nest', () => {
     const nest = blockFromEngineSpan('bullet-list', '- outer one\n  - nested a\n  - nested b\n- outer two');
     expect(nest?.type.name).toBe('bullet_list');
     expect(nest?.childCount).toBe(2);
@@ -303,12 +319,27 @@ describe('blockFromEngineSpan', () => {
     expect(tasks?.child(0).child(1).child(0).attrs.checked).toBe(false);
     expect(tasks?.child(0).child(1).child(0).textContent).toBe('nested task');
 
-    // Depth 2+ stays dialect (nested-lists.md deep three).
-    expect(blockFromEngineSpan('bullet-list', '- a\n  - nested\n    - deep')).toBeNull();
-    expect(blockFromEngineSpan(
+    // Depth 2+ same-family (nested-lists.md deep three) is engine-owned.
+    const deep = blockFromEngineSpan('bullet-list', '- a\n  - nested\n    - deep');
+    expect(deep?.type.name).toBe('bullet_list');
+    expect(deep?.child(0).child(1).child(0).child(1).type.name).toBe('bullet_list');
+    expect(deep?.child(0).child(1).child(0).child(1).child(0).textContent).toBe('deep');
+
+    const deepOuter = blockFromEngineSpan(
       'bullet-list',
       '- outer one\n  - nested a\n  - nested b\n    - deep three\n- outer two',
-    )).toBeNull();
+    );
+    expect(deepOuter?.childCount).toBe(2);
+    expect(deepOuter?.child(0).child(1).childCount).toBe(2);
+    expect(deepOuter?.child(0).child(1).child(1).childCount).toBe(2);
+    expect(deepOuter?.child(0).child(1).child(1).child(1).child(0).textContent).toBe('deep three');
+    expect(deepOuter?.child(1).textContent).toBe('outer two');
+
+    // Blank before shallower sibling spreads the outer list.
+    const blankThenOuter = blockFromEngineSpan('bullet-list', '- a\n  - n1\n\n- b');
+    expect(blankThenOuter?.attrs.spread).toBe(true);
+    expect(blankThenOuter?.child(0).child(1).attrs.spread).toBe(false);
+
     // Cross-family nest (ordered under bullet) refused.
     expect(blockFromEngineSpan('bullet-list', '- a\n  1. ordered nest')).toBeNull();
   });
@@ -460,6 +491,8 @@ describe('blockFromEngineSpan', () => {
       '- a\n  - n1\n\n  - n2\n- b\n',
       '- a\n  continued\n  - nested\n',
       '- [ ] task outer\n  - [ ] nested task\n',
+      '- a\n  - nested\n    - deep\n',
+      '- outer one\n  - nested a\n  - nested b\n    - deep three\n- outer two\n',
       '| Left | Right |\n| :--- | ---: |\n| alpha | 1 |\n| beta | 2 |\n',
       '| a | b | c |\n| --- | :---: | ---: |\n| 1 | 2 | 3 |\n',
       '| H1 | H2 |\n| --- | --- |\n',

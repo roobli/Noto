@@ -1,6 +1,6 @@
 # Open-path / `parseDocument` — measured cuts
 
-Status: **lazy / deferred wire nodes + viewport-driven enrich + incremental PM patch + kind-aware stand-ins + engine-owned IR→PM (common blocks + simple quotes + simple flat / one-level nested lists + simple GFM tables + simple footnote-defs incl. empty)** under the flagged `@roobli/md` path.
+Status: **lazy / deferred wire nodes + viewport-driven enrich + incremental PM patch + kind-aware stand-ins + engine-owned IR→PM (common blocks + simple quotes + simple flat / same-family nested lists any depth + simple GFM tables + simple footnote-defs incl. empty)** under the flagged `@roobli/md` path.
 Product default remains micromark. Do **not** flip `NOTO_MARKDOWN_ENGINE`
 default-on from this work.
 
@@ -150,9 +150,9 @@ Leaf kinds (`fenced-code` / `indented-code` / `thematic-break` / `frontmatter` /
 footnote-definitions** (plain single-paragraph body; optional soft-wrap
 continuations), **plain** paragraph/heading (no inline dialect markers),
 **simple blockquotes** (every line `>`-prefixed; inner content is one or more
-plain paragraphs), **simple flat lists** and **one-level nested lists** (same-family markers;
-nested children flat only — no depth-2+; plain single-paragraph items;
-optional task checkboxes / loose / soft-wrap), and **simple GFM tables** (header + alignment row +
+plain paragraphs), **simple flat lists** and **same-family nested lists** (any depth; plain
+single-paragraph items; optional task checkboxes / loose / soft-wrap), and
+**simple GFM tables** (header + alignment row +
 optional body; plain text cells; consistent column counts; leading `|` after
 0–3 spaces) build ProseMirror directly from engine kind + source
 (`pm/from-engine.ts`) — **no mdast**. `blockFromSpan` prefers that path; `enrichSpansInRange` finalizes
@@ -167,15 +167,15 @@ still takes the dialect path. Setext `===` headings are already engine-owned
 via `parseHeadingSource` (setext-`---` vs hr remains an engine split gap —
 see markdown-golden README).
 
-Depth-2+ nested lists, multi-block items, nested or marked quotes, complex /
+Cross-family nests, multi-block items, nested or marked quotes, complex /
 ragged / marked tables, marked footnote bodies, and marked-up phrasing still
-need dialect enrich + `from-mdast` (empty footnote bodies and one-level nests
-are engine-owned). Does **not** flip default-on. No alpha bump.
+need dialect enrich + `from-mdast` (empty footnote bodies and same-family nests
+at any depth are engine-owned). Does **not** flip default-on. No alpha bump.
 
 ## API (additions for Cut 5)
 
 - `pm/from-engine.ts` — `blockFromEngineSpan` / `canSkipDialectEnrich` /
-  `engineSemanticKey` / fence+heading+simple-quote+flat-or-one-level-nested-list+simple-table+simple-footnote-def (incl. empty) source parsers
+  `engineSemanticKey` / fence+heading+simple-quote+flat-or-nested-list+simple-table+simple-footnote-def (incl. empty) source parsers
 - `createEnrichFlags(length, enrichedExclusiveTo, spans?)` — optional spans
   mark engine-owned remainder as already enriched
 - `enrichSpansInRange` — skips micromark for engine-owned spans; contiguous
@@ -185,18 +185,18 @@ are engine-owned). Does **not** flip default-on. No alpha bump.
 
 1. ~~Engine-owned IR → PM (common blocks)~~ — shipped: leaf + plain
    paragraph/heading + parseable link-definition + simple footnote-definition
-   (incl. empty) + simple quote + simple flat / one-level nested list + simple
-   GFM table skip mdast (`pm/from-engine.ts`); enrich flags +
+   (incl. empty) + simple quote + simple flat / same-family nested list (any
+   depth) + simple GFM table skip mdast (`pm/from-engine.ts`); enrich flags +
    `enrichSpansInRange` honour the skip.
 2. ~~Kind-aware structural stand-ins (heading/fence/…)~~ — shipped (#90).
-3. Extend IR→PM to more kinds when safe (depth-2+ nests / complex tables /
-   nested quotes / marked footnote bodies still dialect); optional lightweight
+3. Extend IR→PM to more kinds when safe (complex tables / nested quotes /
+   marked footnote bodies / marked phrasing still dialect); optional lightweight
    inline IR for marks later — not this cycle. Plain hard-break
-   paragraphs/headings and one-level nested lists are engine-owned.
+   paragraphs/headings and same-family nested lists (any depth) are engine-owned.
 4. Keep growing `tests/fixtures/markdown-golden/` before default-on; GFM inline,
-   nested lists, simple-nested-lists, HTML blocks, callout edges, hr/setext,
-   link-defs, simple quotes, simple flat lists, simple GFM tables, simple
-   footnote-defs, empty footnote-defs, CJK emphasis, hard-breaks, images,
+   nested lists, simple-nested-lists (depth-2+), HTML blocks, callout edges,
+   hr/setext, link-defs, simple quotes, simple flat lists, simple GFM tables,
+   simple footnote-defs, empty footnote-defs, CJK emphasis, hard-breaks, images,
    empty/meta fences, escapes, table-align, ordered-start, inline HTML landed;
    intentional engine gaps documented in that README.
 
