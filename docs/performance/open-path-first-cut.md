@@ -1,6 +1,6 @@
 # Open-path / `parseDocument` — measured cuts
 
-Status: **lazy / deferred wire nodes + viewport-driven enrich + incremental PM patch + kind-aware stand-ins + engine-owned IR→PM (common blocks + simple quotes incl. nested plain + lists-in-quotes + hard breaks in quotes + lazy nest continuation + simple flat / same-family nested lists any depth incl. hard breaks + simple GFM tables + simple footnote-defs incl. empty + hard breaks + plain-body callouts)** under the flagged `@roobli/md` path.
+Status: **lazy / deferred wire nodes + viewport-driven enrich + incremental PM patch + kind-aware stand-ins + engine-owned IR→PM (common blocks + simple quotes incl. nested plain + lists-in-quotes + hard breaks in quotes + lazy nest continuation + true no-`>` lazy + simple flat / same-family nested lists any depth incl. hard breaks + unindented lazy soft-wrap + simple GFM tables + simple footnote-defs incl. empty + hard breaks + plain-body callouts)** under the flagged `@roobli/md` path.
 Product default remains micromark. Do **not** flip `NOTO_MARKDOWN_ENGINE`
 default-on from this work.
 
@@ -176,9 +176,9 @@ Cross-family nests, multi-block items, callout / marked quotes, complex /
 ragged / marked tables, marked footnote bodies, and marked-up phrasing still
 need dialect enrich + `from-mdast` (empty footnote bodies, same-family nests at
 any depth, nested plain quotes, simple lists-in-quotes, hard breaks in quotes,
-lazy nest continuation via fewer `>`, and hard breaks inside simple lists /
-footnotes are engine-owned; true no-`>` lazy and lazy-into-list still dialect).
-Does **not** flip default-on.
+lazy nest continuation via fewer `>` **or true no-`>`**, hard breaks inside
+simple lists / footnotes, and unindented list soft-wrap are engine-owned with
+`@roobli/md` ≥ v0.1.9). Does **not** flip default-on.
 
 ## API (additions for Cut 5)
 
@@ -199,7 +199,7 @@ Does **not** flip default-on.
 2. ~~Kind-aware structural stand-ins (heading/fence/…)~~ — shipped (#90).
 3. Extend IR→PM to more kinds when safe (complex tables / marked footnote
    bodies / marked phrasing still dialect; marked callout bodies / collapsible /
-   titled alerts / marked quotes / no-`>` lazy / lazy-into-list still dialect);
+   titled alerts / marked quotes still dialect; no-`>` lazy + list lazy owned);
    optional lightweight inline IR for marks later — not this cycle. Plain
    hard-break paragraphs/headings, same-family nested lists (any depth, incl.
    hard breaks), nested plain quotes, simple lists-in-quotes, plain-body GFM

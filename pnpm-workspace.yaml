@@ -13,6 +13,7 @@ strictPeerDependencies: false
 allowBuilds:
   '@roobli/md': true
   '@roobli/md@https://codeload.github.com/roobli/md/tar.gz/30c9264da78b712db2d20dfae40692b36d40c3d6': true
+  '@roobli/md@https://codeload.github.com/roobli/md/tar.gz/680f0dd5513bc924515b623ad40e50fd463930f9': true
   '@parcel/watcher': true
   electron: true
   esbuild: true

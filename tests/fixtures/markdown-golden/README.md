@@ -71,3 +71,5 @@ Every fixture **in this directory** is expected to match on:
 If a future fixture must diverge, document it here and exclude it from the
 strict suite (or assert the documented delta explicitly) — silent drift is not
 allowed.
+- `simple-no-marker-lazy-in-quotes.md` — true no-`>` lazy inside quotes (needs `@roobli/md` ≥ v0.1.9)
+- `simple-lazy-list-continuations.md` — unindented CommonMark lazy soft-wrap in lists
