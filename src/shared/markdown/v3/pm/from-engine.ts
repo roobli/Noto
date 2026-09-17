@@ -7,8 +7,8 @@
  * paragraph/heading with no inline dialect markers (hard breaks — two+ spaces
  * before newline — are engine-owned as `hard_break` nodes), **simple** blockquotes
  * (every line `>`-prefixed; plain paragraphs incl. hard breaks, nested quotes,
- * simple lists-in-quotes, and plain-body GFM alerts / callouts; no lazy
- * continuation), **simple flat / nested lists** (same-family
+ * simple lists-in-quotes, plain-body GFM alerts / callouts, and CommonMark lazy
+ * continuation of nested plain paragraphs via fewer `>` markers), **simple flat / nested lists** (same-family
  * markers at every depth; plain single-paragraph items incl. hard breaks;
  * depth-2+ same-family nests are engine-owned), and **simple GFM tables**
  * (alignment row; plain text cells; no nested blocks / marked phrasing), the
@@ -80,7 +80,8 @@ export function hasHardBreak(markdown: string): boolean {
  * True when dialect enrich can be skipped: leaf kinds always; parseable
  * link-definitions; simple footnote-definitions (incl. hard breaks); simple
  * quotes (incl. nested plain quotes, hard breaks in quote paragraphs, simple
- * lists-in-quotes, and simple GFM alerts / callouts with plain bodies); simple
+ * lists-in-quotes, simple GFM alerts / callouts with plain bodies, and lazy
+ * continuation of nested plain paragraphs); simple
  * flat or same-family nested lists (any depth, incl. hard breaks in item
  * paragraphs); simple GFM tables; paragraph / heading when the source has no
  * inline dialect markers (hard breaks allowed — engine-owned).
@@ -264,8 +265,11 @@ function quoteInnerContinuesList(rest: string): boolean {
 
 /**
  * Parse quote children at `level` (1 = outermost). Lines with greater depth open
- * nested quotes. A non-blank same-level line immediately after a nest would be
- * CommonMark lazy continuation — refused (stay dialect).
+ * nested quotes. A non-blank same-level plain paragraph line immediately after a
+ * nest is CommonMark lazy continuation into the innermost open paragraph
+ * (synthesized at `level + 1` so hard-break trailing spaces stay in the para
+ * buffer). New block starts (lists / headings / …) after a nest are siblings.
+ * Marked lazy lines and lazy-into-list still fall through to dialect.
  */
 function parseQuoteChildren(
   lines: readonly QuoteLine[],
@@ -343,13 +347,21 @@ function parseQuoteChildren(
       nested.push(lines[i]!);
       i += 1;
     }
-    // Non-blank same-level line right after a nest = lazy continuation → dialect.
-    if (
+    // CommonMark lazy continuation: fewer `>` markers with plain paragraph text
+    // continue the innermost open paragraph. Fold those lines into the nest as
+    // depth `level + 1` so the recursive parser joins them before flushPara
+    // (preserves hard-break trailing spaces). List / heading / other block
+    // starts are left for this level as siblings. Marked phrasing still fails
+    // inside the nested parse (dialect).
+    while (
       i < lines.length
       && lines[i]!.depth === level
       && !/^[ \t]*$/u.test(lines[i]!.rest)
+      && quoteInnerIsParagraphLine(lines[i]!.rest)
+      && !quoteInnerIsListStart(lines[i]!.rest)
     ) {
-      return null;
+      nested.push({ depth: level + 1, rest: lines[i]!.rest });
+      i += 1;
     }
     const nestedChildren = parseQuoteChildren(nested, level + 1);
     if (!nestedChildren || nestedChildren.length === 0) return null;
@@ -361,12 +373,14 @@ function parseQuoteChildren(
 }
 
 /**
- * Simple blockquote: every line is `>`-prefixed (no lazy continuation), inner
- * content is plain paragraphs (incl. hard breaks), nested plain quotes, and/or
- * simple flat / same-family nested lists (any reasonable depth). Returns a child
- * tree matching CommonMark / mdast shape, or `null` when the span still needs
- * dialect enrich (marked callout bodies, collapsible / titled alerts, marked
- * phrasing, lazy continuations, cross-family / multi-para lists, pathological
+ * Simple blockquote: every line is `>`-prefixed (true no-`>` lazy lines are an
+ * `@roobli/md` split residual, not in the quote span), inner content is plain
+ * paragraphs (incl. hard breaks), nested plain quotes (incl. CommonMark lazy
+ * continuation via fewer `>` markers), and/or simple flat / same-family nested
+ * lists (any reasonable depth). Returns a child tree matching CommonMark /
+ * mdast shape for the owned subset, or `null` when the span still needs dialect
+ * enrich (marked callout bodies, collapsible / titled alerts, marked phrasing,
+ * lazy-into-list, no-`>` lazy, cross-family / multi-para lists, pathological
  * depth). Simple plain-body GFM alerts (`> [!NOTE]` …) are accepted.
  */
 export function parseSimpleQuoteSource(md: string): ParsedQuoteChild[] | null {

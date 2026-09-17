@@ -9,7 +9,7 @@
  * Flagged open uses `enrich: 'none'` on main then `enrichSpansInRange` in the
  * renderer for a first-paint window (and the remainder after paint) — see
  * `SpanEnrichMode` and docs/performance/open-path-first-cut.md. Engine-owned
- * leaf / plain paragraph+heading / simple quote (incl. nested plain + lists-in-quotes + hard breaks) / flat or same-family nested list (any depth, incl. hard breaks) / simple footnote-def (incl. hard breaks) / simple table skip mdast (IR → PM via `pm/from-engine.ts`).
+ * leaf / plain paragraph+heading / simple quote (incl. nested plain + lists-in-quotes + hard breaks + lazy nest) / flat or same-family nested list (any depth, incl. hard breaks) / simple footnote-def (incl. hard breaks) / simple table skip mdast (IR → PM via `pm/from-engine.ts`).
  *
  * Flagged block-mode saves (identity, single-block, multi-block insert/delete)
  * map into engine shapes, call `serializeDocument`, then the host re-attaches

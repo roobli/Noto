@@ -110,7 +110,7 @@ Coverage today: headings, lists (incl. same-family nested any depth), tables, wi
 math/code fences, frontmatter, CJK, alerts/callout edges, footnotes,
 indented-code, tight quotes, GFM strikethrough/autolink, HTML blocks,
 setext+hr, link-definitions, simple quotes, simple flat lists, simple-nested-lists, simple GFM
-tables, simple footnote-defs, empty footnote-defs, CJK emphasis, hard-breaks (incl. in quotes)/images/empty-fence/escapes/table-align/ordered-start/fence-meta/html-inline. Intentional diffs (setext-`---` vs hr; mixed-marker
+tables, simple footnote-defs, empty footnote-defs, CJK emphasis, hard-breaks (incl. in quotes + lazy nest)/images/empty-fence/escapes/table-align/ordered-start/fence-meta/html-inline. Intentional diffs (setext-`---` vs hr; mixed-marker
 nested lists) are listed in `tests/fixtures/markdown-golden/README.md` and
 kept out of the strict directory; silent divergence fails the gate loudly
 (`GOLDEN GATE FAIL …`).
@@ -202,8 +202,8 @@ mdast for leaf kinds + plain paragraph/heading (incl. hard breaks as
 simple footnote-definitions (plain or empty single-paragraph body; optional
 soft-wrap / hard breaks) +
 simple blockquotes (every line `>`-prefixed; plain paragraphs incl. hard breaks,
-nested plain quotes, simple lists-in-quotes, and plain-body GFM alerts /
-callouts; no lazy continuation) +
+nested plain quotes, simple lists-in-quotes, plain-body GFM alerts / callouts,
+and lazy nest continuation via fewer `>` markers) +
 simple flat lists and same-family nested lists (any depth; plain items incl. hard
 breaks; nested children may nest only) + simple GFM tables (alignment row; plain
 text cells; consistent columns);
@@ -212,18 +212,19 @@ Cross-family nests, multi-block items, marked callout bodies / collapsible /
 titled alerts, marked quotes, complex / ragged / marked tables, marked footnote
 bodies, and marked-up phrasing stay on dialect (empty footnote bodies,
 same-family nests at any depth, nested plain quotes, simple lists-in-quotes,
-plain-body callouts, hard breaks in quotes, and hard breaks inside simple lists
-/ footnotes are engine-owned). Product default stays micromark.
+plain-body callouts, hard breaks in quotes, lazy nest continuation via fewer
+`>`, and hard breaks inside simple lists / footnotes are engine-owned; true
+no-`>` lazy and lazy-into-list still dialect). Product default stays micromark.
 
 Next: keep growing `markdown-golden/` (more GFM / vault edges), extend IR→PM
 only where micromark parity is locked (complex tables / marked phrasing /
-marked callout edges / lazy continuations), then reconsider default-on.
-Hard-breaks, images, empty/meta fences, escapes, table-align, ordered-start,
-inline HTML, simple-flat-lists, simple-nested-lists, simple-nested-quotes,
-simple-lists-in-quotes, simple-hard-breaks-in-quotes,
-simple-hard-breaks-in-lists, simple-hard-breaks-in-footnotes, simple-callouts,
-simple-gfm-tables, simple-footnote-defs, empty-footnote-defs, and cjk-emphasis
-goldens landed.
+marked callout edges / no-`>` lazy / lazy-into-list), then reconsider
+default-on. Hard-breaks, images, empty/meta fences, escapes, table-align,
+ordered-start, inline HTML, simple-flat-lists, simple-nested-lists,
+simple-nested-quotes, simple-lists-in-quotes, simple-hard-breaks-in-quotes,
+simple-lazy-continuations-in-quotes, simple-hard-breaks-in-lists,
+simple-hard-breaks-in-footnotes, simple-callouts, simple-gfm-tables,
+simple-footnote-defs, empty-footnote-defs, and cjk-emphasis goldens landed.
 Do **not** flip the product default yet.
 
 **Noto `0.0.2-alpha.9`** shipped the adapter (#37) plus `@roobli/md` v0.1.1 quote/

@@ -168,6 +168,7 @@ describe('markdown golden gates — fixture inventory', () => {
       'simple-hard-breaks-in-footnotes.md',
       'simple-hard-breaks-in-lists.md',
       'simple-hard-breaks-in-quotes.md',
+      'simple-lazy-continuations-in-quotes.md',
       'simple-lists-in-quotes.md',
       'simple-nested-lists.md',
       'simple-nested-quotes.md',

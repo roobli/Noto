@@ -2,8 +2,9 @@
  * Engine-owned IR → PM for common blocks (leaf + plain paragraph/heading
  * including hard breaks + parseable link-def + simple footnote-def incl. hard
  * breaks + simple quote incl. nested plain + hard breaks in quotes + simple
- * lists-in-quotes + simple plain-body GFM alerts / callouts + simple flat /
- * same-family nested list (any depth, incl. hard breaks) + simple GFM table).
+ * lists-in-quotes + simple plain-body GFM alerts / callouts + lazy continuation
+ * of nested plain paragraphs + simple flat / same-family nested list (any depth,
+ * incl. hard breaks) + simple GFM table).
  * Flagged `@roobli/md` path; does not flip product default.
  */
 
@@ -82,7 +83,9 @@ describe('from-engine IR helpers', () => {
     expect(canSkipDialectEnrich('quote', '> [!NOTE]\n> body')).toBe(true);
     expect(canSkipDialectEnrich('quote', '> [!NOTE]-\n> body')).toBe(false);
     expect(canSkipDialectEnrich('quote', '> [!WARNING]\n> has **bold**')).toBe(false);
-    expect(canSkipDialectEnrich('quote', '> > nested\n> lazy')).toBe(false);
+    expect(canSkipDialectEnrich('quote', '> > nested\n> lazy')).toBe(true);
+    expect(canSkipDialectEnrich('quote', '> outer\n> > nest\n> after')).toBe(true);
+    expect(canSkipDialectEnrich('quote', '> > nest\n> **bold**')).toBe(false);
     expect(canSkipDialectEnrich('quote', '> - **bold**')).toBe(false);
     expect(canSkipDialectEnrich('bullet-list', '- a\n- b')).toBe(true);
     expect(canSkipDialectEnrich('bullet-list', '- a  \n  b')).toBe(true);
@@ -203,7 +206,33 @@ describe('from-engine IR helpers', () => {
       { type: 'quote', children: [{ type: 'paragraph', text: 'nested  \ndeep' }] },
     ]);
     expect(parseSimpleQuoteSource('> **bold**')).toBeNull();
-    expect(parseSimpleQuoteSource('> > nested\n> lazy')).toBeNull();
+    expect(parseSimpleQuoteSource('> > nested\n> lazy')).toEqual([
+      { type: 'quote', children: [{ type: 'paragraph', text: 'nested\nlazy' }] },
+    ]);
+    expect(parseSimpleQuoteSource('> outer\n> > nest\n> after')).toEqual([
+      { type: 'paragraph', text: 'outer' },
+      { type: 'quote', children: [{ type: 'paragraph', text: 'nest\nafter' }] },
+    ]);
+    expect(parseSimpleQuoteSource('> > > deep\n> > mid\n> out')).toEqual([
+      {
+        type: 'quote',
+        children: [{
+          type: 'quote',
+          children: [{ type: 'paragraph', text: 'deep\nmid\nout' }],
+        }],
+      },
+    ]);
+    expect(parseSimpleQuoteSource('> > nest  \n> hard')).toEqual([
+      { type: 'quote', children: [{ type: 'paragraph', text: 'nest  \nhard' }] },
+    ]);
+    expect(parseSimpleQuoteSource('> > nest\n> - item')).toEqual([
+      { type: 'quote', children: [{ type: 'paragraph', text: 'nest' }] },
+      { type: 'list', list: {
+        ordered: false, bullet: '-', delimiter: null, start: 1, spread: false,
+        items: [{ checked: null, text: 'item', nested: null }],
+      } },
+    ]);
+    expect(parseSimpleQuoteSource('> > nest\n> **bold**')).toBeNull();
     expect(parseSimpleQuoteSource('> - **bold**')).toBeNull();
     expect(parseSimpleQuoteSource('> [!NOTE]\n> x')).not.toBeNull();
     expect(parseSimpleQuoteSource('> [!NOTE]-\n> x')).toBeNull();
@@ -313,7 +342,7 @@ describe('blockFromEngineSpan', () => {
     expect(blockFromEngineSpan('heading', 'Setext *x*\n=======')).toBeNull();
   });
 
-  it('builds simple and nested plain quotes + lists-in-quotes + hard breaks + plain callouts; refuses marked / lazy', () => {
+  it('builds simple and nested plain quotes + lists-in-quotes + hard breaks + plain callouts + lazy nest; refuses marked', () => {
     const q = blockFromEngineSpan('quote', '> Hello world');
     expect(q?.type.name).toBe('blockquote');
     expect(q?.childCount).toBe(1);
@@ -410,10 +439,39 @@ describe('blockFromEngineSpan', () => {
     const tip = blockFromEngineSpan('quote', '> [!TIP]\n> Tip body stays exact.');
     expect(tip?.textContent).toBe('[!TIP]\nTip body stays exact.');
 
+    const lazyNest = blockFromEngineSpan('quote', '> > nested\n> lazy');
+    expect(lazyNest?.type.name).toBe('blockquote');
+    expect(lazyNest?.childCount).toBe(1);
+    expect(lazyNest?.child(0).type.name).toBe('blockquote');
+    expect(lazyNest?.child(0).textContent).toBe('nested\nlazy');
+
+    const lazyAfter = blockFromEngineSpan('quote', '> outer\n> > nest\n> after');
+    expect(lazyAfter?.childCount).toBe(2);
+    expect(lazyAfter?.child(0).textContent).toBe('outer');
+    expect(lazyAfter?.child(1).type.name).toBe('blockquote');
+    expect(lazyAfter?.child(1).textContent).toBe('nest\nafter');
+
+    const lazyDeep = blockFromEngineSpan('quote', '> > > deep\n> > mid\n> out');
+    expect(lazyDeep?.childCount).toBe(1);
+    expect(lazyDeep?.child(0).type.name).toBe('blockquote');
+    expect(lazyDeep?.child(0).child(0).type.name).toBe('blockquote');
+    expect(lazyDeep?.child(0).child(0).textContent).toBe('deep\nmid\nout');
+
+    const lazyHb = blockFromEngineSpan('quote', '> > nest  \n> hard');
+    expect(lazyHb?.child(0).child(0).child(1).type.name).toBe('hard_break');
+    expect(lazyHb?.child(0).textContent).toBe('nesthard');
+
+    const nestThenList = blockFromEngineSpan('quote', '> > nest\n> - item');
+    expect(nestThenList?.childCount).toBe(2);
+    expect(nestThenList?.child(0).type.name).toBe('blockquote');
+    expect(nestThenList?.child(0).textContent).toBe('nest');
+    expect(nestThenList?.child(1).type.name).toBe('bullet_list');
+    expect(nestThenList?.child(1).textContent).toBe('item');
+
     expect(blockFromEngineSpan('quote', '> Hello **bold**')).toBeNull();
     expect(blockFromEngineSpan('quote', '> [!NOTE]-\n> body')).toBeNull();
     expect(blockFromEngineSpan('quote', '> [!WARNING]\n> has **bold**')).toBeNull();
-    expect(blockFromEngineSpan('quote', '> > nested\n> lazy')).toBeNull();
+    expect(blockFromEngineSpan('quote', '> > nest\n> **bold**')).toBeNull();
     expect(blockFromEngineSpan('quote', '> - **bold**')).toBeNull();
     expect(blockFromEngineSpan('quote', '> # heading')).toBeNull();
     expect(blockFromEngineSpan('quote', '>')).toBeNull();
