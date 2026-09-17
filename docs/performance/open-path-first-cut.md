@@ -1,6 +1,6 @@
 # Open-path / `parseDocument` — measured cuts
 
-Status: **lazy / deferred wire nodes + viewport-driven enrich + incremental PM patch + kind-aware stand-ins + engine-owned IR→PM (common blocks + simple quotes incl. nested plain + lists-in-quotes + hard breaks in quotes + lazy nest continuation + true no-`>` lazy + simple flat / same-family nested lists any depth incl. hard breaks + unindented lazy soft-wrap + simple GFM tables + simple footnote-defs incl. empty + hard breaks + plain-body callouts)** under the flagged `@roobli/md` path.
+Status: **lazy / deferred wire nodes + viewport-driven enrich + incremental PM patch + kind-aware stand-ins + engine-owned IR→PM (common blocks + simple quotes incl. nested plain + lists-in-quotes + hard breaks in quotes + lazy nest continuation + true no-`>` lazy + simple flat / same-family nested lists any depth incl. hard breaks + unindented lazy soft-wrap + simple GFM tables + simple footnote-defs incl. empty + hard breaks + plain/simple-marked callouts + simple marked phrasing `**`/`*`/`~~`/`` ` ``)** under the flagged `@roobli/md` path.
 Product default remains micromark. Do **not** flip `NOTO_MARKDOWN_ENGINE`
 default-on from this work.
 
@@ -197,14 +197,15 @@ simple lists / footnotes, and unindented list soft-wrap are engine-owned with
    depth) + simple GFM table skip mdast (`pm/from-engine.ts`); enrich flags +
    `enrichSpansInRange` honour the skip.
 2. ~~Kind-aware structural stand-ins (heading/fence/…)~~ — shipped (#90).
-3. Extend IR→PM to more kinds when safe (complex tables / marked footnote
-   bodies / marked phrasing still dialect; marked callout bodies / collapsible /
-   titled alerts / marked quotes still dialect; no-`>` lazy + list lazy owned);
-   optional lightweight inline IR for marks later — not this cycle. Plain
-   hard-break paragraphs/headings, same-family nested lists (any depth, incl.
-   hard breaks), nested plain quotes, simple lists-in-quotes, plain-body GFM
-   alerts / callouts, hard breaks in quotes, lazy nest continuation via fewer
-   `>`, and hard breaks in simple footnotes are engine-owned.
+3. Extend IR→PM to more kinds when safe (complex / ragged tables, underscore
+   emphasis / nested marks / links / wiki / HTML / escapes, marked footnote
+   bodies with heavy inline, collapsible / titled alerts still dialect;
+   simple flat `**`/`*`/`~~`/`` ` `` marks owned across paras/headings/lists/
+   tables/quotes/callouts/footnotes). Plain hard-break paragraphs/headings,
+   same-family nested lists (any depth, incl. hard breaks), nested plain quotes,
+   simple lists-in-quotes, plain / simple-marked GFM alerts / callouts, hard
+   breaks in quotes, lazy nest continuation via fewer `>` **and true no-`>`**,
+   and hard breaks in simple footnotes are engine-owned.
 4. Keep growing `tests/fixtures/markdown-golden/` before default-on; GFM inline,
    nested lists, simple-nested-lists (depth-2+), simple-nested-quotes,
    simple-lists-in-quotes, simple-hard-breaks-in-quotes,

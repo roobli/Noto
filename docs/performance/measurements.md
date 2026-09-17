@@ -576,8 +576,8 @@ Medium scroll/idle tick **~58 ms** vs full remainder **704 ms** (~12×). Large
 (~`OPEN_VIEWPORT_ENRICH_BUDGET` spans), not the full remainder.
 
 Next residual: keep growing markdown-golden before default-on; complex tables /
-marked phrasing / marked callout edges still (no-`>` lazy + list lazy owned with `@roobli/md` ≥ v0.1.9);
-dialect. Nested plain quotes, simple lists-in-quotes, plain-body GFM alerts /
+underscore·nested marks / collapsible·titled callout edges still (no-`>` lazy +
+list lazy + simple marked phrasing owned with `@roobli/md` ≥ v0.1.9); dialect. Nested plain quotes, simple lists-in-quotes, plain-body GFM alerts /
 callouts, hard breaks in quotes, lazy nest continuation via fewer `>`, hard
 breaks in simple lists / footnotes, and same-family nested lists (any depth) are
 engine-owned (flagged). Kind-aware stand-ins (#90), IR→PM common blocks (+ link-definition +

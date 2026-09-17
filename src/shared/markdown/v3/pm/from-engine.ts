@@ -3,28 +3,27 @@
  *
  * Native spans are kind + source offsets only. For leaf kinds (fence, hr, math,
  * frontmatter, html), parseable link-definitions, **simple footnote-definitions**
- * (plain or empty single-paragraph body; optional soft-wrap / hard-break), plain
- * paragraph/heading with no inline dialect markers (hard breaks — two+ spaces
- * before newline — are engine-owned as `hard_break` nodes), **simple** blockquotes
- * (every line `>`-prefixed; plain paragraphs incl. hard breaks, nested quotes,
- * simple lists-in-quotes, plain-body GFM alerts / callouts, and CommonMark lazy
- * continuation of nested plain paragraphs via fewer `>` markers **or true no-`>`
- * lazy lines**), **simple flat / nested lists** (same-family
- * markers at every depth; plain single-paragraph items incl. hard breaks and
- * unindented lazy soft-wrap; depth-2+ same-family nests are engine-owned), and **simple GFM tables**
- * (alignment row; plain text cells; no nested blocks / marked phrasing), the
- * PM node is fully determined by
- * that IR — no micromark / mdast pass. Cross-family nests, multi-block items,
- * marked quotes, complex tables, marked footnote bodies, and marked-up
- * phrasing still go through `from-mdast.ts` after dialect enrich. **Simple
- * GFM alerts / callouts** (`> [!NOTE]` etc. with plain bodies) are engine-owned
- * — the marker stays plain text for the alert decoration plugin. Hard breaks
- * inside simple lists and simple footnotes are engine-owned.
+ * (plain / empty / simple-marked single-paragraph body; optional soft-wrap /
+ * hard-break), paragraph/heading with plain or **simple marked** phrasing
+ * (`**strong**` / `*em*` / `~~del~~` / `` `code` ``; hard breaks engine-owned),
+ * **simple** blockquotes (every line `>`-prefixed; plain or simple-marked
+ * paragraphs incl. hard breaks, nested quotes, simple lists-in-quotes,
+ * plain-body GFM alerts / callouts incl. simple-marked bodies, and CommonMark
+ * lazy continuation via fewer `>` **or true no-`>` lazy lines**), **simple
+ * flat / nested lists** (same-family markers at every depth; plain or
+ * simple-marked single-paragraph items incl. hard breaks and unindented lazy
+ * soft-wrap), and **simple GFM tables** (alignment row; plain or simple-marked
+ * cells; consistent columns), the PM node is fully determined by that IR — no
+ * micromark / mdast pass. Cross-family nests, multi-block items, collapsible /
+ * titled alert edges, underscore-emphasis / nested marks / links / wiki / HTML /
+ * escapes, and complex / ragged tables still go through `from-mdast.ts` after
+ * dialect enrich. **Simple GFM alerts / callouts** keep the marker as plain
+ * text for the alert decoration plugin.
  *
  * See docs/performance/open-path-first-cut.md and docs/design/roobli-md-engine.md.
  */
 
-import type { Node as ProseNode } from 'prosemirror-model';
+import type { Mark, Node as ProseNode } from 'prosemirror-model';
 import type { NotoBlockKind } from '../contracts';
 import { notoSchema } from './schema';
 
@@ -45,8 +44,17 @@ export const ENGINE_LEAF_KINDS: ReadonlySet<NotoBlockKind> = new Set([
  * links, code, math, HTML, autolink). Hard breaks alone do **not** force dialect
  * for plain paragraph/heading — those become engine-owned `hard_break` nodes
  * (serialize still writes two trailing spaces via `hardBreakAsTwoSpaces`).
+ * Simple `*` / `**` / `~~` / `` ` `` marks are engine-owned via
+ * `tryInlineNodesFromSource`; underscore emphasis and heavier constructs stay
+ * on dialect.
  */
 const INLINE_DIALECT_RE = /[*_~`[\]<!$:\\]|https?:\/\//u;
+/**
+ * Markers that always force dialect even with the simple-marked subset:
+ * underscore emphasis (snake_case / `__`), links, wiki, HTML, math, escapes,
+ * autolink.
+ */
+const HEAVY_INLINE_RE = /[_\[\]<!$:\\]|https?:\/\//;
 /** CommonMark / vault hard break: two+ spaces before newline. */
 const HARD_BREAK_RE = / {2,}\r?\n/;
 
@@ -63,13 +71,10 @@ const ALERT_MARKER_RE = /^\[!(NOTE|TIP|IMPORTANT|WARNING|CAUTION)\][ \t]*(?:\n|$
 
 /**
  * Dialect check for quote paragraph text: a leading GFM alert marker is plain
- * text (alert-plugin decorates it). Only the remainder is scanned for marks.
+ * text (alert-plugin decorates it). The remainder may be plain or simple-marked.
  */
 export function needsDialectInlineInQuote(markdown: string): boolean {
-  const match = ALERT_MARKER_RE.exec(markdown);
-  if (!match) return needsDialectInline(markdown);
-  const rest = markdown.slice(match[0].length);
-  return rest.length > 0 && needsDialectInline(rest);
+  return tryInlineNodesFromSource(markdown, { quoteAlert: true }) === null;
 }
 
 /** True when the source contains a CommonMark hard break (two+ spaces + newline). */
@@ -79,13 +84,12 @@ export function hasHardBreak(markdown: string): boolean {
 
 /**
  * True when dialect enrich can be skipped: leaf kinds always; parseable
- * link-definitions; simple footnote-definitions (incl. hard breaks); simple
- * quotes (incl. nested plain quotes, hard breaks in quote paragraphs, simple
- * lists-in-quotes, simple GFM alerts / callouts with plain bodies, and lazy
- * continuation of nested plain paragraphs incl. true no-`>` lazy); simple
- * flat or same-family nested lists (any depth, incl. hard breaks in item
- * paragraphs); simple GFM tables; paragraph / heading when the source has no
- * inline dialect markers (hard breaks allowed — engine-owned).
+ * link-definitions; simple footnote-definitions (incl. hard breaks + simple
+ * marks); simple quotes (incl. nested, hard breaks, lists-in-quotes, plain /
+ * simple-marked GFM alerts / callouts, lazy nest + no-`>` lazy); simple flat
+ * or same-family nested lists (any depth, incl. hard breaks + simple marks);
+ * simple GFM tables (plain or simple-marked cells); paragraph / heading when
+ * plain or simple-marked (hard breaks allowed — engine-owned).
  */
 export function canSkipDialectEnrich(kind: NotoBlockKind, markdown: string): boolean {
   if (ENGINE_LEAF_KINDS.has(kind)) return true;
@@ -105,13 +109,13 @@ export function canSkipDialectEnrich(kind: NotoBlockKind, markdown: string): boo
     return parseSimpleTableSource(markdown) !== null;
   }
   if (kind === 'paragraph' || kind === 'heading') {
-    return !needsDialectInline(markdown);
+    return tryInlineNodesFromSource(markdown) !== null;
   }
   return false;
 }
 
-function textNodes(value: string): ProseNode[] {
-  return value.length === 0 ? [] : [schema.text(value)];
+function textNodes(value: string, marks: readonly Mark[] = []): ProseNode[] {
+  return value.length === 0 ? [] : [schema.text(value, marks)];
 }
 
 /**
@@ -120,11 +124,25 @@ function textNodes(value: string): ProseNode[] {
  * keeps vault form (two trailing spaces). Trailing spaces with no following
  * newline are dropped like CommonMark / mdast.
  */
-export function inlineNodesFromPlainSource(md: string): ProseNode[] {
+export function inlineNodesFromPlainSource(md: string, marks: readonly Mark[] = []): ProseNode[] {
+  return plainRunNodes(md, marks, true);
+}
+
+/**
+ * Plain / hard-break inline nodes. When `trimTrailing` is true (standalone
+ * plain paragraphs), trailing spaces without a following newline are dropped
+ * like CommonMark / mdast. Mid-phrase plain runs between marks pass
+ * `trimTrailing: false` so spaces around `**bold**` survive.
+ */
+function plainRunNodes(
+  md: string,
+  marks: readonly Mark[] = [],
+  trimTrailing = false,
+): ProseNode[] {
   const normalized = md.replace(/\r\n/g, '\n');
   if (!HARD_BREAK_RE.test(normalized)) {
-    const body = normalized.trimEnd();
-    return textNodes(body);
+    const body = trimTrailing ? normalized.trimEnd() : normalized;
+    return textNodes(body, marks);
   }
   const nodes: ProseNode[] = [];
   const re = / {2,}\n/g;
@@ -132,12 +150,160 @@ export function inlineNodesFromPlainSource(md: string): ProseNode[] {
   let match: RegExpExecArray | null;
   while ((match = re.exec(normalized)) !== null) {
     const before = normalized.slice(lastIndex, match.index);
-    if (before.length > 0) nodes.push(...textNodes(before));
-    nodes.push(schema.nodes.hard_break.create());
+    if (before.length > 0) nodes.push(...textNodes(before, marks));
+    nodes.push(schema.nodes.hard_break.create(null, null, marks));
     lastIndex = match.index + match[0].length;
   }
-  const after = normalized.slice(lastIndex).replace(/[ \t\r\n]+$/u, '');
-  if (after.length > 0) nodes.push(...textNodes(after));
+  let after = normalized.slice(lastIndex);
+  if (trimTrailing) after = after.replace(/[ \t\r\n]+$/u, '');
+  if (after.length > 0) nodes.push(...textNodes(after, marks));
+  return nodes;
+}
+
+export interface TryInlineOptions {
+  /** Allow a leading GFM alert marker (`[!NOTE]` …) as plain text prefix. */
+  readonly quoteAlert?: boolean;
+}
+
+/**
+ * Engine-owned inline IR: plain text, hard breaks, and a flat subset of marks
+ * (`**strong**`, `*emphasis*`, `~~strikethrough~~`, `` `inline code` ``).
+ * Nested marks, underscore forms, links/wiki/HTML/math/escapes/autolink, and
+ * unmatched delimiters return `null` (dialect enrich).
+ */
+export function tryInlineNodesFromSource(
+  md: string,
+  options: TryInlineOptions = {},
+): ProseNode[] | null {
+  const normalized = md.replace(/\r\n/g, '\n');
+  if (options.quoteAlert) {
+    const match = ALERT_MARKER_RE.exec(normalized);
+    if (match) {
+      const prefix = match[0];
+      const rest = normalized.slice(prefix.length);
+      const prefixNodes = prefix.length > 0 ? textNodes(prefix) : [];
+      if (rest.length === 0) return prefixNodes;
+      const restNodes = tryInlineNodesFromSource(rest);
+      if (!restNodes) return null;
+      return [...prefixNodes, ...restNodes];
+    }
+  }
+  if (!INLINE_DIALECT_RE.test(normalized)) {
+    return inlineNodesFromPlainSource(normalized);
+  }
+  if (HEAVY_INLINE_RE.test(normalized)) return null;
+  return parseSimpleAsteriskTildeCode(normalized);
+}
+
+/**
+ * Flat `*` / `**` / `~~` / `` ` `` scanner. Prefer longer delimiters. Mark
+ * content may not contain delimiter characters (no nesting). `***` / bare
+ * unmatched markers fall through to dialect.
+ */
+function parseSimpleAsteriskTildeCode(md: string): ProseNode[] | null {
+  let input = md;
+  if (!HARD_BREAK_RE.test(input)) {
+    input = input.trimEnd();
+  }
+  const nodes: ProseNode[] = [];
+  let i = 0;
+  const len = input.length;
+
+  const emitPlain = (from: number, to: number): void => {
+    if (to <= from) return;
+    nodes.push(...plainRunNodes(input.slice(from, to), [], false));
+  };
+
+  const isWs = (ch: string | undefined): boolean =>
+    ch === ' ' || ch === '\t' || ch === '\n' || ch === '\r';
+
+  while (i < len) {
+    if (input.startsWith('***', i)) return null;
+
+    if (input[i] === '`') {
+      const close = input.indexOf('`', i + 1);
+      if (close < 0) return null;
+      const content = input.slice(i + 1, close);
+      if (content.includes('`') || content.includes('\n')) return null;
+      nodes.push(...textNodes(content, [schema.marks.inline_code.create()]));
+      i = close + 1;
+      continue;
+    }
+
+    if (input.startsWith('~~', i)) {
+      if (isWs(input[i + 2])) {
+        emitPlain(i, i + 2);
+        i += 2;
+        continue;
+      }
+      const close = input.indexOf('~~', i + 2);
+      if (close < 0) return null;
+      if (close === i + 2 || isWs(input[close - 1])) return null;
+      const content = input.slice(i + 2, close);
+      if (/[~*_`]/u.test(content)) return null;
+      nodes.push(...plainRunNodes(content, [schema.marks.strikethrough.create()], false));
+      i = close + 2;
+      continue;
+    }
+
+    if (input.startsWith('**', i)) {
+      if (isWs(input[i + 2])) {
+        emitPlain(i, i + 2);
+        i += 2;
+        continue;
+      }
+      const close = input.indexOf('**', i + 2);
+      if (close < 0) return null;
+      if (close === i + 2 || isWs(input[close - 1])) return null;
+      const content = input.slice(i + 2, close);
+      if (/[*_`~]/u.test(content)) return null;
+      nodes.push(...plainRunNodes(content, [schema.marks.strong.create()], false));
+      i = close + 2;
+      continue;
+    }
+
+    if (input[i] === '*') {
+      // Not left-flanking → literal asterisk (e.g. `2 * 3`).
+      if (isWs(input[i + 1])) {
+        emitPlain(i, i + 1);
+        i += 1;
+        continue;
+      }
+      const close = input.indexOf('*', i + 1);
+      if (close < 0) return null;
+      // Closing `*` of a `**` pair — ambiguous; dialect.
+      if (input[close + 1] === '*') return null;
+      if (close === i + 1 || isWs(input[close - 1])) return null;
+      const content = input.slice(i + 1, close);
+      if (/[*_`~]/u.test(content)) return null;
+      nodes.push(...plainRunNodes(content, [schema.marks.emphasis.create()], false));
+      i = close + 1;
+      continue;
+    }
+
+    if (input[i] === '~') {
+      // Lone `~` (not `~~`) — dialect (subscript / unmatched).
+      return null;
+    }
+
+    let j = i + 1;
+    while (j < len) {
+      const ch = input[j]!;
+      if (ch === '*' || ch === '~' || ch === '`') break;
+      j += 1;
+    }
+    emitPlain(i, j);
+    i = j;
+  }
+
+  return nodes;
+}
+
+function requireInlineNodes(md: string, options?: TryInlineOptions): ProseNode[] {
+  const nodes = tryInlineNodesFromSource(md, options);
+  if (!nodes) {
+    throw new Error('engine inline IR expected to parse (caller must canSkip first)');
+  }
   return nodes;
 }
 
@@ -408,9 +574,9 @@ function parseQuoteChildren(
  * (incl. fewer-`>` and no-`>` lazy), and/or simple flat / same-family nested
  * lists (any reasonable depth; lazy into list items). Returns a child tree
  * matching CommonMark / mdast shape for the owned subset, or `null` when the
- * span still needs dialect enrich (marked callout bodies, collapsible / titled
- * alerts, marked phrasing, cross-family / multi-para lists, pathological
- * depth). Simple plain-body GFM alerts (`> [!NOTE]` …) are accepted.
+ * span still needs dialect enrich (collapsible / titled alerts, underscore /
+ * nested / heavy inline, cross-family / multi-para lists, pathological depth).
+ * Plain or simple-marked GFM alerts (`> [!NOTE]` …) are accepted.
  */
 export function parseSimpleQuoteSource(md: string): ParsedQuoteChild[] | null {
   const trimmed = md.replace(/\r\n/g, '\n').trimEnd();
@@ -534,8 +700,8 @@ export function parseSimpleFlatListSource(md: string): ParsedFlatList | null {
     for (const item of level.items) {
       const joined = item.lines.join('\n');
       const text = joined.trimEnd();
-      // Hard breaks in list item paragraphs are engine-owned (same as plain paras).
-      if (needsDialectInline(text)) return null;
+      // Hard breaks + simple marked phrasing in list items are engine-owned.
+      if (tryInlineNodesFromSource(text) === null) return null;
       let nested: ParsedFlatList | null = null;
       if (item.nested) {
         nested = finalizeLevel(item.nested);
@@ -725,7 +891,7 @@ export function parseSimpleFlatListSource(md: string): ParsedFlatList | null {
       if (/^[ \t]/.test(line)) return null;
       rest = line;
     }
-    if (restLooksStructural(rest) || needsDialectInline(rest)) {
+    if (restLooksStructural(rest) || tryInlineNodesFromSource(rest) === null) {
       return null;
     }
     top.items[top.items.length - 1]!.lines.push(rest);
@@ -779,10 +945,10 @@ function alignmentOfDelimiterCell(cell: string): TableAlign | undefined {
 
 /**
  * Simple GFM table: header + alignment row + optional body rows; every cell
- * plain text (no inline dialect markers); consistent column counts; no blank
- * lines inside the span. Ragged columns, escaped pipes, code/marks in cells,
- * and missing delimiter fall through to dialect. Returns `null` when enrich
- * is still needed.
+ * plain or simple-marked (`**` / `*` / `~~` / `` ` ``); consistent column
+ * counts; no blank lines inside the span. Ragged columns, escaped pipes,
+ * underscore / nested / heavy inline, and missing delimiter fall through to
+ * dialect. Returns `null` when enrich is still needed.
  */
 export function parseSimpleTableSource(md: string): ParsedSimpleTable | null {
   const trimmed = md.replace(/\r\n/g, '\n').trimEnd();
@@ -820,7 +986,7 @@ export function parseSimpleTableSource(md: string): ParsedSimpleTable | null {
 
   for (const row of rows) {
     for (const cell of row) {
-      if (needsDialectInline(cell)) return null;
+      if (tryInlineNodesFromSource(cell) === null) return null;
     }
   }
 
@@ -900,9 +1066,9 @@ export function parseSimpleFootnoteDefinitionSource(md: string): ParsedFootnoteD
   }
   const text = parts.join('\n').trimEnd();
   // Empty body (`[^id]:` / whitespace-only) is still engine-owned: one empty
-  // paragraph child (schema `block+`). Hard breaks are engine-owned; marked /
-  // structural stay out.
-  if (needsDialectInline(text)) return null;
+  // paragraph child (schema `block+`). Hard breaks + simple marks are engine-owned;
+  // heavy / nested / underscore still dialect.
+  if (tryInlineNodesFromSource(text) === null) return null;
   return {
     identifier: label.toLowerCase(),
     label,
@@ -968,7 +1134,7 @@ export function engineSemanticKey(kind: NotoBlockKind, markdown: string): string
 function pmQuoteFromParsed(children: readonly ParsedQuoteChild[]): ProseNode {
   const nodes = children.map((child) => {
     if (child.type === 'paragraph') {
-      return schema.nodes.paragraph.create(null, inlineNodesFromPlainSource(child.text));
+      return schema.nodes.paragraph.create(null, requireInlineNodes(child.text, { quoteAlert: true }));
     }
     if (child.type === 'list') {
       return pmListFromParsed(child.list);
@@ -981,7 +1147,7 @@ function pmQuoteFromParsed(children: readonly ParsedQuoteChild[]): ProseNode {
 function pmListFromParsed(list: ParsedFlatList): ProseNode {
   const items = list.items.map((item) => {
     const children: ProseNode[] = [
-      schema.nodes.paragraph.create(null, inlineNodesFromPlainSource(item.text)),
+      schema.nodes.paragraph.create(null, requireInlineNodes(item.text)),
     ];
     if (item.nested) children.push(pmListFromParsed(item.nested));
     return schema.nodes.list_item.create({ checked: item.checked }, children);
@@ -1036,15 +1202,15 @@ export function blockFromEngineSpan(kind: NotoBlockKind, markdown: string): Pros
     case 'heading': {
       const h = parseHeadingSource(markdown);
       if (!h) {
-        return schema.nodes.heading.create({ level: 1 }, inlineNodesFromPlainSource(markdown));
+        return schema.nodes.heading.create({ level: 1 }, requireInlineNodes(markdown));
       }
-      return schema.nodes.heading.create({ level: h.level }, inlineNodesFromPlainSource(h.text));
+      return schema.nodes.heading.create({ level: h.level }, requireInlineNodes(h.text));
     }
     case 'paragraph': {
       // Soft newlines stay in text (pre-wrap). Hard breaks (` {2,}\n`) become
       // `hard_break` nodes. Trailing spaces without a following newline are
       // dropped like CommonMark / mdast (avoids `See  [[` after open+type).
-      return schema.nodes.paragraph.create(null, inlineNodesFromPlainSource(markdown));
+      return schema.nodes.paragraph.create(null, requireInlineNodes(markdown));
     }
     case 'link-definition': {
       const d = parseLinkDefinitionSource(markdown);
@@ -1061,7 +1227,7 @@ export function blockFromEngineSpan(kind: NotoBlockKind, markdown: string): Pros
       if (!f) return null;
       return schema.nodes.footnote_definition.create(
         { identifier: f.identifier, label: f.label },
-        [schema.nodes.paragraph.create(null, inlineNodesFromPlainSource(f.text))],
+        [schema.nodes.paragraph.create(null, requireInlineNodes(f.text))],
       );
     }
     case 'quote': {
@@ -1083,7 +1249,7 @@ export function blockFromEngineSpan(kind: NotoBlockKind, markdown: string): Pros
         const cellType = rowIndex === 0 ? schema.nodes.table_header : schema.nodes.table_cell;
         const cells = row.map((cell, columnIndex) => cellType.create(
           { align: table.align[columnIndex] ?? null },
-          textNodes(cell),
+          requireInlineNodes(cell),
         ));
         return schema.nodes.table_row.create(null, cells);
       });
