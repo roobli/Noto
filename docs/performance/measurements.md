@@ -576,10 +576,11 @@ Medium scroll/idle tick **~58 ms** vs full remainder **704 ms** (~12×). Large
 (~`OPEN_VIEWPORT_ENRICH_BUDGET` spans), not the full remainder.
 
 Next residual: keep growing markdown-golden before default-on; complex tables /
-marked phrasing / marked callout edges / lazy continuations still dialect.
-Nested plain quotes, simple lists-in-quotes, plain-body GFM alerts / callouts,
-hard breaks in quotes, hard breaks in simple lists / footnotes, and same-family
-nested lists (any depth) are engine-owned (flagged). Kind-aware stand-ins (#90), IR→PM common blocks (+ link-definition +
+marked phrasing / marked callout edges / no-`>` lazy / lazy-into-list still
+dialect. Nested plain quotes, simple lists-in-quotes, plain-body GFM alerts /
+callouts, hard breaks in quotes, lazy nest continuation via fewer `>`, hard
+breaks in simple lists / footnotes, and same-family nested lists (any depth) are
+engine-owned (flagged). Kind-aware stand-ins (#90), IR→PM common blocks (+ link-definition +
 simple footnote-def incl. empty + hard breaks + simple quote + simple flat /
 nested list incl. hard breaks + simple GFM table), and incremental PM patch per
 enrich tick shipped (flagged). Plain paragraph IR→PM trims trailing spaces
