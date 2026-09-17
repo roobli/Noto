@@ -109,3 +109,31 @@ export async function placeCaret(page: Page, target: Locator): Promise<void> {
     // The editor never marked it. The assertions that follow are what say so.
   }
 }
+
+/**
+ * Put the caret at the start of `target` via the Selection API, after focusing
+ * the editor.
+ *
+ * Home / Meta+ArrowLeft does not always reach a packaged macOS window (it can
+ * scroll or race after click). A bare Range without focusing ProseMirror is
+ * also ignored: the view only reads DOM selection when it has focus
+ * (`hasFocusAndSelection`), which left packaged macOS CI stuck at the click
+ * position (block-edges: expected data-caret "1", got "5").
+ */
+export async function placeCaretAtStart(page: Page, target: Locator): Promise<void> {
+  await placeCaret(page, target);
+  await target.evaluate((node) => {
+    const root = node.closest('.ProseMirror');
+    if (!(root instanceof HTMLElement)) throw new Error('no ProseMirror root');
+    root.focus();
+    const walker = document.createTreeWalker(node, NodeFilter.SHOW_TEXT);
+    const text = walker.nextNode();
+    if (!text) throw new Error('no text to put the caret in');
+    const range = document.createRange();
+    range.setStart(text, 0);
+    range.collapse(true);
+    const selection = window.getSelection();
+    selection?.removeAllRanges();
+    selection?.addRange(range);
+  });
+}

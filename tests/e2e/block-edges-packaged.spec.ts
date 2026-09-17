@@ -1,7 +1,7 @@
 import { mkdir, rm, writeFile } from 'node:fs/promises';
 import path from 'node:path';
 import { expect, test, _electron as electron, type ElectronApplication, type Page } from '@playwright/test';
-import { packagedExecutable } from './packaged-app';
+import { packagedExecutable, placeCaretAtStart } from './packaged-app';
 
 const resultRoot = path.join(process.cwd(), 'test-results', 'block-edges');
 
@@ -49,30 +49,16 @@ test.describe("Typora's keys at the edges of a block", () => {
   test('Backspace at the start of a heading leaves a paragraph with its words', async ({}, info) => {
     const { app, page } = await launch(info.title.slice(0, 12).replace(/\W+/g, '-'));
     try {
-      await caretIn(page, editor(page).locator('h1'), 'Head');
-      // Home scrolls on a Mac and leaves the caret where it was; this is the
-      // key that moves it. The caret moves a moment after, and Backspace has
-      // to find it at the start of the line rather than wherever the click
-      // left it.
-      // The caret is put at the head of the heading through the selection
-      // itself rather than by a chord. Which key moves to the start of a line
-      // differs by platform and does not always reach a packaged window, and
-      // this test is about what Backspace does when the caret is there, not
-      // about how it got there. Position 1 is the first character of the
-      // first block, and the editor says where it thinks the caret is.
+      // Home / Meta+ArrowLeft can scroll or miss a packaged macOS window.
+      // placeCaretAtStart focuses ProseMirror then sets the Selection — without
+      // focus, PM ignores selectionchange and data-caret stayed at the click
+      // position (flake: expected "1", got "5" on macos-14).
       const host = page.locator('.canvas-slot:not([hidden]) [data-testid="noto-editor"]');
-      await page.evaluate(() => {
-        const heading = document.querySelector('.canvas-slot:not([hidden]) .ProseMirror h1');
-        const text = heading?.firstChild;
-        if (!text) throw new Error('no heading to put the caret in');
-        const range = document.createRange();
-        range.setStart(text, 0);
-        range.collapse(true);
-        const selection = window.getSelection();
-        selection?.removeAllRanges();
-        selection?.addRange(range);
-      });
-      await expect(host).toHaveAttribute('data-caret', '1');
+      const heading = editor(page).locator('h1');
+      await expect(async () => {
+        await placeCaretAtStart(page, heading);
+        await expect(host).toHaveAttribute('data-caret', '1');
+      }).toPass({ timeout: 10_000 });
       await expect(editor(page).locator('.noto-active-block')).toHaveText('Head');
       await page.keyboard.press('Backspace');
       await expect(editor(page).locator('h1')).toHaveCount(0);
