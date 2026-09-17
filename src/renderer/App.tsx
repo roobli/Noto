@@ -658,12 +658,19 @@ function NotoWorkspace({ platform }: { platform: NotoPlatform }) {
   /** Applied rail width: clamp a stored value that outgrew a narrower window. */
   const appliedRailWidth = clampRailWidth(settings.railWidth, viewportWidth);
 
-  const changeSettings = useCallback((patch: Partial<NotoSettingsV1>) => {
+  const changeSettings = useCallback((
+    patch: Partial<NotoSettingsV1> | ((current: NotoSettingsV1) => Partial<NotoSettingsV1>),
+  ) => {
     // Applied locally at once so the control responds, then confirmed by main,
-    // which is the value that survives a restart.
-    setSettings((current) => ({ ...current, ...patch }));
-    void window.notoSettings.write({ version: 1, requestId: rid('settings-write'), patch })
-      .then((result) => { if (result.ok) setSettings(result.value.settings); });
+    // which is the value that survives a restart. Patches may be derived from
+    // the latest state (page-width ring) so a second chord before React
+    // re-renders does not re-read a stale settingsRef.
+    setSettings((current) => {
+      const resolved = typeof patch === 'function' ? patch(current) : patch;
+      void window.notoSettings.write({ version: 1, requestId: rid('settings-write'), patch: resolved })
+        .then((result) => { if (result.ok) setSettings(result.value.settings); });
+      return { ...current, ...resolved };
+    });
   }, []);
 
   useEffect(() => {
@@ -1612,7 +1619,7 @@ function NotoWorkspace({ platform }: { platform: NotoPlatform }) {
    * offers when the caret is not in a list, so the two cannot drift apart.
    */
   const stepWidth = useCallback((direction: 1 | -1) => {
-    changeSettings({ widthMode: stepWidthMode(settingsRef.current.widthMode, direction) });
+    changeSettings((current) => ({ widthMode: stepWidthMode(current.widthMode, direction) }));
   }, [changeSettings]);
   const stepWidthRef = useRef(stepWidth);
   stepWidthRef.current = stepWidth;
