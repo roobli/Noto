@@ -176,6 +176,7 @@ describe('markdown golden gates — fixture inventory', () => {
       'simple-nested-quotes.md',
       'simple-no-marker-lazy-in-quotes.md',
       'simple-quotes.md',
+      'simple-underscore-emphasis.md',
       'table-align.md',
       'tables.md',
       'tight-quotes.md',

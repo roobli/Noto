@@ -5,7 +5,8 @@
  * frontmatter, html), parseable link-definitions, **simple footnote-definitions**
  * (plain / empty / simple-marked single-paragraph body; optional soft-wrap /
  * hard-break), paragraph/heading with plain or **simple marked** phrasing
- * (`**strong**` / `*em*` / `~~del~~` / `` `code` ``; hard breaks engine-owned),
+ * (`**strong**` / `*em*` / `__strong__` / `_em_` / `~~del~~` / `` `code` ``;
+ * hard breaks engine-owned; snake_case underscores stay literal),
  * **simple** blockquotes (every line `>`-prefixed; plain or simple-marked
  * paragraphs incl. hard breaks, nested quotes, simple lists-in-quotes,
  * plain-body GFM alerts / callouts incl. simple-marked bodies, and CommonMark
@@ -15,10 +16,10 @@
  * soft-wrap), and **simple GFM tables** (alignment row; plain or simple-marked
  * cells; consistent columns), the PM node is fully determined by that IR — no
  * micromark / mdast pass. Cross-family nests, multi-block items, collapsible /
- * titled alert edges, underscore-emphasis / nested marks / links / wiki / HTML /
- * escapes, and complex / ragged tables still go through `from-mdast.ts` after
- * dialect enrich. **Simple GFM alerts / callouts** keep the marker as plain
- * text for the alert decoration plugin.
+ * titled alert edges, nested marks / links / wiki / HTML / escapes, and
+ * complex / ragged tables still go through `from-mdast.ts` after dialect
+ * enrich. **Simple GFM alerts / callouts** keep the marker as plain text for
+ * the alert decoration plugin.
  *
  * See docs/performance/open-path-first-cut.md and docs/design/roobli-md-engine.md.
  */
@@ -44,17 +45,18 @@ export const ENGINE_LEAF_KINDS: ReadonlySet<NotoBlockKind> = new Set([
  * links, code, math, HTML, autolink). Hard breaks alone do **not** force dialect
  * for plain paragraph/heading — those become engine-owned `hard_break` nodes
  * (serialize still writes two trailing spaces via `hardBreakAsTwoSpaces`).
- * Simple `*` / `**` / `~~` / `` ` `` marks are engine-owned via
- * `tryInlineNodesFromSource`; underscore emphasis and heavier constructs stay
- * on dialect.
+ * Simple `*` / `**` / `_` / `__` / `~~` / `` ` `` marks are engine-owned via
+ * `tryInlineNodesFromSource`; nested marks and heavier constructs stay on
+ * dialect. Snake_case underscores are literal (CommonMark flanking).
  */
 const INLINE_DIALECT_RE = /[*_~`[\]<!$:\\]|https?:\/\//u;
 /**
  * Markers that always force dialect even with the simple-marked subset:
- * underscore emphasis (snake_case / `__`), links, wiki, HTML, math, escapes,
- * autolink.
+ * links, wiki, HTML, math, escapes, autolink. Underscore emphasis is owned
+ * (with snake_case-safe flanking); nested marks still fall through in the
+ * scanner.
  */
-const HEAVY_INLINE_RE = /[_\[\]<!$:\\]|https?:\/\//;
+const HEAVY_INLINE_RE = /[\[\]<!$:\\]|https?:\/\//;
 /** CommonMark / vault hard break: two+ spaces before newline. */
 const HARD_BREAK_RE = / {2,}\r?\n/;
 
@@ -167,9 +169,10 @@ export interface TryInlineOptions {
 
 /**
  * Engine-owned inline IR: plain text, hard breaks, and a flat subset of marks
- * (`**strong**`, `*emphasis*`, `~~strikethrough~~`, `` `inline code` ``).
- * Nested marks, underscore forms, links/wiki/HTML/math/escapes/autolink, and
- * unmatched delimiters return `null` (dialect enrich).
+ * (`**strong**`, `*emphasis*`, `__strong__`, `_emphasis_`, `~~strikethrough~~`,
+ * `` `inline code` ``). Nested marks, links/wiki/HTML/math/escapes/autolink,
+ * and unmatched delimiters return `null` (dialect enrich). Snake_case
+ * underscores (`mcp_register`) stay literal via CommonMark-ish flanking.
  */
 export function tryInlineNodesFromSource(
   md: string,
@@ -196,10 +199,18 @@ export function tryInlineNodesFromSource(
 }
 
 /**
- * Flat `*` / `**` / `~~` / `` ` `` scanner. Prefer longer delimiters. Mark
- * content may not contain delimiter characters (no nesting). `***` / bare
- * unmatched markers fall through to dialect.
+ * Flat `*` / `**` / `_` / `__` / `~~` / `` ` `` scanner. Prefer longer
+ * delimiters. Mark content may not contain delimiter characters (no nesting).
+ * `***` / `___` / bare unmatched markers fall through to dialect.
+ * Underscores use a CommonMark-ish word-flanking rule so `snake_case` stays
+ * literal while `__strong__` / `_em_` are owned.
  */
+function isWordChar(ch: string | undefined): boolean {
+  if (!ch) return false;
+  // Match syntax.ts WORD: ASCII alnum + Latin-1 supplement + CJK ideographs.
+  return /[0-9A-Za-z\u00C0-\u024F\u3400-\u4DBF\u4E00-\u9FFF]/u.test(ch);
+}
+
 function parseSimpleAsteriskTildeCode(md: string): ProseNode[] | null {
   let input = md;
   if (!HARD_BREAK_RE.test(input)) {
@@ -217,8 +228,34 @@ function parseSimpleAsteriskTildeCode(md: string): ProseNode[] | null {
   const isWs = (ch: string | undefined): boolean =>
     ch === ' ' || ch === '\t' || ch === '\n' || ch === '\r';
 
+  /** Content of `*` / `**` / `~~` may not nest other `*` / `~` / `` ` ``. */
+  const ASTERISK_TILDE_FORBIDDEN = /[*`~]/u;
+  /** Content of `_` / `__` may not nest other simple delimiters. */
+  const UNDERSCORE_FORBIDDEN = /[*_`~]/u;
+
+  /**
+   * True when content holds an underscore that is not mid-snake_case — those
+   * would be `_em_` / `__strong__` (or unmatched) and need dialect so we do
+   * not flatten nested marks inside `*` / `**` / `~~`.
+   */
+  const hasNonSnakeUnderscore = (content: string): boolean => {
+    for (let k = 0; k < content.length; k += 1) {
+      if (content[k] !== '_') continue;
+      if (content.startsWith('__', k)) {
+        if (isWordChar(content[k - 1]) && isWordChar(content[k + 2])) {
+          k += 1;
+          continue;
+        }
+        return true;
+      }
+      if (isWordChar(content[k - 1]) && isWordChar(content[k + 1])) continue;
+      return true;
+    }
+    return false;
+  };
+
   while (i < len) {
-    if (input.startsWith('***', i)) return null;
+    if (input.startsWith('***', i) || input.startsWith('___', i)) return null;
 
     if (input[i] === '`') {
       const close = input.indexOf('`', i + 1);
@@ -240,7 +277,7 @@ function parseSimpleAsteriskTildeCode(md: string): ProseNode[] | null {
       if (close < 0) return null;
       if (close === i + 2 || isWs(input[close - 1])) return null;
       const content = input.slice(i + 2, close);
-      if (/[~*_`]/u.test(content)) return null;
+      if (ASTERISK_TILDE_FORBIDDEN.test(content) || hasNonSnakeUnderscore(content)) return null;
       nodes.push(...plainRunNodes(content, [schema.marks.strikethrough.create()], false));
       i = close + 2;
       continue;
@@ -256,7 +293,31 @@ function parseSimpleAsteriskTildeCode(md: string): ProseNode[] | null {
       if (close < 0) return null;
       if (close === i + 2 || isWs(input[close - 1])) return null;
       const content = input.slice(i + 2, close);
-      if (/[*_`~]/u.test(content)) return null;
+      if (ASTERISK_TILDE_FORBIDDEN.test(content) || hasNonSnakeUnderscore(content)) return null;
+      nodes.push(...plainRunNodes(content, [schema.marks.strong.create()], false));
+      i = close + 2;
+      continue;
+    }
+
+    if (input.startsWith('__', i)) {
+      // Word on both sides → literal (e.g. `mcp__claude`).
+      if (isWordChar(input[i - 1]) && isWordChar(input[i + 2])) {
+        emitPlain(i, i + 2);
+        i += 2;
+        continue;
+      }
+      if (isWs(input[i + 2])) {
+        emitPlain(i, i + 2);
+        i += 2;
+        continue;
+      }
+      const close = input.indexOf('__', i + 2);
+      if (close < 0) return null;
+      if (close === i + 2 || isWs(input[close - 1])) return null;
+      // Closing `__` with word on both sides is not a closer.
+      if (isWordChar(input[close - 1]) && isWordChar(input[close + 2])) return null;
+      const content = input.slice(i + 2, close);
+      if (UNDERSCORE_FORBIDDEN.test(content)) return null;
       nodes.push(...plainRunNodes(content, [schema.marks.strong.create()], false));
       i = close + 2;
       continue;
@@ -275,7 +336,51 @@ function parseSimpleAsteriskTildeCode(md: string): ProseNode[] | null {
       if (input[close + 1] === '*') return null;
       if (close === i + 1 || isWs(input[close - 1])) return null;
       const content = input.slice(i + 1, close);
-      if (/[*_`~]/u.test(content)) return null;
+      if (ASTERISK_TILDE_FORBIDDEN.test(content) || hasNonSnakeUnderscore(content)) return null;
+      nodes.push(...plainRunNodes(content, [schema.marks.emphasis.create()], false));
+      i = close + 1;
+      continue;
+    }
+
+    if (input[i] === '_') {
+      // Snake_case mid-identifier → literal.
+      if (isWordChar(input[i - 1]) && isWordChar(input[i + 1])) {
+        emitPlain(i, i + 1);
+        i += 1;
+        continue;
+      }
+      // Not left-flanking → literal.
+      if (isWs(input[i + 1])) {
+        emitPlain(i, i + 1);
+        i += 1;
+        continue;
+      }
+      // Find a closer that is not mid-identifier and not the start of `__`.
+      let close = -1;
+      let search = i + 1;
+      while (search < len) {
+        const at = input.indexOf('_', search);
+        if (at < 0) break;
+        if (input[at + 1] === '_') {
+          // Part of `__` — skip the run.
+          search = at + 2;
+          continue;
+        }
+        if (at === i + 1 || isWs(input[at - 1])) {
+          search = at + 1;
+          continue;
+        }
+        // Word on both sides of closer → not a closer (continue).
+        if (isWordChar(input[at - 1]) && isWordChar(input[at + 1])) {
+          search = at + 1;
+          continue;
+        }
+        close = at;
+        break;
+      }
+      if (close < 0) return null;
+      const content = input.slice(i + 1, close);
+      if (UNDERSCORE_FORBIDDEN.test(content)) return null;
       nodes.push(...plainRunNodes(content, [schema.marks.emphasis.create()], false));
       i = close + 1;
       continue;
@@ -289,7 +394,7 @@ function parseSimpleAsteriskTildeCode(md: string): ProseNode[] | null {
     let j = i + 1;
     while (j < len) {
       const ch = input[j]!;
-      if (ch === '*' || ch === '~' || ch === '`') break;
+      if (ch === '*' || ch === '~' || ch === '`' || ch === '_') break;
       j += 1;
     }
     emitPlain(i, j);
@@ -574,7 +679,7 @@ function parseQuoteChildren(
  * (incl. fewer-`>` and no-`>` lazy), and/or simple flat / same-family nested
  * lists (any reasonable depth; lazy into list items). Returns a child tree
  * matching CommonMark / mdast shape for the owned subset, or `null` when the
- * span still needs dialect enrich (collapsible / titled alerts, underscore /
+ * span still needs dialect enrich (collapsible / titled alerts, nested marks /
  * nested / heavy inline, cross-family / multi-para lists, pathological depth).
  * Plain or simple-marked GFM alerts (`> [!NOTE]` …) are accepted.
  */
@@ -947,7 +1052,7 @@ function alignmentOfDelimiterCell(cell: string): TableAlign | undefined {
  * Simple GFM table: header + alignment row + optional body rows; every cell
  * plain or simple-marked (`**` / `*` / `~~` / `` ` ``); consistent column
  * counts; no blank lines inside the span. Ragged columns, escaped pipes,
- * underscore / nested / heavy inline, and missing delimiter fall through to
+ * nested / heavy inline, and missing delimiter fall through to
  * dialect. Returns `null` when enrich is still needed.
  */
 export function parseSimpleTableSource(md: string): ParsedSimpleTable | null {
@@ -1067,7 +1172,7 @@ export function parseSimpleFootnoteDefinitionSource(md: string): ParsedFootnoteD
   const text = parts.join('\n').trimEnd();
   // Empty body (`[^id]:` / whitespace-only) is still engine-owned: one empty
   // paragraph child (schema `block+`). Hard breaks + simple marks are engine-owned;
-  // heavy / nested / underscore still dialect.
+  // heavy / nested still dialect.
   if (tryInlineNodesFromSource(text) === null) return null;
   return {
     identifier: label.toLowerCase(),

@@ -5,8 +5,8 @@
  * plain + hard breaks + lists-in-quotes + simple GFM alerts / callouts with
  * plain or simple-marked bodies + lazy continuation (fewer `>` and true no-`>`)
  * + simple flat / same-family nested list (any depth, incl. hard breaks +
- * simple marks + unindented lazy soft-wrap) + simple GFM table with plain or
- * simple-marked cells).
+ * simple marks incl. flat underscore + unindented lazy soft-wrap) + simple GFM
+ * table with plain or simple-marked cells).
  * Flagged `@roobli/md` path; does not flip product default.
  */
 
@@ -59,7 +59,9 @@ describe('from-engine IR helpers', () => {
     expect(needsDialectInlineInQuote('[!NOTE]\nbody')).toBe(false);
     expect(needsDialectInlineInQuote('[!NOTE]\nhas **bold**')).toBe(false);
     expect(needsDialectInlineInQuote('[!NOTE]\nhas [[wiki]]')).toBe(true);
-    expect(needsDialectInlineInQuote('[!NOTE]\nhas __underscore__')).toBe(true);
+    expect(needsDialectInlineInQuote('[!NOTE]\nhas __underscore__')).toBe(false);
+    expect(needsDialectInlineInQuote('[!NOTE]\nhas _em_')).toBe(false);
+    expect(needsDialectInlineInQuote('[!NOTE]\nhas snake_case')).toBe(false);
     expect(needsDialectInlineInQuote('[!NOTE]-\nbody')).toBe(true);
     expect(needsDialectInlineInQuote('plain')).toBe(false);
   });
@@ -74,7 +76,9 @@ describe('from-engine IR helpers', () => {
     expect(canSkipDialectEnrich('paragraph', 'Hello **x**')).toBe(true);
     expect(canSkipDialectEnrich('paragraph', 'Break  \n**x**')).toBe(true);
     expect(canSkipDialectEnrich('paragraph', 'Hello [[wiki]]')).toBe(false);
-    expect(canSkipDialectEnrich('paragraph', 'Hello __x__')).toBe(false);
+    expect(canSkipDialectEnrich('paragraph', 'Hello __x__')).toBe(true);
+    expect(canSkipDialectEnrich('paragraph', 'Hello _em_')).toBe(true);
+    expect(canSkipDialectEnrich('paragraph', 'uses snake_case id')).toBe(true);
     expect(canSkipDialectEnrich('link-definition', '[id]: https://example.com')).toBe(true);
     expect(canSkipDialectEnrich('footnote-definition', '[^1]: plain note')).toBe(true);
     expect(canSkipDialectEnrich('footnote-definition', '[^1]: has *emphasis*')).toBe(true);
@@ -775,7 +779,15 @@ describe('blockFromEngineSpan', () => {
     expect(strong.text).toBe('bold');
     expect(strong.marks.some((m) => m.type.name === 'strong')).toBe(true);
     expect(blockFromEngineSpan('paragraph', 'Hello [[wiki]]')).toBeNull();
-    expect(blockFromEngineSpan('paragraph', 'Hello __underscore__')).toBeNull();
+    const us = blockFromEngineSpan('paragraph', 'Hello __underscore__ and _em_');
+    expect(us?.textContent).toBe('Hello underscore and em');
+    expect(us!.child(1).marks.some((m) => m.type.name === 'strong')).toBe(true);
+    expect(us!.child(3).marks.some((m) => m.type.name === 'emphasis')).toBe(true);
+    const snake = blockFromEngineSpan('paragraph', 'uses snake_case and mcp__claude_api');
+    expect(snake?.type.name).toBe('paragraph');
+    expect(snake?.textContent).toBe('uses snake_case and mcp__claude_api');
+    expect(snake?.childCount).toBe(1);
+    expect(blockFromEngineSpan('paragraph', '**bold _nested_**')).toBeNull();
     expect(tryInlineNodesFromSource('2 * 3 * 4')?.map((n) => n.textContent ?? n.type.name).join('')).toBe('2 * 3 * 4');
 
     const h = blockFromEngineSpan('heading', '## Title');
@@ -883,6 +895,11 @@ describe('blockFromEngineSpan', () => {
       '- item **bold**\n- item *em*\n',
       '| A | B |\n| - | - |\n| **x** | y |\n',
       '> [!NOTE]\n> has **bold**\n',
+      'Hello __strong__ and _em_\n',
+      'uses snake_case and mcp__claude_api\n',
+      '**bold with snake_case**\n',
+      '_emphasis_ alone\n',
+      '[^1]: footnote with __strong__\n',
     ];
     for (const md of samples) {
       setMarkdownEngineForTests('micromark');

@@ -210,22 +210,24 @@ breaks; nested children may nest only) + simple GFM tables (alignment row; plain
 text cells; consistent columns);
 enrich flags mark those done — see `docs/performance/open-path-first-cut.md`.
 Cross-family nests, multi-block items, collapsible / titled alerts, complex /
-ragged tables, and heavy inline (underscore emphasis, nested marks, links,
-wiki, HTML, escapes) stay on dialect. Empty footnote bodies, same-family nests
-at any depth, nested plain quotes, simple lists-in-quotes, plain /
-simple-marked callouts, hard breaks in quotes, lazy nest continuation via
-fewer `>` **and true no-`>`**, hard breaks inside simple lists / footnotes, and
-flat simple marked phrasing (`**` / `*` / `~~` / `` ` ``) are engine-owned.
+ragged tables, and heavy inline (nested marks, links, wiki, HTML, escapes)
+stay on dialect. Empty footnote bodies, same-family nests at any depth,
+nested plain quotes, simple lists-in-quotes, plain / simple-marked callouts,
+hard breaks in quotes, lazy nest continuation via fewer `>` **and true
+no-`>`**, hard breaks inside simple lists / footnotes, and flat simple marked
+phrasing (`**` / `*` / `__` / `_` / `~~` / `` ` ``; snake_case literal) are
+engine-owned.
 Product default stays micromark.
 
 Next: keep growing `markdown-golden/` (more GFM / vault edges), extend IR→PM
-only where micromark parity is locked (complex tables / underscore / nested
-marks / collapsible·titled callout edges), then reconsider default-on. Hard-breaks, images, empty/meta fences, escapes, table-align,
+only where micromark parity is locked (complex tables / nested marks /
+collapsible·titled callout edges), then reconsider default-on. Hard-breaks, images, empty/meta fences, escapes, table-align,
 ordered-start, inline HTML, simple-flat-lists, simple-nested-lists,
 simple-nested-quotes, simple-lists-in-quotes, simple-hard-breaks-in-quotes,
 simple-lazy-continuations-in-quotes, simple-no-marker-lazy-in-quotes,
 simple-lazy-list-continuations, simple-hard-breaks-in-lists,
-simple-hard-breaks-in-footnotes, simple-callouts, simple-gfm-tables,
+simple-hard-breaks-in-footnotes, simple-callouts, simple-marked-phrasing,
+simple-underscore-emphasis, simple-gfm-tables,
 simple-footnote-defs, empty-footnote-defs, and cjk-emphasis goldens landed.
 Do **not** flip the product default yet.
 
