@@ -125,6 +125,8 @@ export async function placeCaretAtStart(page: Page, target: Locator): Promise<vo
   await target.evaluate((node) => {
     const root = node.closest('.ProseMirror');
     if (!(root instanceof HTMLElement)) throw new Error('no ProseMirror root');
+    // Focus before and after the Range so PM's hasFocusAndSelection sees it
+    // (packaged macOS sometimes drops the first focus around click settle).
     root.focus();
     const walker = document.createTreeWalker(node, NodeFilter.SHOW_TEXT);
     const text = walker.nextNode();
@@ -135,5 +137,8 @@ export async function placeCaretAtStart(page: Page, target: Locator): Promise<vo
     const selection = window.getSelection();
     selection?.removeAllRanges();
     selection?.addRange(range);
+    root.focus();
+    // Nudge ProseMirror to re-read the DOM selection on flaky runners.
+    document.dispatchEvent(new Event('selectionchange'));
   });
 }
