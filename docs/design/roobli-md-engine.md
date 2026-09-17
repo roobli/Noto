@@ -209,17 +209,18 @@ simple flat lists and same-family nested lists (any depth; plain items incl. har
 breaks; nested children may nest only) + simple GFM tables (alignment row; plain
 text cells; consistent columns);
 enrich flags mark those done — see `docs/performance/open-path-first-cut.md`.
-Cross-family nests, multi-block items, marked callout bodies / collapsible /
-titled alerts, marked quotes, complex / ragged / marked tables, marked footnote
-bodies, and marked-up phrasing stay on dialect (empty footnote bodies,
-same-family nests at any depth, nested plain quotes, simple lists-in-quotes,
-plain-body callouts, hard breaks in quotes, lazy nest continuation via fewer
-`>`, and hard breaks inside simple lists / footnotes are engine-owned; true
-no-`>` lazy and lazy-into-list still dialect). Product default stays micromark.
+Cross-family nests, multi-block items, collapsible / titled alerts, complex /
+ragged tables, and heavy inline (underscore emphasis, nested marks, links,
+wiki, HTML, escapes) stay on dialect. Empty footnote bodies, same-family nests
+at any depth, nested plain quotes, simple lists-in-quotes, plain /
+simple-marked callouts, hard breaks in quotes, lazy nest continuation via
+fewer `>` **and true no-`>`**, hard breaks inside simple lists / footnotes, and
+flat simple marked phrasing (`**` / `*` / `~~` / `` ` ``) are engine-owned.
+Product default stays micromark.
 
 Next: keep growing `markdown-golden/` (more GFM / vault edges), extend IR→PM
-only where micromark parity is locked (complex tables / marked phrasing /
-marked callout edges), then reconsider default-on. Hard-breaks, images, empty/meta fences, escapes, table-align,
+only where micromark parity is locked (complex tables / underscore / nested
+marks / collapsible·titled callout edges), then reconsider default-on. Hard-breaks, images, empty/meta fences, escapes, table-align,
 ordered-start, inline HTML, simple-flat-lists, simple-nested-lists,
 simple-nested-quotes, simple-lists-in-quotes, simple-hard-breaks-in-quotes,
 simple-lazy-continuations-in-quotes, simple-no-marker-lazy-in-quotes,
