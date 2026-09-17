@@ -2,9 +2,9 @@
  * Engine-owned IR → PM for common blocks (leaf + plain paragraph/heading
  * including hard breaks + parseable link-def + simple footnote-def incl. hard
  * breaks + simple quote incl. nested plain + hard breaks in quotes + simple
- * lists-in-quotes + simple flat / same-family nested list (any depth, incl.
- * hard breaks) + simple GFM table). Flagged `@roobli/md` path; does not flip
- * product default.
+ * lists-in-quotes + simple plain-body GFM alerts / callouts + simple flat /
+ * same-family nested list (any depth, incl. hard breaks) + simple GFM table).
+ * Flagged `@roobli/md` path; does not flip product default.
  */
 
 import { describe, expect, it } from 'vitest';
@@ -13,6 +13,7 @@ import {
   canSkipDialectEnrich,
   engineSemanticKey,
   needsDialectInline,
+  needsDialectInlineInQuote,
   hasHardBreak,
   inlineNodesFromPlainSource,
   parseFenceSource,
@@ -50,6 +51,11 @@ describe('from-engine IR helpers', () => {
     expect(needsDialectInline('soft\nwrap')).toBe(false);
     expect(hasHardBreak('one  \ntwo')).toBe(true);
     expect(hasHardBreak('soft\nwrap')).toBe(false);
+    expect(needsDialectInline('[!NOTE]\nbody')).toBe(true);
+    expect(needsDialectInlineInQuote('[!NOTE]\nbody')).toBe(false);
+    expect(needsDialectInlineInQuote('[!NOTE]\nhas **bold**')).toBe(true);
+    expect(needsDialectInlineInQuote('[!NOTE]-\nbody')).toBe(true);
+    expect(needsDialectInlineInQuote('plain')).toBe(false);
   });
 
   it('canSkipDialectEnrich for leaf + plain phrasing + simple/nested quote + lists-in-quotes + flat/nested list + table + footnote', () => {
@@ -73,7 +79,9 @@ describe('from-engine IR helpers', () => {
     expect(canSkipDialectEnrich('quote', '> intro\n> - a\n> - b')).toBe(true);
     expect(canSkipDialectEnrich('quote', '> a  \n> b')).toBe(true);
     expect(canSkipDialectEnrich('quote', '> Hello **x**')).toBe(false);
-    expect(canSkipDialectEnrich('quote', '> [!NOTE]\n> body')).toBe(false);
+    expect(canSkipDialectEnrich('quote', '> [!NOTE]\n> body')).toBe(true);
+    expect(canSkipDialectEnrich('quote', '> [!NOTE]-\n> body')).toBe(false);
+    expect(canSkipDialectEnrich('quote', '> [!WARNING]\n> has **bold**')).toBe(false);
     expect(canSkipDialectEnrich('quote', '> > nested\n> lazy')).toBe(false);
     expect(canSkipDialectEnrich('quote', '> - **bold**')).toBe(false);
     expect(canSkipDialectEnrich('bullet-list', '- a\n- b')).toBe(true);
@@ -197,7 +205,9 @@ describe('from-engine IR helpers', () => {
     expect(parseSimpleQuoteSource('> **bold**')).toBeNull();
     expect(parseSimpleQuoteSource('> > nested\n> lazy')).toBeNull();
     expect(parseSimpleQuoteSource('> - **bold**')).toBeNull();
-    expect(parseSimpleQuoteSource('> [!NOTE]\n> x')).toBeNull();
+    expect(parseSimpleQuoteSource('> [!NOTE]\n> x')).not.toBeNull();
+    expect(parseSimpleQuoteSource('> [!NOTE]-\n> x')).toBeNull();
+    expect(parseSimpleQuoteSource('> [!WARNING]\n> has **bold**')).toBeNull();
     expect(parseSimpleFlatListSource('- a\n- b')).toEqual({
       ordered: false, bullet: '-', delimiter: null, start: 1, spread: false,
       items: [
@@ -303,7 +313,7 @@ describe('blockFromEngineSpan', () => {
     expect(blockFromEngineSpan('heading', 'Setext *x*\n=======')).toBeNull();
   });
 
-  it('builds simple and nested plain quotes + lists-in-quotes + hard breaks; refuses callout / marked / lazy', () => {
+  it('builds simple and nested plain quotes + lists-in-quotes + hard breaks + plain callouts; refuses marked / lazy', () => {
     const q = blockFromEngineSpan('quote', '> Hello world');
     expect(q?.type.name).toBe('blockquote');
     expect(q?.childCount).toBe(1);
@@ -391,8 +401,18 @@ describe('blockFromEngineSpan', () => {
     expect(hbMulti?.child(0).child(4).text).toBe('D');
     expect(hbMulti?.textContent).toBe('AB\nCD');
 
+    const callout = blockFromEngineSpan('quote', '> [!NOTE]\n> body');
+    expect(callout?.type.name).toBe('blockquote');
+    expect(callout?.childCount).toBe(1);
+    expect(callout?.child(0).type.name).toBe('paragraph');
+    expect(callout?.child(0).textContent).toBe('[!NOTE]\nbody');
+
+    const tip = blockFromEngineSpan('quote', '> [!TIP]\n> Tip body stays exact.');
+    expect(tip?.textContent).toBe('[!TIP]\nTip body stays exact.');
+
     expect(blockFromEngineSpan('quote', '> Hello **bold**')).toBeNull();
-    expect(blockFromEngineSpan('quote', '> [!NOTE]\n> body')).toBeNull();
+    expect(blockFromEngineSpan('quote', '> [!NOTE]-\n> body')).toBeNull();
+    expect(blockFromEngineSpan('quote', '> [!WARNING]\n> has **bold**')).toBeNull();
     expect(blockFromEngineSpan('quote', '> > nested\n> lazy')).toBeNull();
     expect(blockFromEngineSpan('quote', '> - **bold**')).toBeNull();
     expect(blockFromEngineSpan('quote', '> # heading')).toBeNull();

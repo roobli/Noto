@@ -1,6 +1,6 @@
 # Open-path / `parseDocument` — measured cuts
 
-Status: **lazy / deferred wire nodes + viewport-driven enrich + incremental PM patch + kind-aware stand-ins + engine-owned IR→PM (common blocks + simple quotes incl. nested plain + lists-in-quotes + hard breaks in quotes + simple flat / same-family nested lists any depth incl. hard breaks + simple GFM tables + simple footnote-defs incl. empty + hard breaks)** under the flagged `@roobli/md` path.
+Status: **lazy / deferred wire nodes + viewport-driven enrich + incremental PM patch + kind-aware stand-ins + engine-owned IR→PM (common blocks + simple quotes incl. nested plain + lists-in-quotes + hard breaks in quotes + simple flat / same-family nested lists any depth incl. hard breaks + simple GFM tables + simple footnote-defs incl. empty + hard breaks + plain-body callouts)** under the flagged `@roobli/md` path.
 Product default remains micromark. Do **not** flip `NOTO_MARKDOWN_ENGINE`
 default-on from this work.
 
@@ -196,20 +196,22 @@ flip default-on.
    `enrichSpansInRange` honour the skip.
 2. ~~Kind-aware structural stand-ins (heading/fence/…)~~ — shipped (#90).
 3. Extend IR→PM to more kinds when safe (complex tables / marked footnote
-   bodies / marked phrasing still dialect; callout / marked quotes / lazy
-   continuations still dialect); optional lightweight inline IR for marks later
-   — not this cycle. Plain hard-break paragraphs/headings, same-family nested
-   lists (any depth, incl. hard breaks), nested plain quotes, simple
-   lists-in-quotes, hard breaks in quotes, and hard breaks in simple footnotes
-   are engine-owned.
+   bodies / marked phrasing still dialect; marked callout bodies / collapsible /
+   titled alerts / marked quotes / lazy continuations still dialect); optional
+   lightweight inline IR for marks later — not this cycle. Plain hard-break
+   paragraphs/headings, same-family nested lists (any depth, incl. hard breaks),
+   nested plain quotes, simple lists-in-quotes, plain-body GFM alerts /
+   callouts, hard breaks in quotes, and hard breaks in simple footnotes are
+   engine-owned.
 4. Keep growing `tests/fixtures/markdown-golden/` before default-on; GFM inline,
    nested lists, simple-nested-lists (depth-2+), simple-nested-quotes,
    simple-lists-in-quotes, simple-hard-breaks-in-quotes,
-   simple-hard-breaks-in-lists, simple-hard-breaks-in-footnotes, HTML blocks,
-   callout edges, hr/setext, link-defs, simple quotes, simple flat lists, simple
-   GFM tables, simple footnote-defs, empty footnote-defs, CJK emphasis,
-   hard-breaks, images, empty/meta fences, escapes, table-align, ordered-start,
-   inline HTML landed; intentional engine gaps documented in that README.
+   simple-hard-breaks-in-lists, simple-hard-breaks-in-footnotes, simple-callouts,
+   HTML blocks, callout edges, hr/setext, link-defs, simple quotes, simple flat
+   lists, simple GFM tables, simple footnote-defs, empty footnote-defs, CJK
+   emphasis, hard-breaks, images, empty/meta fences, escapes, table-align,
+   ordered-start, inline HTML landed; intentional engine gaps documented in
+   that README.
 
 Do not defer main’s file-truth structural parse; do not flip the product
 default from this doc.
