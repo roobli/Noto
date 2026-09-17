@@ -173,7 +173,7 @@ engine-owned; deep / ambiguous nests / links / wiki still take the dialect path.
 engine-owned via `parseHeadingSource` (setext-`---` vs hr remains an engine
 split gap — see markdown-golden README).
 
-Cross-family nests, multi-block items, collapsible / titled callouts, complex /
+Cross-family nests, multi-block items, marked callout titles, complex /
 ragged tables, deep / ambiguous nested marks / links / wiki / HTML / escapes still need dialect
 enrich + `from-mdast` (empty footnote bodies, same-family nests at any depth,
 nested plain quotes, simple lists-in-quotes, hard breaks in quotes, lazy nest
@@ -202,7 +202,7 @@ Does **not** flip default-on.
 2. ~~Kind-aware structural stand-ins (heading/fence/…)~~ — shipped (#90).
 3. Extend IR→PM to more kinds when safe (complex / ragged tables, deep
    nested marks / links / wiki / HTML / escapes, marked footnote bodies with heavy
-   inline, collapsible / titled alerts still dialect; simple flat + one-level
+   inline, marked callout titles still dialect; collapsible/plain-titled callouts owned; simple flat + one-level
    nested `**`/`*`/`__`/`_`/`~~`/`` ` `` marks owned across paras/headings/lists/
    tables/quotes/callouts/footnotes; snake_case underscores stay literal). Plain hard-break paragraphs/headings,
    same-family nested lists (any depth, incl. hard breaks), nested plain quotes,
