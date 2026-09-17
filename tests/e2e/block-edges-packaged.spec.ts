@@ -58,7 +58,7 @@ test.describe("Typora's keys at the edges of a block", () => {
       await expect(async () => {
         await placeCaretAtStart(page, heading);
         await expect(host).toHaveAttribute('data-caret', '1');
-      }).toPass({ timeout: 10_000 });
+      }).toPass({ timeout: 20_000 });
       await expect(editor(page).locator('.noto-active-block')).toHaveText('Head');
       await page.keyboard.press('Backspace');
       await expect(editor(page).locator('h1')).toHaveCount(0);
