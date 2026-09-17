@@ -32,6 +32,7 @@ Small public fixtures for comparing the **micromark** product path against
 | `simple-hard-breaks-in-lists.md` | hard breaks (two trailing spaces) inside simple flat / nested list items (incl. task / ordered); no marked items or multi-para |
 | `simple-hard-breaks-in-footnotes.md` | hard breaks inside simple `[^id]:` footnote definition bodies; soft-wrap still covered; no marked bodies |
 | `simple-callouts.md` | plain-body GFM alerts / callouts (`> [!NOTE]` …); no marks, collapsible `-`, or titled alerts |
+- `simple-titled-collapsible-callouts.md` — collapsible `[!NOTE]-`/`+` and plain same-line titles owned on the flagged IR→PM path.
 | `simple-marked-phrasing.md` | flat `**` / `*` / `~~` / `` ` `` marks in paragraphs, headings, lists, tables, callouts, footnotes; underscore covered separately; one-level nest in `simple-nested-marks.md`; no links / wiki |
 | `simple-underscore-emphasis.md` | flat `__strong__` / `_em_` + snake_case literal; one-level nest covered in `simple-nested-marks.md` |
 | `simple-nested-marks.md` | one-level nested marks (`**bold _em_**`, `*em **strong** em*`, `` **`code`** ``) in para/heading/list/table/callout/footnote; deep / `***` / same-delimiter / links / wiki stay dialect |

@@ -16,8 +16,8 @@
  * simple-marked single-paragraph items incl. hard breaks and unindented lazy
  * soft-wrap), and **simple GFM tables** (alignment row; plain or simple-marked
  * cells; consistent columns), the PM node is fully determined by that IR — no
- * micromark / mdast pass. Cross-family nests, multi-block items, collapsible /
- * titled alert edges, deep / ambiguous nested marks / links / wiki / HTML /
+ * micromark / mdast pass. Cross-family nests, multi-block items, deep / ambiguous nested marks /
+ * links / wiki / HTML /
  * escapes, and complex / ragged tables still go through `from-mdast.ts` after
  * dialect enrich. **Simple GFM alerts / callouts** keep the marker as plain
  * text for the alert decoration plugin.
@@ -68,10 +68,13 @@ export function needsDialectInline(markdown: string): boolean {
 
 /**
  * GFM alert / callout marker at the start of a quote paragraph.
- * Collapsible `[!NOTE]-` and titled `[!NOTE] Title` forms do not match — those
- * stay on dialect enrich.
+ *
+ * Owns plain `[!NOTE]`, collapsible `[!NOTE]-` / `[!NOTE]+`, and an optional
+ * same-line plain title (`[!NOTE] Title`). Title text with marks / links /
+ * wiki / HTML still falls through to dialect so micromark keeps parity. The
+ * alert-plugin decorates from the leading `[!NOTE]` token either way.
  */
-const ALERT_MARKER_RE = /^\[!(NOTE|TIP|IMPORTANT|WARNING|CAUTION)\][ \t]*(?:\n|$)/;
+const ALERT_MARKER_RE = /^\[!(NOTE|TIP|IMPORTANT|WARNING|CAUTION)\]([+-])?[ \t]*([^\n]*)(?:\n|$)/;
 
 /**
  * Dialect check for quote paragraph text: a leading GFM alert marker is plain
@@ -90,7 +93,7 @@ export function hasHardBreak(markdown: string): boolean {
  * True when dialect enrich can be skipped: leaf kinds always; parseable
  * link-definitions; simple footnote-definitions (incl. hard breaks + simple
  * marks); simple quotes (incl. nested, hard breaks, lists-in-quotes, plain /
- * simple-marked GFM alerts / callouts, lazy nest + no-`>` lazy); simple flat
+ * simple-marked / collapsible / plain-titled GFM alerts / callouts, lazy nest + no-`>` lazy); simple flat
  * or same-family nested lists (any depth, incl. hard breaks + simple marks);
  * simple GFM tables (plain or simple-marked cells); paragraph / heading when
  * plain or simple-marked (hard breaks allowed — engine-owned).
@@ -186,6 +189,9 @@ export function tryInlineNodesFromSource(
   if (options.quoteAlert) {
     const match = ALERT_MARKER_RE.exec(normalized);
     if (match) {
+      const title = match[3] ?? '';
+      // Same-line title must stay plain; marked/heavy titles keep dialect.
+      if (title.length > 0 && INLINE_DIALECT_RE.test(title)) return null;
       const prefix = match[0];
       const rest = normalized.slice(prefix.length);
       const prefixNodes = prefix.length > 0 ? textNodes(prefix) : [];
@@ -925,9 +931,10 @@ function parseQuoteChildren(
  * (incl. fewer-`>` and no-`>` lazy), and/or simple flat / same-family nested
  * lists (any reasonable depth; lazy into list items). Returns a child tree
  * matching CommonMark / mdast shape for the owned subset, or `null` when the
- * span still needs dialect enrich (collapsible / titled alerts, nested marks /
- * nested / heavy inline, cross-family / multi-para lists, pathological depth).
- * Plain or simple-marked GFM alerts (`> [!NOTE]` …) are accepted.
+ * span still needs dialect enrich (nested marks / nested / heavy inline,
+ * cross-family / multi-para lists, pathological depth, marked callout titles).
+ * Plain / collapsible / plain-titled GFM alerts (`> [!NOTE]`, `> [!NOTE]-`,
+ * `> [!NOTE] Title` …) and simple-marked bodies are accepted.
  */
 export function parseSimpleQuoteSource(md: string): ParsedQuoteChild[] | null {
   const trimmed = md.replace(/\r\n/g, '\n').trimEnd();

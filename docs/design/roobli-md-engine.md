@@ -209,7 +209,7 @@ simple flat lists and same-family nested lists (any depth; plain items incl. har
 breaks; nested children may nest only) + simple GFM tables (alignment row; plain
 text cells; consistent columns);
 enrich flags mark those done — see `docs/performance/open-path-first-cut.md`.
-Cross-family nests, multi-block items, collapsible / titled alerts, complex /
+Cross-family nests, multi-block items, marked callout titles, complex /
 ragged tables, and heavy inline (deep / ambiguous nested marks, links, wiki,
 HTML, escapes) stay on dialect. Empty footnote bodies, same-family nests at
 any depth, nested plain quotes, simple lists-in-quotes, plain / simple-marked
@@ -222,13 +222,13 @@ Product default stays micromark.
 
 Next: keep growing `markdown-golden/` (more GFM / vault edges), extend IR→PM
 only where micromark parity is locked (complex tables /
-collapsible·titled callout edges / deeper mark nests), then reconsider
+deeper mark nests / complex tables), then reconsider
 default-on. Hard-breaks, images, empty/meta fences, escapes, table-align,
 ordered-start, inline HTML, simple-flat-lists, simple-nested-lists,
 simple-nested-quotes, simple-lists-in-quotes, simple-hard-breaks-in-quotes,
 simple-lazy-continuations-in-quotes, simple-no-marker-lazy-in-quotes,
 simple-lazy-list-continuations, simple-hard-breaks-in-lists,
-simple-hard-breaks-in-footnotes, simple-callouts, simple-marked-phrasing,
+simple-hard-breaks-in-footnotes, simple-callouts, simple-titled-collapsible-callouts, simple-marked-phrasing,
 simple-underscore-emphasis, simple-nested-marks, simple-gfm-tables,
 simple-footnote-defs, empty-footnote-defs, and cjk-emphasis goldens landed.
 Do **not** flip the product default yet.
