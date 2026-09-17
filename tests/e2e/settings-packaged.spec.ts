@@ -82,6 +82,35 @@ const layoutOf = (page: Page) => page.evaluate(() => {
 
 const MODES = ['default', 'wide', 'full'] as const;
 
+/**
+ * Widen/narrow via the menu until the document mode advances.
+ *
+ * Packaged CI (esp. Linux after a viewport resize) sometimes drops a single
+ * Electron MenuItem.click IPC; polling alone then times out on the old mode
+ * (expected "full", received "wide"). Retry the click only while the mode is
+ * unchanged so a successful first press is never stepped twice.
+ */
+async function stepWidthViaMenu(
+  app: ElectronApplication,
+  page: Page,
+  direction: 'widen' | 'narrow',
+  expected: (typeof MODES)[number],
+): Promise<void> {
+  for (let attempt = 0; attempt < 4; attempt += 1) {
+    const before = await modeOf(page);
+    if (before === expected) return;
+    await invokeMenu(app, direction);
+    try {
+      await expect.poll(() => modeOf(page), { timeout: 2_500 }).not.toBe(before);
+      break;
+    } catch {
+      // Click missed under load; try again.
+    }
+  }
+  await expect.poll(() => modeOf(page)).toBe(expected);
+}
+
+
 test.describe('settings', () => {
   test('opens from the menu and closes again', async () => {
     const { app, page } = await launch('open');
@@ -152,10 +181,8 @@ test.describe('settings', () => {
       await page.getByTestId('settings-close').click();
 
       // The chord walks a ring: full wraps round to default.
-      await invokeMenu(app, 'widen');
-      await expect.poll(() => modeOf(page)).toBe('default');
-      await invokeMenu(app, 'narrow');
-      await expect.poll(() => modeOf(page)).toBe('full');
+      await stepWidthViaMenu(app, page, 'widen', 'default');
+      await stepWidthViaMenu(app, page, 'narrow', 'full');
 
       // With the rail open the canvas is narrower and the column follows it.
       // Every mode at every window width is at most the canvas: the document
@@ -165,10 +192,14 @@ test.describe('settings', () => {
       let mode: (typeof MODES)[number] = 'full';
       for (const width of [1280, 960, 760]) {
         await page.setViewportSize({ width, height: 800 });
+        // Let Electron finish the resize before menu IPC — the flake shows up
+        // when widen is clicked while the viewport is still settling.
+        await page.evaluate(() => new Promise<void>((r) => {
+          requestAnimationFrame(() => requestAnimationFrame(() => r()));
+        }));
         for (let step = 0; step < MODES.length; step += 1) {
-          await invokeMenu(app, 'widen');
           mode = MODES[(MODES.indexOf(mode) + 1) % MODES.length];
-          await expect.poll(() => modeOf(page)).toBe(mode);
+          await stepWidthViaMenu(app, page, 'widen', mode);
           const layout = await layoutOf(page);
           expect(layout.column, `${mode} at ${width}`).toBeLessThanOrEqual(layout.canvas);
           expect(layout.sideways, `${mode} at ${width}`).toBe(0);
