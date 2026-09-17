@@ -202,26 +202,28 @@ mdast for leaf kinds + plain paragraph/heading (incl. hard breaks as
 simple footnote-definitions (plain or empty single-paragraph body; optional
 soft-wrap / hard breaks) +
 simple blockquotes (every line `>`-prefixed; plain paragraphs incl. hard breaks,
-nested plain quotes, and simple lists-in-quotes at any reasonable depth; no lazy
-continuation) +
+nested plain quotes, simple lists-in-quotes, and plain-body GFM alerts /
+callouts; no lazy continuation) +
 simple flat lists and same-family nested lists (any depth; plain items incl. hard
 breaks; nested children may nest only) + simple GFM tables (alignment row; plain
 text cells; consistent columns);
 enrich flags mark those done — see `docs/performance/open-path-first-cut.md`.
-Cross-family nests, multi-block items, callout / marked quotes, complex / ragged /
-marked tables, marked footnote bodies, and marked-up phrasing stay on dialect
-(empty footnote bodies, same-family nests at any depth, nested plain quotes,
-simple lists-in-quotes, hard breaks in quotes, and hard breaks inside simple
-lists / footnotes are engine-owned). Product default stays micromark.
+Cross-family nests, multi-block items, marked callout bodies / collapsible /
+titled alerts, marked quotes, complex / ragged / marked tables, marked footnote
+bodies, and marked-up phrasing stay on dialect (empty footnote bodies,
+same-family nests at any depth, nested plain quotes, simple lists-in-quotes,
+plain-body callouts, hard breaks in quotes, and hard breaks inside simple lists
+/ footnotes are engine-owned). Product default stays micromark.
 
 Next: keep growing `markdown-golden/` (more GFM / vault edges), extend IR→PM
 only where micromark parity is locked (complex tables / marked phrasing /
-callouts / lazy continuations), then reconsider default-on.
+marked callout edges / lazy continuations), then reconsider default-on.
 Hard-breaks, images, empty/meta fences, escapes, table-align, ordered-start,
 inline HTML, simple-flat-lists, simple-nested-lists, simple-nested-quotes,
 simple-lists-in-quotes, simple-hard-breaks-in-quotes,
-simple-hard-breaks-in-lists, simple-hard-breaks-in-footnotes, simple-gfm-tables,
-simple-footnote-defs, empty-footnote-defs, and cjk-emphasis goldens landed.
+simple-hard-breaks-in-lists, simple-hard-breaks-in-footnotes, simple-callouts,
+simple-gfm-tables, simple-footnote-defs, empty-footnote-defs, and cjk-emphasis
+goldens landed.
 Do **not** flip the product default yet.
 
 **Noto `0.0.2-alpha.9`** shipped the adapter (#37) plus `@roobli/md` v0.1.1 quote/

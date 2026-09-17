@@ -7,16 +7,18 @@
  * paragraph/heading with no inline dialect markers (hard breaks — two+ spaces
  * before newline — are engine-owned as `hard_break` nodes), **simple** blockquotes
  * (every line `>`-prefixed; plain paragraphs incl. hard breaks, nested quotes,
- * and simple flat / same-family nested lists inside the quote at any reasonable
- * depth; no lazy continuation), **simple flat / nested lists** (same-family
+ * simple lists-in-quotes, and plain-body GFM alerts / callouts; no lazy
+ * continuation), **simple flat / nested lists** (same-family
  * markers at every depth; plain single-paragraph items incl. hard breaks;
  * depth-2+ same-family nests are engine-owned), and **simple GFM tables**
  * (alignment row; plain text cells; no nested blocks / marked phrasing), the
  * PM node is fully determined by
  * that IR — no micromark / mdast pass. Cross-family nests, multi-block items,
- * callout / marked quotes, complex tables, marked footnote bodies, and
- * marked-up phrasing still go through `from-mdast.ts` after dialect enrich.
- * Hard breaks inside simple lists and simple footnotes are engine-owned.
+ * marked quotes, complex tables, marked footnote bodies, and marked-up
+ * phrasing still go through `from-mdast.ts` after dialect enrich. **Simple
+ * GFM alerts / callouts** (`> [!NOTE]` etc. with plain bodies) are engine-owned
+ * — the marker stays plain text for the alert decoration plugin. Hard breaks
+ * inside simple lists and simple footnotes are engine-owned.
  *
  * See docs/performance/open-path-first-cut.md and docs/design/roobli-md-engine.md.
  */
@@ -51,6 +53,24 @@ export function needsDialectInline(markdown: string): boolean {
   return INLINE_DIALECT_RE.test(markdown);
 }
 
+/**
+ * GFM alert / callout marker at the start of a quote paragraph.
+ * Collapsible `[!NOTE]-` and titled `[!NOTE] Title` forms do not match — those
+ * stay on dialect enrich.
+ */
+const ALERT_MARKER_RE = /^\[!(NOTE|TIP|IMPORTANT|WARNING|CAUTION)\][ \t]*(?:\n|$)/;
+
+/**
+ * Dialect check for quote paragraph text: a leading GFM alert marker is plain
+ * text (alert-plugin decorates it). Only the remainder is scanned for marks.
+ */
+export function needsDialectInlineInQuote(markdown: string): boolean {
+  const match = ALERT_MARKER_RE.exec(markdown);
+  if (!match) return needsDialectInline(markdown);
+  const rest = markdown.slice(match[0].length);
+  return rest.length > 0 && needsDialectInline(rest);
+}
+
 /** True when the source contains a CommonMark hard break (two+ spaces + newline). */
 export function hasHardBreak(markdown: string): boolean {
   return HARD_BREAK_RE.test(markdown);
@@ -59,11 +79,11 @@ export function hasHardBreak(markdown: string): boolean {
 /**
  * True when dialect enrich can be skipped: leaf kinds always; parseable
  * link-definitions; simple footnote-definitions (incl. hard breaks); simple
- * quotes (incl. nested plain quotes, hard breaks in quote paragraphs, and
- * simple lists-in-quotes); simple flat or same-family nested lists (any depth,
- * incl. hard breaks in item paragraphs); simple GFM tables; paragraph /
- * heading when the source has no inline dialect markers (hard breaks allowed
- * — engine-owned).
+ * quotes (incl. nested plain quotes, hard breaks in quote paragraphs, simple
+ * lists-in-quotes, and simple GFM alerts / callouts with plain bodies); simple
+ * flat or same-family nested lists (any depth, incl. hard breaks in item
+ * paragraphs); simple GFM tables; paragraph / heading when the source has no
+ * inline dialect markers (hard breaks allowed — engine-owned).
  */
 export function canSkipDialectEnrich(kind: NotoBlockKind, markdown: string): boolean {
   if (ENGINE_LEAF_KINDS.has(kind)) return true;
@@ -261,8 +281,9 @@ function parseQuoteChildren(
     const text = paraBuf.map((l) => l.replace(/^ {0,3}/u, '')).join('\n').trimEnd();
     paraBuf = [];
     if (text.length === 0) return true;
-    // Hard breaks in quote paragraphs are engine-owned (same as plain paras).
-    if (needsDialectInline(text)) return false;
+    // Hard breaks + plain GFM alert markers are engine-owned (same as plain
+    // paras; alert-plugin decorates `[!NOTE]` etc. from the paragraph text).
+    if (needsDialectInlineInQuote(text)) return false;
     children.push({ type: 'paragraph', text });
     return true;
   };
@@ -344,8 +365,9 @@ function parseQuoteChildren(
  * content is plain paragraphs (incl. hard breaks), nested plain quotes, and/or
  * simple flat / same-family nested lists (any reasonable depth). Returns a child
  * tree matching CommonMark / mdast shape, or `null` when the span still needs
- * dialect enrich (callouts, marked phrasing, lazy continuations, cross-family /
- * multi-para lists, pathological depth).
+ * dialect enrich (marked callout bodies, collapsible / titled alerts, marked
+ * phrasing, lazy continuations, cross-family / multi-para lists, pathological
+ * depth). Simple plain-body GFM alerts (`> [!NOTE]` …) are accepted.
  */
 export function parseSimpleQuoteSource(md: string): ParsedQuoteChild[] | null {
   const trimmed = md.replace(/\r\n/g, '\n').trimEnd();
