@@ -2,7 +2,7 @@
 
 Noto’s markdown v3 stack (`src/shared/markdown/v3/`) still defaults to micromark.
 The long-term engine that should own that hot path is the public MIT package
-**[@roobli/md](https://github.com/roobli/md)** v0.1.9 (“WYSIWYG-first markdown
+**[@roobli/md](https://github.com/roobli/md)** v0.1.11 (“WYSIWYG-first markdown
 engine for Noto”).
 
 ## Why
@@ -16,7 +16,7 @@ mdast dump.
 ## Dependency
 
 ```
-"@roobli/md": "github:roobli/md#v0.1.9"
+"@roobli/md": "github:roobli/md#v0.1.11"
 ```
 
 pnpm must allow its `prepare` (tsc) build — see `allowBuilds` in
@@ -59,7 +59,7 @@ quotes/callouts and native indented-code match micromark (`@roobli/md` v0.1.2+).
 `semanticKey` computation, wire `nodes` (mdast). Native engine spans ship
 `node: null`; the adapter attaches mdast via Noto’s `syntax.ts` dialect when a
 ProseMirror-ready node is required. Engine serialize + split dialect (Phase
-7–13 in `@roobli/md` v0.1.9) owns hard-break → two spaces, list marker /
+7–14 in `@roobli/md` v0.1.11) owns hard-break → two spaces, list marker /
 delimiter from `node.data`, verbatim runs (wiki / alert / footnote / TOC /
 snake_case), bare http(s) autolinks, table delimiter widening (vault
 three-dash; content cells stay unpadded), line-prefix offset alignment
@@ -166,13 +166,14 @@ paragraphs (still dialect today). Optional local: `NOTO_MARKDOWN_ENGINE=roobli-m
 
 ## Status
 
-**Adapter spike landed (default-off).** `@roobli/md` v0.1.9 is the pinned
+**Adapter spike landed (default-off).** `@roobli/md` v0.1.11 is the pinned
 flagged backend; micromark remains the product default. Quote/callout and
 indented-code split parity are closed; engine serialize dialect (hard-break /
 list-marker / verbatim / bare autolink / table delimiters / Phase 12 CJK
 emphasis), Phase 10 line-prefix offsets, Phase 11 `reparseFromText`, and
-Phase 13 CommonMark lazy continuation (no-`>` quotes / unindented list soft-wrap)
-are available on the flagged path.
+Phase 13 CommonMark lazy continuation (no-`>` quotes / unindented list soft-wrap) and
+Phase 14 nest/interrupt parity (definition lazy; GFM tables interrupt paragraphs;
+list-nested indented blocks; v0.1.11 adjacent defs stay separate spans) are available on the flagged path.
 
 **Host wiring (flagged `replaceMarkdown`).** `PriorSplitCache`
 (`src/shared/markdown/v3/prior-split-cache.ts`) seeds a structural split on
@@ -234,6 +235,6 @@ simple-footnote-defs, empty-footnote-defs, and cjk-emphasis goldens landed.
 Do **not** flip the product default yet.
 
 **Noto `0.0.2-alpha.9`** shipped the adapter (#37) plus `@roobli/md` v0.1.1 quote/
-callout parity (#38). Pin is now `@roobli/md` v0.1.9 (Phase 13 lazy continuation on top of Phase 12 CJK / Phase 11 /
-10 / 9 / 8 / 7 / v0.1.2). Optional:
+callout parity (#38). Pin is now `@roobli/md` v0.1.11 (Phase 14 nest/interrupt + adjacent-def block-start fix on top of
+Phase 13 lazy / Phase 12 CJK / Phase 11 / 10 / 9 / 8 / 7 / v0.1.2). Optional:
 `NOTO_MARKDOWN_ENGINE=roobli-md` (micromark remains default).
