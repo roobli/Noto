@@ -5,8 +5,8 @@
  * plain + hard breaks + lists-in-quotes + simple GFM alerts / callouts with
  * plain or simple-marked bodies + lazy continuation (fewer `>` and true no-`>`)
  * + simple flat / same-family nested list (any depth, incl. hard breaks +
- * simple marks incl. flat underscore + unindented lazy soft-wrap) + simple GFM
- * table with plain or simple-marked cells).
+ * simple marks incl. flat underscore + one-level nested marks + unindented lazy
+ * soft-wrap) + simple GFM table with plain or simple-marked cells).
  * Flagged `@roobli/md` path; does not flip product default.
  */
 
@@ -787,7 +787,19 @@ describe('blockFromEngineSpan', () => {
     expect(snake?.type.name).toBe('paragraph');
     expect(snake?.textContent).toBe('uses snake_case and mcp__claude_api');
     expect(snake?.childCount).toBe(1);
-    expect(blockFromEngineSpan('paragraph', '**bold _nested_**')).toBeNull();
+    const nest = blockFromEngineSpan('paragraph', '**bold _nested_**');
+    expect(nest?.type.name).toBe('paragraph');
+    expect(nest?.textContent).toBe('bold nested');
+    const nestedEm = [...Array(nest!.childCount)].map((_, i) => nest!.child(i)).find((n) => n.text === 'nested');
+    expect(nestedEm!.marks.map((m) => m.type.name).sort()).toEqual(['emphasis', 'strong']);
+    const emStrong = blockFromEngineSpan('paragraph', '*em **strong** em*');
+    expect(emStrong?.textContent).toBe('em strong em');
+    const strongBit = [...Array(emStrong!.childCount)].map((_, i) => emStrong!.child(i)).find((n) => n.text === 'strong');
+    expect(strongBit!.marks.map((m) => m.type.name).sort()).toEqual(['emphasis', 'strong']);
+    expect(blockFromEngineSpan('paragraph', '**bold `code`**')?.textContent).toBe('bold code');
+    expect(blockFromEngineSpan('paragraph', '***triple***')).toBeNull();
+    expect(blockFromEngineSpan('paragraph', '**a **b** c**')).toBeNull();
+    expect(blockFromEngineSpan('paragraph', '*a *b* c*')).toBeNull();
     expect(tryInlineNodesFromSource('2 * 3 * 4')?.map((n) => n.textContent ?? n.type.name).join('')).toBe('2 * 3 * 4');
 
     const h = blockFromEngineSpan('heading', '## Title');
@@ -900,6 +912,9 @@ describe('blockFromEngineSpan', () => {
       '**bold with snake_case**\n',
       '_emphasis_ alone\n',
       '[^1]: footnote with __strong__\n',
+      '**bold _nested_**\n',
+      '*em **strong** em*\n',
+      '**bold `code`**\n',
     ];
     for (const md of samples) {
       setMarkdownEngineForTests('micromark');

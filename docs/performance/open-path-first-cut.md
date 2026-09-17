@@ -167,18 +167,20 @@ Plain paragraph IR→PM drops trailing spaces that are not hard breaks
 (CommonMark/mdast; avoids `See  [[` after open+type). Hard breaks
 (` {2,}\n`) are engine-owned as `hard_break` nodes (serialize keeps two
 trailing spaces), including inside simple quote paragraphs, simple list items,
-and simple footnote bodies. Soft newlines stay in text (`pre-wrap`). Flat simple marked phrasing (`*`/`**`/`_`/`__`/`~~`/`` ` ``) is
-engine-owned; nested marks / links / wiki still take the dialect path. Setext `===` headings are already
+and simple footnote bodies. Soft newlines stay in text (`pre-wrap`). Flat simple marked phrasing (`*`/`**`/`_`/`__`/`~~`/`` ` ``)
+and one-level nested marks (`**bold _em_**`, `*em **strong** em*`) are
+engine-owned; deep / ambiguous nests / links / wiki still take the dialect path. Setext `===` headings are already
 engine-owned via `parseHeadingSource` (setext-`---` vs hr remains an engine
 split gap — see markdown-golden README).
 
 Cross-family nests, multi-block items, collapsible / titled callouts, complex /
-ragged tables, nested marks / links / wiki / HTML / escapes still need dialect
+ragged tables, deep / ambiguous nested marks / links / wiki / HTML / escapes still need dialect
 enrich + `from-mdast` (empty footnote bodies, same-family nests at any depth,
 nested plain quotes, simple lists-in-quotes, hard breaks in quotes, lazy nest
 continuation via fewer `>` **or true no-`>`**, hard breaks inside simple lists /
-footnotes, unindented list soft-wrap, and flat simple marked phrasing incl.
-underscore with snake_case literal are engine-owned with `@roobli/md` ≥ v0.1.9).
+footnotes, unindented list soft-wrap, flat simple marked phrasing incl.
+underscore with snake_case literal, and one-level nested marks are engine-owned
+with `@roobli/md` ≥ v0.1.9).
 Does **not** flip default-on.
 
 ## API (additions for Cut 5)
@@ -198,10 +200,10 @@ Does **not** flip default-on.
    depth) + simple GFM table skip mdast (`pm/from-engine.ts`); enrich flags +
    `enrichSpansInRange` honour the skip.
 2. ~~Kind-aware structural stand-ins (heading/fence/…)~~ — shipped (#90).
-3. Extend IR→PM to more kinds when safe (complex / ragged tables, nested
-   marks / links / wiki / HTML / escapes, marked footnote bodies with heavy
-   inline, collapsible / titled alerts still dialect; simple flat
-   `**`/`*`/`__`/`_`/`~~`/`` ` `` marks owned across paras/headings/lists/
+3. Extend IR→PM to more kinds when safe (complex / ragged tables, deep
+   nested marks / links / wiki / HTML / escapes, marked footnote bodies with heavy
+   inline, collapsible / titled alerts still dialect; simple flat + one-level
+   nested `**`/`*`/`__`/`_`/`~~`/`` ` `` marks owned across paras/headings/lists/
    tables/quotes/callouts/footnotes; snake_case underscores stay literal). Plain hard-break paragraphs/headings,
    same-family nested lists (any depth, incl. hard breaks), nested plain quotes,
    simple lists-in-quotes, plain / simple-marked GFM alerts / callouts, hard

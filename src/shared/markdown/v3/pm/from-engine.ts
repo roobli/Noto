@@ -6,6 +6,7 @@
  * (plain / empty / simple-marked single-paragraph body; optional soft-wrap /
  * hard-break), paragraph/heading with plain or **simple marked** phrasing
  * (`**strong**` / `*em*` / `__strong__` / `_em_` / `~~del~~` / `` `code` ``;
+ * one-level nested marks e.g. `**bold _italic_**` / `*em **strong** em*`;
  * hard breaks engine-owned; snake_case underscores stay literal),
  * **simple** blockquotes (every line `>`-prefixed; plain or simple-marked
  * paragraphs incl. hard breaks, nested quotes, simple lists-in-quotes,
@@ -16,10 +17,10 @@
  * soft-wrap), and **simple GFM tables** (alignment row; plain or simple-marked
  * cells; consistent columns), the PM node is fully determined by that IR — no
  * micromark / mdast pass. Cross-family nests, multi-block items, collapsible /
- * titled alert edges, nested marks / links / wiki / HTML / escapes, and
- * complex / ragged tables still go through `from-mdast.ts` after dialect
- * enrich. **Simple GFM alerts / callouts** keep the marker as plain text for
- * the alert decoration plugin.
+ * titled alert edges, deep / ambiguous nested marks / links / wiki / HTML /
+ * escapes, and complex / ragged tables still go through `from-mdast.ts` after
+ * dialect enrich. **Simple GFM alerts / callouts** keep the marker as plain
+ * text for the alert decoration plugin.
  *
  * See docs/performance/open-path-first-cut.md and docs/design/roobli-md-engine.md.
  */
@@ -45,15 +46,16 @@ export const ENGINE_LEAF_KINDS: ReadonlySet<NotoBlockKind> = new Set([
  * links, code, math, HTML, autolink). Hard breaks alone do **not** force dialect
  * for plain paragraph/heading — those become engine-owned `hard_break` nodes
  * (serialize still writes two trailing spaces via `hardBreakAsTwoSpaces`).
- * Simple `*` / `**` / `_` / `__` / `~~` / `` ` `` marks are engine-owned via
- * `tryInlineNodesFromSource`; nested marks and heavier constructs stay on
- * dialect. Snake_case underscores are literal (CommonMark flanking).
+ * Simple `*` / `**` / `_` / `__` / `~~` / `` ` `` marks (incl. one-level
+ * nesting) are engine-owned via `tryInlineNodesFromSource`; deep / ambiguous
+ * nests and heavier constructs stay on dialect. Snake_case underscores are
+ * literal (CommonMark flanking).
  */
 const INLINE_DIALECT_RE = /[*_~`[\]<!$:\\]|https?:\/\//u;
 /**
  * Markers that always force dialect even with the simple-marked subset:
  * links, wiki, HTML, math, escapes, autolink. Underscore emphasis is owned
- * (with snake_case-safe flanking); nested marks still fall through in the
+ * (with snake_case-safe flanking); deep / unmatched nests fall through in the
  * scanner.
  */
 const HEAVY_INLINE_RE = /[\[\]<!$:\\]|https?:\/\//;
@@ -168,11 +170,13 @@ export interface TryInlineOptions {
 }
 
 /**
- * Engine-owned inline IR: plain text, hard breaks, and a flat subset of marks
+ * Engine-owned inline IR: plain text, hard breaks, and a simple subset of marks
  * (`**strong**`, `*emphasis*`, `__strong__`, `_emphasis_`, `~~strikethrough~~`,
- * `` `inline code` ``). Nested marks, links/wiki/HTML/math/escapes/autolink,
- * and unmatched delimiters return `null` (dialect enrich). Snake_case
- * underscores (`mcp_register`) stay literal via CommonMark-ish flanking.
+ * `` `inline code` ``) plus **one-level nesting** (e.g. `**bold _italic_**`,
+ * `*em **strong** em*`, `` **`code`** ``). Deep / ambiguous nests (`***`,
+ * same-delimiter stacks), links/wiki/HTML/math/escapes/autolink, and unmatched
+ * delimiters return `null` (dialect enrich). Snake_case underscores
+ * (`mcp_register`) stay literal via CommonMark-ish flanking.
  */
 export function tryInlineNodesFromSource(
   md: string,
@@ -199,11 +203,11 @@ export function tryInlineNodesFromSource(
 }
 
 /**
- * Flat `*` / `**` / `_` / `__` / `~~` / `` ` `` scanner. Prefer longer
- * delimiters. Mark content may not contain delimiter characters (no nesting).
- * `***` / `___` / bare unmatched markers fall through to dialect.
- * Underscores use a CommonMark-ish word-flanking rule so `snake_case` stays
- * literal while `__strong__` / `_em_` are owned.
+ * Simple `*` / `**` / `_` / `__` / `~~` / `` ` `` scanner with optional
+ * one-level nesting. Prefer longer delimiters. `***` / `___` / bare unmatched
+ * markers / deep nests fall through to dialect. Underscores use a
+ * CommonMark-ish word-flanking rule so `snake_case` stays literal while
+ * `__strong__` / `_em_` are owned.
  */
 function isWordChar(ch: string | undefined): boolean {
   if (!ch) return false;
@@ -211,7 +215,14 @@ function isWordChar(ch: string | undefined): boolean {
   return /[0-9A-Za-z\u00C0-\u024F\u3400-\u4DBF\u4E00-\u9FFF]/u.test(ch);
 }
 
-function parseSimpleAsteriskTildeCode(md: string): ProseNode[] | null {
+/** Max inner mark depth (1 = outer + one nested, e.g. `**bold _em_**`). */
+const MAX_MARK_NEST = 1;
+
+function parseSimpleAsteriskTildeCode(
+  md: string,
+  parentMarks: readonly Mark[] = [],
+  depth = 0,
+): ProseNode[] | null {
   let input = md;
   if (!HARD_BREAK_RE.test(input)) {
     input = input.trimEnd();
@@ -222,21 +233,19 @@ function parseSimpleAsteriskTildeCode(md: string): ProseNode[] | null {
 
   const emitPlain = (from: number, to: number): void => {
     if (to <= from) return;
-    nodes.push(...plainRunNodes(input.slice(from, to), [], false));
+    nodes.push(...plainRunNodes(input.slice(from, to), parentMarks, false));
   };
 
   const isWs = (ch: string | undefined): boolean =>
     ch === ' ' || ch === '\t' || ch === '\n' || ch === '\r';
 
-  /** Content of `*` / `**` / `~~` may not nest other `*` / `~` / `` ` ``. */
+  /** Content of a leaf (no further nest) may not hold delimiter characters. */
   const ASTERISK_TILDE_FORBIDDEN = /[*`~]/u;
-  /** Content of `_` / `__` may not nest other simple delimiters. */
   const UNDERSCORE_FORBIDDEN = /[*_`~]/u;
 
   /**
    * True when content holds an underscore that is not mid-snake_case — those
-   * would be `_em_` / `__strong__` (or unmatched) and need dialect so we do
-   * not flatten nested marks inside `*` / `**` / `~~`.
+   * would be `_em_` / `__strong__` (or unmatched) and need nest parse or dialect.
    */
   const hasNonSnakeUnderscore = (content: string): boolean => {
     for (let k = 0; k < content.length; k += 1) {
@@ -254,6 +263,278 @@ function parseSimpleAsteriskTildeCode(md: string): ProseNode[] | null {
     return false;
   };
 
+  const contentNeedsNest = (content: string, underscoreOuter: boolean): boolean => {
+    if (underscoreOuter) return UNDERSCORE_FORBIDDEN.test(content);
+    return ASTERISK_TILDE_FORBIDDEN.test(content) || hasNonSnakeUnderscore(content);
+  };
+
+  /**
+   * Emit mark content: plain when delimiter-free; one-level recursive nest when
+   * `depth < MAX_MARK_NEST`; otherwise dialect (`null`).
+   */
+  const emitMarked = (
+    content: string,
+    mark: Mark,
+    underscoreOuter: boolean,
+  ): boolean => {
+    const childMarks = [...parentMarks, mark];
+    if (!contentNeedsNest(content, underscoreOuter)) {
+      nodes.push(...plainRunNodes(content, childMarks, false));
+      return true;
+    }
+    if (depth >= MAX_MARK_NEST) return false;
+    const inner = parseSimpleAsteriskTildeCode(content, childMarks, depth + 1);
+    if (!inner) return false;
+    nodes.push(...inner);
+    return true;
+  };
+
+  /**
+   * Skip a balanced nested span starting at `at` (code / ~~ / ** / * / __ / _).
+   * Returns end index exclusive, or -1 if unmatched / ambiguous.
+   */
+  const skipNestedSpan = (at: number): number => {
+    if (input[at] === '`') {
+      const close = input.indexOf('`', at + 1);
+      if (close < 0 || input.slice(at + 1, close).includes('\n')) return -1;
+      return close + 1;
+    }
+    if (input.startsWith('~~', at)) {
+      if (isWs(input[at + 2])) return -1;
+      const close = input.indexOf('~~', at + 2);
+      if (close < 0 || close === at + 2 || isWs(input[close - 1])) return -1;
+      return close + 2;
+    }
+    if (input.startsWith('**', at)) {
+      if (isWs(input[at + 2])) return -1;
+      // Nested ** content must not itself hold ** (one-level / no same-delimiter).
+      let search = at + 2;
+      while (search < len) {
+        if (input[search] === '`') {
+          const next = skipNestedSpan(search);
+          if (next < 0) return -1;
+          search = next;
+          continue;
+        }
+        if (input.startsWith('~~', search)) {
+          const next = skipNestedSpan(search);
+          if (next < 0) return -1;
+          search = next;
+          continue;
+        }
+        if (input.startsWith('**', search)) {
+          if (search === at + 2 || isWs(input[search - 1])) return -1;
+          return search + 2;
+        }
+        search += 1;
+      }
+      return -1;
+    }
+    if (input.startsWith('__', at)) {
+      if (isWordChar(input[at - 1]) && isWordChar(input[at + 2])) return -1;
+      if (isWs(input[at + 2])) return -1;
+      const close = input.indexOf('__', at + 2);
+      if (close < 0 || close === at + 2 || isWs(input[close - 1])) return -1;
+      if (isWordChar(input[close - 1]) && isWordChar(input[close + 2])) return -1;
+      return close + 2;
+    }
+    if (input[at] === '*') {
+      if (isWs(input[at + 1])) return -1;
+      let search = at + 1;
+      while (search < len) {
+        if (input.startsWith('**', search)) {
+          const next = skipNestedSpan(search);
+          if (next < 0) return -1;
+          search = next;
+          continue;
+        }
+        if (input[search] === '`') {
+          const next = skipNestedSpan(search);
+          if (next < 0) return -1;
+          search = next;
+          continue;
+        }
+        if (input.startsWith('~~', search)) {
+          const next = skipNestedSpan(search);
+          if (next < 0) return -1;
+          search = next;
+          continue;
+        }
+        if (input.startsWith('__', search) || input[search] === '_') {
+          const next = skipNestedSpan(search);
+          if (next < 0) return -1;
+          search = next;
+          continue;
+        }
+        if (input[search] === '*') {
+          if (search === at + 1 || isWs(input[search - 1])) return -1;
+          return search + 1;
+        }
+        search += 1;
+      }
+      return -1;
+    }
+    if (input[at] === '_') {
+      if (isWordChar(input[at - 1]) && isWordChar(input[at + 1])) return -1;
+      if (isWs(input[at + 1])) return -1;
+      let search = at + 1;
+      while (search < len) {
+        if (input.startsWith('__', search)) {
+          search += 2;
+          continue;
+        }
+        if (input[search] === '`') {
+          const next = skipNestedSpan(search);
+          if (next < 0) return -1;
+          search = next;
+          continue;
+        }
+        if (input.startsWith('~~', search) || input.startsWith('**', search) || input[search] === '*') {
+          const next = skipNestedSpan(search);
+          if (next < 0) return -1;
+          search = next;
+          continue;
+        }
+        if (input[search] === '_') {
+          if (search === at + 1 || isWs(input[search - 1])) {
+            search += 1;
+            continue;
+          }
+          if (isWordChar(input[search - 1]) && isWordChar(input[search + 1])) {
+            search += 1;
+            continue;
+          }
+          return search + 1;
+        }
+        search += 1;
+      }
+      return -1;
+    }
+    return -1;
+  };
+
+  /**
+   * Find closer for `**` / `~~` / `__`. Skip code and cross-family nests that
+   * may embed the delimiter. The first non-skipped `delim` is the closer
+   * (same-delimiter stacks with a space before an inner `**` fail the ws check
+   * and fall through to dialect).
+   */
+  const findDoubleClose = (openAt: number, delim: '**' | '~~' | '__'): number => {
+    const dlen = delim.length;
+    let search = openAt + dlen;
+    while (search < len) {
+      if (input[search] === '`') {
+        const next = skipNestedSpan(search);
+        if (next < 0) return -1;
+        search = next;
+        continue;
+      }
+      if (delim === '**') {
+        // Skip nested `*em*` (may hold `**`); bare `**` here is our closer.
+        if (input[search] === '*' && !input.startsWith('**', search)) {
+          const next = skipNestedSpan(search);
+          if (next < 0) return -1;
+          search = next;
+          continue;
+        }
+      } else if (delim === '__') {
+        if (
+          input.startsWith('**', search)
+          || input[search] === '*'
+          || input.startsWith('~~', search)
+          || (input[search] === '_' && !input.startsWith('__', search))
+        ) {
+          const next = skipNestedSpan(search);
+          if (next < 0) return -1;
+          search = next;
+          continue;
+        }
+      } else {
+        // ~~ — skip nested marks that may hold `~~` only via code (already skipped).
+        if (
+          input.startsWith('**', search)
+          || input[search] === '*'
+          || input.startsWith('__', search)
+          || input[search] === '_'
+        ) {
+          const next = skipNestedSpan(search);
+          if (next < 0) return -1;
+          search = next;
+          continue;
+        }
+      }
+      if (input.startsWith(delim, search)) {
+        if (search === openAt + dlen || isWs(input[search - 1])) return -1;
+        if (delim === '__' && isWordChar(input[search - 1]) && isWordChar(input[search + 2])) {
+          return -1;
+        }
+        return search;
+      }
+      search += 1;
+    }
+    return -1;
+  };
+
+  /** Find closer for single `*`; skip nested `**` / code / ~~ / _ spans. */
+  const findStarClose = (openAt: number): number => {
+    let search = openAt + 1;
+    while (search < len) {
+      if (input.startsWith('**', search) || input[search] === '`' || input.startsWith('~~', search)
+        || input.startsWith('__', search) || input[search] === '_') {
+        // Same-delimiter single `*` nest is refused by skip returning past inner.
+        if (input[search] === '*' && !input.startsWith('**', search)) {
+          // Bare `*` inside `*` → same-delimiter nest → dialect.
+          return -1;
+        }
+        if (input[search] === '_' || input.startsWith('__', search) || input.startsWith('**', search)
+          || input[search] === '`' || input.startsWith('~~', search)) {
+          const next = skipNestedSpan(search);
+          if (next < 0) return -1;
+          search = next;
+          continue;
+        }
+      }
+      if (input[search] === '*') {
+        if (search === openAt + 1 || isWs(input[search - 1])) return -1;
+        return search;
+      }
+      search += 1;
+    }
+    return -1;
+  };
+
+  /** Find closer for single `_`; skip nested non-`_` spans. */
+  const findUnderscoreClose = (openAt: number): number => {
+    let search = openAt + 1;
+    while (search < len) {
+      if (input.startsWith('__', search)) {
+        // Part of `__` run — not a single `_` closer; skip two chars.
+        search += 2;
+        continue;
+      }
+      if (input[search] === '`' || input.startsWith('~~', search) || input.startsWith('**', search)
+        || input[search] === '*') {
+        const next = skipNestedSpan(search);
+        if (next < 0) return -1;
+        search = next;
+        continue;
+      }
+      if (input[search] === '_') {
+        if (search === openAt + 1 || isWs(input[search - 1])) {
+          search += 1;
+          continue;
+        }
+        if (isWordChar(input[search - 1]) && isWordChar(input[search + 1])) {
+          search += 1;
+          continue;
+        }
+        return search;
+      }
+      search += 1;
+    }
+    return -1;
+  };
+
   while (i < len) {
     if (input.startsWith('***', i) || input.startsWith('___', i)) return null;
 
@@ -262,7 +543,7 @@ function parseSimpleAsteriskTildeCode(md: string): ProseNode[] | null {
       if (close < 0) return null;
       const content = input.slice(i + 1, close);
       if (content.includes('`') || content.includes('\n')) return null;
-      nodes.push(...textNodes(content, [schema.marks.inline_code.create()]));
+      nodes.push(...textNodes(content, [...parentMarks, schema.marks.inline_code.create()]));
       i = close + 1;
       continue;
     }
@@ -273,12 +554,10 @@ function parseSimpleAsteriskTildeCode(md: string): ProseNode[] | null {
         i += 2;
         continue;
       }
-      const close = input.indexOf('~~', i + 2);
+      const close = findDoubleClose(i, '~~');
       if (close < 0) return null;
-      if (close === i + 2 || isWs(input[close - 1])) return null;
       const content = input.slice(i + 2, close);
-      if (ASTERISK_TILDE_FORBIDDEN.test(content) || hasNonSnakeUnderscore(content)) return null;
-      nodes.push(...plainRunNodes(content, [schema.marks.strikethrough.create()], false));
+      if (!emitMarked(content, schema.marks.strikethrough.create(), false)) return null;
       i = close + 2;
       continue;
     }
@@ -289,12 +568,10 @@ function parseSimpleAsteriskTildeCode(md: string): ProseNode[] | null {
         i += 2;
         continue;
       }
-      const close = input.indexOf('**', i + 2);
+      const close = findDoubleClose(i, '**');
       if (close < 0) return null;
-      if (close === i + 2 || isWs(input[close - 1])) return null;
       const content = input.slice(i + 2, close);
-      if (ASTERISK_TILDE_FORBIDDEN.test(content) || hasNonSnakeUnderscore(content)) return null;
-      nodes.push(...plainRunNodes(content, [schema.marks.strong.create()], false));
+      if (!emitMarked(content, schema.marks.strong.create(), false)) return null;
       i = close + 2;
       continue;
     }
@@ -311,14 +588,10 @@ function parseSimpleAsteriskTildeCode(md: string): ProseNode[] | null {
         i += 2;
         continue;
       }
-      const close = input.indexOf('__', i + 2);
+      const close = findDoubleClose(i, '__');
       if (close < 0) return null;
-      if (close === i + 2 || isWs(input[close - 1])) return null;
-      // Closing `__` with word on both sides is not a closer.
-      if (isWordChar(input[close - 1]) && isWordChar(input[close + 2])) return null;
       const content = input.slice(i + 2, close);
-      if (UNDERSCORE_FORBIDDEN.test(content)) return null;
-      nodes.push(...plainRunNodes(content, [schema.marks.strong.create()], false));
+      if (!emitMarked(content, schema.marks.strong.create(), true)) return null;
       i = close + 2;
       continue;
     }
@@ -330,14 +603,10 @@ function parseSimpleAsteriskTildeCode(md: string): ProseNode[] | null {
         i += 1;
         continue;
       }
-      const close = input.indexOf('*', i + 1);
+      const close = findStarClose(i);
       if (close < 0) return null;
-      // Closing `*` of a `**` pair — ambiguous; dialect.
-      if (input[close + 1] === '*') return null;
-      if (close === i + 1 || isWs(input[close - 1])) return null;
       const content = input.slice(i + 1, close);
-      if (ASTERISK_TILDE_FORBIDDEN.test(content) || hasNonSnakeUnderscore(content)) return null;
-      nodes.push(...plainRunNodes(content, [schema.marks.emphasis.create()], false));
+      if (!emitMarked(content, schema.marks.emphasis.create(), false)) return null;
       i = close + 1;
       continue;
     }
@@ -355,33 +624,10 @@ function parseSimpleAsteriskTildeCode(md: string): ProseNode[] | null {
         i += 1;
         continue;
       }
-      // Find a closer that is not mid-identifier and not the start of `__`.
-      let close = -1;
-      let search = i + 1;
-      while (search < len) {
-        const at = input.indexOf('_', search);
-        if (at < 0) break;
-        if (input[at + 1] === '_') {
-          // Part of `__` — skip the run.
-          search = at + 2;
-          continue;
-        }
-        if (at === i + 1 || isWs(input[at - 1])) {
-          search = at + 1;
-          continue;
-        }
-        // Word on both sides of closer → not a closer (continue).
-        if (isWordChar(input[at - 1]) && isWordChar(input[at + 1])) {
-          search = at + 1;
-          continue;
-        }
-        close = at;
-        break;
-      }
+      const close = findUnderscoreClose(i);
       if (close < 0) return null;
       const content = input.slice(i + 1, close);
-      if (UNDERSCORE_FORBIDDEN.test(content)) return null;
-      nodes.push(...plainRunNodes(content, [schema.marks.emphasis.create()], false));
+      if (!emitMarked(content, schema.marks.emphasis.create(), true)) return null;
       i = close + 1;
       continue;
     }
