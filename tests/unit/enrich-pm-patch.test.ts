@@ -25,7 +25,7 @@ afterEach(() => {
 });
 
 function manyParas(count: number): string {
-  return Array.from({ length: count }, (_, i) => `Para ${i} with [[wiki]].\n\n`).join('');
+  return Array.from({ length: count }, (_, i) => `Para ${i} with https://example.com/p${i}.\n\n`).join('');
 }
 
 describe('enrichPmPatchForWindow', () => {
