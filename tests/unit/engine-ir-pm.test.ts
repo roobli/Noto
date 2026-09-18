@@ -7,7 +7,7 @@
  * + simple flat / same-family nested list (any depth, incl. hard breaks +
  * simple marks incl. flat underscore + one-level nested marks + collapsible/plain-titled callouts + unindented lazy
  * soft-wrap) + simple GFM table with plain or simple-marked cells +
- * simple inline links / images + simple reference links / images + simple bare http(s) autolinks + simple wiki links).
+ * simple inline links / images + simple reference links / images + simple bare http(s) + angle-bracket http(s) autolinks + simple wiki links).
  * Flagged `@roobli/md` path; does not flip product default.
  */
 
@@ -81,6 +81,7 @@ describe('from-engine IR helpers', () => {
     expect(canSkipDialectEnrich('paragraph', 'Break  \n**x**')).toBe(true);
     expect(canSkipDialectEnrich('paragraph', 'Hello [[wiki]]')).toBe(true);
     expect(canSkipDialectEnrich('paragraph', 'bare https://example.com')).toBe(true);
+    expect(canSkipDialectEnrich('paragraph', 'angle <https://example.com>')).toBe(true);
     expect(canSkipDialectEnrich('paragraph', 'See [ref][id] and [x][]')).toBe(true);
     expect(canSkipDialectEnrich('paragraph', 'Pic ![alt][logo]')).toBe(true);
     expect(canSkipDialectEnrich('paragraph', 'Hello __x__')).toBe(true);
@@ -919,7 +920,21 @@ describe('blockFromEngineSpan', () => {
     expect(blockFromEngineSpan('paragraph', 'ahttps://example.com')?.textContent).toBe('ahttps://example.com');
     expect(blockFromEngineSpan('paragraph', 'ahttps://example.com')!.child(0).marks).toHaveLength(0);
     expect(blockFromEngineSpan('paragraph', 'https://')?.textContent).toBe('https://');
-    expect(blockFromEngineSpan('paragraph', '<https://example.com>')).toBeNull();
+    const angled = blockFromEngineSpan('paragraph', 'see <https://example.com>');
+    expect(angled?.textContent).toBe('see https://example.com');
+    const angledBit = [...Array(angled!.childCount)].map((_, i) => angled!.child(i)).find((n) => n.text === 'https://example.com');
+    expect(angledBit!.marks.find((m) => m.type.name === 'link')!.attrs).toMatchObject({
+      href: 'https://example.com',
+      title: null,
+      referenceType: null,
+    });
+    const angledMarked = blockFromEngineSpan('paragraph', 'Go **<https://example.com>** now');
+    expect(angledMarked?.textContent).toBe('Go https://example.com now');
+    const angledStrong = [...Array(angledMarked!.childCount)].map((_, i) => angledMarked!.child(i)).find((n) => n.text === 'https://example.com');
+    expect(angledStrong!.marks.map((m) => m.type.name).sort()).toEqual(['link', 'strong']);
+    expect(blockFromEngineSpan('paragraph', '<https://>')).toBeNull();
+    expect(blockFromEngineSpan('paragraph', '<admin@example.com>')).toBeNull();
+    expect(blockFromEngineSpan('paragraph', '<br>')).toBeNull();
     expect(blockFromEngineSpan('paragraph', '[^note]')).toBeNull();
 
     const h = blockFromEngineSpan('heading', '## Title');
@@ -1048,6 +1063,10 @@ describe('blockFromEngineSpan', () => {
       'see https://example.com/path please\n',
       'end https://example.com.\n',
       'Go **https://example.com** now\n',
+      'angle <https://example.com>\n',
+      'see <https://example.com/path> please\n',
+      'Go **<https://example.com>** now\n',
+      'also <http://example.com/plain>\n',
     ];
     for (const md of samples) {
       setMarkdownEngineForTests('micromark');
@@ -1135,6 +1154,17 @@ describe('enrich skip for engine-owned spans', () => {
 
   it('engine-owns simple bare http(s) autolink paragraphs', () => {
     const text = 'Visit https://example.com/path today.\n';
+    const none = splitBlocksViaRoobli(text, { enrich: 'none' });
+    const enriched = enrichSpansInRange(none.spans, text, { from: 0, to: none.spans.length });
+    expect(enriched[0]!.semanticKey).toBe(engineSemanticKey('paragraph', enriched[0]!.markdown));
+    const pm = blockFromEngineSpan('paragraph', enriched[0]!.markdown);
+    expect(pm?.textContent).toBe('Visit https://example.com/path today.');
+    const bit = [...Array(pm!.childCount)].map((_, i) => pm!.child(i)).find((n) => n.text === 'https://example.com/path');
+    expect(bit!.marks.find((m) => m.type.name === 'link')!.attrs.href).toBe('https://example.com/path');
+  });
+
+  it('engine-owns simple angle-bracket http(s) autolink paragraphs', () => {
+    const text = 'Visit <https://example.com/path> today.\n';
     const none = splitBlocksViaRoobli(text, { enrich: 'none' });
     const enriched = enrichSpansInRange(none.spans, text, { from: 0, to: none.spans.length });
     expect(enriched[0]!.semanticKey).toBe(engineSemanticKey('paragraph', enriched[0]!.markdown));

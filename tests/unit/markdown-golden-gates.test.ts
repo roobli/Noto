@@ -161,6 +161,7 @@ describe('markdown golden gates — fixture inventory', () => {
       'math-fences.md',
       'nested-lists.md',
       'ordered-start.md',
+      'simple-angle-autolinks.md',
       'simple-bare-autolinks.md',
       'simple-callouts.md',
       'simple-flat-lists.md',
