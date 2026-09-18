@@ -575,7 +575,7 @@ Medium scroll/idle tick **~58 ms** vs full remainder **704 ms** (~12×). Large
 **82 ms** vs **3084 ms** (~38×). Post-paint critical path is one budgeted window
 (~`OPEN_VIEWPORT_ENRICH_BUDGET` spans), not the full remainder.
 
-Next residual: keep growing markdown-golden before default-on; complex tables / deep nested marks / reference links / bare autolinks / HTML / escapes still dialect (no-`>` lazy + list lazy + simple marked phrasing + flat underscore + one-level nested marks + simple inline links/images + simple wiki `[[…]]` owned with `@roobli/md` ≥ v0.1.9); Nested plain quotes, simple lists-in-quotes, plain-body GFM alerts /
+Next residual: keep growing markdown-golden before default-on; complex tables / deep nested marks / bare autolinks / HTML / escapes still dialect (no-`>` lazy + list lazy + simple marked phrasing + flat underscore + one-level nested marks + simple inline links/images + simple reference links/images + simple wiki `[[…]]` owned with `@roobli/md` ≥ v0.1.9); Nested plain quotes, simple lists-in-quotes, plain-body GFM alerts /
 callouts, hard breaks in quotes, lazy nest continuation via fewer `>`, hard
 breaks in simple lists / footnotes, and same-family nested lists (any depth) are
 engine-owned (flagged). Kind-aware stand-ins (#90), IR→PM common blocks (+ link-definition +
@@ -585,4 +585,4 @@ enrich tick shipped (flagged). Plain paragraph IR→PM trims trailing spaces
 (wiki-trigger save flake). Golden set expanded with GFM/callout/HTML/nested-list/
 trailing-spaces/simple-quote/simple-flat-list/simple-gfm-table edges plus
 hard-breaks (incl. in quotes / lists / footnotes), images, empty/meta fences,
-escapes, table-align, ordered-start, inline HTML, simple-inline-links, and simple-wiki-links.
+escapes, table-align, ordered-start, inline HTML, simple-inline-links, simple-reference-links, and simple-wiki-links.
