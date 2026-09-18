@@ -33,6 +33,7 @@ Small public fixtures for comparing the **micromark** product path against
 | `simple-hard-breaks-in-footnotes.md` | hard breaks inside simple `[^id]:` footnote definition bodies; soft-wrap still covered; no marked bodies |
 | `simple-callouts.md` | plain-body GFM alerts / callouts (`> [!NOTE]` …); no marks, collapsible `-`, or titled alerts |
 - `simple-titled-collapsible-callouts.md` — collapsible `[!NOTE]-`/`+` and plain same-line titles owned on the flagged IR→PM path.
+- `simple-marked-callout-titles.md` — same-line callout titles with simple marks / wiki / autolinks owned on the flagged IR→PM path; heavy titles stay dialect.
 | `simple-marked-phrasing.md` | flat `**` / `*` / `~~` / `` ` `` marks in paragraphs, headings, lists, tables, callouts, footnotes; underscore covered separately; one-level nest in `simple-nested-marks.md`; no links / wiki |
 | `simple-underscore-emphasis.md` | flat `__strong__` / `_em_` + snake_case literal; one-level nest covered in `simple-nested-marks.md` |
 | `simple-inline-links.md` | simple `[text](url)` / `![alt](url)` (optional title; plain or simple-marked link text) in para/heading/list/quote |

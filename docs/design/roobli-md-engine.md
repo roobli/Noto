@@ -210,7 +210,7 @@ simple flat lists and same-family nested lists (any depth; plain items incl. har
 breaks; nested children may nest only) + simple GFM tables (alignment row; plain
 text cells; consistent columns);
 enrich flags mark those done — see `docs/performance/open-path-first-cut.md`.
-Cross-family nests, multi-block items, marked callout titles, complex /
+Cross-family nests, multi-block items, heavy callout titles, complex /
 ragged tables, and heavy inline (deep / ambiguous nested marks, HTML,
 escapes, nested-bracket wiki) stay on dialect.
 Empty footnote bodies, same-family nests at
@@ -234,7 +234,7 @@ ordered-start, inline HTML, simple-flat-lists, simple-nested-lists,
 simple-nested-quotes, simple-lists-in-quotes, simple-hard-breaks-in-quotes,
 simple-lazy-continuations-in-quotes, simple-no-marker-lazy-in-quotes,
 simple-lazy-list-continuations, simple-hard-breaks-in-lists,
-simple-hard-breaks-in-footnotes, simple-callouts, simple-titled-collapsible-callouts, simple-marked-phrasing,
+simple-hard-breaks-in-footnotes, simple-callouts, simple-titled-collapsible-callouts, simple-marked-callout-titles, simple-marked-phrasing,
 simple-underscore-emphasis, simple-nested-marks, simple-inline-links, simple-bare-autolinks, simple-angle-autolinks, simple-www-autolinks, simple-email-autolinks, simple-reference-links, simple-wiki-links, simple-gfm-tables,
 simple-footnote-defs, empty-footnote-defs, and cjk-emphasis goldens landed.
 Do **not** flip the product default yet.

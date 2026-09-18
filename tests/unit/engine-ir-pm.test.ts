@@ -5,7 +5,7 @@
  * plain + hard breaks + lists-in-quotes + simple GFM alerts / callouts with
  * plain or simple-marked bodies + lazy continuation (fewer `>` and true no-`>`)
  * + simple flat / same-family nested list (any depth, incl. hard breaks +
- * simple marks incl. flat underscore + one-level nested marks + collapsible/plain-titled callouts + unindented lazy
+ * simple marks incl. flat underscore + one-level nested marks + collapsible/plain-titled/simple-marked-title callouts + unindented lazy
  * soft-wrap) + simple GFM table with plain or simple-marked cells +
  * simple inline links / images + simple reference links / images + simple bare http(s) + angle-bracket http(s) + www. + email autolinks + simple wiki links).
  * Flagged `@roobli/md` path; does not flip product default.
@@ -66,7 +66,8 @@ describe('from-engine IR helpers', () => {
     expect(needsDialectInlineInQuote('[!NOTE]-\nbody')).toBe(false);
     expect(needsDialectInlineInQuote('[!NOTE]+\nbody')).toBe(false);
     expect(needsDialectInlineInQuote('[!NOTE] Title\nbody')).toBe(false);
-    expect(needsDialectInlineInQuote('[!NOTE] Title with **bold**\nbody')).toBe(true);
+    expect(needsDialectInlineInQuote('[!NOTE] Title with **bold**\nbody')).toBe(false);
+    expect(needsDialectInlineInQuote('[!NOTE] Title with \\*escape\\*\nbody')).toBe(true);
     expect(needsDialectInlineInQuote('plain')).toBe(false);
   });
 
@@ -107,7 +108,8 @@ describe('from-engine IR helpers', () => {
     expect(canSkipDialectEnrich('quote', '> [!NOTE]-\n> body')).toBe(true);
     expect(canSkipDialectEnrich('quote', '> [!NOTE]+\n> body')).toBe(true);
     expect(canSkipDialectEnrich('quote', '> [!NOTE] Title\n> body')).toBe(true);
-    expect(canSkipDialectEnrich('quote', '> [!NOTE] Title **x**\n> body')).toBe(false);
+    expect(canSkipDialectEnrich('quote', '> [!NOTE] Title **x**\n> body')).toBe(true);
+    expect(canSkipDialectEnrich('quote', '> [!NOTE] Title \\*x\\*\n> body')).toBe(false);
     expect(canSkipDialectEnrich('quote', '> [!WARNING]\n> has **bold**')).toBe(true);
     expect(canSkipDialectEnrich('quote', '> [!WARNING]\n> has [[wiki]]')).toBe(true);
     expect(canSkipDialectEnrich('quote', '> > nested\n> lazy')).toBe(true);
@@ -294,7 +296,8 @@ describe('from-engine IR helpers', () => {
     expect(parseSimpleQuoteSource('> [!NOTE]-\n> x')).not.toBeNull();
     expect(parseSimpleQuoteSource('> [!NOTE]+\n> x')).not.toBeNull();
     expect(parseSimpleQuoteSource('> [!NOTE] Title\n> x')).not.toBeNull();
-    expect(parseSimpleQuoteSource('> [!NOTE] Title **x**\n> x')).toBeNull();
+    expect(parseSimpleQuoteSource('> [!NOTE] Title **x**\n> x')).not.toBeNull();
+    expect(parseSimpleQuoteSource('> [!NOTE] Title \\*x\\*\n> x')).toBeNull();
     expect(parseSimpleQuoteSource('> [!WARNING]\n> has **bold**')).not.toBeNull();
     expect(parseSimpleQuoteSource('> [!WARNING]\n> has [[wiki]]')).not.toBeNull();
     expect(parseSimpleFlatListSource('- a\n- b')).toEqual({
@@ -558,7 +561,17 @@ describe('blockFromEngineSpan', () => {
     expect(fold?.textContent).toBe('[!NOTE]-\nbody');
     const titled = blockFromEngineSpan('quote', '> [!NOTE] Title\n> body');
     expect(titled?.textContent).toBe('[!NOTE] Title\nbody');
-    expect(blockFromEngineSpan('quote', '> [!NOTE] Title **x**\n> body')).toBeNull();
+    const markedTitle = blockFromEngineSpan('quote', '> [!NOTE] Title **x**\n> body');
+    expect(markedTitle?.textContent).toBe('[!NOTE] Title x\nbody');
+    const titlePara = markedTitle!.child(0);
+    let strongTitle = false;
+    titlePara.forEach((node) => {
+      if (node.isText && node.text === 'x' && node.marks.some((m) => m.type.name === 'strong')) {
+        strongTitle = true;
+      }
+    });
+    expect(strongTitle).toBe(true);
+    expect(blockFromEngineSpan('quote', '> [!NOTE] Title \\*x\\*\n> body')).toBeNull();
     const markedAlert = blockFromEngineSpan('quote', '> [!WARNING]\n> has **bold**');
     expect(markedAlert?.textContent).toBe('[!WARNING]\nhas bold');
     expect(blockFromEngineSpan('quote', '> > nest\n> **bold**')?.textContent).toBe('nest\nbold');
