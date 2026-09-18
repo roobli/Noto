@@ -1,6 +1,6 @@
 # Open-path / `parseDocument` — measured cuts
 
-Status: **lazy / deferred wire nodes + viewport-driven enrich + incremental PM patch + kind-aware stand-ins + engine-owned IR→PM (common blocks + simple quotes incl. nested plain + lists-in-quotes + hard breaks in quotes + lazy nest continuation + true no-`>` lazy + simple flat / same-family nested lists any depth incl. hard breaks + unindented lazy soft-wrap + simple GFM tables + simple footnote-defs incl. empty + hard breaks + plain/simple-marked callouts + simple marked phrasing `**`/`*`/`~~`/`` ` `` + simple inline links/images + simple reference links/images + simple bare http(s) + angle-bracket http(s) + www. + email autolinks + simple wiki links)** under the flagged `@roobli/md` path.
+Status: **lazy / deferred wire nodes + viewport-driven enrich + incremental PM patch + kind-aware stand-ins + engine-owned IR→PM (common blocks + simple quotes incl. nested plain + lists-in-quotes + hard breaks in quotes + lazy nest continuation + true no-`>` lazy + simple flat / same-family nested lists any depth incl. hard breaks + unindented lazy soft-wrap + simple GFM tables + simple footnote-defs incl. empty + hard breaks + plain/simple-marked/simple-marked-title callouts + simple marked phrasing `**`/`*`/`~~`/`` ` `` + simple inline links/images + simple reference links/images + simple bare http(s) + angle-bracket http(s) + www. + email autolinks + simple wiki links + simple-marked callout titles)** under the flagged `@roobli/md` path.
 Product default remains micromark. Do **not** flip `NOTO_MARKDOWN_ENGINE`
 default-on from this work.
 
@@ -173,7 +173,7 @@ engine-owned; deep / ambiguous nests / HTML / escapes still take the dialect pat
 engine-owned via `parseHeadingSource` (setext-`---` vs hr remains an engine
 split gap — see markdown-golden README).
 
-Cross-family nests, multi-block items, marked callout titles, complex /
+Cross-family nests, multi-block items, heavy callout titles, complex /
 ragged tables, deep / ambiguous nested marks / HTML / escapes still need dialect
 enrich + `from-mdast` (empty footnote bodies, same-family nests at any depth,
 nested plain quotes, simple lists-in-quotes, hard breaks in quotes, lazy nest
@@ -202,7 +202,7 @@ Does **not** flip default-on.
 2. ~~Kind-aware structural stand-ins (heading/fence/…)~~ — shipped (#90).
 3. Extend IR→PM to more kinds when safe (complex / ragged tables, deep
    nested marks / HTML / escapes, marked footnote bodies with heavy
-   inline, marked callout titles still dialect; collapsible/plain-titled callouts owned; simple flat + one-level
+   inline, heavy callout titles still dialect; collapsible/plain-titled/simple-marked-title callouts owned; simple flat + one-level
    nested `**`/`*`/`__`/`_`/`~~`/`` ` `` marks owned across paras/headings/lists/
    tables/quotes/callouts/footnotes; simple inline links/images + simple reference
    links/images + simple bare + angle-bracket http(s) + www. + email + simple wiki `[[…]]` (literal text) owned; snake_case underscores stay literal). Plain hard-break paragraphs/headings,
@@ -219,7 +219,7 @@ Does **not** flip default-on.
    lists, simple GFM tables, simple footnote-defs, empty footnote-defs, CJK
    emphasis, hard-breaks, images, empty/meta fences, escapes, table-align,
    ordered-start, inline HTML, simple-reference-links landed; intentional engine gaps documented in
-   that README; simple-angle-autolinks / simple-www-autolinks / simple-email-autolinks landed.
+   that README; simple-angle-autolinks / simple-www-autolinks / simple-email-autolinks / simple-marked-callout-titles landed.
 
 Do not defer main’s file-truth structural parse; do not flip the product
 default from this doc.
