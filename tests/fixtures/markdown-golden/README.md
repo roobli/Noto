@@ -35,9 +35,10 @@ Small public fixtures for comparing the **micromark** product path against
 - `simple-titled-collapsible-callouts.md` — collapsible `[!NOTE]-`/`+` and plain same-line titles owned on the flagged IR→PM path.
 | `simple-marked-phrasing.md` | flat `**` / `*` / `~~` / `` ` `` marks in paragraphs, headings, lists, tables, callouts, footnotes; underscore covered separately; one-level nest in `simple-nested-marks.md`; no links / wiki |
 | `simple-underscore-emphasis.md` | flat `__strong__` / `_em_` + snake_case literal; one-level nest covered in `simple-nested-marks.md` |
-| `simple-inline-links.md` | simple `[text](url)` / `![alt](url)` (optional title; plain or simple-marked link text) in para/heading/list/quote; bare autolink stay dialect |
-| `simple-reference-links.md` | simple `[text][id]` / `[text][]` / `![alt][id]` / `![alt][]` (plain or simple-marked label) in para/heading/list/quote + matching link-defs; shortcut bare `[text]` / nested-bracket / bare autolink / footnotes stay dialect |
-| `simple-wiki-links.md` | simple `[[target]]` / `[[target|alias]]` (literal text; decoration displays) in para/heading/list/quote with plain or simple-marked surrounds; nested-bracket wiki / bare autolink stay dialect |
+| `simple-inline-links.md` | simple `[text](url)` / `![alt](url)` (optional title; plain or simple-marked link text) in para/heading/list/quote |
+| `simple-bare-autolinks.md` | simple bare `http(s)://…` autolinks (text === href; trailing punct trim) in para/heading/list/quote with plain or simple-marked surrounds; angle-bracket / www / email stay dialect |
+| `simple-reference-links.md` | simple `[text][id]` / `[text][]` / `![alt][id]` / `![alt][]` (plain or simple-marked label) in para/heading/list/quote + matching link-defs; shortcut bare `[text]` / nested-bracket / footnotes stay dialect |
+| `simple-wiki-links.md` | simple `[[target]]` / `[[target|alias]]` (literal text; decoration displays) in para/heading/list/quote with plain or simple-marked surrounds; nested-bracket wiki stay dialect |
 | `simple-nested-marks.md` | one-level nested marks (`**bold _em_**`, `*em **strong** em*`, `` **`code`** ``) in para/heading/list/table/callout/footnote; deep / `***` / same-delimiter / links / wiki stay dialect |
 | `simple-flat-lists.md` | flat bullet/ordered/task lists (markers `-*+`, `.`/`)`, start≠1, loose, soft-wrap); no nest or marked items |
 | `simple-nested-lists.md` | same-family nested bullet/ordered at any depth (plain items; soft-wrap then nest; depth-2+); no cross-family or marked items |

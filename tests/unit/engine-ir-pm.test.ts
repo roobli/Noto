@@ -7,7 +7,7 @@
  * + simple flat / same-family nested list (any depth, incl. hard breaks +
  * simple marks incl. flat underscore + one-level nested marks + collapsible/plain-titled callouts + unindented lazy
  * soft-wrap) + simple GFM table with plain or simple-marked cells +
- * simple inline links / images + simple reference links / images + simple wiki links).
+ * simple inline links / images + simple reference links / images + simple bare http(s) autolinks + simple wiki links).
  * Flagged `@roobli/md` path; does not flip product default.
  */
 
@@ -80,6 +80,7 @@ describe('from-engine IR helpers', () => {
     expect(canSkipDialectEnrich('paragraph', 'Hello **x**')).toBe(true);
     expect(canSkipDialectEnrich('paragraph', 'Break  \n**x**')).toBe(true);
     expect(canSkipDialectEnrich('paragraph', 'Hello [[wiki]]')).toBe(true);
+    expect(canSkipDialectEnrich('paragraph', 'bare https://example.com')).toBe(true);
     expect(canSkipDialectEnrich('paragraph', 'See [ref][id] and [x][]')).toBe(true);
     expect(canSkipDialectEnrich('paragraph', 'Pic ![alt][logo]')).toBe(true);
     expect(canSkipDialectEnrich('paragraph', 'Hello __x__')).toBe(true);
@@ -898,7 +899,27 @@ describe('blockFromEngineSpan', () => {
       identifier: 'banner',
       label: 'banner',
     });
-    expect(blockFromEngineSpan('paragraph', 'bare https://example.com')).toBeNull();
+    const bare = blockFromEngineSpan('paragraph', 'bare https://example.com');
+    expect(bare?.textContent).toBe('bare https://example.com');
+    const bareBit = [...Array(bare!.childCount)].map((_, i) => bare!.child(i)).find((n) => n.text === 'https://example.com');
+    expect(bareBit!.marks.find((m) => m.type.name === 'link')!.attrs).toMatchObject({
+      href: 'https://example.com',
+      title: null,
+      referenceType: null,
+    });
+    const bareTrail = blockFromEngineSpan('paragraph', 'end https://example.com.');
+    expect(bareTrail?.textContent).toBe('end https://example.com.');
+    expect([...Array(bareTrail!.childCount)].map((_, i) => bareTrail!.child(i)).find((n) => n.text === 'https://example.com')!
+      .marks.find((m) => m.type.name === 'link')!.attrs.href).toBe('https://example.com');
+    expect([...Array(bareTrail!.childCount)].map((_, i) => bareTrail!.child(i)).some((n) => n.text === '.')).toBe(true);
+    const bareMarked = blockFromEngineSpan('paragraph', 'Go **https://example.com** now');
+    expect(bareMarked?.textContent).toBe('Go https://example.com now');
+    const bareStrong = [...Array(bareMarked!.childCount)].map((_, i) => bareMarked!.child(i)).find((n) => n.text === 'https://example.com');
+    expect(bareStrong!.marks.map((m) => m.type.name).sort()).toEqual(['link', 'strong']);
+    expect(blockFromEngineSpan('paragraph', 'ahttps://example.com')?.textContent).toBe('ahttps://example.com');
+    expect(blockFromEngineSpan('paragraph', 'ahttps://example.com')!.child(0).marks).toHaveLength(0);
+    expect(blockFromEngineSpan('paragraph', 'https://')?.textContent).toBe('https://');
+    expect(blockFromEngineSpan('paragraph', '<https://example.com>')).toBeNull();
     expect(blockFromEngineSpan('paragraph', '[^note]')).toBeNull();
 
     const h = blockFromEngineSpan('heading', '## Title');
@@ -1023,6 +1044,10 @@ describe('blockFromEngineSpan', () => {
       'Go [**bold**](https://example.com)\n',
       'See [[Home]] and [[Note Name|alias]]\n',
       'Go **[[Home]]** now\n',
+      'bare https://example.com\n',
+      'see https://example.com/path please\n',
+      'end https://example.com.\n',
+      'Go **https://example.com** now\n',
     ];
     for (const md of samples) {
       setMarkdownEngineForTests('micromark');
@@ -1107,6 +1132,18 @@ describe('blockFromEngineSpan', () => {
 });
 
 describe('enrich skip for engine-owned spans', () => {
+
+  it('engine-owns simple bare http(s) autolink paragraphs', () => {
+    const text = 'Visit https://example.com/path today.\n';
+    const none = splitBlocksViaRoobli(text, { enrich: 'none' });
+    const enriched = enrichSpansInRange(none.spans, text, { from: 0, to: none.spans.length });
+    expect(enriched[0]!.semanticKey).toBe(engineSemanticKey('paragraph', enriched[0]!.markdown));
+    const pm = blockFromEngineSpan('paragraph', enriched[0]!.markdown);
+    expect(pm?.textContent).toBe('Visit https://example.com/path today.');
+    const bit = [...Array(pm!.childCount)].map((_, i) => pm!.child(i)).find((n) => n.text === 'https://example.com/path');
+    expect(bit!.marks.find((m) => m.type.name === 'link')!.attrs.href).toBe('https://example.com/path');
+  });
+
   it('engine-owns simple reference link paragraphs (skip dialect when defs elsewhere)', () => {
     const text = 'See [ref][alpha] nearby.\n\n[alpha]: https://example.com/a\n';
     const none = splitBlocksViaRoobli(text, { enrich: 'none' });
