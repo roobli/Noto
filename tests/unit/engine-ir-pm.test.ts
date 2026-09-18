@@ -7,7 +7,7 @@
  * + simple flat / same-family nested list (any depth, incl. hard breaks +
  * simple marks incl. flat underscore + one-level nested marks + collapsible/plain-titled callouts + unindented lazy
  * soft-wrap) + simple GFM table with plain or simple-marked cells +
- * simple inline links / images + simple reference links / images + simple bare http(s) + angle-bracket http(s) autolinks + simple wiki links).
+ * simple inline links / images + simple reference links / images + simple bare http(s) + angle-bracket http(s) + www. + email autolinks + simple wiki links).
  * Flagged `@roobli/md` path; does not flip product default.
  */
 
@@ -82,6 +82,9 @@ describe('from-engine IR helpers', () => {
     expect(canSkipDialectEnrich('paragraph', 'Hello [[wiki]]')).toBe(true);
     expect(canSkipDialectEnrich('paragraph', 'bare https://example.com')).toBe(true);
     expect(canSkipDialectEnrich('paragraph', 'angle <https://example.com>')).toBe(true);
+    expect(canSkipDialectEnrich('paragraph', 'see www.example.com')).toBe(true);
+    expect(canSkipDialectEnrich('paragraph', 'mail user@example.com')).toBe(true);
+    expect(canSkipDialectEnrich('paragraph', 'see <admin@example.com>')).toBe(true);
     expect(canSkipDialectEnrich('paragraph', 'See [ref][id] and [x][]')).toBe(true);
     expect(canSkipDialectEnrich('paragraph', 'Pic ![alt][logo]')).toBe(true);
     expect(canSkipDialectEnrich('paragraph', 'Hello __x__')).toBe(true);
@@ -933,7 +936,38 @@ describe('blockFromEngineSpan', () => {
     const angledStrong = [...Array(angledMarked!.childCount)].map((_, i) => angledMarked!.child(i)).find((n) => n.text === 'https://example.com');
     expect(angledStrong!.marks.map((m) => m.type.name).sort()).toEqual(['link', 'strong']);
     expect(blockFromEngineSpan('paragraph', '<https://>')).toBeNull();
-    expect(blockFromEngineSpan('paragraph', '<admin@example.com>')).toBeNull();
+    const www = blockFromEngineSpan('paragraph', 'see www.example.com');
+    expect(www?.textContent).toBe('see www.example.com');
+    const wwwBit = [...Array(www!.childCount)].map((_, i) => www!.child(i)).find((n) => n.text === 'www.example.com');
+    expect(wwwBit!.marks.find((m) => m.type.name === 'link')!.attrs).toMatchObject({
+      href: 'http://www.example.com',
+      title: null,
+      referenceType: null,
+    });
+    const wwwTrail = blockFromEngineSpan('paragraph', 'end www.example.com.');
+    expect(wwwTrail?.textContent).toBe('end www.example.com.');
+    expect([...Array(wwwTrail!.childCount)].map((_, i) => wwwTrail!.child(i)).find((n) => n.text === 'www.example.com')!
+      .marks.find((m) => m.type.name === 'link')!.attrs.href).toBe('http://www.example.com');
+    expect(blockFromEngineSpan('paragraph', 'xwww.example.com')!.child(0).marks).toHaveLength(0);
+    const wwwMarked = blockFromEngineSpan('paragraph', 'Go **www.example.com** now');
+    expect(wwwMarked?.textContent).toBe('Go www.example.com now');
+    const wwwStrong = [...Array(wwwMarked!.childCount)].map((_, i) => wwwMarked!.child(i)).find((n) => n.text === 'www.example.com');
+    expect(wwwStrong!.marks.map((m) => m.type.name).sort()).toEqual(['link', 'strong']);
+
+    const bareEmail = blockFromEngineSpan('paragraph', 'mail user@example.com now');
+    expect(bareEmail?.textContent).toBe('mail user@example.com now');
+    const bareEmailBit = [...Array(bareEmail!.childCount)].map((_, i) => bareEmail!.child(i)).find((n) => n.text === 'user@example.com');
+    expect(bareEmailBit!.marks.find((m) => m.type.name === 'link')!.attrs.href).toBe('mailto:user@example.com');
+    expect(blockFromEngineSpan('paragraph', 'NDCG@10')!.child(0).marks).toHaveLength(0);
+    expect(blockFromEngineSpan('paragraph', 'user@localhost')!.child(0).marks).toHaveLength(0);
+
+    const angleEmail = blockFromEngineSpan('paragraph', 'see <admin@example.com>');
+    expect(angleEmail?.textContent).toBe('see admin@example.com');
+    const angleEmailBit = [...Array(angleEmail!.childCount)].map((_, i) => angleEmail!.child(i)).find((n) => n.text === 'admin@example.com');
+    expect(angleEmailBit!.marks.find((m) => m.type.name === 'link')!.attrs.href).toBe('mailto:admin@example.com');
+    const mailtoAngle = blockFromEngineSpan('paragraph', '<mailto:a@b.com>');
+    expect(mailtoAngle?.textContent).toBe('mailto:a@b.com');
+    expect(mailtoAngle!.child(0).marks.find((m) => m.type.name === 'link')!.attrs.href).toBe('mailto:a@b.com');
     expect(blockFromEngineSpan('paragraph', '<br>')).toBeNull();
     expect(blockFromEngineSpan('paragraph', '[^note]')).toBeNull();
 
@@ -1172,6 +1206,30 @@ describe('enrich skip for engine-owned spans', () => {
     expect(pm?.textContent).toBe('Visit https://example.com/path today.');
     const bit = [...Array(pm!.childCount)].map((_, i) => pm!.child(i)).find((n) => n.text === 'https://example.com/path');
     expect(bit!.marks.find((m) => m.type.name === 'link')!.attrs.href).toBe('https://example.com/path');
+  });
+
+  it('engine-owns simple www. autolink paragraphs', () => {
+    const text = 'Visit www.example.com/path today.\n';
+    const none = splitBlocksViaRoobli(text, { enrich: 'none' });
+    const enriched = enrichSpansInRange(none.spans, text, { from: 0, to: none.spans.length });
+    expect(enriched[0]!.semanticKey).toBe(engineSemanticKey('paragraph', enriched[0]!.markdown));
+    const pm = blockFromEngineSpan('paragraph', enriched[0]!.markdown);
+    expect(pm?.textContent).toBe('Visit www.example.com/path today.');
+    const bit = [...Array(pm!.childCount)].map((_, i) => pm!.child(i)).find((n) => n.text === 'www.example.com/path');
+    expect(bit!.marks.find((m) => m.type.name === 'link')!.attrs.href).toBe('http://www.example.com/path');
+  });
+
+  it('engine-owns simple email autolink paragraphs', () => {
+    const text = 'Contact <admin@example.com> or user@example.com today.\n';
+    const none = splitBlocksViaRoobli(text, { enrich: 'none' });
+    const enriched = enrichSpansInRange(none.spans, text, { from: 0, to: none.spans.length });
+    expect(enriched[0]!.semanticKey).toBe(engineSemanticKey('paragraph', enriched[0]!.markdown));
+    const pm = blockFromEngineSpan('paragraph', enriched[0]!.markdown);
+    expect(pm?.textContent).toBe('Contact admin@example.com or user@example.com today.');
+    const angled = [...Array(pm!.childCount)].map((_, i) => pm!.child(i)).find((n) => n.text === 'admin@example.com');
+    expect(angled!.marks.find((m) => m.type.name === 'link')!.attrs.href).toBe('mailto:admin@example.com');
+    const bare = [...Array(pm!.childCount)].map((_, i) => pm!.child(i)).find((n) => n.text === 'user@example.com');
+    expect(bare!.marks.find((m) => m.type.name === 'link')!.attrs.href).toBe('mailto:user@example.com');
   });
 
   it('engine-owns simple reference link paragraphs (skip dialect when defs elsewhere)', () => {

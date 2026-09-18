@@ -22,7 +22,7 @@ import {
 } from '../../src/shared/markdown/v3/roobli-md-adapter';
 
 function manyParas(count: number): string {
-  return Array.from({ length: count }, (_, i) => `Para ${i} with <admin${i}@example.com>.\n\n`).join('');
+  return Array.from({ length: count }, (_, i) => `Para ${i} with <span class="x${i}">x</span>.\n\n`).join('');
 }
 
 describe('deferred enrich flags / windows', () => {

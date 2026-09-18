@@ -36,8 +36,10 @@ Small public fixtures for comparing the **micromark** product path against
 | `simple-marked-phrasing.md` | flat `**` / `*` / `~~` / `` ` `` marks in paragraphs, headings, lists, tables, callouts, footnotes; underscore covered separately; one-level nest in `simple-nested-marks.md`; no links / wiki |
 | `simple-underscore-emphasis.md` | flat `__strong__` / `_em_` + snake_case literal; one-level nest covered in `simple-nested-marks.md` |
 | `simple-inline-links.md` | simple `[text](url)` / `![alt](url)` (optional title; plain or simple-marked link text) in para/heading/list/quote |
-| `simple-bare-autolinks.md` | simple bare `http(s)://…` autolinks (text === href; trailing punct trim) in para/heading/list/quote with plain or simple-marked surrounds; www / email stay dialect |
-| `simple-angle-autolinks.md` | simple angle-bracket `<http(s)://…>` autolinks (text === href; brackets not in text) in para/heading/list/quote with plain or simple-marked surrounds; HTML / email / www stay dialect |
+| `simple-bare-autolinks.md` | simple bare `http(s)://…` autolinks (text === href; trailing punct trim) in para/heading/list/quote with plain or simple-marked surrounds |
+| `simple-angle-autolinks.md` | simple angle-bracket `<http(s)://…>` autolinks (text === href; brackets not in text) in para/heading/list/quote with plain or simple-marked surrounds |
+| `simple-www-autolinks.md` | simple GFM `www.…` autolinks (href `http://www.…`; trailing punct trim) in para/heading/list/quote with plain or simple-marked surrounds; alnum-previous stays literal |
+| `simple-email-autolinks.md` | simple GFM bare email + CommonMark angle `<user@host>` / `<mailto:…>` autolinks in para/heading/list/quote; `NDCG@10` / `user@localhost` stay literal |
 | `simple-reference-links.md` | simple `[text][id]` / `[text][]` / `![alt][id]` / `![alt][]` (plain or simple-marked label) in para/heading/list/quote + matching link-defs; shortcut bare `[text]` / nested-bracket / footnotes stay dialect |
 | `simple-wiki-links.md` | simple `[[target]]` / `[[target|alias]]` (literal text; decoration displays) in para/heading/list/quote with plain or simple-marked surrounds; nested-bracket wiki stay dialect |
 | `simple-nested-marks.md` | one-level nested marks (`**bold _em_**`, `*em **strong** em*`, `` **`code`** ``) in para/heading/list/table/callout/footnote; deep / `***` / same-delimiter / links / wiki stay dialect |
