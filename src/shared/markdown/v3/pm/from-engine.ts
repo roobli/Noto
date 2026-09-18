@@ -57,12 +57,14 @@ export const ENGINE_LEAF_KINDS: ReadonlySet<NotoBlockKind> = new Set([
 const INLINE_DIALECT_RE = /[*_~`[\]<!$:\\]|https?:\/\//u;
 /**
  * Markers that always force dialect even with the simple-marked / link subset:
- * HTML, math, escapes. Bare `http(s)://` autolinks are refused in the scanner
- * (URLs inside `[text](url)` destinations are fine). Brackets are scanned for
- * simple `[text](url)` / `![alt](url)` (wiki `[[`, footnotes, reference links
- * fall through). Underscore emphasis is owned (snake_case-safe flanking).
+ * HTML (`<…>`), math (`$`), escapes (`\`). Bare `http(s)://` autolinks are
+ * refused in the scanner (URLs inside `[text](url)` destinations are fine).
+ * Do **not** put `:` here — it would refuse every `https://` destination.
+ * Brackets are scanned for simple `[text](url)` / `![alt](url)` (wiki `[[`,
+ * footnotes, reference links fall through). Underscore emphasis is owned
+ * (snake_case-safe flanking).
  */
-const HEAVY_INLINE_RE = /<!$:\\]/;
+const HEAVY_INLINE_RE = /[<$\\]/;
 /** CommonMark / vault hard break: two+ spaces before newline. */
 const HARD_BREAK_RE = / {2,}\r?\n/;
 
