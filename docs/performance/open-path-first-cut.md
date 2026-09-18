@@ -1,6 +1,6 @@
 # Open-path / `parseDocument` — measured cuts
 
-Status: **lazy / deferred wire nodes + viewport-driven enrich + incremental PM patch + kind-aware stand-ins + engine-owned IR→PM (common blocks + simple quotes incl. nested plain + lists-in-quotes + hard breaks in quotes + lazy nest continuation + true no-`>` lazy + simple flat / same-family nested lists any depth incl. hard breaks + unindented lazy soft-wrap + simple GFM tables + simple footnote-defs incl. empty + hard breaks + plain/simple-marked/simple-marked-title callouts + simple marked phrasing `**`/`*`/`~~`/`` ` `` + simple inline links/images + simple reference links/images + simple bare http(s) + angle-bracket http(s) + www. + email autolinks + simple wiki links + simple-marked callout titles)** under the flagged `@roobli/md` path.
+Status: **lazy / deferred wire nodes + viewport-driven enrich + incremental PM patch + kind-aware stand-ins + engine-owned IR→PM (common blocks + simple quotes incl. nested plain + lists-in-quotes + hard breaks in quotes + lazy nest continuation + true no-`>` lazy + simple flat / same-family nested lists any depth incl. hard breaks + unindented lazy soft-wrap + simple GFM tables + simple footnote-defs incl. empty + hard breaks + plain/simple-marked/simple-marked-title callouts + simple marked phrasing `**`/`*`/`~~`/`` ` `` + simple inline links/images + simple reference links/images + simple bare http(s) + angle-bracket http(s) + www. + email autolinks + simple wiki links + simple-marked callout titles + setext-`---` headings)** under the flagged `@roobli/md` path.
 Product default remains micromark. Do **not** flip `NOTO_MARKDOWN_ENGINE`
 default-on from this work.
 
@@ -169,9 +169,9 @@ Plain paragraph IR→PM drops trailing spaces that are not hard breaks
 trailing spaces), including inside simple quote paragraphs, simple list items,
 and simple footnote bodies. Soft newlines stay in text (`pre-wrap`). Flat simple marked phrasing (`*`/`**`/`_`/`__`/`~~`/`` ` ``)
 and one-level nested marks (`**bold _em_**`, `*em **strong** em*`) are
-engine-owned; deep / ambiguous nests / HTML / escapes still take the dialect path. Simple reference links/images (`[text][id]` / `[text][]` / `![alt][id]` / `![alt][]`) are engine-owned. Simple bare http(s) autolinks (`https://…` / `http://…`; text === href) and simple angle-bracket http(s) (`<https://…>`) are engine-owned. Setext `===` headings are already
-engine-owned via `parseHeadingSource` (setext-`---` vs hr remains an engine
-split gap — see markdown-golden README).
+engine-owned; deep / ambiguous nests / HTML / escapes still take the dialect path. Simple reference links/images (`[text][id]` / `[text][]` / `![alt][id]` / `![alt][]`) are engine-owned. Simple bare http(s) autolinks (`https://…` / `http://…`; text === href) and simple angle-bracket http(s) (`<https://…>`) are engine-owned. Setext `===` and setext-`---` / `-` headings are engine-owned via
+`parseHeadingSource` (`@roobli/md` ≥ v0.1.12 Phase 15 closes the former
+split gap; covered by `simple-setext-dash-headings.md`).
 
 Cross-family nests, multi-block items, heavy callout titles, complex /
 ragged tables, deep / ambiguous nested marks / HTML / escapes still need dialect
@@ -219,7 +219,7 @@ Does **not** flip default-on.
    lists, simple GFM tables, simple footnote-defs, empty footnote-defs, CJK
    emphasis, hard-breaks, images, empty/meta fences, escapes, table-align,
    ordered-start, inline HTML, simple-reference-links landed; intentional engine gaps documented in
-   that README; simple-angle-autolinks / simple-www-autolinks / simple-email-autolinks / simple-marked-callout-titles landed.
+   that README; simple-angle-autolinks / simple-www-autolinks / simple-email-autolinks / simple-marked-callout-titles / simple-setext-dash-headings landed.
 
 Do not defer main’s file-truth structural parse; do not flip the product
 default from this doc.

@@ -22,6 +22,7 @@ Small public fixtures for comparing the **micromark** product path against
 | `cjk-wiki.md` | denser CJK + wiki in heading/list/table |
 | `callouts-edge.md` | IMPORTANT / CAUTION / multi-line / title-marker edge |
 | `hr-setext.md` | setext `===` heading + thematic breaks (`***` / `---` / `___`) |
+| `simple-setext-dash-headings.md` | setext level-2 (`text` + `---` / `-`) + standalone thematic breaks; closes Phase 15 intentional gap |
 | `link-defs.md` | reference links + link definition blocks |
 | `trailing-spaces.md` | trailing spaces stripped; soft break (single newline, no hard break) |
 | `simple-quotes.md` | simple `>` quotes (single / continuation / multi-para / indent / trailing spaces / CJK); no nested, lists, or callouts |
@@ -64,10 +65,9 @@ Small public fixtures for comparing the **micromark** product path against
 Documented engine gaps **not** shipped as strict golden fixtures (samples kept
 out of this directory so the suite stays loud-fail-only on match):
 
-1. **Setext level-2 (`text` + `---`) vs thematic-break** — micromark treats a
-   short underdash run as setext heading; `@roobli/md` may split paragraph +
-   `thematic-break`. Strict fixture uses setext `===` only, plus unambiguous
-   thematic breaks on their own lines.
+1. ~~**Setext level-2 (`text` + `---`) vs thematic-break**~~ — **closed** in
+   `@roobli/md` v0.1.12 (Phase 15). Covered by `simple-setext-dash-headings.md`
+   (setext `---` / single `-` plus standalone thematic breaks).
 2. **Mixed-marker nested lists** — an ordered list whose children are indented
    bullet lists can stay one ordered span under micromark but split into
    ordered / bullet / ordered under `@roobli/md`. Strict fixture nests
