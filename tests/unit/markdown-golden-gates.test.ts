@@ -180,6 +180,7 @@ describe('markdown golden gates — fixture inventory', () => {
       'simple-quotes.md',
       'simple-titled-collapsible-callouts.md',
       'simple-underscore-emphasis.md',
+      'simple-wiki-links.md',
       'table-align.md',
       'tables.md',
       'tight-quotes.md',

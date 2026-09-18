@@ -7,7 +7,7 @@
  * + simple flat / same-family nested list (any depth, incl. hard breaks +
  * simple marks incl. flat underscore + one-level nested marks + collapsible/plain-titled callouts + unindented lazy
  * soft-wrap) + simple GFM table with plain or simple-marked cells +
- * simple inline links / images).
+ * simple inline links / images + simple wiki links).
  * Flagged `@roobli/md` path; does not flip product default.
  */
 
@@ -59,7 +59,7 @@ describe('from-engine IR helpers', () => {
     expect(needsDialectInline('[!NOTE]\nbody')).toBe(true);
     expect(needsDialectInlineInQuote('[!NOTE]\nbody')).toBe(false);
     expect(needsDialectInlineInQuote('[!NOTE]\nhas **bold**')).toBe(false);
-    expect(needsDialectInlineInQuote('[!NOTE]\nhas [[wiki]]')).toBe(true);
+    expect(needsDialectInlineInQuote('[!NOTE]\nhas [[wiki]]')).toBe(false);
     expect(needsDialectInlineInQuote('[!NOTE]\nhas __underscore__')).toBe(false);
     expect(needsDialectInlineInQuote('[!NOTE]\nhas _em_')).toBe(false);
     expect(needsDialectInlineInQuote('[!NOTE]\nhas snake_case')).toBe(false);
@@ -79,14 +79,14 @@ describe('from-engine IR helpers', () => {
     expect(canSkipDialectEnrich('paragraph', 'Break  \nline')).toBe(true);
     expect(canSkipDialectEnrich('paragraph', 'Hello **x**')).toBe(true);
     expect(canSkipDialectEnrich('paragraph', 'Break  \n**x**')).toBe(true);
-    expect(canSkipDialectEnrich('paragraph', 'Hello [[wiki]]')).toBe(false);
+    expect(canSkipDialectEnrich('paragraph', 'Hello [[wiki]]')).toBe(true);
     expect(canSkipDialectEnrich('paragraph', 'Hello __x__')).toBe(true);
     expect(canSkipDialectEnrich('paragraph', 'Hello _em_')).toBe(true);
     expect(canSkipDialectEnrich('paragraph', 'uses snake_case id')).toBe(true);
     expect(canSkipDialectEnrich('link-definition', '[id]: https://example.com')).toBe(true);
     expect(canSkipDialectEnrich('footnote-definition', '[^1]: plain note')).toBe(true);
     expect(canSkipDialectEnrich('footnote-definition', '[^1]: has *emphasis*')).toBe(true);
-    expect(canSkipDialectEnrich('footnote-definition', '[^1]: has [[wiki]]')).toBe(false);
+    expect(canSkipDialectEnrich('footnote-definition', '[^1]: has [[wiki]]')).toBe(true);
     expect(canSkipDialectEnrich('footnote-definition', '[^1]:')).toBe(true);
     expect(canSkipDialectEnrich('footnote-definition', '[^1]: a  \n  b')).toBe(true);
     expect(canSkipDialectEnrich('quote', '> Hello')).toBe(true);
@@ -102,7 +102,7 @@ describe('from-engine IR helpers', () => {
     expect(canSkipDialectEnrich('quote', '> [!NOTE] Title\n> body')).toBe(true);
     expect(canSkipDialectEnrich('quote', '> [!NOTE] Title **x**\n> body')).toBe(false);
     expect(canSkipDialectEnrich('quote', '> [!WARNING]\n> has **bold**')).toBe(true);
-    expect(canSkipDialectEnrich('quote', '> [!WARNING]\n> has [[wiki]]')).toBe(false);
+    expect(canSkipDialectEnrich('quote', '> [!WARNING]\n> has [[wiki]]')).toBe(true);
     expect(canSkipDialectEnrich('quote', '> > nested\n> lazy')).toBe(true);
     expect(canSkipDialectEnrich('quote', '> foo\nbar')).toBe(true);
     expect(canSkipDialectEnrich('quote', '> - item\nlazy cont')).toBe(true);
@@ -110,7 +110,7 @@ describe('from-engine IR helpers', () => {
     expect(canSkipDialectEnrich('quote', '> outer\n> > nest\n> after')).toBe(true);
     expect(canSkipDialectEnrich('quote', '> > nest\n> **bold**')).toBe(true);
     expect(canSkipDialectEnrich('quote', '> - **bold**')).toBe(true);
-    expect(canSkipDialectEnrich('quote', '> > nest\n> [[wiki]]')).toBe(false);
+    expect(canSkipDialectEnrich('quote', '> > nest\n> [[wiki]]')).toBe(true);
     expect(canSkipDialectEnrich('bullet-list', '- a\n- b')).toBe(true);
     expect(canSkipDialectEnrich('bullet-list', '- a  \n  b')).toBe(true);
     expect(canSkipDialectEnrich('ordered-list', '1. a\n2. b')).toBe(true);
@@ -119,11 +119,11 @@ describe('from-engine IR helpers', () => {
     expect(canSkipDialectEnrich('bullet-list', '- a\n  - nested\n    - deep')).toBe(true);
     expect(canSkipDialectEnrich('bullet-list', '- a\n  1. cross')).toBe(false);
     expect(canSkipDialectEnrich('bullet-list', '- **bold**')).toBe(true);
-    expect(canSkipDialectEnrich('bullet-list', '- [[wiki]]')).toBe(false);
+    expect(canSkipDialectEnrich('bullet-list', '- [[wiki]]')).toBe(true);
     expect(canSkipDialectEnrich('table', '| a |\n| - |\n| 1 |')).toBe(true);
     expect(canSkipDialectEnrich('table', '| Left | Right |\n| :--- | ---: |\n| alpha | 1 |')).toBe(true);
     expect(canSkipDialectEnrich('table', '| a |\n| - |\n| **x** |')).toBe(true);
-    expect(canSkipDialectEnrich('table', '| a |\n| - |\n| [[wiki]] |')).toBe(false);
+    expect(canSkipDialectEnrich('table', '| a |\n| - |\n| [[wiki]] |')).toBe(true);
     expect(canSkipDialectEnrich('table', '| a | b |\n| - |\n| 1 | 2 |')).toBe(false);
   });
 
@@ -232,7 +232,9 @@ describe('from-engine IR helpers', () => {
       { type: 'quote', children: [{ type: 'paragraph', text: 'nested  \ndeep' }] },
     ]);
     expect(parseSimpleQuoteSource('> **bold**')).not.toBeNull();
-    expect(parseSimpleQuoteSource('> [[wiki]]')).toBeNull();
+    expect(parseSimpleQuoteSource('> [[wiki]]')).toEqual([
+      { type: 'paragraph', text: '[[wiki]]' },
+    ]);
     expect(parseSimpleQuoteSource('> > nested\n> lazy')).toEqual([
       { type: 'quote', children: [{ type: 'paragraph', text: 'nested\nlazy' }] },
     ]);
@@ -280,14 +282,14 @@ describe('from-engine IR helpers', () => {
     ]);
     expect(parseSimpleQuoteSource('> > nest\n> **bold**')).not.toBeNull();
     expect(parseSimpleQuoteSource('> - **bold**')).not.toBeNull();
-    expect(parseSimpleQuoteSource('> > nest\n> [[wiki]]')).toBeNull();
+    expect(parseSimpleQuoteSource('> > nest\n> [[wiki]]')).not.toBeNull();
     expect(parseSimpleQuoteSource('> [!NOTE]\n> x')).not.toBeNull();
     expect(parseSimpleQuoteSource('> [!NOTE]-\n> x')).not.toBeNull();
     expect(parseSimpleQuoteSource('> [!NOTE]+\n> x')).not.toBeNull();
     expect(parseSimpleQuoteSource('> [!NOTE] Title\n> x')).not.toBeNull();
     expect(parseSimpleQuoteSource('> [!NOTE] Title **x**\n> x')).toBeNull();
     expect(parseSimpleQuoteSource('> [!WARNING]\n> has **bold**')).not.toBeNull();
-    expect(parseSimpleQuoteSource('> [!WARNING]\n> has [[wiki]]')).toBeNull();
+    expect(parseSimpleQuoteSource('> [!WARNING]\n> has [[wiki]]')).not.toBeNull();
     expect(parseSimpleFlatListSource('- a\n- b')).toEqual({
       ordered: false, bullet: '-', delimiter: null, start: 1, spread: false,
       items: [
@@ -334,7 +336,7 @@ describe('from-engine IR helpers', () => {
       }],
     });
     expect(parseSimpleFlatListSource('- **bold**')).not.toBeNull();
-    expect(parseSimpleFlatListSource('- [[wiki]]')).toBeNull();
+    expect(parseSimpleFlatListSource('- [[wiki]]')).not.toBeNull();
     expect(parseSimpleFlatListSource('- a\n* b')).toBeNull();
     expect(parseSimpleFlatListSource('- multi\n\n  para\n- next')).toBeNull();
     expect(parseSimpleTableSource('| Left | Right |\n| :--- | ---: |\n| alpha | 1 |\n| beta | 2 |')).toEqual({
@@ -355,7 +357,10 @@ describe('from-engine IR helpers', () => {
     });
     expect(parseSimpleTableSource('| x |\n| - |\n|  |')?.rows[1]).toEqual(['']);
     expect(parseSimpleTableSource('| a |\n| - |\n| **x** |')).not.toBeNull();
-    expect(parseSimpleTableSource('| a |\n| - |\n| [[wiki]] |')).toBeNull();
+    expect(parseSimpleTableSource('| a |\n| - |\n| [[wiki]] |')).toEqual({
+      align: [null],
+      rows: [['a'], ['[[wiki]]']],
+    });
     expect(parseSimpleTableSource('| a | b |\n| - |\n| 1 | 2 |')).toBeNull();
     expect(parseSimpleTableSource('| a | b |\n| - | - |\n| 1 |')).toBeNull();
     expect(parseSimpleTableSource('| a \\| b |\n| - | - |')).toBeNull();
@@ -393,7 +398,7 @@ describe('blockFromEngineSpan', () => {
     expect(h?.attrs.level).toBe(1);
     expect(h?.textContent).toBe('Setext Title');
     expect(blockFromEngineSpan('heading', 'Setext *x*\n=======')?.textContent).toBe('Setext x');
-    expect(blockFromEngineSpan('heading', 'Setext [[wiki]]\n=======')).toBeNull();
+    expect(blockFromEngineSpan('heading', 'Setext [[wiki]]\n=======')?.textContent).toBe('Setext [[wiki]]');
   });
 
   it('builds simple and nested plain quotes + lists-in-quotes + hard breaks + plain/simple-marked callouts + lazy nest + no-marker lazy; refuses heavy inline', () => {
@@ -551,7 +556,7 @@ describe('blockFromEngineSpan', () => {
     expect(markedAlert?.textContent).toBe('[!WARNING]\nhas bold');
     expect(blockFromEngineSpan('quote', '> > nest\n> **bold**')?.textContent).toBe('nest\nbold');
     expect(blockFromEngineSpan('quote', '> - **bold**')?.textContent).toBe('bold');
-    expect(blockFromEngineSpan('quote', '> Hello [[wiki]]')).toBeNull();
+    expect(blockFromEngineSpan('quote', '> Hello [[wiki]]')?.textContent).toBe('Hello [[wiki]]');
     expect(blockFromEngineSpan('quote', '> # heading')).toBeNull();
     expect(blockFromEngineSpan('quote', '>')).toBeNull();
   });
@@ -636,7 +641,7 @@ describe('blockFromEngineSpan', () => {
     expect(markedList?.type.name).toBe('bullet_list');
     expect(markedList?.textContent).toBe('bold');
     expect(markedList?.child(0).child(0).child(0).marks.some((m) => m.type.name === 'strong')).toBe(true);
-    expect(blockFromEngineSpan('bullet-list', '- [[wiki]]')).toBeNull();
+    expect(blockFromEngineSpan('bullet-list', '- [[wiki]]')?.textContent).toBe('[[wiki]]');
     expect(blockFromEngineSpan('bullet-list', '- a\n* b')).toBeNull();
     expect(blockFromEngineSpan('bullet-list', '- multi\n\n  para\n- next')).toBeNull();
     expect(blockFromEngineSpan('bullet-list', '- a  \n  **b**')?.textContent).toBe('ab');
@@ -724,7 +729,7 @@ describe('blockFromEngineSpan', () => {
       identifier: 'h', label: 'h', text: 'a  \nb',
     });
     expect(parseSimpleFootnoteDefinitionSource('[^x]: has *emphasis*')).not.toBeNull();
-    expect(parseSimpleFootnoteDefinitionSource('[^x]: has [[wiki]]')).toBeNull();
+    expect(parseSimpleFootnoteDefinitionSource('[^x]: has [[wiki]]')).not.toBeNull();
 
     const plain = blockFromEngineSpan('footnote-definition', '[^1]: plain note');
     expect(plain?.type.name).toBe('footnote_definition');
@@ -751,7 +756,7 @@ describe('blockFromEngineSpan', () => {
 
     const markedFn = blockFromEngineSpan('footnote-definition', '[^x]: has *emphasis*');
     expect(markedFn?.textContent).toBe('has emphasis');
-    expect(blockFromEngineSpan('footnote-definition', '[^x]: has [[wiki]]')).toBeNull();
+    expect(blockFromEngineSpan('footnote-definition', '[^x]: has [[wiki]]')?.textContent).toBe('has [[wiki]]');
     expect(blockFromEngineSpan('footnote-definition', '[^m]: a  \n  **b**')?.textContent).toBe('ab');
   });
 
@@ -777,7 +782,7 @@ describe('blockFromEngineSpan', () => {
     const markedTable = blockFromEngineSpan('table', '| a |\n| - |\n| **x** |');
     expect(markedTable?.type.name).toBe('table');
     expect(markedTable?.textContent).toBe('ax');
-    expect(blockFromEngineSpan('table', '| a |\n| - |\n| [[wiki]] |')).toBeNull();
+    expect(blockFromEngineSpan('table', '| a |\n| - |\n| [[wiki]] |')?.textContent).toBe('a[[wiki]]');
     expect(blockFromEngineSpan('table', '| a | b |\n| - |\n| 1 | 2 |')).toBeNull();
     expect(blockFromEngineSpan('table', '| a | b |\n| - | - |\n| 1 |')).toBeNull();
   });
@@ -793,7 +798,7 @@ describe('blockFromEngineSpan', () => {
     expect(strong.isText).toBe(true);
     expect(strong.text).toBe('bold');
     expect(strong.marks.some((m) => m.type.name === 'strong')).toBe(true);
-    expect(blockFromEngineSpan('paragraph', 'Hello [[wiki]]')).toBeNull();
+    expect(blockFromEngineSpan('paragraph', 'Hello [[wiki]]')?.textContent).toBe('Hello [[wiki]]');
     const us = blockFromEngineSpan('paragraph', 'Hello __underscore__ and _em_');
     expect(us?.textContent).toBe('Hello underscore and em');
     expect(us!.child(1).marks.some((m) => m.type.name === 'strong')).toBe(true);
@@ -836,7 +841,16 @@ describe('blockFromEngineSpan', () => {
     expect(img?.child(1).attrs).toMatchObject({ src: './a.png', alt: 'alt', title: null });
     expect(blockFromEngineSpan('paragraph', 'array[0] and [bare]')).toBeTruthy();
     expect(blockFromEngineSpan('paragraph', 'array[0]')?.textContent).toBe('array[0]');
-    expect(blockFromEngineSpan('paragraph', 'Hello [[wiki]]')).toBeNull();
+    const wiki = blockFromEngineSpan('paragraph', 'Hello [[wiki]]');
+    expect(wiki?.type.name).toBe('paragraph');
+    expect(wiki?.textContent).toBe('Hello [[wiki]]');
+    const aliased = blockFromEngineSpan('paragraph', 'See [[Note Name|alias]] nearby');
+    expect(aliased?.textContent).toBe('See [[Note Name|alias]] nearby');
+    const markedWiki = blockFromEngineSpan('paragraph', 'Go **[[Home]]** now');
+    expect(markedWiki?.textContent).toBe('Go [[Home]] now');
+    const wikiStrong = [...Array(markedWiki!.childCount)].map((_, i) => markedWiki!.child(i)).find((n) => n.text === '[[Home]]');
+    expect(wikiStrong!.marks.some((m) => m.type.name === 'strong')).toBe(true);
+    expect(blockFromEngineSpan('paragraph', '[[a] [b]]')).toBeNull();
     expect(blockFromEngineSpan('paragraph', '[ref][id]')).toBeNull();
     expect(blockFromEngineSpan('paragraph', 'bare https://example.com')).toBeNull();
     expect(blockFromEngineSpan('paragraph', '[^note]')).toBeNull();
@@ -846,7 +860,7 @@ describe('blockFromEngineSpan', () => {
     expect(h?.attrs.level).toBe(2);
     expect(h?.textContent).toBe('Title');
     expect(blockFromEngineSpan('heading', '# *emph*')?.textContent).toBe('emph');
-    expect(blockFromEngineSpan('heading', '# [[wiki]]')).toBeNull();
+    expect(blockFromEngineSpan('heading', '# [[wiki]]')?.textContent).toBe('[[wiki]]');
   });
 
   it('strips trailing spaces on plain paragraphs like CommonMark / mdast', () => {
@@ -883,7 +897,11 @@ describe('blockFromEngineSpan', () => {
     expect(markedHb?.childCount).toBe(3);
     expect(markedHb?.child(1).type.name).toBe('hard_break');
     expect(markedHb?.child(2).marks.some((m) => m.type.name === 'strong')).toBe(true);
-    expect(blockFromEngineSpan('paragraph', 'see [[wiki]]  \nhere')).toBeNull();
+    const wikiHb = blockFromEngineSpan('paragraph', 'see [[wiki]]  \nhere');
+    expect(wikiHb?.childCount).toBe(3);
+    expect(wikiHb?.child(0).text).toBe('see [[wiki]]');
+    expect(wikiHb?.child(1).type.name).toBe('hard_break');
+    expect(wikiHb?.child(2).text).toBe('here');
 
     const inline = inlineNodesFromPlainSource('x  \ny');
     expect(inline).toHaveLength(3);
@@ -957,6 +975,8 @@ describe('blockFromEngineSpan', () => {
       '[docs](https://example.com/path)\n',
       '![alt](./a.png)\n',
       'Go [**bold**](https://example.com)\n',
+      'See [[Home]] and [[Note Name|alias]]\n',
+      'Go **[[Home]]** now\n',
     ];
     for (const md of samples) {
       setMarkdownEngineForTests('micromark');
@@ -1052,8 +1072,9 @@ describe('enrich skip for engine-owned spans', () => {
     expect(enriched[0]!.semanticKey).toBe(engineSemanticKey('heading', enriched[0]!.markdown));
     expect(enriched[0]!.semanticKey).toBe(bulk.spans[0]!.semanticKey);
     expect(enriched[1]!.semanticKey).toBe(bulk.spans[1]!.semanticKey);
-    // Heavy wiki paragraph still dialect-enriched.
+    // Simple wiki paragraph is engine-owned (literal text; decoration displays).
     expect(enriched[2]!.node.type).toBe('paragraph');
+    expect(enriched[2]!.semanticKey).toBe(engineSemanticKey('paragraph', enriched[2]!.markdown));
     expect(enriched[2]!.semanticKey).toBe(bulk.spans[2]!.semanticKey);
     expect(JSON.stringify(enriched[2]!.node)).toContain('wiki');
   });
@@ -1075,7 +1096,8 @@ describe('enrich skip for engine-owned spans', () => {
     // Prefix 0 enriched; remainder should skip leaf + plain + simple-marked + link-def + quote + flat list + table.
     const flags = createEnrichFlags(none.spans.length, 0, none.spans);
     // Indices: 0 wiki, 1 fence, 2 plain, 3 heading, 4 link-def, 5 quote, 6 list, 7 table, 8 wiki, 9 bold
-    expect(flags[0]).toBe(0);
+    // Simple wiki is now engine-owned alongside leaf / plain / marked.
+    expect(flags[0]).toBe(1);
     expect(flags[1]).toBe(1);
     expect(flags[2]).toBe(1);
     expect(flags[3]).toBe(1);
@@ -1083,9 +1105,9 @@ describe('enrich skip for engine-owned spans', () => {
     expect(flags[5]).toBe(1);
     expect(flags[6]).toBe(1);
     expect(flags[7]).toBe(1);
-    expect(flags[8]).toBe(0);
+    expect(flags[8]).toBe(1);
     expect(flags[9]).toBe(1);
-    expect(countDeferredFlags(flags)).toBe(2);
+    expect(countDeferredFlags(flags)).toBe(0);
   });
 
   it('docFromSpans uses engine path for mixed leaf + plain + simple quote + flat list + table + footnote under enrich none', () => {
