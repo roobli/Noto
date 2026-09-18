@@ -17,7 +17,7 @@
  * soft-wrap), and **simple GFM tables** (alignment row; plain or simple-marked
  * cells; consistent columns), the PM node is fully determined by that IR — no
  * micromark / mdast pass. Cross-family nests, multi-block items, deep / ambiguous nested marks /
- * HTML / escapes / www+email autolinks, and complex / ragged tables still go
+ * HTML / escapes, and complex / ragged tables still go
  * through `from-mdast.ts` after dialect enrich. **Simple inline links** (`[text](url)` /
  * optional title) and **images** (`![alt](url)`) with plain or simple-marked link text are
  * engine-owned. **Simple reference links / images** (`[text][id]` / `[text][]` /
@@ -25,7 +25,10 @@
  * **Simple bare http(s) autolinks** (`https://…` / `http://…`; text === href; GFM-ish
  * trailing punct trim; ASCII-letter previous blocks) are engine-owned.
  * **Simple angle-bracket http(s) autolinks** (`<https://…>` / `<http://…>`; text === href;
- * brackets not in text) are engine-owned. HTML tags / email / www stay dialect.
+ * brackets not in text) are engine-owned.
+ * **Simple www. autolinks** (`www.…`; href `http://www.…`; GFM-ish trail trim; alnum previous blocks)
+ * and **simple email autolinks** (bare `user@host.tld` + angle `<user@host.tld>` /
+ * `<mailto:…>`; href `mailto:…`) are engine-owned. HTML tags stay dialect.
  * **Simple wiki links** (`[[target]]` / `[[target|alias]]`) are engine-owned
  * as literal text (decoration plugin owns display).
  * **Simple GFM alerts / callouts** keep the marker as plain
@@ -57,18 +60,19 @@ export const ENGINE_LEAF_KINDS: ReadonlySet<NotoBlockKind> = new Set([
  * (serialize still writes two trailing spaces via `hardBreakAsTwoSpaces`).
  * Simple `*` / `**` / `_` / `__` / `~~` / `` ` `` marks (incl. one-level
  * nesting), simple inline links / images, simple reference links / images,
- * simple bare http(s) + angle-bracket http(s) autolinks, and simple wiki
- * `[[…]]` (literal text) are engine-owned via `tryInlineNodesFromSource`;
+ * simple bare http(s) + angle-bracket http(s) + www. + email autolinks, and
+ * simple wiki `[[…]]` (literal text) are engine-owned via `tryInlineNodesFromSource`;
  * deep / ambiguous nests and heavier constructs stay on dialect. Snake_case
  * underscores are literal (CommonMark flanking).
  */
-const INLINE_DIALECT_RE = /[*_~`[\]<!$:\\]|https?:\/\//iu;
+const INLINE_DIALECT_RE = /[*_~`[\]<!$:\\@]|https?:\/\/|www\./iu;
 /**
  * Markers that always force dialect even with the simple-marked / link subset:
- * math (`$`), escapes (`\`). HTML tags and non-http(s) angle forms are
- * refused in the scanner when `<` is not a simple `<http(s)://…>` autolink.
- * Bare `http(s)://` and angle-bracket `http(s)` are engine-owned (URLs inside
- * `[text](url)` destinations are consumed by the link branch).
+ * math (`$`), escapes (`\`). HTML tags and non-owned angle forms are refused
+ * in the scanner when `<` is not a simple `<http(s)://…>` / email / mailto
+ * autolink. Bare `http(s)://`, `www.`, email, and angle-bracket http(s)/email
+ * are engine-owned (URLs inside `[text](url)` destinations are consumed by the
+ * link branch).
  * Do **not** put `:` here — it would refuse every `https://` destination.
  * Brackets are scanned for simple `[text](url)` / `![alt](url)`, simple
  * `[text][id]` / `[text][]` / `![alt][id]` / `![alt][]`, and simple wiki
@@ -115,7 +119,7 @@ export function hasHardBreak(markdown: string): boolean {
  * simple GFM tables (plain or simple-marked cells); paragraph / heading when
  * plain or simple-marked (hard breaks + simple inline links / images +
  * simple reference links / images + simple bare http(s) + angle-bracket
- * http(s) autolinks + simple wiki links allowed — engine-owned).
+ * http(s) + www. + email autolinks + simple wiki links allowed — engine-owned).
  */
 export function canSkipDialectEnrich(kind: NotoBlockKind, markdown: string): boolean {
   if (ENGINE_LEAF_KINDS.has(kind)) return true;
@@ -199,10 +203,11 @@ export interface TryInlineOptions {
  * (`[text](url)`, `[text](url "title")`, `![alt](url)`), **simple reference**
  * (`[text][id]` / `[text][]` / `![alt][id]` / `![alt][]`), **simple bare
  * http(s) autolinks** (text === href), **simple angle-bracket http(s)
- * autolinks** (`<https://…>`; text === href), and **simple wiki**
+ * autolinks** (`<https://…>`; text === href), **simple www. autolinks**,
+ * **simple email autolinks** (bare + angle / mailto), and **simple wiki**
  * (`[[target]]` / `[[target|alias]]` as literal text). Deep / ambiguous nests
- * (`***`, same-delimiter stacks), HTML / math / escapes / www+email /
- * email angle autolinks, nested-bracket wiki, and unmatched delimiters
+ * (`***`, same-delimiter stacks), HTML / math / escapes, nested-bracket wiki,
+ * and unmatched delimiters
  * return `null` (dialect enrich). Snake_case underscores (`mcp_register`) stay
  * literal via CommonMark-ish flanking. Bare `[…]` / `array[0]` (no trailing
  * `[]` / `[id]` / `(url)`) stay literal text. Footnotes `[^…]` stay dialect.
@@ -260,9 +265,9 @@ function isWordChar(ch: string | undefined): boolean {
  *
  * Owns `http://` / `https://` (scheme case-insensitive; text preserves source
  * casing). ASCII-letter previous blocks (GFM `previousProtocol`). Trailing
- * punctuation from the GFM trail set is stripped. `https://` alone, www.,
- * email, and angle-bracket forms are not owned here (see
- * `endOfSimpleAngleAutolink`).
+ * punctuation from the GFM trail set is stripped. `https://` alone and
+ * angle-bracket forms are not owned here (see `endOfSimpleWwwAutolink` /
+ * `endOfSimpleAngleAutolink` / email helpers).
  */
 function endOfSimpleBareAutolink(input: string, at: number): number {
   const m = /^(https?):\/\//i.exec(input.slice(at));
@@ -289,7 +294,7 @@ function endOfSimpleBareAutolink(input: string, at: number): number {
  * autolink at `at`, or -1. Owns `<http://…>` / `<https://…>` only (scheme
  * case-insensitive; text preserves source casing). No spaces / newlines /
  * `<` inside; empty `<https://>` refused. Email / mailto / HTML tags /
- * other schemes return -1 (dialect).
+ * other schemes return -1 (see `endOfSimpleAngleEmail`).
  */
 function endOfSimpleAngleAutolink(input: string, at: number): number {
   if (input[at] !== '<') return -1;
@@ -307,6 +312,76 @@ function endOfSimpleAngleAutolink(input: string, at: number): number {
   if (end >= len || input[end] !== '>') return -1;
   if (end <= schemeEnd) return -1;
   return end + 1;
+}
+
+
+/**
+ * Exclusive end of a simple GFM `www.` autolink at `at`, or -1.
+ *
+ * Owns `www.…` (prefix case-insensitive; text preserves source casing).
+ * Alphanumeric previous blocks (GFM). Trailing punctuation from the GFM trail
+ * set is stripped. Href is `http://` + text. Bare `www.` alone refused.
+ */
+function endOfSimpleWwwAutolink(input: string, at: number): number {
+  if (!/^www\./i.test(input.slice(at))) return -1;
+  if (at > 0 && /[0-9A-Za-z]/i.test(input[at - 1]!)) return -1;
+  const afterPrefix = at + 4;
+  let end = afterPrefix;
+  const len = input.length;
+  while (end < len) {
+    const ch = input[end]!;
+    if (ch === '\n' || ch === '\r' || ch === ' ' || ch === '\t' || ch === '<' || ch === '>') break;
+    end += 1;
+  }
+  while (end > afterPrefix && /[!"'()*+,.:;?\]_~]/.test(input[end - 1]!)) {
+    end -= 1;
+  }
+  if (end <= afterPrefix) return -1;
+  return end;
+}
+
+/** GFM-ish email local@domain with at least one dot in the domain. */
+const SIMPLE_EMAIL_RE = /^[A-Za-z0-9._+-]+@[A-Za-z0-9._-]*\.[A-Za-z0-9._-]+/;
+
+/**
+ * Exclusive end of a simple GFM bare email autolink at `at`, or -1.
+ *
+ * Owns `local@domain.tld` (domain must contain a `.`). Trailing GFM trail
+ * punctuation is stripped. `user@localhost` / `NDCG@10` refused. Href is
+ * `mailto:` + text.
+ */
+function endOfSimpleBareEmail(input: string, at: number): number {
+  const m = SIMPLE_EMAIL_RE.exec(input.slice(at));
+  if (!m) return -1;
+  const localAt = m[0].indexOf('@');
+  let end = at + m[0].length;
+  while (end > at + localAt + 1 && /[!"'()*+,.:;?\]_~]/.test(input[end - 1]!)) {
+    end -= 1;
+  }
+  const email = input.slice(at, end);
+  if (!/@[^@\s]*\.[^@\s]*$/.test(email)) return -1;
+  return end;
+}
+
+/**
+ * Exclusive end (past `>`) of a simple CommonMark angle email / mailto
+ * autolink at `at`, or -1. Owns `<user@host.tld>` and `<mailto:user@host.tld>`
+ * (no spaces / newlines / `<` inside). Text is the inner slice; href is
+ * `mailto:…` (existing mailto: prefix kept). HTML tags return -1.
+ */
+function endOfSimpleAngleEmail(input: string, at: number): number {
+  if (input[at] !== '<') return -1;
+  const close = input.indexOf('>', at + 1);
+  if (close < 0) return -1;
+  const inner = input.slice(at + 1, close);
+  if (inner.length === 0 || /[\s<]/.test(inner)) return -1;
+  if (/^mailto:/i.test(inner)) {
+    const addr = inner.slice(inner.indexOf(':') + 1);
+    if (!SIMPLE_EMAIL_RE.test(addr) || SIMPLE_EMAIL_RE.exec(addr)![0] !== addr) return -1;
+    return close + 1;
+  }
+  if (!SIMPLE_EMAIL_RE.test(inner) || SIMPLE_EMAIL_RE.exec(inner)![0] !== inner) return -1;
+  return close + 1;
 }
 
 /**
@@ -383,9 +458,10 @@ function parseSimpleAsteriskTildeCode(
   };
 
   const contentNeedsNest = (content: string, underscoreOuter: boolean): boolean => {
-    // Bare / angle http(s) inside a mark needs a nest pass so the autolink
-    // branch runs (plainRunNodes alone would keep strong/em without the link).
-    if (/https?:\/\//i.test(content) || content.includes('<')) return true;
+    // Bare / angle http(s) / www. / email inside a mark needs a nest pass so
+    // the autolink branch runs (plainRunNodes alone would keep strong/em
+    // without the link).
+    if (/https?:\/\//i.test(content) || /www\./i.test(content) || content.includes('@') || content.includes('<')) return true;
     if (underscoreOuter) return UNDERSCORE_FORBIDDEN.test(content);
     return ASTERISK_TILDE_FORBIDDEN.test(content) || hasNonSnakeUnderscore(content);
   };
@@ -684,8 +760,7 @@ function parseSimpleAsteriskTildeCode(
     if (input.startsWith('***', i) || input.startsWith('___', i)) return null;
 
     // Bare http(s) autolink (GFM literal). Destinations inside `[…](url)` are
-    // consumed by the link branch and never reach here as plain text. www /
-    // email stay dialect; angle forms are owned just below.
+    // consumed by the link branch and never reach here as plain text.
     if (/^https?:\/\//i.test(input.slice(i))) {
       const autoEnd = endOfSimpleBareAutolink(input, i);
       if (autoEnd < 0) {
@@ -713,20 +788,78 @@ function parseSimpleAsteriskTildeCode(
       continue;
     }
 
-    // Simple angle-bracket http(s) autolink (`<https://…>`). HTML / email /
-    // mailto / other schemes → dialect.
-    if (input[i] === '<') {
-      const angleEnd = endOfSimpleAngleAutolink(input, i);
-      if (angleEnd < 0) return null;
-      const href = input.slice(i + 1, angleEnd - 1);
+    // Simple GFM www. autolink (`www.example.com` → href http://www.example.com).
+    if (/^www\./i.test(input.slice(i))) {
+      const wwwEnd = endOfSimpleWwwAutolink(input, i);
+      if (wwwEnd < 0) {
+        // Alnum-previous or `www.` alone — emit as plain through the run.
+        let j = i;
+        while (j < len) {
+          const ch = input[j]!;
+          if (ch === '\n' || ch === '\r' || ch === ' ' || ch === '\t' || ch === '<' || ch === '>') break;
+          if (ch === '*' || ch === '~' || ch === '`' || ch === '_' || ch === '[' || ch === '!') break;
+          j += 1;
+        }
+        if (j === i) j = i + 1;
+        emitPlain(i, j);
+        i = j;
+        continue;
+      }
+      const text = input.slice(i, wwwEnd);
       const linkMark = schema.marks.link.create({
-        href,
+        href: `http://${text}`,
         title: null,
         referenceType: null,
       });
-      nodes.push(...textNodes(href, [...parentMarks, linkMark]));
-      i = angleEnd;
+      nodes.push(...textNodes(text, [...parentMarks, linkMark]));
+      i = wwwEnd;
       continue;
+    }
+
+    // Simple GFM bare email (`user@host.tld` → href mailto:user@host.tld).
+    {
+      const emailEnd = endOfSimpleBareEmail(input, i);
+      if (emailEnd >= 0) {
+        const text = input.slice(i, emailEnd);
+        const linkMark = schema.marks.link.create({
+          href: `mailto:${text}`,
+          title: null,
+          referenceType: null,
+        });
+        nodes.push(...textNodes(text, [...parentMarks, linkMark]));
+        i = emailEnd;
+        continue;
+      }
+    }
+
+    // Simple angle-bracket http(s) / email / mailto autolink. HTML → dialect.
+    if (input[i] === '<') {
+      const httpEnd = endOfSimpleAngleAutolink(input, i);
+      if (httpEnd >= 0) {
+        const href = input.slice(i + 1, httpEnd - 1);
+        const linkMark = schema.marks.link.create({
+          href,
+          title: null,
+          referenceType: null,
+        });
+        nodes.push(...textNodes(href, [...parentMarks, linkMark]));
+        i = httpEnd;
+        continue;
+      }
+      const emailEnd = endOfSimpleAngleEmail(input, i);
+      if (emailEnd >= 0) {
+        const inner = input.slice(i + 1, emailEnd - 1);
+        const href = /^mailto:/i.test(inner) ? inner : `mailto:${inner}`;
+        const linkMark = schema.marks.link.create({
+          href,
+          title: null,
+          referenceType: null,
+        });
+        nodes.push(...textNodes(inner, [...parentMarks, linkMark]));
+        i = emailEnd;
+        continue;
+      }
+      return null;
     }
 
     if (input[i] === '`') {
@@ -1052,8 +1185,10 @@ function parseSimpleAsteriskTildeCode(
     while (j < len) {
       const ch = input[j]!;
       if (ch === '*' || ch === '~' || ch === '`' || ch === '_' || ch === '[' || ch === '!' || ch === '<') break;
-      // Stop before a bare http(s) autolink so the next iteration can own it.
+      // Stop before bare http(s) / www. / email so the next iteration can own it.
       if (/^https?:\/\//i.test(input.slice(j))) break;
+      if (/^www\./i.test(input.slice(j)) && endOfSimpleWwwAutolink(input, j) > 0) break;
+      if (endOfSimpleBareEmail(input, j) > 0) break;
       j += 1;
     }
     emitPlain(i, j);
