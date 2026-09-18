@@ -409,6 +409,13 @@ describe('blockFromEngineSpan', () => {
     expect(h?.textContent).toBe('Setext Title');
     expect(blockFromEngineSpan('heading', 'Setext *x*\n=======')?.textContent).toBe('Setext x');
     expect(blockFromEngineSpan('heading', 'Setext [[wiki]]\n=======')?.textContent).toBe('Setext [[wiki]]');
+    // Phase 15 / @roobli/md ≥ v0.1.12: continuous --- underline is setext h2
+    const h2 = blockFromEngineSpan('heading', 'Hello\n---');
+    expect(h2?.type.name).toBe('heading');
+    expect(h2?.attrs.level).toBe(2);
+    expect(h2?.textContent).toBe('Hello');
+    expect(canSkipDialectEnrich('heading', 'Hello\n---')).toBe(true);
+    expect(canSkipDialectEnrich('heading', 'Short\n-')).toBe(true);
   });
 
   it('builds simple and nested plain quotes + lists-in-quotes + hard breaks + plain/simple-marked callouts + lazy nest + no-marker lazy; refuses heavy inline', () => {
