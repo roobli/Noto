@@ -211,26 +211,27 @@ breaks; nested children may nest only) + simple GFM tables (alignment row; plain
 text cells; consistent columns);
 enrich flags mark those done — see `docs/performance/open-path-first-cut.md`.
 Cross-family nests, multi-block items, marked callout titles, complex /
-ragged tables, and heavy inline (deep / ambiguous nested marks, links, wiki,
-HTML, escapes) stay on dialect. Empty footnote bodies, same-family nests at
+ragged tables, and heavy inline (deep / ambiguous nested marks, wiki, reference
+links, bare autolinks, HTML, escapes) stay on dialect. Empty footnote bodies, same-family nests at
 any depth, nested plain quotes, simple lists-in-quotes, plain / simple-marked
 callouts, hard breaks in quotes, lazy nest continuation via fewer `>` **and
 true no-`>`**, hard breaks inside simple lists / footnotes, flat simple marked
-phrasing (`**` / `*` / `__` / `_` / `~~` / `` ` ``; snake_case literal), and
+phrasing (`**` / `*` / `__` / `_` / `~~` / `` ` ``; snake_case literal),
 **one-level nested marks** (`**bold _em_**`, `*em **strong** em*`, code inside
-marks) are engine-owned.
+marks), and **simple inline links / images** (`[text](url)`, `![alt](url)`,
+optional title; plain or simple-marked link text) are engine-owned.
 Product default stays micromark.
 
 Next: keep growing `markdown-golden/` (more GFM / vault edges), extend IR→PM
 only where micromark parity is locked (complex tables /
-deeper mark nests / complex tables), then reconsider
+deeper mark nests / wiki / reference links), then reconsider
 default-on. Hard-breaks, images, empty/meta fences, escapes, table-align,
 ordered-start, inline HTML, simple-flat-lists, simple-nested-lists,
 simple-nested-quotes, simple-lists-in-quotes, simple-hard-breaks-in-quotes,
 simple-lazy-continuations-in-quotes, simple-no-marker-lazy-in-quotes,
 simple-lazy-list-continuations, simple-hard-breaks-in-lists,
 simple-hard-breaks-in-footnotes, simple-callouts, simple-titled-collapsible-callouts, simple-marked-phrasing,
-simple-underscore-emphasis, simple-nested-marks, simple-gfm-tables,
+simple-underscore-emphasis, simple-nested-marks, simple-inline-links, simple-gfm-tables,
 simple-footnote-defs, empty-footnote-defs, and cjk-emphasis goldens landed.
 Do **not** flip the product default yet.
 
