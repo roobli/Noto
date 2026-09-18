@@ -7,7 +7,7 @@
  * + simple flat / same-family nested list (any depth, incl. hard breaks +
  * simple marks incl. flat underscore + one-level nested marks + collapsible/plain-titled callouts + unindented lazy
  * soft-wrap) + simple GFM table with plain or simple-marked cells +
- * simple inline links / images + simple wiki links).
+ * simple inline links / images + simple reference links / images + simple wiki links).
  * Flagged `@roobli/md` path; does not flip product default.
  */
 
@@ -80,6 +80,8 @@ describe('from-engine IR helpers', () => {
     expect(canSkipDialectEnrich('paragraph', 'Hello **x**')).toBe(true);
     expect(canSkipDialectEnrich('paragraph', 'Break  \n**x**')).toBe(true);
     expect(canSkipDialectEnrich('paragraph', 'Hello [[wiki]]')).toBe(true);
+    expect(canSkipDialectEnrich('paragraph', 'See [ref][id] and [x][]')).toBe(true);
+    expect(canSkipDialectEnrich('paragraph', 'Pic ![alt][logo]')).toBe(true);
     expect(canSkipDialectEnrich('paragraph', 'Hello __x__')).toBe(true);
     expect(canSkipDialectEnrich('paragraph', 'Hello _em_')).toBe(true);
     expect(canSkipDialectEnrich('paragraph', 'uses snake_case id')).toBe(true);
@@ -851,7 +853,51 @@ describe('blockFromEngineSpan', () => {
     const wikiStrong = [...Array(markedWiki!.childCount)].map((_, i) => markedWiki!.child(i)).find((n) => n.text === '[[Home]]');
     expect(wikiStrong!.marks.some((m) => m.type.name === 'strong')).toBe(true);
     expect(blockFromEngineSpan('paragraph', '[[a] [b]]')).toBeNull();
-    expect(blockFromEngineSpan('paragraph', '[ref][id]')).toBeNull();
+    const fullRef = blockFromEngineSpan('paragraph', 'See [ref link][Alpha] nearby');
+    expect(fullRef?.textContent).toBe('See ref link nearby');
+    const fullBit = [...Array(fullRef!.childCount)].map((_, i) => fullRef!.child(i)).find((n) => n.text === 'ref link');
+    expect(fullBit!.marks.find((m) => m.type.name === 'link')!.attrs).toMatchObject({
+      href: '',
+      title: null,
+      referenceType: 'full',
+      identifier: 'alpha',
+      label: 'Alpha',
+    });
+    const collapsed = blockFromEngineSpan('paragraph', '[shortcut][]');
+    expect(collapsed?.textContent).toBe('shortcut');
+    expect(collapsed!.child(0).marks.find((m) => m.type.name === 'link')!.attrs).toMatchObject({
+      href: '',
+      referenceType: 'collapsed',
+      identifier: 'shortcut',
+      label: 'shortcut',
+    });
+    const markedRef = blockFromEngineSpan('paragraph', 'Go [**bold**][id] now');
+    expect(markedRef?.textContent).toBe('Go bold now');
+    const boldRef = [...Array(markedRef!.childCount)].map((_, i) => markedRef!.child(i)).find((n) => n.text === 'bold');
+    expect(boldRef!.marks.map((m) => m.type.name).sort()).toEqual(['link', 'strong']);
+    expect(boldRef!.marks.find((m) => m.type.name === 'link')!.attrs).toMatchObject({
+      referenceType: 'full',
+      identifier: 'id',
+      label: 'id',
+    });
+    const refImg = blockFromEngineSpan('paragraph', 'Pic ![alt][logo] here');
+    expect(refImg?.child(1).type.name).toBe('image');
+    expect(refImg?.child(1).attrs).toMatchObject({
+      src: '',
+      alt: 'alt',
+      title: null,
+      referenceType: 'full',
+      identifier: 'logo',
+      label: 'logo',
+    });
+    const collapsedImg = blockFromEngineSpan('paragraph', '![banner][]');
+    expect(collapsedImg?.child(0).attrs).toMatchObject({
+      src: '',
+      alt: 'banner',
+      referenceType: 'collapsed',
+      identifier: 'banner',
+      label: 'banner',
+    });
     expect(blockFromEngineSpan('paragraph', 'bare https://example.com')).toBeNull();
     expect(blockFromEngineSpan('paragraph', '[^note]')).toBeNull();
 
@@ -1061,6 +1107,19 @@ describe('blockFromEngineSpan', () => {
 });
 
 describe('enrich skip for engine-owned spans', () => {
+  it('engine-owns simple reference link paragraphs (skip dialect when defs elsewhere)', () => {
+    const text = 'See [ref][alpha] nearby.\n\n[alpha]: https://example.com/a\n';
+    const none = splitBlocksViaRoobli(text, { enrich: 'none' });
+    const enriched = enrichSpansInRange(none.spans, text, { from: 0, to: none.spans.length });
+    expect(enriched[0]!.kind).toBe('paragraph');
+    expect(enriched[0]!.semanticKey).toBe(engineSemanticKey('paragraph', enriched[0]!.markdown));
+    const pm = blockFromEngineSpan('paragraph', enriched[0]!.markdown);
+    expect(pm?.textContent).toBe('See ref nearby.');
+    const bit = [...Array(pm!.childCount)].map((_, i) => pm!.child(i)).find((n) => n.text === 'ref');
+    expect(bit!.marks.find((m) => m.type.name === 'link')!.attrs.referenceType).toBe('full');
+  });
+
+
   it('enrichSpansInRange finalizes leaf / plain without changing dialect peers', () => {
     const text = '# Plain\n\n```js\nx\n```\n\nHas [[wiki]]\n\nAfter\n';
     const none = splitBlocksViaRoobli(text, { enrich: 'none' });
