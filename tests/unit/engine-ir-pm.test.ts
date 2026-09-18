@@ -6,7 +6,8 @@
  * plain or simple-marked bodies + lazy continuation (fewer `>` and true no-`>`)
  * + simple flat / same-family nested list (any depth, incl. hard breaks +
  * simple marks incl. flat underscore + one-level nested marks + collapsible/plain-titled callouts + unindented lazy
- * soft-wrap) + simple GFM table with plain or simple-marked cells).
+ * soft-wrap) + simple GFM table with plain or simple-marked cells +
+ * simple inline links / images).
  * Flagged `@roobli/md` path; does not flip product default.
  */
 
@@ -816,6 +817,30 @@ describe('blockFromEngineSpan', () => {
     expect(blockFromEngineSpan('paragraph', '*a *b* c*')).toBeNull();
     expect(tryInlineNodesFromSource('2 * 3 * 4')?.map((n) => n.textContent ?? n.type.name).join('')).toBe('2 * 3 * 4');
 
+    const link = blockFromEngineSpan('paragraph', 'See [docs](https://example.com/path) please');
+    expect(link?.type.name).toBe('paragraph');
+    expect(link?.textContent).toBe('See docs please');
+    const linkBit = [...Array(link!.childCount)].map((_, i) => link!.child(i)).find((n) => n.text === 'docs');
+    expect(linkBit!.marks.some((m) => m.type.name === 'link' && m.attrs.href === 'https://example.com/path')).toBe(true);
+    const titled = blockFromEngineSpan('paragraph', '[x](https://example.com "Title")');
+    expect(titled?.textContent).toBe('x');
+    const titledBit = titled!.child(0);
+    expect(titledBit.marks.find((m) => m.type.name === 'link')!.attrs.title).toBe('Title');
+    const markedLink = blockFromEngineSpan('paragraph', 'Go [**bold**](https://example.com)');
+    expect(markedLink?.textContent).toBe('Go bold');
+    const boldLink = [...Array(markedLink!.childCount)].map((_, i) => markedLink!.child(i)).find((n) => n.text === 'bold');
+    expect(boldLink!.marks.map((m) => m.type.name).sort()).toEqual(['link', 'strong']);
+    const img = blockFromEngineSpan('paragraph', 'Pic ![alt](./a.png) here');
+    expect(img?.childCount).toBe(3);
+    expect(img?.child(1).type.name).toBe('image');
+    expect(img?.child(1).attrs).toMatchObject({ src: './a.png', alt: 'alt', title: null });
+    expect(blockFromEngineSpan('paragraph', 'array[0] and [bare]')).toBeTruthy();
+    expect(blockFromEngineSpan('paragraph', 'array[0]')?.textContent).toBe('array[0]');
+    expect(blockFromEngineSpan('paragraph', 'Hello [[wiki]]')).toBeNull();
+    expect(blockFromEngineSpan('paragraph', '[ref][id]')).toBeNull();
+    expect(blockFromEngineSpan('paragraph', 'bare https://example.com')).toBeNull();
+    expect(blockFromEngineSpan('paragraph', '[^note]')).toBeNull();
+
     const h = blockFromEngineSpan('heading', '## Title');
     expect(h?.type.name).toBe('heading');
     expect(h?.attrs.level).toBe(2);
@@ -929,6 +954,9 @@ describe('blockFromEngineSpan', () => {
       '**bold _nested_**\n',
       '*em **strong** em*\n',
       '**bold `code`**\n',
+      '[docs](https://example.com/path)\n',
+      '![alt](./a.png)\n',
+      'Go [**bold**](https://example.com)\n',
     ];
     for (const md of samples) {
       setMarkdownEngineForTests('micromark');

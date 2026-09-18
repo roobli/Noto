@@ -17,9 +17,11 @@
  * soft-wrap), and **simple GFM tables** (alignment row; plain or simple-marked
  * cells; consistent columns), the PM node is fully determined by that IR — no
  * micromark / mdast pass. Cross-family nests, multi-block items, deep / ambiguous nested marks /
- * links / wiki / HTML /
- * escapes, and complex / ragged tables still go through `from-mdast.ts` after
- * dialect enrich. **Simple GFM alerts / callouts** keep the marker as plain
+ * wiki / reference links / HTML /
+ * escapes / bare autolinks, and complex / ragged tables still go through `from-mdast.ts` after
+ * dialect enrich. **Simple inline links** (`[text](url)` / optional title) and **images**
+ * (`![alt](url)`) with plain or simple-marked link text are engine-owned.
+ * **Simple GFM alerts / callouts** keep the marker as plain
  * text for the alert decoration plugin.
  *
  * See docs/performance/open-path-first-cut.md and docs/design/roobli-md-engine.md.
@@ -47,18 +49,22 @@ export const ENGINE_LEAF_KINDS: ReadonlySet<NotoBlockKind> = new Set([
  * for plain paragraph/heading — those become engine-owned `hard_break` nodes
  * (serialize still writes two trailing spaces via `hardBreakAsTwoSpaces`).
  * Simple `*` / `**` / `_` / `__` / `~~` / `` ` `` marks (incl. one-level
- * nesting) are engine-owned via `tryInlineNodesFromSource`; deep / ambiguous
- * nests and heavier constructs stay on dialect. Snake_case underscores are
+ * nesting) and simple inline links / images are engine-owned via
+ * `tryInlineNodesFromSource`; deep / ambiguous nests, wiki, reference links,
+ * and heavier constructs stay on dialect. Snake_case underscores are
  * literal (CommonMark flanking).
  */
 const INLINE_DIALECT_RE = /[*_~`[\]<!$:\\]|https?:\/\//u;
 /**
- * Markers that always force dialect even with the simple-marked subset:
- * links, wiki, HTML, math, escapes, autolink. Underscore emphasis is owned
- * (with snake_case-safe flanking); deep / unmatched nests fall through in the
- * scanner.
+ * Markers that always force dialect even with the simple-marked / link subset:
+ * HTML (`<…>`), math (`$`), escapes (`\`). Bare `http(s)://` autolinks are
+ * refused in the scanner (URLs inside `[text](url)` destinations are fine).
+ * Do **not** put `:` here — it would refuse every `https://` destination.
+ * Brackets are scanned for simple `[text](url)` / `![alt](url)` (wiki `[[`,
+ * footnotes, reference links fall through). Underscore emphasis is owned
+ * (snake_case-safe flanking).
  */
-const HEAVY_INLINE_RE = /[\[\]<!$:\\]|https?:\/\//;
+const HEAVY_INLINE_RE = /[<$\\]/;
 /** CommonMark / vault hard break: two+ spaces before newline. */
 const HARD_BREAK_RE = / {2,}\r?\n/;
 
@@ -96,7 +102,8 @@ export function hasHardBreak(markdown: string): boolean {
  * simple-marked / collapsible / plain-titled GFM alerts / callouts, lazy nest + no-`>` lazy); simple flat
  * or same-family nested lists (any depth, incl. hard breaks + simple marks);
  * simple GFM tables (plain or simple-marked cells); paragraph / heading when
- * plain or simple-marked (hard breaks allowed — engine-owned).
+ * plain or simple-marked (hard breaks + simple inline links / images allowed —
+ * engine-owned).
  */
 export function canSkipDialectEnrich(kind: NotoBlockKind, markdown: string): boolean {
   if (ENGINE_LEAF_KINDS.has(kind)) return true;
@@ -176,10 +183,12 @@ export interface TryInlineOptions {
  * Engine-owned inline IR: plain text, hard breaks, and a simple subset of marks
  * (`**strong**`, `*emphasis*`, `__strong__`, `_emphasis_`, `~~strikethrough~~`,
  * `` `inline code` ``) plus **one-level nesting** (e.g. `**bold _italic_**`,
- * `*em **strong** em*`, `` **`code`** ``). Deep / ambiguous nests (`***`,
- * same-delimiter stacks), links/wiki/HTML/math/escapes/autolink, and unmatched
- * delimiters return `null` (dialect enrich). Snake_case underscores
- * (`mcp_register`) stay literal via CommonMark-ish flanking.
+ * `*em **strong** em*`, `` **`code`** ``) and **simple inline links / images**
+ * (`[text](url)`, `[text](url "title")`, `![alt](url)`). Deep / ambiguous nests
+ * (`***`, same-delimiter stacks), wiki / reference links / HTML / math /
+ * escapes / bare autolink, and unmatched delimiters return `null` (dialect
+ * enrich). Snake_case underscores (`mcp_register`) stay literal via
+ * CommonMark-ish flanking. Bare `[…]` / `array[0]` stay literal text.
  */
 export function tryInlineNodesFromSource(
   md: string,
@@ -245,9 +254,9 @@ function parseSimpleAsteriskTildeCode(
   const isWs = (ch: string | undefined): boolean =>
     ch === ' ' || ch === '\t' || ch === '\n' || ch === '\r';
 
-  /** Content of a leaf (no further nest) may not hold delimiter characters. */
-  const ASTERISK_TILDE_FORBIDDEN = /[*`~]/u;
-  const UNDERSCORE_FORBIDDEN = /[*_`~]/u;
+  /** Content of a leaf (no further nest) may not hold delimiter / link characters. */
+  const ASTERISK_TILDE_FORBIDDEN = /[*`~\[]/u;
+  const UNDERSCORE_FORBIDDEN = /[*_`~\[]/u;
 
   /**
    * True when content holds an underscore that is not mid-snake_case — those
@@ -544,6 +553,10 @@ function parseSimpleAsteriskTildeCode(
   while (i < len) {
     if (input.startsWith('***', i) || input.startsWith('___', i)) return null;
 
+    // Bare autolink — dialect (GFM). Destinations inside `[…](url)` are consumed
+    // by the link branch and never reach here as plain text.
+    if (input.startsWith('https://', i) || input.startsWith('http://', i)) return null;
+
     if (input[i] === '`') {
       const close = input.indexOf('`', i + 1);
       if (close < 0) return null;
@@ -638,6 +651,137 @@ function parseSimpleAsteriskTildeCode(
       continue;
     }
 
+    // Simple inline image `![alt](url)` or link `[text](url)` / `[text](url "title")`.
+    // Wiki `[[…]]`, footnotes `[^…]`, and reference `[text][id]` stay dialect.
+    // Bare `[…]` / `array[0]` (no `(…)` / `[id]` after) stay literal text.
+    if (input.startsWith('![', i) || input[i] === '[') {
+      const isImage = input.startsWith('![', i);
+      const openLen = isImage ? 2 : 1;
+      const labelStart = i + openLen;
+      if (!isImage && input[labelStart] === '[') return null; // wiki
+      if (!isImage && input[labelStart] === '^') return null; // footnote ref
+      // Find label closer; nested `[` inside label → dialect.
+      let labelEnd = -1;
+      for (let k = labelStart; k < len; k += 1) {
+        if (input[k] === '\n') break;
+        if (input[k] === '[') {
+          labelEnd = -2;
+          break;
+        }
+        if (input[k] === ']') {
+          labelEnd = k;
+          break;
+        }
+      }
+      if (labelEnd === -2) return null;
+      if (labelEnd < 0) {
+        // Unclosed `[` / `![` — emit opener as literal and continue.
+        emitPlain(i, i + openLen);
+        i += openLen;
+        continue;
+      }
+      const label = input.slice(labelStart, labelEnd);
+      const afterLabel = labelEnd + 1;
+      if (input[afterLabel] === '[') return null; // reference link / image
+      if (input[afterLabel] !== '(') {
+        // Not a destination link — literal brackets (e.g. array[0]).
+        emitPlain(i, afterLabel);
+        i = afterLabel;
+        continue;
+      }
+      // Parse destination: optional <url>, or chars with balanced parens, then optional title.
+      let p = afterLabel + 1;
+      while (p < len && (input[p] === ' ' || input[p] === '\t')) p += 1;
+      let href = '';
+      if (input[p] === '<') {
+        const closeAngle = input.indexOf('>', p + 1);
+        if (closeAngle < 0 || input.slice(p + 1, closeAngle).includes('\n')) return null;
+        href = input.slice(p + 1, closeAngle);
+        p = closeAngle + 1;
+      } else {
+        let depth = 0;
+        const destStart = p;
+        while (p < len) {
+          const ch = input[p]!;
+          if (ch === '\n') return null;
+          if (ch === '(') {
+            depth += 1;
+            p += 1;
+            continue;
+          }
+          if (ch === ')') {
+            if (depth === 0) break;
+            depth -= 1;
+            p += 1;
+            continue;
+          }
+          if ((ch === ' ' || ch === '\t') && depth === 0) break;
+          p += 1;
+        }
+        href = input.slice(destStart, p);
+      }
+      while (p < len && (input[p] === ' ' || input[p] === '\t')) p += 1;
+      let title: string | null = null;
+      if (input[p] === '"' || input[p] === "'" || input[p] === '(') {
+        const closer = input[p] === '(' ? ')' : input[p]!;
+        const titleStart = p + 1;
+        const titleEnd = input.indexOf(closer, titleStart);
+        if (titleEnd < 0 || input.slice(titleStart, titleEnd).includes('\n')) return null;
+        title = input.slice(titleStart, titleEnd);
+        p = titleEnd + 1;
+        while (p < len && (input[p] === ' ' || input[p] === '\t')) p += 1;
+      }
+      if (input[p] !== ')') return null;
+      const end = p + 1;
+
+      if (isImage) {
+        // Images are atoms; marks wrapping only an image stay dialect.
+        if (parentMarks.length > 0) return null;
+        // Alt stays plain (no marks / brackets / escapes).
+        if (/[*_`~[\]<!$:\\]|https?:\/\//u.test(label)) return null;
+        nodes.push(schema.nodes.image.create({
+          src: href,
+          alt: label,
+          title,
+          referenceType: null,
+        }));
+        i = end;
+        continue;
+      }
+
+      // Link label: plain or simple-marked; no nested links / wiki / heavy.
+      const linkMark = schema.marks.link.create({
+        href,
+        title,
+        referenceType: null,
+      });
+      const childMarks = [...parentMarks, linkMark];
+      if (label.length === 0) {
+        // Empty label `[](url)` — no inline children (mdast parity).
+        i = end;
+        continue;
+      }
+      if (/[\[\]<!$:\\]|https?:\/\//u.test(label)) return null;
+      if (!INLINE_DIALECT_RE.test(label)) {
+        nodes.push(...plainRunNodes(label, childMarks, false));
+      } else {
+        // Label may hold one-level simple marks; same depth so outer mark +
+        // marked label still respects MAX_MARK_NEST.
+        const labelNodes = parseSimpleAsteriskTildeCode(label, childMarks, depth);
+        if (!labelNodes) return null;
+        nodes.push(...labelNodes);
+      }
+      i = end;
+      continue;
+    }
+
+    if (input[i] === '!') {
+      // Lone `!` (not `![`) — literal.
+      emitPlain(i, i + 1);
+      i += 1;
+      continue;
+    }
+
     if (input[i] === '~') {
       // Lone `~` (not `~~`) — dialect (subscript / unmatched).
       return null;
@@ -646,7 +790,9 @@ function parseSimpleAsteriskTildeCode(
     let j = i + 1;
     while (j < len) {
       const ch = input[j]!;
-      if (ch === '*' || ch === '~' || ch === '`' || ch === '_') break;
+      if (ch === '*' || ch === '~' || ch === '`' || ch === '_' || ch === '[' || ch === '!') break;
+      // Stop before a bare autolink so the next iteration can refuse it.
+      if (input.startsWith('https://', j) || input.startsWith('http://', j)) break;
       j += 1;
     }
     emitPlain(i, j);
