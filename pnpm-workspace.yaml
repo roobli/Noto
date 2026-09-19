@@ -12,6 +12,7 @@ strictPeerDependencies: false
 
 allowBuilds:
   '@roobli/md': true
+  '@roobli/md@https://codeload.github.com/roobli/md/tar.gz/13e17b7d1b6e6286d2c483358777d55a50b0cecf': true
   '@roobli/md@https://codeload.github.com/roobli/md/tar.gz/dda6988f51a997a0591d88808a553e8d272033c2': true
   '@roobli/md@https://codeload.github.com/roobli/md/tar.gz/24640d1f72664830fe3d4c23ab02acd76847c7d2': true
   '@roobli/md@https://codeload.github.com/roobli/md/tar.gz/a2f11a246662053633cc58c9e7c701b9169a0ade': true
