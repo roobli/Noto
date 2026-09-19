@@ -1030,8 +1030,14 @@ describe('blockFromEngineSpan', () => {
     const mailtoAngle = blockFromEngineSpan('paragraph', '<mailto:a@b.com>');
     expect(mailtoAngle?.textContent).toBe('mailto:a@b.com');
     expect(mailtoAngle!.child(0).marks.find((m) => m.type.name === 'link')!.attrs.href).toBe('mailto:a@b.com');
-    expect(blockFromEngineSpan('paragraph', '<br>')).toBeNull();
+    // Simple inline HTML is engine-owned; footnotes stay dialect.
+    const loneBr = blockFromEngineSpan('paragraph', '<br>');
+    expect(loneBr?.childCount).toBe(1);
+    expect(loneBr?.child(0).type.name).toBe('inline_html');
+    expect(loneBr?.child(0).attrs.value).toBe('<br>');
     expect(blockFromEngineSpan('paragraph', '[^note]')).toBeNull();
+    // Multi-line HTML attribute stays dialect.
+    expect(blockFromEngineSpan('paragraph', '<span\nclass="x">')).toBeNull();
 
     const h = blockFromEngineSpan('heading', '## Title');
     expect(h?.type.name).toBe('heading');
@@ -1323,6 +1329,57 @@ describe('enrich skip for engine-owned spans', () => {
     // Math still dialect.
     expect(canSkipDialectEnrich('paragraph', 'Has $math$')).toBe(false);
   });
+
+  it('engine-owns simple inline HTML', () => {
+    const span = blockFromEngineSpan(
+      'paragraph',
+      'A line with <span class="x">inline html</span> inside.',
+    );
+    expect(span?.type.name).toBe('paragraph');
+    expect(canSkipDialectEnrich('paragraph', 'A line with <span class="x">inline html</span> inside.')).toBe(true);
+    const kinds = [...Array(span!.childCount)].map((_, i) => {
+      const n = span!.child(i);
+      return n.type.name === 'inline_html' ? `html:${n.attrs.value}` : `text:${n.text}`;
+    });
+    expect(kinds).toEqual([
+      'text:A line with ',
+      'html:<span class="x">',
+      'text:inline html',
+      'html:</span>',
+      'text: inside.',
+    ]);
+
+    const br = blockFromEngineSpan('paragraph', 'Break<br/>here');
+    expect(br?.child(1).type.name).toBe('inline_html');
+    expect(br?.child(1).attrs.value).toBe('<br/>');
+
+    const comment = blockFromEngineSpan('paragraph', 'a <!--x--> b');
+    expect(comment?.child(1).attrs.value).toBe('<!--x-->');
+
+    const inStrong = blockFromEngineSpan('paragraph', 'Mark **around <br> tag**');
+    expect(inStrong?.textContent).toBe('Mark around  tag');
+    const htmlKid = [...Array(inStrong!.childCount)].map((_, i) => inStrong!.child(i))
+      .find((n) => n.type.name === 'inline_html');
+    expect(htmlKid?.attrs.value).toBe('<br>');
+    // from-mdast parity: inline_html carries no marks even inside strong.
+    expect(htmlKid!.marks).toHaveLength(0);
+    const around = [...Array(inStrong!.childCount)].map((_, i) => inStrong!.child(i))
+      .find((n) => n.isText && n.text === 'around ');
+    expect(around!.marks.some((m) => m.type.name === 'strong')).toBe(true);
+
+    // Bare `<` stays literal (not dialect).
+    const bare = blockFromEngineSpan('paragraph', 'a < b');
+    expect(bare?.textContent).toBe('a < b');
+    expect(canSkipDialectEnrich('paragraph', 'a < b')).toBe(true);
+
+    // Autolink still wins over HTML.
+    const auto = blockFromEngineSpan('paragraph', 'See <https://example.com> now.');
+    expect(auto?.textContent).toBe('See https://example.com now.');
+
+    // Math still dialect.
+    expect(canSkipDialectEnrich('paragraph', 'Has $math$ and <br>')).toBe(false);
+  });
+
 
   it('engine-owns simple email autolink paragraphs', () => {
     const text = 'Contact <admin@example.com> or user@example.com today.\n';

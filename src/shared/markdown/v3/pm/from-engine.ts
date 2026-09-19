@@ -18,10 +18,12 @@
  * unindented lazy soft-wrap), and **simple GFM tables** (alignment row; plain or simple-marked
  * cells incl. escaped pipes; consistent columns), the PM node is fully
  * determined by that IR — no micromark / mdast pass. Multi-block items, deep /
- * ambiguous nested marks / HTML / math, and complex / ragged tables still go
+ * ambiguous nested marks / math / multi-line HTML, and complex / ragged tables still go
  * through `from-mdast.ts` after dialect enrich. **Simple backslash escapes**
  * (ASCII punctuation + trailing-`\\` hard breaks), including **escaped pipes
- * inside simple GFM table cells**, are engine-owned.
+ * inside simple GFM table cells**, are engine-owned. **Simple inline HTML**
+ * (open/close/self-closing tags, comments, PI, declarations, CDATA; single-line)
+ * is engine-owned as `inline_html` atoms.
  * **Simple inline links** (`[text](url)` /
  * optional title) and **images** (`![alt](url)`) with plain or simple-marked link text are
  * engine-owned. **Simple reference links / images** (`[text][id]` / `[text][]` /
@@ -32,7 +34,8 @@
  * brackets not in text) are engine-owned.
  * **Simple www. autolinks** (`www.…`; href `http://www.…`; GFM-ish trail trim; alnum previous blocks)
  * and **simple email autolinks** (bare `user@host.tld` + angle `<user@host.tld>` /
- * `<mailto:…>`; href `mailto:…`) are engine-owned. HTML tags stay dialect.
+ * `<mailto:…>`; href `mailto:…`) are engine-owned. **Simple inline HTML** is
+ * engine-owned as `inline_html` atoms (math / multi-line HTML stay dialect).
  * **Simple wiki links** (`[[target]]` / `[[target|alias]]`) are engine-owned
  * as literal text (decoration plugin owns display).
  * **Simple GFM alerts / callouts** (incl. collapsible / plain-titled /
@@ -73,11 +76,11 @@ export const ENGINE_LEAF_KINDS: ReadonlySet<NotoBlockKind> = new Set([
 const INLINE_DIALECT_RE = /[*_~`[\]<!$:\\@]|https?:\/\/|www\./iu;
 /**
  * Markers that always force dialect even with the simple-marked / link subset:
- * math (`$`). Simple backslash escapes are engine-owned. HTML tags and
- * non-owned angle forms are refused in the scanner when `<` is not a simple
- * `<http(s)://…>` / email / mailto autolink. Bare `http(s)://`, `www.`, email,
- * and angle-bracket http(s)/email are engine-owned (URLs inside `[text](url)`
- * destinations are consumed by the link branch).
+ * math (`$`). Simple backslash escapes and **simple inline HTML** are engine-owned.
+ * Multi-line / exotic HTML is refused in the scanner when `<` is not a simple
+ * `<http(s)://…>` / email / mailto autolink or simple HTML tag. Bare `http(s)://`,
+ * `www.`, email, and angle-bracket http(s)/email are engine-owned (URLs inside
+ * `[text](url)` destinations are consumed by the link branch).
  * Do **not** put `:` here — it would refuse every `https://` destination.
  * Brackets are scanned for simple `[text](url)` / `![alt](url)`, simple
  * `[text][id]` / `[text][]` / `![alt][id]` / `![alt][]`, and simple wiki
@@ -100,7 +103,7 @@ export function needsDialectInline(markdown: string): boolean {
  * Owns plain `[!NOTE]`, collapsible `[!NOTE]-` / `[!NOTE]+`, optional same-line
  * plain titles (`[!NOTE] Title`), and **simple-marked titles** (`[!NOTE] Title
  * **x**`, wiki / links / autolinks / simple escapes in the title). Heavy titles
- * (math / deep nests / HTML tags) stay dialect. The alert-plugin decorates from the
+ * (math / deep nests / multi-line HTML) stay dialect. The alert-plugin decorates from the
  * leading `[!NOTE]` token either way.
  */
 const ALERT_MARKER_RE = /^\[!(NOTE|TIP|IMPORTANT|WARNING|CAUTION)\]([+-])?[ \t]*([^\n]*)(?:\n|$)/;
@@ -128,7 +131,7 @@ export function hasHardBreak(markdown: string): boolean {
  * plain or simple-marked (hard breaks + simple inline links / images +
  * simple reference links / images + simple bare http(s) + angle-bracket
  * http(s) + www. + email autolinks + simple wiki links + simple backslash
- * escapes allowed — engine-owned).
+ * escapes + simple inline HTML allowed — engine-owned).
  */
 export function canSkipDialectEnrich(kind: NotoBlockKind, markdown: string): boolean {
   if (ENGINE_LEAF_KINDS.has(kind)) return true;
@@ -215,10 +218,10 @@ export interface TryInlineOptions {
  * autolinks** (`<https://…>`; text === href), **simple www. autolinks**,
  * **simple email autolinks** (bare + angle / mailto), and **simple wiki**
  * (`[[target]]` / `[[target|alias]]` as literal text). Deep / ambiguous nests
- * (`***`, same-delimiter stacks), HTML / math, nested-bracket wiki,
+ * (`***`, same-delimiter stacks), math / multi-line HTML, nested-bracket wiki,
  * and unmatched delimiters
  * return `null` (dialect enrich). Simple backslash escapes (ASCII punctuation
- * + trailing-`\\` hard breaks) are owned. Snake_case underscores (`mcp_register`) stay
+ * + trailing-`\\` hard breaks) and **simple inline HTML** are owned. Snake_case underscores (`mcp_register`) stay
  * literal via CommonMark-ish flanking. Bare `[…]` / `array[0]` (no trailing
  * `[]` / `[id]` / `(url)`) stay literal text. Footnotes `[^…]` stay dialect.
  */
@@ -418,6 +421,128 @@ function endOfSimpleAngleEmail(input: string, at: number): number {
 }
 
 /**
+ * Exclusive end (past terminator) of simple CommonMark inline HTML at `at`, or
+ * -1. Owns single-line open/close/self-closing tags, comments, processing
+ * instructions, declarations, and CDATA. No newlines inside. Autolinks are
+ * handled separately — call after those fail.
+ */
+function endOfSimpleInlineHtml(input: string, at: number): number {
+  if (input[at] !== '<') return -1;
+  const len = input.length;
+  if (at + 1 >= len) return -1;
+
+  // HTML comment <!-- ... -->
+  if (input.startsWith('<!--', at)) {
+    const start = at + 4;
+    if (input[start] === '>' || (input[start] === '-' && input[start + 1] === '>')) return -1;
+    let i = start;
+    while (i < len) {
+      if (input[i] === '\n' || input[i] === '\r') return -1;
+      if (input.startsWith('--', i)) {
+        if (input[i + 2] === '>') return i + 3;
+        return -1;
+      }
+      i += 1;
+    }
+    return -1;
+  }
+
+  // CDATA section
+  if (input.startsWith('<![CDATA[', at)) {
+    const close = input.indexOf(']]>', at + 9);
+    if (close < 0) return -1;
+    const body = input.slice(at + 9, close);
+    if (body.includes('\n') || body.includes('\r')) return -1;
+    return close + 3;
+  }
+
+  // Declaration <!LETTER ... >
+  if (input[at + 1] === '!' && /[A-Za-z]/.test(input[at + 2] ?? '')) {
+    let i = at + 2;
+    while (i < len) {
+      if (input[i] === '\n' || input[i] === '\r') return -1;
+      if (input[i] === '>') return i + 1;
+      i += 1;
+    }
+    return -1;
+  }
+
+  // Processing instruction <? ... ?>
+  if (input.startsWith('<?', at)) {
+    let i = at + 2;
+    while (i < len) {
+      if (input[i] === '\n' || input[i] === '\r') return -1;
+      if (input[i] === '?' && input[i + 1] === '>') return i + 2;
+      i += 1;
+    }
+    return -1;
+  }
+
+  // Closing tag </tagname optional-ws>
+  if (input[at + 1] === '/') {
+    if (!/[A-Za-z]/.test(input[at + 2] ?? '')) return -1;
+    let i = at + 3;
+    while (i < len && /[A-Za-z0-9-]/.test(input[i]!)) i += 1;
+    while (i < len && (input[i] === ' ' || input[i] === '\t')) i += 1;
+    if (input[i] === '>') return i + 1;
+    return -1;
+  }
+
+  // Open / self-closing tag <tagname attrs? /?>
+  if (!/[A-Za-z]/.test(input[at + 1] ?? '')) return -1;
+  let i = at + 2;
+  while (i < len && /[A-Za-z0-9-]/.test(input[i]!)) i += 1;
+
+  while (i < len) {
+    if (input[i] === '\n' || input[i] === '\r') return -1;
+    if (input[i] === ' ' || input[i] === '\t') {
+      while (i < len && (input[i] === ' ' || input[i] === '\t')) i += 1;
+      if (i >= len) return -1;
+      if (input[i] === '/') {
+        i += 1;
+        return input[i] === '>' ? i + 1 : -1;
+      }
+      if (input[i] === '>') return i + 1;
+      // attribute name
+      if (!/[A-Za-z_:]/.test(input[i]!)) return -1;
+      i += 1;
+      while (i < len && /[A-Za-z0-9_.:-]/.test(input[i]!)) i += 1;
+      if (input[i] === '=') {
+        i += 1;
+        if (input[i] === '"' || input[i] === "'") {
+          const q = input[i]!;
+          i += 1;
+          while (i < len && input[i] !== q) {
+            if (input[i] === '\n' || input[i] === '\r') return -1;
+            i += 1;
+          }
+          if (input[i] !== q) return -1;
+          i += 1;
+        } else {
+          if (i >= len || /[\s"'=<>`]/.test(input[i]!)) return -1;
+          while (i < len && !/[\s"'=<>`]/.test(input[i]!)) i += 1;
+        }
+      }
+      continue;
+    }
+    if (input[i] === '/') {
+      i += 1;
+      return input[i] === '>' ? i + 1 : -1;
+    }
+    if (input[i] === '>') return i + 1;
+    return -1;
+  }
+  return -1;
+}
+
+/** True when `<` at `at` looks like the start of HTML (not `a < b`). */
+function looksLikeInlineHtmlStart(input: string, at: number): boolean {
+  const next = input[at + 1];
+  if (next === undefined) return false;
+  return /[A-Za-z]/.test(next) || next === '/' || next === '!' || next === '?';
+}
+
+/**
  * End index (exclusive) of a simple wiki link starting at `at`.
  * Returns -1 when unclosed / not `[[`, -2 when nested `[` / lone `]` / newline
  * (dialect). Matches decoration rules in wiki-link-plugin: no nested `[`, no
@@ -536,6 +661,16 @@ function parseSimpleAsteriskTildeCode(
    * Returns end index exclusive, or -1 if unmatched / ambiguous.
    */
   const skipNestedSpan = (at: number): number => {
+    if (input[at] === '<') {
+      const httpEnd = endOfSimpleAngleAutolink(input, at);
+      if (httpEnd >= 0) return httpEnd;
+      const emailEnd = endOfSimpleAngleEmail(input, at);
+      if (emailEnd >= 0) return emailEnd;
+      const htmlEnd = endOfSimpleInlineHtml(input, at);
+      if (htmlEnd >= 0) return htmlEnd;
+      if (looksLikeInlineHtmlStart(input, at)) return -1;
+      return at + 1;
+    }
     if (input.startsWith('[[', at)) {
       const end = endOfSimpleWiki(input, at);
       if (end < 0) return -1;
@@ -709,6 +844,26 @@ function parseSimpleAsteriskTildeCode(
         search = afterEscape(search);
         continue;
       }
+      if (input[search] === '<') {
+        const httpEnd = endOfSimpleAngleAutolink(input, search);
+        if (httpEnd >= 0) {
+          search = httpEnd;
+          continue;
+        }
+        const emailEnd = endOfSimpleAngleEmail(input, search);
+        if (emailEnd >= 0) {
+          search = emailEnd;
+          continue;
+        }
+        const htmlEnd = endOfSimpleInlineHtml(input, search);
+        if (htmlEnd >= 0) {
+          search = htmlEnd;
+          continue;
+        }
+        if (looksLikeInlineHtmlStart(input, search)) return -1;
+        search += 1;
+        continue;
+      }
       if (input.startsWith('[[', search)) {
         const next = skipNestedSpan(search);
         if (next < 0) return -1;
@@ -775,6 +930,26 @@ function parseSimpleAsteriskTildeCode(
         search = afterEscape(search);
         continue;
       }
+      if (input[search] === '<') {
+        const httpEnd = endOfSimpleAngleAutolink(input, search);
+        if (httpEnd >= 0) {
+          search = httpEnd;
+          continue;
+        }
+        const emailEnd = endOfSimpleAngleEmail(input, search);
+        if (emailEnd >= 0) {
+          search = emailEnd;
+          continue;
+        }
+        const htmlEnd = endOfSimpleInlineHtml(input, search);
+        if (htmlEnd >= 0) {
+          search = htmlEnd;
+          continue;
+        }
+        if (looksLikeInlineHtmlStart(input, search)) return -1;
+        search += 1;
+        continue;
+      }
       if (input.startsWith('[[', search)) {
         const next = skipNestedSpan(search);
         if (next < 0) return -1;
@@ -811,6 +986,26 @@ function parseSimpleAsteriskTildeCode(
     while (search < len) {
       if (input[search] === '\\') {
         search = afterEscape(search);
+        continue;
+      }
+      if (input[search] === '<') {
+        const httpEnd = endOfSimpleAngleAutolink(input, search);
+        if (httpEnd >= 0) {
+          search = httpEnd;
+          continue;
+        }
+        const emailEnd = endOfSimpleAngleEmail(input, search);
+        if (emailEnd >= 0) {
+          search = emailEnd;
+          continue;
+        }
+        const htmlEnd = endOfSimpleInlineHtml(input, search);
+        if (htmlEnd >= 0) {
+          search = htmlEnd;
+          continue;
+        }
+        if (looksLikeInlineHtmlStart(input, search)) return -1;
+        search += 1;
         continue;
       }
       if (input.startsWith('[[', search)) {
@@ -952,7 +1147,7 @@ function parseSimpleAsteriskTildeCode(
       }
     }
 
-    // Simple angle-bracket http(s) / email / mailto autolink. HTML → dialect.
+    // Simple angle-bracket http(s) / email / mailto autolink, then simple inline HTML.
     if (input[i] === '<') {
       const httpEnd = endOfSimpleAngleAutolink(input, i);
       if (httpEnd >= 0) {
@@ -979,7 +1174,19 @@ function parseSimpleAsteriskTildeCode(
         i = emailEnd;
         continue;
       }
-      return null;
+      const htmlEnd = endOfSimpleInlineHtml(input, i);
+      if (htmlEnd >= 0) {
+        // Match from-mdast: inline_html atoms carry no parent marks.
+        nodes.push(schema.nodes.inline_html.create({ value: input.slice(i, htmlEnd) }));
+        i = htmlEnd;
+        continue;
+      }
+      // Looks like a tag / comment / PI we could not own → dialect.
+      if (looksLikeInlineHtmlStart(input, i)) return null;
+      // Bare `<` (e.g. `a < b`) — literal text.
+      emitPlain(i, i + 1);
+      i += 1;
+      continue;
     }
 
     if (input[i] === '`') {
@@ -1966,7 +2173,7 @@ function alignmentOfDelimiterCell(cell: string): TableAlign | undefined {
  * plain or simple-marked (`**` / `*` / `~~` / `` ` ``) including CommonMark
  * backslash escapes (escaped `|` stays inside the cell); consistent column
  * counts; no blank lines inside the span. Ragged columns, nested / heavy
- * inline (HTML / math), and missing delimiter fall through to dialect.
+ * inline (multi-line HTML / math), and missing delimiter fall through to dialect.
  * Returns `null` when enrich is still needed.
  */
 export function parseSimpleTableSource(md: string): ParsedSimpleTable | null {

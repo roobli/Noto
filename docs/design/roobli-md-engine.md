@@ -211,8 +211,8 @@ breaks; nested children may nest only) + simple GFM tables (alignment row; plain
 or simple-marked cells incl. escaped pipes; consistent columns);
 enrich flags mark those done — see `docs/performance/open-path-first-cut.md`.
 Cross-family nests, multi-block items, heavy callout titles, complex /
-ragged tables, and heavy inline (deep / ambiguous nested marks, HTML,
-math, nested-bracket wiki) stay on dialect.
+ragged tables, and heavy inline (deep / ambiguous nested marks, multi-line
+HTML, math, nested-bracket wiki) stay on dialect.
 Empty footnote bodies, nested lists (incl. mixed-marker) at
 any depth, nested plain quotes, simple lists-in-quotes, plain / simple-marked
 callouts, hard breaks in quotes, lazy nest continuation via fewer `>` **and
@@ -223,19 +223,19 @@ marks), **simple inline links / images** (`[text](url)`, `![alt](url)`,
 optional title; plain or simple-marked link text), **simple reference links /
 images** (`[text][id]` / `[text][]` / `![alt][id]` / `![alt][]`), **simple bare
 http(s) autolinks**, **simple angle-bracket http(s) autolinks**, **simple www. autolinks**, **simple email autolinks** (bare + angle / mailto), **simple wiki links** (`[[target]]` / `[[target|alias]]` as literal text; decoration
-plugin owns display), and **simple backslash escapes** (ASCII punctuation + trailing-`\` hard breaks), including **escaped pipes in simple GFM table cells**, are engine-owned.
+plugin owns display), and **simple backslash escapes** (ASCII punctuation + trailing-`\` hard breaks), including **escaped pipes in simple GFM table cells**, and **simple inline HTML** (single-line tags / comments / PI / declarations / CDATA as `inline_html` atoms), are engine-owned.
 Product default stays micromark.
 
 Next: keep growing `markdown-golden/` (more GFM / vault edges), extend IR→PM
 only where micromark parity is locked (complex tables /
-deeper mark nests / HTML / math), then reconsider
+deeper mark nests / multi-line HTML / math), then reconsider
 default-on. Hard-breaks, images, empty/meta fences, escapes, table-align,
 ordered-start, inline HTML, simple-flat-lists, simple-nested-lists,
 simple-nested-quotes, simple-lists-in-quotes, simple-hard-breaks-in-quotes,
 simple-lazy-continuations-in-quotes, simple-no-marker-lazy-in-quotes,
 simple-lazy-list-continuations, simple-hard-breaks-in-lists,
 simple-hard-breaks-in-footnotes, simple-callouts, simple-titled-collapsible-callouts, simple-marked-callout-titles, simple-marked-phrasing,
-simple-underscore-emphasis, simple-nested-marks, simple-inline-links, simple-bare-autolinks, simple-angle-autolinks, simple-www-autolinks, simple-email-autolinks / simple-escapes / simple-escapes-in-tables, simple-reference-links, simple-wiki-links, simple-gfm-tables,
+simple-underscore-emphasis, simple-nested-marks, simple-inline-links, simple-bare-autolinks, simple-angle-autolinks, simple-www-autolinks, simple-email-autolinks / simple-escapes / simple-escapes-in-tables / simple-inline-html, simple-reference-links, simple-wiki-links, simple-gfm-tables,
 simple-footnote-defs, empty-footnote-defs, simple-setext-dash-headings, simple-mixed-marker-nested-lists, and cjk-emphasis goldens landed.
 Do **not** flip the product default yet.
 
