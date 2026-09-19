@@ -24,8 +24,9 @@ afterEach(() => {
   setMarkdownEngineForTests(null);
 });
 
+/** Dialect-heavy paras (inline math) so deferred enrich still has work after simple HTML became engine-owned. */
 function manyParas(count: number): string {
-  return Array.from({ length: count }, (_, i) => `Para ${i} with <span class="x${i}">x</span>.\n\n`).join('');
+  return Array.from({ length: count }, (_, i) => `Para ${i} with $math_${i}$ here.\n\n`).join('');
 }
 
 describe('enrichPmPatchForWindow', () => {
