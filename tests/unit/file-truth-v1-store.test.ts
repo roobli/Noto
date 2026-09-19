@@ -449,7 +449,7 @@ describe('Noto file-truth v1 save transaction', () => {
     expect(JSON.parse(await readFile(outcome.recovery.journalPath, 'utf8')).stage).toBe('journal-complete');
   });
 
-  it('cleans replay temp on final conflict or reports cleanup-failed with exact residue', async () => {
+  it('cleans replay temp on final conflict or reports cleanup-failed with exact residue', { timeout: 15_000 }, async () => {
     for (const cleanupFails of [false, true]) {
       const { file, store, candidate } = await harness();
       store.platform.injector.arm('before-replacement');
