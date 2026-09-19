@@ -169,13 +169,13 @@ Plain paragraph IR→PM drops trailing spaces that are not hard breaks
 trailing spaces), including inside simple quote paragraphs, simple list items,
 and simple footnote bodies. Soft newlines stay in text (`pre-wrap`). Flat simple marked phrasing (`*`/`**`/`_`/`__`/`~~`/`` ` ``)
 and one-level nested marks (`**bold _em_**`, `*em **strong** em*`) are
-engine-owned; deep / ambiguous nests / HTML / math still take the dialect path. Simple reference links/images (`[text][id]` / `[text][]` / `![alt][id]` / `![alt][]`) are engine-owned. Simple bare http(s) autolinks (`https://…` / `http://…`; text === href) and simple angle-bracket http(s) (`<https://…>`) are engine-owned. Setext `===` and setext-`---` / `-` headings are engine-owned via
+engine-owned; deep / ambiguous nests / multi-line HTML / math still take the dialect path. Simple inline HTML is engine-owned. Simple reference links/images (`[text][id]` / `[text][]` / `![alt][id]` / `![alt][]`) are engine-owned. Simple bare http(s) autolinks (`https://…` / `http://…`; text === href) and simple angle-bracket http(s) (`<https://…>`) are engine-owned. Setext `===` and setext-`---` / `-` headings are engine-owned via
 `parseHeadingSource` (`@roobli/md` ≥ v0.1.12 Phase 15 closes the former
 split gap; covered by `simple-setext-dash-headings.md`). Mixed-marker nested lists
 need `@roobli/md` ≥ v0.1.13 (Phase 16; `simple-mixed-marker-nested-lists.md`).
 
 Cross-family nests, multi-block items, heavy callout titles, complex /
-ragged tables, deep / ambiguous nested marks / HTML / math still need dialect
+ragged tables, deep / ambiguous nested marks / multi-line HTML / math still need dialect
 enrich + `from-mdast` (empty footnote bodies, nests at any depth incl. mixed-marker,
 nested plain quotes, simple lists-in-quotes, hard breaks in quotes, lazy nest
 continuation via fewer `>` **or true no-`>`**, hard breaks inside simple lists /
@@ -202,8 +202,8 @@ Does **not** flip default-on.
    `enrichSpansInRange` honour the skip.
 2. ~~Kind-aware structural stand-ins (heading/fence/…)~~ — shipped (#90).
 3. Extend IR→PM to more kinds when safe (complex / ragged tables, deep
-   nested marks / HTML / math, marked footnote bodies with heavy
-   inline, heavy callout titles still dialect; simple escapes + escaped pipes in simple tables owned; collapsible/plain-titled/simple-marked-title callouts owned; simple flat + one-level
+   nested marks / multi-line HTML / math, marked footnote bodies with heavy
+   inline, heavy callout titles still dialect; simple escapes + escaped pipes in simple tables + simple inline HTML owned; collapsible/plain-titled/simple-marked-title callouts owned; simple flat + one-level
    nested `**`/`*`/`__`/`_`/`~~`/`` ` `` marks owned across paras/headings/lists/
    tables/quotes/callouts/footnotes; simple inline links/images + simple reference
    links/images + simple bare + angle-bracket http(s) + www. + email + simple wiki `[[…]]` (literal text) owned; snake_case underscores stay literal). Plain hard-break paragraphs/headings,
@@ -220,7 +220,7 @@ Does **not** flip default-on.
    lists, simple GFM tables, simple footnote-defs, empty footnote-defs, CJK
    emphasis, hard-breaks, images, empty/meta fences, escapes, table-align,
    ordered-start, inline HTML, simple-reference-links landed; intentional engine gaps documented in
-   that README; simple-angle-autolinks / simple-www-autolinks / simple-email-autolinks / simple-escapes / simple-escapes-in-tables / simple-marked-callout-titles / simple-setext-dash-headings / simple-mixed-marker-nested-lists landed.
+   that README; simple-angle-autolinks / simple-www-autolinks / simple-email-autolinks / simple-escapes / simple-escapes-in-tables / simple-inline-html / simple-marked-callout-titles / simple-setext-dash-headings / simple-mixed-marker-nested-lists landed.
 
 Do not defer main’s file-truth structural parse; do not flip the product
 default from this doc.
