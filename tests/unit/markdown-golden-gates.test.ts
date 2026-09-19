@@ -165,6 +165,7 @@ describe('markdown golden gates — fixture inventory', () => {
       'simple-bare-autolinks.md',
       'simple-callouts.md',
       'simple-email-autolinks.md',
+      'simple-escapes.md',
       'simple-flat-lists.md',
       'simple-footnote-defs.md',
       'simple-gfm-tables.md',
