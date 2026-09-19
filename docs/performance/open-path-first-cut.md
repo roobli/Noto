@@ -1,6 +1,6 @@
 # Open-path / `parseDocument` — measured cuts
 
-Status: **lazy / deferred wire nodes + viewport-driven enrich + incremental PM patch + kind-aware stand-ins + engine-owned IR→PM (common blocks + simple quotes incl. nested plain + lists-in-quotes + hard breaks in quotes + lazy nest continuation + true no-`>` lazy + simple flat / nested lists (same-family or mixed-marker) any depth incl. hard breaks + unindented lazy soft-wrap + simple GFM tables + simple footnote-defs incl. empty + hard breaks + plain/simple-marked/simple-marked-title callouts + simple marked phrasing `**`/`*`/`~~`/`` ` `` + simple inline links/images + simple reference links/images + simple bare http(s) + angle-bracket http(s) + www. + email autolinks + simple wiki links + simple-marked callout titles + setext-`---` headings)** under the flagged `@roobli/md` path.
+Status: **lazy / deferred wire nodes + viewport-driven enrich + incremental PM patch + kind-aware stand-ins + engine-owned IR→PM (common blocks + simple quotes incl. nested plain + lists-in-quotes + hard breaks in quotes + lazy nest continuation + true no-`>` lazy + simple flat / nested lists (same-family or mixed-marker) any depth incl. hard breaks + unindented lazy soft-wrap + simple GFM tables (incl. escaped pipes) + simple footnote-defs incl. empty + hard breaks + plain/simple-marked/simple-marked-title callouts + simple marked phrasing `**`/`*`/`~~`/`` ` `` + simple inline links/images + simple reference links/images + simple bare http(s) + angle-bracket http(s) + www. + email autolinks + simple wiki links + simple-marked callout titles + setext-`---` headings)** under the flagged `@roobli/md` path.
 Product default remains micromark. Do **not** flip `NOTO_MARKDOWN_ENGINE`
 default-on from this work.
 
@@ -156,8 +156,8 @@ paragraphs via fewer `>` markers), **simple flat lists**
 and **nested lists** (same-family or mixed-marker, any depth; plain single-paragraph items incl.
 hard breaks; optional task checkboxes / loose / soft-wrap), **simple
 footnote-definitions** (plain or empty body incl. hard breaks), and **simple GFM
-tables** (header + alignment row + optional body; plain text cells; consistent
-column counts; leading `|` after 0–3 spaces) build ProseMirror directly from
+tables** (header + alignment row + optional body; plain or simple-marked cells
+incl. escaped pipes; consistent column counts; leading `|` after 0–3 spaces) build ProseMirror directly from
 engine kind + source (`pm/from-engine.ts`) — **no mdast**. `blockFromSpan`
 prefers that path; `enrichSpansInRange` finalizes those spans without
 `parseMarkdown`; deferred enrich flags mark them done past the first-paint
@@ -203,7 +203,7 @@ Does **not** flip default-on.
 2. ~~Kind-aware structural stand-ins (heading/fence/…)~~ — shipped (#90).
 3. Extend IR→PM to more kinds when safe (complex / ragged tables, deep
    nested marks / HTML / math, marked footnote bodies with heavy
-   inline, heavy callout titles still dialect; simple escapes owned; collapsible/plain-titled/simple-marked-title callouts owned; simple flat + one-level
+   inline, heavy callout titles still dialect; simple escapes + escaped pipes in simple tables owned; collapsible/plain-titled/simple-marked-title callouts owned; simple flat + one-level
    nested `**`/`*`/`__`/`_`/`~~`/`` ` `` marks owned across paras/headings/lists/
    tables/quotes/callouts/footnotes; simple inline links/images + simple reference
    links/images + simple bare + angle-bracket http(s) + www. + email + simple wiki `[[…]]` (literal text) owned; snake_case underscores stay literal). Plain hard-break paragraphs/headings,
@@ -220,7 +220,7 @@ Does **not** flip default-on.
    lists, simple GFM tables, simple footnote-defs, empty footnote-defs, CJK
    emphasis, hard-breaks, images, empty/meta fences, escapes, table-align,
    ordered-start, inline HTML, simple-reference-links landed; intentional engine gaps documented in
-   that README; simple-angle-autolinks / simple-www-autolinks / simple-email-autolinks / simple-escapes / simple-marked-callout-titles / simple-setext-dash-headings / simple-mixed-marker-nested-lists landed.
+   that README; simple-angle-autolinks / simple-www-autolinks / simple-email-autolinks / simple-escapes / simple-escapes-in-tables / simple-marked-callout-titles / simple-setext-dash-headings / simple-mixed-marker-nested-lists landed.
 
 Do not defer main’s file-truth structural parse; do not flip the product
 default from this doc.

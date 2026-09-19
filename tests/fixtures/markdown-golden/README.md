@@ -56,7 +56,8 @@ Small public fixtures for comparing the **micromark** product path against
 | `images.md` | inline image + reference image + link-def |
 | `empty-fence.md` | empty fenced code (plain + language) |
 | `escapes.md` | backslash-escaped emphasis / code / brackets / pipe |
-| `simple-escapes.md` | simple CommonMark backslash escapes (ASCII punctuation + `\\` hard breaks) owned on the flagged IR→PM path; math / HTML / escaped table pipes stay dialect |
+| `simple-escapes.md` | simple CommonMark backslash escapes (ASCII punctuation + `\\` hard breaks) owned on the flagged IR→PM path; math / HTML stay dialect |
+| `simple-escapes-in-tables.md` | escaped `|` inside simple GFM table cells owned on the flagged IR→PM path; ragged / complex tables stay dialect |
 | `table-align.md` | GFM table with left / center / right alignment |
 | `ordered-start.md` | ordered list starting at 2 |
 | `fence-meta.md` | fenced code with language + meta info string |
