@@ -67,7 +67,7 @@ describe('from-engine IR helpers', () => {
     expect(needsDialectInlineInQuote('[!NOTE]+\nbody')).toBe(false);
     expect(needsDialectInlineInQuote('[!NOTE] Title\nbody')).toBe(false);
     expect(needsDialectInlineInQuote('[!NOTE] Title with **bold**\nbody')).toBe(false);
-    expect(needsDialectInlineInQuote('[!NOTE] Title with \\*escape\\*\nbody')).toBe(true);
+    expect(needsDialectInlineInQuote('[!NOTE] Title with \\*escape\\*\nbody')).toBe(false);
     expect(needsDialectInlineInQuote('plain')).toBe(false);
   });
 
@@ -79,6 +79,8 @@ describe('from-engine IR helpers', () => {
     expect(canSkipDialectEnrich('heading', 'Setext\n===')).toBe(true);
     expect(canSkipDialectEnrich('paragraph', 'Break  \nline')).toBe(true);
     expect(canSkipDialectEnrich('paragraph', 'Hello **x**')).toBe(true);
+    expect(canSkipDialectEnrich('paragraph', 'Backslash \\*not emph\\*')).toBe(true);
+    expect(canSkipDialectEnrich('paragraph', 'Pipe \\| in text')).toBe(true);
     expect(canSkipDialectEnrich('paragraph', 'Break  \n**x**')).toBe(true);
     expect(canSkipDialectEnrich('paragraph', 'Hello [[wiki]]')).toBe(true);
     expect(canSkipDialectEnrich('paragraph', 'bare https://example.com')).toBe(true);
@@ -109,7 +111,7 @@ describe('from-engine IR helpers', () => {
     expect(canSkipDialectEnrich('quote', '> [!NOTE]+\n> body')).toBe(true);
     expect(canSkipDialectEnrich('quote', '> [!NOTE] Title\n> body')).toBe(true);
     expect(canSkipDialectEnrich('quote', '> [!NOTE] Title **x**\n> body')).toBe(true);
-    expect(canSkipDialectEnrich('quote', '> [!NOTE] Title \\*x\\*\n> body')).toBe(false);
+    expect(canSkipDialectEnrich('quote', '> [!NOTE] Title \\*x\\*\n> body')).toBe(true);
     expect(canSkipDialectEnrich('quote', '> [!WARNING]\n> has **bold**')).toBe(true);
     expect(canSkipDialectEnrich('quote', '> [!WARNING]\n> has [[wiki]]')).toBe(true);
     expect(canSkipDialectEnrich('quote', '> > nested\n> lazy')).toBe(true);
@@ -297,7 +299,7 @@ describe('from-engine IR helpers', () => {
     expect(parseSimpleQuoteSource('> [!NOTE]+\n> x')).not.toBeNull();
     expect(parseSimpleQuoteSource('> [!NOTE] Title\n> x')).not.toBeNull();
     expect(parseSimpleQuoteSource('> [!NOTE] Title **x**\n> x')).not.toBeNull();
-    expect(parseSimpleQuoteSource('> [!NOTE] Title \\*x\\*\n> x')).toBeNull();
+    expect(parseSimpleQuoteSource('> [!NOTE] Title \\*x\\*\n> x')).not.toBeNull();
     expect(parseSimpleQuoteSource('> [!WARNING]\n> has **bold**')).not.toBeNull();
     expect(parseSimpleQuoteSource('> [!WARNING]\n> has [[wiki]]')).not.toBeNull();
     expect(parseSimpleFlatListSource('- a\n- b')).toEqual({
@@ -578,7 +580,8 @@ describe('blockFromEngineSpan', () => {
       }
     });
     expect(strongTitle).toBe(true);
-    expect(blockFromEngineSpan('quote', '> [!NOTE] Title \\*x\\*\n> body')).toBeNull();
+    const escapedTitle = blockFromEngineSpan('quote', '> [!NOTE] Title \\*x\\*\n> body');
+    expect(escapedTitle?.textContent).toBe('[!NOTE] Title *x*\nbody');
     const markedAlert = blockFromEngineSpan('quote', '> [!WARNING]\n> has **bold**');
     expect(markedAlert?.textContent).toBe('[!WARNING]\nhas bold');
     expect(blockFromEngineSpan('quote', '> > nest\n> **bold**')?.textContent).toBe('nest\nbold');
@@ -1251,6 +1254,45 @@ describe('enrich skip for engine-owned spans', () => {
     expect(pm?.textContent).toBe('Visit www.example.com/path today.');
     const bit = [...Array(pm!.childCount)].map((_, i) => pm!.child(i)).find((n) => n.text === 'www.example.com/path');
     expect(bit!.marks.find((m) => m.type.name === 'link')!.attrs.href).toBe('http://www.example.com/path');
+  });
+
+  it('engine-owns simple backslash escapes', () => {
+    const plain = blockFromEngineSpan('paragraph', 'Backslash \\*not emph\\* and \\`not code\\`.');
+    expect(plain?.type.name).toBe('paragraph');
+    expect(plain?.textContent).toBe('Backslash *not emph* and `not code`.');
+    expect(plain?.childCount).toBe(1);
+    expect(plain!.child(0).marks).toHaveLength(0);
+
+    const pipe = blockFromEngineSpan('paragraph', 'Pipe \\| in text.');
+    expect(pipe?.textContent).toBe('Pipe | in text.');
+
+    const wiki = blockFromEngineSpan('paragraph', 'Escaped \\[[not wiki]].');
+    expect(wiki?.textContent).toBe('Escaped [[not wiki]].');
+
+    const doubled = blockFromEngineSpan('paragraph', 'Keep \\\\ backslash');
+    expect(doubled?.textContent).toBe('Keep \\ backslash');
+
+    const hbSource = 'line one' + String.fromCharCode(92) + '\nline two';
+    const hb = blockFromEngineSpan('paragraph', hbSource);
+    expect(hb?.childCount).toBe(3);
+    expect(hb?.child(0).textContent).toBe('line one');
+    expect(hb?.child(1).type.name).toBe('hard_break');
+    expect(hb?.child(2).textContent).toBe('line two');
+
+    const inStrong = blockFromEngineSpan('paragraph', '**bold \\* star**');
+    expect(inStrong?.textContent).toBe('bold * star');
+    expect(inStrong!.child(0).marks.some((m) => m.type.name === 'strong')).toBe(true);
+
+    const heading = blockFromEngineSpan('heading', '# Escaped \\* heading');
+    expect(heading?.textContent).toBe('Escaped * heading');
+
+    const list = blockFromEngineSpan('bullet-list', '- a \\* b');
+    expect(list?.child(0).textContent).toBe('a * b');
+
+    // Escaped pipes in tables stay dialect (ragged / complex residual).
+    expect(parseSimpleTableSource('| a \\| b |\n| - | - |')).toBeNull();
+    // Math still dialect.
+    expect(canSkipDialectEnrich('paragraph', 'Has $math$')).toBe(false);
   });
 
   it('engine-owns simple email autolink paragraphs', () => {

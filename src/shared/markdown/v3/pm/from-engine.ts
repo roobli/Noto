@@ -18,8 +18,10 @@
  * unindented lazy soft-wrap), and **simple GFM tables** (alignment row; plain or simple-marked
  * cells; consistent columns), the PM node is fully determined by that IR — no
  * micromark / mdast pass. Multi-block items, deep / ambiguous nested marks /
- * HTML / escapes, and complex / ragged tables still go
- * through `from-mdast.ts` after dialect enrich. **Simple inline links** (`[text](url)` /
+ * HTML / math, and complex / ragged tables still go
+ * through `from-mdast.ts` after dialect enrich. **Simple backslash escapes**
+ * (ASCII punctuation + trailing-`\\` hard breaks) are engine-owned.
+ * **Simple inline links** (`[text](url)` /
  * optional title) and **images** (`![alt](url)`) with plain or simple-marked link text are
  * engine-owned. **Simple reference links / images** (`[text][id]` / `[text][]` /
  * `![alt][id]` / `![alt][]`) are engine-owned (empty href/src; mirror from-mdast).
@@ -70,20 +72,22 @@ export const ENGINE_LEAF_KINDS: ReadonlySet<NotoBlockKind> = new Set([
 const INLINE_DIALECT_RE = /[*_~`[\]<!$:\\@]|https?:\/\/|www\./iu;
 /**
  * Markers that always force dialect even with the simple-marked / link subset:
- * math (`$`), escapes (`\`). HTML tags and non-owned angle forms are refused
- * in the scanner when `<` is not a simple `<http(s)://…>` / email / mailto
- * autolink. Bare `http(s)://`, `www.`, email, and angle-bracket http(s)/email
- * are engine-owned (URLs inside `[text](url)` destinations are consumed by the
- * link branch).
+ * math (`$`). Simple backslash escapes are engine-owned. HTML tags and
+ * non-owned angle forms are refused in the scanner when `<` is not a simple
+ * `<http(s)://…>` / email / mailto autolink. Bare `http(s)://`, `www.`, email,
+ * and angle-bracket http(s)/email are engine-owned (URLs inside `[text](url)`
+ * destinations are consumed by the link branch).
  * Do **not** put `:` here — it would refuse every `https://` destination.
  * Brackets are scanned for simple `[text](url)` / `![alt](url)`, simple
  * `[text][id]` / `[text][]` / `![alt][id]` / `![alt][]`, and simple wiki
  * `[[target]]` / `[[target|alias]]` (footnotes stay dialect). Underscore
  * emphasis is owned (snake_case-safe flanking).
  */
-const HEAVY_INLINE_RE = /[$\\]/;
+const HEAVY_INLINE_RE = /[$]/;
 /** CommonMark / vault hard break: two+ spaces before newline. */
 const HARD_BREAK_RE = / {2,}\r?\n/;
+/** CommonMark escapable ASCII punctuation (backslash escapes). */
+const ESCAPABLE_ASCII_PUNCT = /[!"#$%&'()*+,\-./:;<=>?@\[\\\]^_`{|}~]/;
 
 export function needsDialectInline(markdown: string): boolean {
   return INLINE_DIALECT_RE.test(markdown);
@@ -94,8 +98,8 @@ export function needsDialectInline(markdown: string): boolean {
  *
  * Owns plain `[!NOTE]`, collapsible `[!NOTE]-` / `[!NOTE]+`, optional same-line
  * plain titles (`[!NOTE] Title`), and **simple-marked titles** (`[!NOTE] Title
- * **x**`, wiki / links / autolinks in the title). Heavy titles (math / escapes /
- * deep nests / HTML tags) stay dialect. The alert-plugin decorates from the
+ * **x**`, wiki / links / autolinks / simple escapes in the title). Heavy titles
+ * (math / deep nests / HTML tags) stay dialect. The alert-plugin decorates from the
  * leading `[!NOTE]` token either way.
  */
 const ALERT_MARKER_RE = /^\[!(NOTE|TIP|IMPORTANT|WARNING|CAUTION)\]([+-])?[ \t]*([^\n]*)(?:\n|$)/;
@@ -122,7 +126,8 @@ export function hasHardBreak(markdown: string): boolean {
  * simple GFM tables (plain or simple-marked cells); paragraph / heading when
  * plain or simple-marked (hard breaks + simple inline links / images +
  * simple reference links / images + simple bare http(s) + angle-bracket
- * http(s) + www. + email autolinks + simple wiki links allowed — engine-owned).
+ * http(s) + www. + email autolinks + simple wiki links + simple backslash
+ * escapes allowed — engine-owned).
  */
 export function canSkipDialectEnrich(kind: NotoBlockKind, markdown: string): boolean {
   if (ENGINE_LEAF_KINDS.has(kind)) return true;
@@ -209,9 +214,10 @@ export interface TryInlineOptions {
  * autolinks** (`<https://…>`; text === href), **simple www. autolinks**,
  * **simple email autolinks** (bare + angle / mailto), and **simple wiki**
  * (`[[target]]` / `[[target|alias]]` as literal text). Deep / ambiguous nests
- * (`***`, same-delimiter stacks), HTML / math / escapes, nested-bracket wiki,
+ * (`***`, same-delimiter stacks), HTML / math, nested-bracket wiki,
  * and unmatched delimiters
- * return `null` (dialect enrich). Snake_case underscores (`mcp_register`) stay
+ * return `null` (dialect enrich). Simple backslash escapes (ASCII punctuation
+ * + trailing-`\\` hard breaks) are owned. Snake_case underscores (`mcp_register`) stay
  * literal via CommonMark-ish flanking. Bare `[…]` / `array[0]` (no trailing
  * `[]` / `[id]` / `(url)`) stay literal text. Footnotes `[^…]` stay dialect.
  */
@@ -234,7 +240,7 @@ export function tryInlineNodesFromSource(
       const rest = normalized.slice(prefix.length);
       // Same-line title may be plain (whole prefix as text) or simple-marked /
       // wiki / autolink / link (split marker+fold / spaces / title / newline).
-      // Heavy titles (math / escapes) and unparseable nests stay dialect.
+      // Heavy titles (math) and unparseable nests stay dialect.
       if (title.length > 0 && INLINE_DIALECT_RE.test(title)) {
         const markerAndFold = `[!${match[1]}]${match[2] ?? ''}`;
         const afterMarker = prefix.slice(markerAndFold.length);
@@ -459,9 +465,20 @@ function parseSimpleAsteriskTildeCode(
   const isWs = (ch: string | undefined): boolean =>
     ch === ' ' || ch === '\t' || ch === '\n' || ch === '\r';
 
+  /**
+   * Advance past a CommonMark backslash escape at `at`. Escaped punctuation
+   * (and any following char for closer-scan) must not act as a delimiter.
+   * Returns the index after the escape pair, or `at + 1` for a lone trailing `\\`.
+   */
+  const afterEscape = (at: number): number => {
+    if (input[at] !== '\\') return at;
+    if (at + 1 >= len) return at + 1;
+    return at + 2;
+  };
+
   /** Content of a leaf (no further nest) may not hold delimiter / link characters. */
-  const ASTERISK_TILDE_FORBIDDEN = /[*`~\[]/u;
-  const UNDERSCORE_FORBIDDEN = /[*_`~\[]/u;
+  const ASTERISK_TILDE_FORBIDDEN = /[*`~\[\\]/u;
+  const UNDERSCORE_FORBIDDEN = /[*_`~\[\\]/u;
 
   /**
    * True when content holds an underscore that is not mid-snake_case — those
@@ -530,15 +547,29 @@ function parseSimpleAsteriskTildeCode(
     }
     if (input.startsWith('~~', at)) {
       if (isWs(input[at + 2])) return -1;
-      const close = input.indexOf('~~', at + 2);
-      if (close < 0 || close === at + 2 || isWs(input[close - 1])) return -1;
-      return close + 2;
+      let search = at + 2;
+      while (search < len) {
+        if (input[search] === '\\') {
+          search = afterEscape(search);
+          continue;
+        }
+        if (input.startsWith('~~', search)) {
+          if (search === at + 2 || isWs(input[search - 1])) return -1;
+          return search + 2;
+        }
+        search += 1;
+      }
+      return -1;
     }
     if (input.startsWith('**', at)) {
       if (isWs(input[at + 2])) return -1;
       // Nested ** content must not itself hold ** (one-level / no same-delimiter).
       let search = at + 2;
       while (search < len) {
+        if (input[search] === '\\') {
+          search = afterEscape(search);
+          continue;
+        }
         if (input[search] === '`') {
           const next = skipNestedSpan(search);
           if (next < 0) return -1;
@@ -562,15 +593,32 @@ function parseSimpleAsteriskTildeCode(
     if (input.startsWith('__', at)) {
       if (isWordChar(input[at - 1]) && isWordChar(input[at + 2])) return -1;
       if (isWs(input[at + 2])) return -1;
-      const close = input.indexOf('__', at + 2);
-      if (close < 0 || close === at + 2 || isWs(input[close - 1])) return -1;
-      if (isWordChar(input[close - 1]) && isWordChar(input[close + 2])) return -1;
-      return close + 2;
+      let search = at + 2;
+      while (search < len) {
+        if (input[search] === '\\') {
+          search = afterEscape(search);
+          continue;
+        }
+        if (input.startsWith('__', search)) {
+          if (search === at + 2 || isWs(input[search - 1])) return -1;
+          if (isWordChar(input[search - 1]) && isWordChar(input[search + 2])) {
+            search += 2;
+            continue;
+          }
+          return search + 2;
+        }
+        search += 1;
+      }
+      return -1;
     }
     if (input[at] === '*') {
       if (isWs(input[at + 1])) return -1;
       let search = at + 1;
       while (search < len) {
+        if (input[search] === '\\') {
+          search = afterEscape(search);
+          continue;
+        }
         if (input.startsWith('**', search)) {
           const next = skipNestedSpan(search);
           if (next < 0) return -1;
@@ -608,6 +656,10 @@ function parseSimpleAsteriskTildeCode(
       if (isWs(input[at + 1])) return -1;
       let search = at + 1;
       while (search < len) {
+        if (input[search] === '\\') {
+          search = afterEscape(search);
+          continue;
+        }
         if (input.startsWith('__', search)) {
           search += 2;
           continue;
@@ -652,6 +704,10 @@ function parseSimpleAsteriskTildeCode(
     const dlen = delim.length;
     let search = openAt + dlen;
     while (search < len) {
+      if (input[search] === '\\') {
+        search = afterEscape(search);
+        continue;
+      }
       if (input.startsWith('[[', search)) {
         const next = skipNestedSpan(search);
         if (next < 0) return -1;
@@ -714,6 +770,10 @@ function parseSimpleAsteriskTildeCode(
   const findStarClose = (openAt: number): number => {
     let search = openAt + 1;
     while (search < len) {
+      if (input[search] === '\\') {
+        search = afterEscape(search);
+        continue;
+      }
       if (input.startsWith('[[', search)) {
         const next = skipNestedSpan(search);
         if (next < 0) return -1;
@@ -748,6 +808,10 @@ function parseSimpleAsteriskTildeCode(
   const findUnderscoreClose = (openAt: number): number => {
     let search = openAt + 1;
     while (search < len) {
+      if (input[search] === '\\') {
+        search = afterEscape(search);
+        continue;
+      }
       if (input.startsWith('[[', search)) {
         const next = skipNestedSpan(search);
         if (next < 0) return -1;
@@ -785,6 +849,35 @@ function parseSimpleAsteriskTildeCode(
   while (i < len) {
     if (input.startsWith('***', i) || input.startsWith('___', i)) return null;
 
+    // CommonMark backslash escapes: `\\*` → `*`, trailing `\\\\n` → hard_break.
+    // Non-escapable following char keeps the backslash as literal text.
+    if (input[i] === '\\') {
+      if (i + 1 >= len) {
+        emitPlain(i, i + 1);
+        i += 1;
+        continue;
+      }
+      const next = input[i + 1]!;
+      if (next === '\n') {
+        nodes.push(schema.nodes.hard_break.create(null, null, parentMarks));
+        i += 2;
+        continue;
+      }
+      if (next === '\r') {
+        nodes.push(schema.nodes.hard_break.create(null, null, parentMarks));
+        i += input[i + 2] === '\n' ? 3 : 2;
+        continue;
+      }
+      if (ESCAPABLE_ASCII_PUNCT.test(next)) {
+        nodes.push(...textNodes(next, parentMarks));
+        i += 2;
+        continue;
+      }
+      emitPlain(i, i + 1);
+      i += 1;
+      continue;
+    }
+
     // Bare http(s) autolink (GFM literal). Destinations inside `[…](url)` are
     // consumed by the link branch and never reach here as plain text.
     if (/^https?:\/\//i.test(input.slice(i))) {
@@ -795,7 +888,7 @@ function parseSimpleAsteriskTildeCode(
         while (j < len) {
           const ch = input[j]!;
           if (ch === '\n' || ch === '\r' || ch === ' ' || ch === '\t' || ch === '<' || ch === '>') break;
-          if (ch === '*' || ch === '~' || ch === '`' || ch === '_' || ch === '[' || ch === '!') break;
+          if (ch === '\\' || ch === '*' || ch === '~' || ch === '`' || ch === '_' || ch === '[' || ch === '!') break;
           j += 1;
         }
         if (j === i) j = i + 1;
@@ -823,7 +916,7 @@ function parseSimpleAsteriskTildeCode(
         while (j < len) {
           const ch = input[j]!;
           if (ch === '\n' || ch === '\r' || ch === ' ' || ch === '\t' || ch === '<' || ch === '>') break;
-          if (ch === '*' || ch === '~' || ch === '`' || ch === '_' || ch === '[' || ch === '!') break;
+          if (ch === '\\' || ch === '*' || ch === '~' || ch === '`' || ch === '_' || ch === '[' || ch === '!') break;
           j += 1;
         }
         if (j === i) j = i + 1;
@@ -1210,7 +1303,7 @@ function parseSimpleAsteriskTildeCode(
     let j = i + 1;
     while (j < len) {
       const ch = input[j]!;
-      if (ch === '*' || ch === '~' || ch === '`' || ch === '_' || ch === '[' || ch === '!' || ch === '<') break;
+      if (ch === '\\' || ch === '*' || ch === '~' || ch === '`' || ch === '_' || ch === '[' || ch === '!' || ch === '<') break;
       // Stop before bare http(s) / www. / email so the next iteration can own it.
       if (/^https?:\/\//i.test(input.slice(j))) break;
       if (/^www\./i.test(input.slice(j)) && endOfSimpleWwwAutolink(input, j) > 0) break;
