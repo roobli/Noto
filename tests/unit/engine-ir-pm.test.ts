@@ -6,8 +6,10 @@
  * plain or simple-marked bodies + lazy continuation (fewer `>` and true no-`>`)
  * + simple flat / same-family nested list (any depth, incl. hard breaks +
  * simple marks incl. flat underscore + one-level nested marks + collapsible/plain-titled/simple-marked-title callouts + unindented lazy
- * soft-wrap) + simple GFM table with plain or simple-marked cells +
- * simple inline links / images + simple reference links / images + simple bare http(s) + angle-bracket http(s) + www. + email autolinks + simple wiki links).
+ * soft-wrap) + simple GFM table with plain or simple-marked cells incl.
+ * escaped pipes + simple inline links / images + simple reference links /
+ * images + simple bare http(s) + angle-bracket http(s) + www. + email
+ * autolinks + simple wiki links).
  * Flagged `@roobli/md` path; does not flip product default.
  */
 
@@ -81,6 +83,7 @@ describe('from-engine IR helpers', () => {
     expect(canSkipDialectEnrich('paragraph', 'Hello **x**')).toBe(true);
     expect(canSkipDialectEnrich('paragraph', 'Backslash \\*not emph\\*')).toBe(true);
     expect(canSkipDialectEnrich('paragraph', 'Pipe \\| in text')).toBe(true);
+    expect(canSkipDialectEnrich('table', '| a \\| b |\n| --- |')).toBe(true);
     expect(canSkipDialectEnrich('paragraph', 'Break  \n**x**')).toBe(true);
     expect(canSkipDialectEnrich('paragraph', 'Hello [[wiki]]')).toBe(true);
     expect(canSkipDialectEnrich('paragraph', 'bare https://example.com')).toBe(true);
@@ -375,6 +378,16 @@ describe('from-engine IR helpers', () => {
     });
     expect(parseSimpleTableSource('| a | b |\n| - |\n| 1 | 2 |')).toBeNull();
     expect(parseSimpleTableSource('| a | b |\n| - | - |\n| 1 |')).toBeNull();
+    // Escaped pipes stay inside the cell (split ignores escaped `|`).
+    expect(parseSimpleTableSource('| a \\| b |\n| --- |\n| c \\| d |')).toEqual({
+      align: [null],
+      rows: [['a \\| b'], ['c \\| d']],
+    });
+    expect(parseSimpleTableSource('| Left \\| Mid | Right |\n| --- | --- |\n| a \\| b | 1 |')).toEqual({
+      align: [null, null],
+      rows: [['Left \\| Mid', 'Right'], ['a \\| b', '1']],
+    });
+    // Mismatched delimiter still ragged (header collapses to one cell via `\|`).
     expect(parseSimpleTableSource('| a \\| b |\n| - | - |')).toBeNull();
   });
 });
@@ -827,6 +840,18 @@ describe('blockFromEngineSpan', () => {
     expect(markedTable?.type.name).toBe('table');
     expect(markedTable?.textContent).toBe('ax');
     expect(blockFromEngineSpan('table', '| a |\n| - |\n| [[wiki]] |')?.textContent).toBe('a[[wiki]]');
+    const escPipe = blockFromEngineSpan('table', '| a \\| b |\n| --- |\n| c \\| d |');
+    expect(escPipe?.type.name).toBe('table');
+    expect(escPipe?.child(0).child(0).textContent).toBe('a | b');
+    expect(escPipe?.child(1).child(0).textContent).toBe('c | d');
+    const escTwo = blockFromEngineSpan('table', '| Left \\| Mid | Right |\n| --- | --- |\n| a \\| b | 1 |');
+    expect(escTwo?.child(0).child(0).textContent).toBe('Left | Mid');
+    expect(escTwo?.child(0).child(1).textContent).toBe('Right');
+    expect(escTwo?.child(1).child(0).textContent).toBe('a | b');
+    const escMarked = blockFromEngineSpan('table', '| **bold \\| cell** | plain |\n| --- | --- |\n| x | y |');
+    expect(escMarked?.type.name).toBe('table');
+    expect(escMarked?.child(0).child(0).textContent).toBe('bold | cell');
+    expect(escMarked!.child(0).child(0).child(0).marks.some((m) => m.type.name === 'strong')).toBe(true);
     expect(blockFromEngineSpan('table', '| a | b |\n| - |\n| 1 | 2 |')).toBeNull();
     expect(blockFromEngineSpan('table', '| a | b |\n| - | - |\n| 1 |')).toBeNull();
   });
@@ -1138,6 +1163,8 @@ describe('blockFromEngineSpan', () => {
       'see <https://example.com/path> please\n',
       'Go **<https://example.com>** now\n',
       'also <http://example.com/plain>\n',
+      '| a \\| b |\n| --- |\n| c \\| d |\n',
+      '| Left \\| Mid | Right |\n| --- | --- |\n| a \\| b | 1 |\n',
     ];
     for (const md of samples) {
       setMarkdownEngineForTests('micromark');
@@ -1289,7 +1316,9 @@ describe('enrich skip for engine-owned spans', () => {
     const list = blockFromEngineSpan('bullet-list', '- a \\* b');
     expect(list?.child(0).textContent).toBe('a * b');
 
-    // Escaped pipes in tables stay dialect (ragged / complex residual).
+    // Escaped pipes in simple tables are engine-owned (ragged still dialect).
+    expect(parseSimpleTableSource('| a \\| b |\n| --- |')).not.toBeNull();
+    expect(blockFromEngineSpan('table', '| a \\| b |\n| --- |')?.child(0).child(0).textContent).toBe('a | b');
     expect(parseSimpleTableSource('| a \\| b |\n| - | - |')).toBeNull();
     // Math still dialect.
     expect(canSkipDialectEnrich('paragraph', 'Has $math$')).toBe(false);

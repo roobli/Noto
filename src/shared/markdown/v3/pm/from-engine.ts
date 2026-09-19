@@ -16,11 +16,12 @@
  * flat / nested lists** (same-family or mixed-marker nests at every depth;
  * plain or simple-marked single-paragraph items incl. hard breaks and
  * unindented lazy soft-wrap), and **simple GFM tables** (alignment row; plain or simple-marked
- * cells; consistent columns), the PM node is fully determined by that IR — no
- * micromark / mdast pass. Multi-block items, deep / ambiguous nested marks /
- * HTML / math, and complex / ragged tables still go
+ * cells incl. escaped pipes; consistent columns), the PM node is fully
+ * determined by that IR — no micromark / mdast pass. Multi-block items, deep /
+ * ambiguous nested marks / HTML / math, and complex / ragged tables still go
  * through `from-mdast.ts` after dialect enrich. **Simple backslash escapes**
- * (ASCII punctuation + trailing-`\\` hard breaks) are engine-owned.
+ * (ASCII punctuation + trailing-`\\` hard breaks), including **escaped pipes
+ * inside simple GFM table cells**, are engine-owned.
  * **Simple inline links** (`[text](url)` /
  * optional title) and **images** (`![alt](url)`) with plain or simple-marked link text are
  * engine-owned. **Simple reference links / images** (`[text][id]` / `[text][]` /
@@ -123,7 +124,7 @@ export function hasHardBreak(markdown: string): boolean {
  * marks); simple quotes (incl. nested, hard breaks, lists-in-quotes, plain /
  * simple-marked / collapsible / plain-titled / simple-marked-title GFM alerts / callouts, lazy nest + no-`>` lazy); simple flat
  * or nested lists (same-family or mixed-marker, any depth, incl. hard breaks + simple marks);
- * simple GFM tables (plain or simple-marked cells); paragraph / heading when
+ * simple GFM tables (plain or simple-marked cells incl. escaped pipes); paragraph / heading when
  * plain or simple-marked (hard breaks + simple inline links / images +
  * simple reference links / images + simple bare http(s) + angle-bracket
  * http(s) + www. + email autolinks + simple wiki links + simple backslash
@@ -1962,10 +1963,11 @@ function alignmentOfDelimiterCell(cell: string): TableAlign | undefined {
 
 /**
  * Simple GFM table: header + alignment row + optional body rows; every cell
- * plain or simple-marked (`**` / `*` / `~~` / `` ` ``); consistent column
- * counts; no blank lines inside the span. Ragged columns, escaped pipes,
- * nested / heavy inline, and missing delimiter fall through to
- * dialect. Returns `null` when enrich is still needed.
+ * plain or simple-marked (`**` / `*` / `~~` / `` ` ``) including CommonMark
+ * backslash escapes (escaped `|` stays inside the cell); consistent column
+ * counts; no blank lines inside the span. Ragged columns, nested / heavy
+ * inline (HTML / math), and missing delimiter fall through to dialect.
+ * Returns `null` when enrich is still needed.
  */
 export function parseSimpleTableSource(md: string): ParsedSimpleTable | null {
   const trimmed = md.replace(/\r\n/g, '\n').trimEnd();
