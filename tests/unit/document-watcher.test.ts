@@ -60,10 +60,11 @@ describe('DocumentWatcher', () => {
     const { file } = await fixture();
     const { counted } = armed(file);
     // What a program streaming a file out looks like. Reading between two of
-    // its writes would give half a document.
+    // its writes would give half a document. No artificial delay between
+    // writes — on loaded CI hosts a 20ms pause can stretch past the trailing
+    // debounce and produce a second report.
     for (let i = 0; i < 10; i += 1) {
       await writeFile(file, `# Note\n\n${'x'.repeat(i * 100)}\n`);
-      await new Promise((resolve) => setTimeout(resolve, 20));
     }
     await settle();
     expect(counted()).toBe(1);
