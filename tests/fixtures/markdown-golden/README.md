@@ -46,7 +46,8 @@ Small public fixtures for comparing the **micromark** product path against
 | `simple-wiki-links.md` | simple `[[target]]` / `[[target|alias]]` (literal text; decoration displays) in para/heading/list/quote with plain or simple-marked surrounds; nested-bracket wiki stay dialect |
 | `simple-nested-marks.md` | one-level nested marks (`**bold _em_**`, `*em **strong** em*`, `` **`code`** ``) in para/heading/list/table/callout/footnote; deep / `***` / same-delimiter / links / wiki stay dialect |
 | `simple-flat-lists.md` | flat bullet/ordered/task lists (markers `-*+`, `.`/`)`, start≠1, loose, soft-wrap); no nest or marked items |
-| `simple-nested-lists.md` | same-family nested bullet/ordered at any depth (plain items; soft-wrap then nest; depth-2+); no cross-family or marked items |
+| `simple-nested-lists.md` | same-family nested bullet/ordered at any depth (plain items; soft-wrap then nest; depth-2+); no marked items |
+| `simple-mixed-marker-nested-lists.md` | mixed-marker nests (bullet under ordered / ordered under bullet / deep mix); closes Phase 16 intentional gap; plain items only |
 | `simple-gfm-tables.md` | simple GFM pipe tables (align row; plain cells; indent; compact); no marked/ragged cells |
 | `simple-footnote-defs.md` | simple `[^id]:` footnote definitions (plain body, soft-wrap, cased label) |
 | `empty-footnote-defs.md` | empty / whitespace-only `[^id]:` footnote definitions (cased label) |
@@ -68,10 +69,10 @@ out of this directory so the suite stays loud-fail-only on match):
 1. ~~**Setext level-2 (`text` + `---`) vs thematic-break**~~ — **closed** in
    `@roobli/md` v0.1.12 (Phase 15). Covered by `simple-setext-dash-headings.md`
    (setext `---` / single `-` plus standalone thematic breaks).
-2. **Mixed-marker nested lists** — an ordered list whose children are indented
-   bullet lists can stay one ordered span under micromark but split into
-   ordered / bullet / ordered under `@roobli/md`. Strict fixture nests
-   same-family markers only (bullet-under-bullet, ordered-under-ordered).
+2. ~~**Mixed-marker nested lists**~~ — **closed** in `@roobli/md` v0.1.13
+   (Phase 16). Covered by `simple-mixed-marker-nested-lists.md` (bullet under
+   ordered / ordered under bullet / deep mix). Same-family nests remain in
+   `simple-nested-lists.md`.
 
 Every fixture **in this directory** is expected to match on:
 

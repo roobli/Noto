@@ -126,7 +126,7 @@ describe('from-engine IR helpers', () => {
     expect(canSkipDialectEnrich('task-list', '- [ ] a\n- [x] b')).toBe(true);
     expect(canSkipDialectEnrich('bullet-list', '- a\n  - nested')).toBe(true);
     expect(canSkipDialectEnrich('bullet-list', '- a\n  - nested\n    - deep')).toBe(true);
-    expect(canSkipDialectEnrich('bullet-list', '- a\n  1. cross')).toBe(false);
+    expect(canSkipDialectEnrich('bullet-list', '- a\n  1. cross')).toBe(true);
     expect(canSkipDialectEnrich('bullet-list', '- **bold**')).toBe(true);
     expect(canSkipDialectEnrich('bullet-list', '- [[wiki]]')).toBe(true);
     expect(canSkipDialectEnrich('table', '| a |\n| - |\n| 1 |')).toBe(true);
@@ -674,7 +674,7 @@ describe('blockFromEngineSpan', () => {
     expect(blockFromEngineSpan('bullet-list', '- a  \n  **b**')?.textContent).toBe('ab');
   });
 
-  it('builds same-family nested lists at any depth; refuses cross-family nest', () => {
+  it('builds nested lists at any depth including mixed-marker nests', () => {
     const nest = blockFromEngineSpan('bullet-list', '- outer one\n  - nested a\n  - nested b\n- outer two');
     expect(nest?.type.name).toBe('bullet_list');
     expect(nest?.childCount).toBe(2);
@@ -732,8 +732,22 @@ describe('blockFromEngineSpan', () => {
     expect(blankThenOuter?.attrs.spread).toBe(true);
     expect(blankThenOuter?.child(0).child(1).attrs.spread).toBe(false);
 
-    // Cross-family nest (ordered under bullet) refused.
-    expect(blockFromEngineSpan('bullet-list', '- a\n  1. ordered nest')).toBeNull();
+    // Mixed-marker nest (ordered under bullet) is engine-owned (Phase 16).
+    const mixed = blockFromEngineSpan('bullet-list', '- a\n  1. ordered nest');
+    expect(mixed?.type.name).toBe('bullet_list');
+    expect(mixed?.child(0).child(1).type.name).toBe('ordered_list');
+    expect(mixed?.child(0).child(1).child(0).textContent).toBe('ordered nest');
+
+    const mixedOrdered = blockFromEngineSpan(
+      'ordered-list',
+      '1. outer\n   - nested a\n   - nested b\n2. outer two',
+    );
+    expect(mixedOrdered?.type.name).toBe('ordered_list');
+    expect(mixedOrdered?.childCount).toBe(2);
+    expect(mixedOrdered?.child(0).child(1).type.name).toBe('bullet_list');
+    expect(mixedOrdered?.child(0).child(1).childCount).toBe(2);
+    expect(mixedOrdered?.child(0).child(1).child(0).textContent).toBe('nested a');
+    expect(mixedOrdered?.child(1).textContent).toBe('outer two');
   });
 
   it('builds simple footnote definitions incl. empty + hard breaks + simple marks; refuses heavy', () => {

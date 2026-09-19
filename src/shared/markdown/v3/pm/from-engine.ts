@@ -13,11 +13,11 @@
  * plain-body GFM alerts / callouts incl. simple-marked bodies and
  * simple-marked same-line titles, and CommonMark
  * lazy continuation via fewer `>` **or true no-`>` lazy lines**), **simple
- * flat / nested lists** (same-family markers at every depth; plain or
- * simple-marked single-paragraph items incl. hard breaks and unindented lazy
- * soft-wrap), and **simple GFM tables** (alignment row; plain or simple-marked
+ * flat / nested lists** (same-family or mixed-marker nests at every depth;
+ * plain or simple-marked single-paragraph items incl. hard breaks and
+ * unindented lazy soft-wrap), and **simple GFM tables** (alignment row; plain or simple-marked
  * cells; consistent columns), the PM node is fully determined by that IR — no
- * micromark / mdast pass. Cross-family nests, multi-block items, deep / ambiguous nested marks /
+ * micromark / mdast pass. Multi-block items, deep / ambiguous nested marks /
  * HTML / escapes, and complex / ragged tables still go
  * through `from-mdast.ts` after dialect enrich. **Simple inline links** (`[text](url)` /
  * optional title) and **images** (`![alt](url)`) with plain or simple-marked link text are
@@ -118,7 +118,7 @@ export function hasHardBreak(markdown: string): boolean {
  * link-definitions; simple footnote-definitions (incl. hard breaks + simple
  * marks); simple quotes (incl. nested, hard breaks, lists-in-quotes, plain /
  * simple-marked / collapsible / plain-titled / simple-marked-title GFM alerts / callouts, lazy nest + no-`>` lazy); simple flat
- * or same-family nested lists (any depth, incl. hard breaks + simple marks);
+ * or nested lists (same-family or mixed-marker, any depth, incl. hard breaks + simple marks);
  * simple GFM tables (plain or simple-marked cells); paragraph / heading when
  * plain or simple-marked (hard breaks + simple inline links / images +
  * simple reference links / images + simple bare http(s) + angle-bracket
@@ -1496,11 +1496,11 @@ function parseQuoteChildren(
  * Simple blockquote: lines are `>`-prefixed and/or CommonMark true no-`>` lazy
  * continuations (requires `@roobli/md` ≥ v0.1.9 so lazy lines stay in the span).
  * Inner content is plain paragraphs (incl. hard breaks), nested plain quotes
- * (incl. fewer-`>` and no-`>` lazy), and/or simple flat / same-family nested
+ * (incl. fewer-`>` and no-`>` lazy), and/or simple flat / nested
  * lists (any reasonable depth; lazy into list items). Returns a child tree
  * matching CommonMark / mdast shape for the owned subset, or `null` when the
  * span still needs dialect enrich (nested marks / nested / heavy inline,
- * cross-family / multi-para lists, pathological depth, heavy callout titles).
+ * multi-para lists, pathological depth, heavy callout titles).
  * Plain / collapsible / plain-titled / simple-marked-title GFM alerts
  * (`> [!NOTE]`, `> [!NOTE]-`, `> [!NOTE] Title **x**` …) and simple-marked
  * bodies are accepted.
@@ -1588,13 +1588,14 @@ function splitTaskPrefix(rest: string): { checked: boolean | null; text: string 
 }
 
 /**
- * Simple flat or same-family nested list (any depth): consistent bullet or
- * ordered delimiter at each level, each item a single plain paragraph (optional
- * soft-wrap continuation; CommonMark hard breaks are engine-owned). Parent and
- * every nest share orderedness (same family); mixed-marker nests that split
- * under micromark are refused. Loose lists (blank between sibling items) set
- * `spread` on that level. Task checkboxes are allowed. Returns `null` when
- * dialect enrich is still needed (marked phrasing, cross-family / multi-para).
+ * Simple flat or nested list (any depth): bullet or ordered delimiter at each
+ * level, each item a single plain paragraph (optional soft-wrap continuation;
+ * CommonMark hard breaks are engine-owned). Same-family and mixed-marker nests
+ * are owned (`@roobli/md` ≥ v0.1.13 Phase 16 keeps mixed nests one span).
+ * Sibling markers at one level still share orderedness / bullet / delimiter.
+ * Loose lists (blank between sibling items) set `spread` on that level. Task
+ * checkboxes are allowed. Returns `null` when dialect enrich is still needed
+ * (marked phrasing / multi-para items).
  */
 export function parseSimpleFlatListSource(md: string): ParsedFlatList | null {
   const trimmed = md.replace(/\r\n/g, '\n').trimEnd();
@@ -1618,7 +1619,6 @@ export function parseSimpleFlatListSource(md: string): ParsedFlatList | null {
   };
 
   const stack: DraftLevel[] = [];
-  let rootFamily: boolean | null = null; // false=bullet, true=ordered
   let sawItem = false;
 
   const finalizeLevel = (level: DraftLevel): ParsedFlatList | null => {
@@ -1689,7 +1689,6 @@ export function parseSimpleFlatListSource(md: string): ParsedFlatList | null {
           delimiter = m[3] as FlatListDelimiter;
           rest = line.slice(m[0].length);
         }
-        rootFamily = ordered;
         const { checked, text: rawText } = splitTaskPrefix(rest);
         const text = rawText.replace(/^[ \t]+/u, '');
         const level: DraftLevel = {
@@ -1735,8 +1734,6 @@ export function parseSimpleFlatListSource(md: string): ParsedFlatList | null {
           if (top.delimiter !== null && top.delimiter !== delim) return null;
           rest = line.slice(m[0].length);
         }
-        // Same family as root.
-        if (rootFamily !== top.ordered) return null;
         const { checked, text: rawText } = splitTaskPrefix(rest);
         const text = rawText.replace(/^[ \t]+/u, '');
         if (top.pendingBlank && top.items.length > 0) top.spread = true;
@@ -1768,8 +1765,8 @@ export function parseSimpleFlatListSource(md: string): ParsedFlatList | null {
           delimiter = m[3] as FlatListDelimiter;
           rest = line.slice(m[0].length);
         }
-        // Same family as root (and therefore as parent).
-        if (rootFamily === null || rootFamily !== ordered) return null;
+        // Phase 16: nested level may differ in orderedness from parent
+        // (mixed-marker nest; micromark / @roobli/md span parity).
 
         if (parentItem.nested) {
           // Re-entering an existing child list — indent must match.
