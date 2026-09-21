@@ -1468,8 +1468,9 @@ describe('enrich skip for engine-owned spans', () => {
       .find((n) => n.type.name === 'math_inline');
     expect(priceMath?.textContent).toBe('5 and ');
 
-    // Image alt with math stays dialect for this cut.
-    expect(canSkipDialectEnrich('paragraph', '![alt $x$](url)')).toBe(false);
+    // Image alt with math is engine-owned (micromark plain alt string).
+    expect(canSkipDialectEnrich('paragraph', '![alt $x$](url)')).toBe(true);
+    expect(blockFromEngineSpan('paragraph', '![alt $x$](url)')!.child(0).attrs.alt).toBe('alt x');
 
     // Link label with math is owned.
     const link = blockFromEngineSpan('paragraph', 'See [$link$](https://example.com).');
@@ -1477,6 +1478,44 @@ describe('enrich skip for engine-owned spans', () => {
     const linkMath = [...Array(link!.childCount)].map((_, i) => link!.child(i))
       .find((n) => n.type.name === 'math_inline');
     expect(linkMath?.textContent).toBe('link');
+  });
+
+
+  it('engine-owns simple image alts (math/marks/escapes/HTML)', () => {
+    const math = blockFromEngineSpan('paragraph', 'Pic ![alt $x$](./a.png) here');
+    expect(canSkipDialectEnrich('paragraph', 'Pic ![alt $x$](./a.png) here')).toBe(true);
+    expect(math!.child(1).type.name).toBe('image');
+    expect(math!.child(1).attrs.alt).toBe('alt x');
+
+    const marked = blockFromEngineSpan('paragraph', '![**bold**](./b.png)');
+    expect(marked!.child(0).attrs.alt).toBe('bold');
+
+    const esc = blockFromEngineSpan('paragraph', '![a \\| b](./c.png)');
+    expect(esc!.child(0).attrs.alt).toBe('a | b');
+
+    const html = blockFromEngineSpan('paragraph', '![a <br> b](./d.png)');
+    expect(html!.child(0).attrs.alt).toBe('a <br> b');
+
+    const angle = blockFromEngineSpan('paragraph', '![a <https://x.com> b](./e.png)');
+    expect(angle!.child(0).attrs.alt).toBe('a https://x.com b');
+
+    const closedBracket = blockFromEngineSpan('paragraph', '![a\\]b](./f.png)');
+    expect(closedBracket!.child(0).attrs.alt).toBe('a]b');
+
+    const ref = blockFromEngineSpan('paragraph', '![alt $x$][logo]');
+    expect(ref!.child(0).attrs).toMatchObject({ alt: 'alt x', referenceType: 'full', src: '' });
+
+    const collapsed = blockFromEngineSpan('paragraph', '![**bold**][]');
+    expect(collapsed!.child(0).attrs.alt).toBe('bold');
+
+    // Nested brackets / *** stay dialect.
+    expect(canSkipDialectEnrich('paragraph', '![a [x] b](u.png)')).toBe(false);
+    expect(canSkipDialectEnrich('paragraph', '![***x***](u.png)')).toBe(false);
+
+    // Table cells with simple math / HTML already skip dialect.
+    const tableMd = '| A | B |\n| - | - |\n| $x$ | <br> |\n';
+    expect(canSkipDialectEnrich('table', tableMd)).toBe(true);
+    expect(blockFromEngineSpan('table', tableMd)).not.toBeNull();
   });
 
 
