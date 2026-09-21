@@ -6,8 +6,8 @@
  * (plain / empty / simple-marked single-paragraph body; optional soft-wrap /
  * hard-break), paragraph/heading with plain or **simple marked** phrasing
  * (`**strong**` / `*em*` / `__strong__` / `_em_` / `~~del~~` / `` `code` ``;
- * one-level nested marks e.g. `**bold _italic_**` / `*em **strong** em*`;
- * hard breaks engine-owned; snake_case underscores stay literal),
+ * up to two-level nested marks e.g. `**bold _italic_**` / `*em **strong** em*` /
+ * `**bold *em ~~strike~~ more* bold**`; hard breaks engine-owned; snake_case underscores stay literal),
  * **simple** blockquotes (every line `>`-prefixed; plain or simple-marked
  * paragraphs incl. hard breaks, nested quotes, simple lists-in-quotes,
  * plain-body GFM alerts / callouts incl. simple-marked bodies and
@@ -19,7 +19,7 @@
  * cells incl. escaped pipes; consistent **or ragged** body columns — micromark keeps
  * short/long body rows as-is), the PM node is fully
  * determined by that IR — no micromark / mdast pass. Multi-block items, deep /
- * ambiguous nested marks / multi-line HTML still go through `from-mdast.ts` after
+ * deeper / ambiguous nested marks / multi-line HTML still go through `from-mdast.ts` after
  * dialect enrich. Mismatched header/delimiter column counts are paragraphs at
  * split (`@roobli/md` ≥ v0.1.14); `parseSimpleTableSource` still refuses a forced
  * mismatched table span. **Simple HTML
@@ -74,7 +74,7 @@ export const ENGINE_LEAF_KINDS: ReadonlySet<NotoBlockKind> = new Set([
  * links, code, math, HTML, autolink). Hard breaks alone do **not** force dialect
  * for plain paragraph/heading — those become engine-owned `hard_break` nodes
  * (serialize still writes two trailing spaces via `hardBreakAsTwoSpaces`).
- * Simple `*` / `**` / `_` / `__` / `~~` / `` ` `` marks (incl. one-level
+ * Simple `*` / `**` / `_` / `__` / `~~` / `` ` `` marks (incl. up to two-level
  * nesting), simple inline links / images, simple reference links / images,
  * simple bare http(s) + angle-bracket http(s) + www. + email autolinks, and
  * simple wiki `[[…]]` (literal text) are engine-owned via `tryInlineNodesFromSource`;
@@ -219,15 +219,15 @@ export interface TryInlineOptions {
 /**
  * Engine-owned inline IR: plain text, hard breaks, and a simple subset of marks
  * (`**strong**`, `*emphasis*`, `__strong__`, `_emphasis_`, `~~strikethrough~~`,
- * `` `inline code` ``) plus **one-level nesting** (e.g. `**bold _italic_**`,
- * `*em **strong** em*`, `` **`code`** ``), **simple inline links / images**
+ * `` `inline code` ``) plus **up to two-level nesting** (e.g. `**bold _italic_**`,
+ * `*em **strong** em*`, `**bold *em ~~strike~~ more* bold**`, `` **`code`** ``), **simple inline links / images**
  * (`[text](url)`, `[text](url "title")`, `![alt](url)`), **simple reference**
  * (`[text][id]` / `[text][]` / `![alt][id]` / `![alt][]`), **simple bare
  * http(s) autolinks** (text === href), **simple angle-bracket http(s)
  * autolinks** (`<https://…>`; text === href), **simple www. autolinks**,
  * **simple email autolinks** (bare + angle / mailto), and **simple wiki**
  * (`[[target]]` / `[[target|alias]]` as literal text). Deep / ambiguous nests
- * (`***`, same-delimiter stacks), multi-line HTML, nested-bracket wiki,
+ * (`***`, same-delimiter stacks, three+-level nests), multi-line HTML, nested-bracket wiki,
  * and unmatched delimiters
  * return `null` (dialect enrich). Simple backslash escapes (ASCII punctuation
  * + trailing-`\\` hard breaks), **simple inline HTML**, and **simple inline math**
@@ -685,11 +685,11 @@ function flattenNodesToImageAlt(nodes: readonly ProseNode[]): string | null {
 /**
  * Micromark-equivalent plain alt string for a simple image label, or `null` →
  * dialect. Owns: plain text; simple `$…$` / `$$…$$` (delimiters stripped, inner
- * kept as text — not `math_inline` nodes); simple flat / one-level marks
+ * kept as text — not `math_inline` nodes); simple flat / up-to-two-level marks
  * (`**` / `*` / `__` / `_` / `~~` / `` ` ``; snake_case `_` flanking); simple
  * backslash escapes of ASCII punct; literal simple HTML tags as characters;
  * angle http(s)/email autolinks (brackets stripped, text kept).
- * Refuses: nested `[` / `]` (caller), newlines, `***` / unmatched / deep nests,
+ * Refuses: nested `[` / `]` (caller), newlines, `***` / unmatched / three+-level nests,
  * multi-line HTML, constructs `tryInlineNodesFromSource` cannot own.
  */
 function parseSimpleImageAlt(label: string): string | null {
@@ -709,8 +709,8 @@ function parseSimpleImageAlt(label: string): string | null {
   return lead + flat + trail;
 }
 
-/** Max inner mark depth (1 = outer + one nested, e.g. `**bold _em_**`). */
-const MAX_MARK_NEST = 1;
+/** Max nest depth (2 = outer + two nested, e.g. `**bold *em ~~x~~ more* bold**`). */
+const MAX_MARK_NEST = 2;
 
 function parseSimpleAsteriskTildeCode(
   md: string,
@@ -778,7 +778,7 @@ function parseSimpleAsteriskTildeCode(
   };
 
   /**
-   * Emit mark content: plain when delimiter-free; one-level recursive nest when
+   * Emit mark content: plain when delimiter-free; recursive nest when
    * `depth < MAX_MARK_NEST`; otherwise dialect (`null`).
    */
   const emitMarked = (
@@ -846,7 +846,7 @@ function parseSimpleAsteriskTildeCode(
     }
     if (input.startsWith('**', at)) {
       if (isWs(input[at + 2])) return -1;
-      // Nested ** content must not itself hold ** (one-level / no same-delimiter).
+      // Nested ** content must not itself hold ** (no same-delimiter stacks).
       let search = at + 2;
       while (search < len) {
         if (input[search] === '\\') {
