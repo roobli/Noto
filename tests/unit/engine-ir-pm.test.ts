@@ -861,7 +861,8 @@ describe('blockFromEngineSpan', () => {
     expect(escMarked?.type.name).toBe('table');
     expect(escMarked?.child(0).child(0).textContent).toBe('bold | cell');
     expect(escMarked!.child(0).child(0).child(0).marks.some((m) => m.type.name === 'strong')).toBe(true);
-    // Delimiter ≠ header width is not a GFM table (micromark → paragraph) → dialect.
+    // Delimiter ≠ header width is not a GFM table (micromark → paragraph; Phase 17
+    // split keeps the span a paragraph). Forced table kind still refuses IR→PM.
     expect(blockFromEngineSpan('table', '| a | b |\n| - |\n| 1 | 2 |')).toBeNull();
     // Ragged body rows (short / long) match micromark/mdast cell counts as-is.
     const shortRow = blockFromEngineSpan('table', '| a | b |\n| - | - |\n| 1 |');

@@ -19,8 +19,10 @@
  * cells incl. escaped pipes; consistent **or ragged** body columns — micromark keeps
  * short/long body rows as-is), the PM node is fully
  * determined by that IR — no micromark / mdast pass. Multi-block items, deep /
- * ambiguous nested marks / multi-line HTML, and complex tables (delimiter≠header;
- * not GFM) still go through `from-mdast.ts` after dialect enrich. **Simple HTML
+ * ambiguous nested marks / multi-line HTML still go through `from-mdast.ts` after
+ * dialect enrich. Mismatched header/delimiter column counts are paragraphs at
+ * split (`@roobli/md` ≥ v0.1.14); `parseSimpleTableSource` still refuses a forced
+ * mismatched table span. **Simple HTML
  * and simple inline math in GFM table cells** are engine-owned. **Simple backslash escapes**
  * (ASCII punctuation + trailing-`\\` hard breaks), including **escaped pipes
  * inside simple GFM table cells**, are engine-owned. **Simple inline HTML**
@@ -2359,8 +2361,9 @@ function alignmentOfDelimiterCell(cell: string): TableAlign | undefined {
  * backslash escapes (escaped `|` stays inside the cell); header and delimiter
  * column counts must match; **body rows may be ragged** (fewer or more cells
  * than the header — kept as-is, matching micromark/mdast); no blank lines
- * inside the span. Nested / heavy inline (multi-line HTML / math), and
- * delimiter≠header fall through to dialect.
+ * inside the span. Nested / heavy inline (multi-line HTML / math) fall through
+ * to dialect. Delimiter≠header returns null (Phase 17 split keeps those as
+ * paragraphs; this refuse is a safety net).
  * Returns `null` when enrich is still needed.
  */
 export function parseSimpleTableSource(md: string): ParsedSimpleTable | null {
