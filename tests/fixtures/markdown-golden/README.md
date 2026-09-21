@@ -49,6 +49,7 @@ Small public fixtures for comparing the **micromark** product path against
 | `simple-nested-lists.md` | same-family nested bullet/ordered at any depth (plain items; soft-wrap then nest; depth-2+); no marked items |
 | `simple-mixed-marker-nested-lists.md` | mixed-marker nests (bullet under ordered / ordered under bullet / deep mix); closes Phase 16 intentional gap; plain items only |
 | `simple-gfm-tables.md` | simple GFM pipe tables (align row; plain cells; indent; compact); no marked/ragged cells |
+| `simple-ragged-tables.md` | ragged body rows (short / long cell counts) on simple GFM tables owned on the flagged IR→PM path; delimiter≠header and HTML/math-in-cells stay dialect |
 | `simple-footnote-defs.md` | simple `[^id]:` footnote definitions (plain body, soft-wrap, cased label) |
 | `empty-footnote-defs.md` | empty / whitespace-only `[^id]:` footnote definitions (cased label) |
 | `cjk-emphasis.md` | Typora-shaped CJK flanking strong (`**注意：**…`) + mixed emphasis |
@@ -57,7 +58,7 @@ Small public fixtures for comparing the **micromark** product path against
 | `empty-fence.md` | empty fenced code (plain + language) |
 | `escapes.md` | backslash-escaped emphasis / code / brackets / pipe |
 | `simple-escapes.md` | simple CommonMark backslash escapes (ASCII punctuation + `\\` hard breaks) owned on the flagged IR→PM path; math / multi-line HTML stay dialect |
-| `simple-escapes-in-tables.md` | escaped `|` inside simple GFM table cells owned on the flagged IR→PM path; ragged / complex tables stay dialect |
+| `simple-escapes-in-tables.md` | escaped `|` inside simple GFM table cells owned on the flagged IR→PM path; complex (HTML/math-in-cells) + delimiter≠header stay dialect |
 | `simple-inline-html.md` | simple single-line inline HTML (`<span>`, `</span>`, `<br/>`, comments) owned on the flagged IR→PM path; multi-line / exotic HTML stay dialect |
 | `table-align.md` | GFM table with left / center / right alignment |
 | `ordered-start.md` | ordered list starting at 2 |

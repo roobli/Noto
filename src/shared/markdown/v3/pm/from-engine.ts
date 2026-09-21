@@ -16,9 +16,11 @@
  * flat / nested lists** (same-family or mixed-marker nests at every depth;
  * plain or simple-marked single-paragraph items incl. hard breaks and
  * unindented lazy soft-wrap), and **simple GFM tables** (alignment row; plain or simple-marked
- * cells incl. escaped pipes; consistent columns), the PM node is fully
+ * cells incl. escaped pipes; consistent **or ragged** body columns — micromark keeps
+ * short/long body rows as-is), the PM node is fully
  * determined by that IR — no micromark / mdast pass. Multi-block items, deep /
- * ambiguous nested marks / math / multi-line HTML, and complex / ragged tables still go
+ * ambiguous nested marks / math / multi-line HTML, and complex tables (HTML / math
+ * in cells, delimiter≠header) still go
  * through `from-mdast.ts` after dialect enrich. **Simple backslash escapes**
  * (ASCII punctuation + trailing-`\\` hard breaks), including **escaped pipes
  * inside simple GFM table cells**, are engine-owned. **Simple inline HTML**
@@ -127,7 +129,7 @@ export function hasHardBreak(markdown: string): boolean {
  * marks); simple quotes (incl. nested, hard breaks, lists-in-quotes, plain /
  * simple-marked / collapsible / plain-titled / simple-marked-title GFM alerts / callouts, lazy nest + no-`>` lazy); simple flat
  * or nested lists (same-family or mixed-marker, any depth, incl. hard breaks + simple marks);
- * simple GFM tables (plain or simple-marked cells incl. escaped pipes); paragraph / heading when
+ * simple GFM tables (plain or simple-marked cells incl. escaped pipes; ragged body rows); paragraph / heading when
  * plain or simple-marked (hard breaks + simple inline links / images +
  * simple reference links / images + simple bare http(s) + angle-bracket
  * http(s) + www. + email autolinks + simple wiki links + simple backslash
@@ -2171,9 +2173,11 @@ function alignmentOfDelimiterCell(cell: string): TableAlign | undefined {
 /**
  * Simple GFM table: header + alignment row + optional body rows; every cell
  * plain or simple-marked (`**` / `*` / `~~` / `` ` ``) including CommonMark
- * backslash escapes (escaped `|` stays inside the cell); consistent column
- * counts; no blank lines inside the span. Ragged columns, nested / heavy
- * inline (multi-line HTML / math), and missing delimiter fall through to dialect.
+ * backslash escapes (escaped `|` stays inside the cell); header and delimiter
+ * column counts must match; **body rows may be ragged** (fewer or more cells
+ * than the header — kept as-is, matching micromark/mdast); no blank lines
+ * inside the span. Nested / heavy inline (multi-line HTML / math), and
+ * delimiter≠header fall through to dialect.
  * Returns `null` when enrich is still needed.
  */
 export function parseSimpleTableSource(md: string): ParsedSimpleTable | null {
@@ -2194,6 +2198,7 @@ export function parseSimpleTableSource(md: string): ParsedSimpleTable | null {
   const header = splitTableRow(normalized[0]!);
   if (header.length === 0) return null;
   const delimCells = splitTableRow(normalized[1]!);
+  // Delimiter must match header width (otherwise micromark does not make a table).
   if (delimCells.length !== header.length) return null;
 
   const align: TableAlign[] = [];
@@ -2206,7 +2211,7 @@ export function parseSimpleTableSource(md: string): ParsedSimpleTable | null {
   const rows: string[][] = [header];
   for (let i = 2; i < normalized.length; i += 1) {
     const cells = splitTableRow(normalized[i]!);
-    if (cells.length !== header.length) return null;
+    // Ragged body rows are engine-owned (micromark keeps short/long rows as-is).
     rows.push(cells);
   }
 
