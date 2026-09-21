@@ -376,8 +376,17 @@ describe('from-engine IR helpers', () => {
       align: [null],
       rows: [['a'], ['[[wiki]]']],
     });
+    // Delimiter ≠ header → not a GFM table.
     expect(parseSimpleTableSource('| a | b |\n| - |\n| 1 | 2 |')).toBeNull();
-    expect(parseSimpleTableSource('| a | b |\n| - | - |\n| 1 |')).toBeNull();
+    // Ragged body rows kept as-is (micromark/mdast parity).
+    expect(parseSimpleTableSource('| a | b |\n| - | - |\n| 1 |')).toEqual({
+      align: [null, null],
+      rows: [['a', 'b'], ['1']],
+    });
+    expect(parseSimpleTableSource('| a | b |\n| - | - |\n| 1 | 2 | 3 |')).toEqual({
+      align: [null, null],
+      rows: [['a', 'b'], ['1', '2', '3']],
+    });
     // Escaped pipes stay inside the cell (split ignores escaped `|`).
     expect(parseSimpleTableSource('| a \\| b |\n| --- |\n| c \\| d |')).toEqual({
       align: [null],
@@ -387,7 +396,7 @@ describe('from-engine IR helpers', () => {
       align: [null, null],
       rows: [['Left \\| Mid', 'Right'], ['a \\| b', '1']],
     });
-    // Mismatched delimiter still ragged (header collapses to one cell via `\|`).
+    // Escaped pipe in header collapses width → delimiter mismatch → dialect.
     expect(parseSimpleTableSource('| a \\| b |\n| - | - |')).toBeNull();
   });
 });
@@ -817,7 +826,7 @@ describe('blockFromEngineSpan', () => {
     expect(blockFromEngineSpan('footnote-definition', '[^m]: a  \n  **b**')?.textContent).toBe('ab');
   });
 
-  it('builds simple GFM tables incl. simple-marked cells; refuses heavy / ragged / no delimiter', () => {
+  it('builds simple GFM tables incl. simple-marked + ragged body rows; refuses heavy / delimiter≠header', () => {
     const t = blockFromEngineSpan('table', '| Left | Right |\n| :--- | ---: |\n| alpha | 1 |\n| beta | 2 |');
     expect(t?.type.name).toBe('table');
     expect(t?.childCount).toBe(3);
@@ -852,8 +861,36 @@ describe('blockFromEngineSpan', () => {
     expect(escMarked?.type.name).toBe('table');
     expect(escMarked?.child(0).child(0).textContent).toBe('bold | cell');
     expect(escMarked!.child(0).child(0).child(0).marks.some((m) => m.type.name === 'strong')).toBe(true);
+    // Delimiter ≠ header width is not a GFM table (micromark → paragraph) → dialect.
     expect(blockFromEngineSpan('table', '| a | b |\n| - |\n| 1 | 2 |')).toBeNull();
-    expect(blockFromEngineSpan('table', '| a | b |\n| - | - |\n| 1 |')).toBeNull();
+    // Ragged body rows (short / long) match micromark/mdast cell counts as-is.
+    const shortRow = blockFromEngineSpan('table', '| a | b |\n| - | - |\n| 1 |');
+    expect(shortRow?.type.name).toBe('table');
+    expect(shortRow?.childCount).toBe(2);
+    expect(shortRow?.child(0).childCount).toBe(2);
+    expect(shortRow?.child(1).childCount).toBe(1);
+    expect(shortRow?.child(1).child(0).textContent).toBe('1');
+    const longRow = blockFromEngineSpan('table', '| a | b |\n| - | - |\n| 1 | 2 | 3 |');
+    expect(longRow?.child(0).childCount).toBe(2);
+    expect(longRow?.child(1).childCount).toBe(3);
+    expect(longRow?.child(1).child(2).textContent).toBe('3');
+    expect(longRow?.child(1).child(2).attrs.align).toBeNull();
+    const raggedAlign = blockFromEngineSpan(
+      'table',
+      '| a | b |\n| :--- | ---: |\n| short |\n| 1 | 2 | 3 | Extra |',
+    );
+    expect(raggedAlign?.childCount).toBe(3);
+    expect(raggedAlign?.child(1).childCount).toBe(1);
+    expect(raggedAlign?.child(1).child(0).attrs.align).toBe('left');
+    expect(raggedAlign?.child(2).childCount).toBe(4);
+    expect(raggedAlign?.child(2).child(0).attrs.align).toBe('left');
+    expect(raggedAlign?.child(2).child(1).attrs.align).toBe('right');
+    expect(raggedAlign?.child(2).child(2).attrs.align).toBeNull();
+    expect(raggedAlign?.child(2).child(3).textContent).toBe('Extra');
+    const raggedMarked = blockFromEngineSpan('table', '| a | b |\n| - | - |\n| **x** |');
+    expect(raggedMarked?.child(1).childCount).toBe(1);
+    expect(raggedMarked?.child(1).child(0).textContent).toBe('x');
+    expect(raggedMarked!.child(1).child(0).child(0).marks.some((m) => m.type.name === 'strong')).toBe(true);
   });
 
   it('builds plain and simple-marked paragraph / heading; refuses heavy inline', () => {
@@ -1322,7 +1359,7 @@ describe('enrich skip for engine-owned spans', () => {
     const list = blockFromEngineSpan('bullet-list', '- a \\* b');
     expect(list?.child(0).textContent).toBe('a * b');
 
-    // Escaped pipes in simple tables are engine-owned (ragged still dialect).
+    // Escaped pipes in simple tables are engine-owned (ragged body rows too).
     expect(parseSimpleTableSource('| a \\| b |\n| --- |')).not.toBeNull();
     expect(blockFromEngineSpan('table', '| a \\| b |\n| --- |')?.child(0).child(0).textContent).toBe('a | b');
     expect(parseSimpleTableSource('| a \\| b |\n| - | - |')).toBeNull();
