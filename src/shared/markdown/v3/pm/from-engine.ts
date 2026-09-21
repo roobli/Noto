@@ -19,15 +19,16 @@
  * cells incl. escaped pipes; consistent **or ragged** body columns — micromark keeps
  * short/long body rows as-is), the PM node is fully
  * determined by that IR — no micromark / mdast pass. Multi-block items, deep /
- * ambiguous nested marks / multi-line HTML, and complex tables (HTML / math
- * in cells, delimiter≠header) still go
- * through `from-mdast.ts` after dialect enrich. **Simple backslash escapes**
+ * ambiguous nested marks / multi-line HTML, and complex tables (delimiter≠header;
+ * not GFM) still go through `from-mdast.ts` after dialect enrich. **Simple HTML
+ * and simple inline math in GFM table cells** are engine-owned. **Simple backslash escapes**
  * (ASCII punctuation + trailing-`\\` hard breaks), including **escaped pipes
  * inside simple GFM table cells**, are engine-owned. **Simple inline HTML**
  * (open/close/self-closing tags, comments, PI, declarations, CDATA; single-line)
  * is engine-owned as `inline_html` atoms.
  * **Simple inline links** (`[text](url)` /
- * optional title) and **images** (`![alt](url)`) with plain or simple-marked link text are
+ * optional title) and **images** (`![alt](url)`) with plain or **simple image alts**
+ * (micromark-equivalent plain string: math / marks / escapes / literal HTML) are
  * engine-owned. **Simple reference links / images** (`[text][id]` / `[text][]` /
  * `![alt][id]` / `![alt][]`) are engine-owned (empty href/src; mirror from-mdast).
  * **Simple bare http(s) autolinks** (`https://…` / `http://…`; text === href; GFM-ish
@@ -38,7 +39,9 @@
  * and **simple email autolinks** (bare `user@host.tld` + angle `<user@host.tld>` /
  * `<mailto:…>`; href `mailto:…`) are engine-owned. **Simple inline HTML** is
  * engine-owned as `inline_html` atoms. **Simple inline math** (`$…$` / `$$…$$`)
- * is engine-owned as `math_inline` (multi-line HTML / exotic constructs stay dialect).
+ * is engine-owned as `math_inline` in phrasing; inside image alts, math/marks strip
+ * to a plain micromark-equivalent alt string (not phrasing nodes). Multi-line HTML /
+ * nested-bracket alts / exotic constructs stay dialect.
  * **Simple wiki links** (`[[target]]` / `[[target|alias]]`) are engine-owned
  * as literal text (decoration plugin owns display).
  * **Simple GFM alerts / callouts** (incl. collapsible / plain-titled /
@@ -631,6 +634,77 @@ function endOfSimpleWiki(input: string, at: number): number {
     k += 1;
   }
   return -1;
+}
+
+
+/**
+ * Flatten engine inline nodes to a micromark-equivalent image alt string.
+ * Marks / links unwrap to text; `math_inline` → value; `inline_html` → raw tag
+ * text; CommonMark code-span pad spaces trimmed. Returns null on hard_break
+ * (alts are single-line).
+ */
+function flattenNodesToImageAlt(nodes: readonly ProseNode[]): string | null {
+  let out = '';
+  for (const n of nodes) {
+    if (n.type.name === 'hard_break') return null;
+    if (n.type.name === 'math_inline') {
+      out += n.textContent;
+      continue;
+    }
+    if (n.type.name === 'inline_html') {
+      out += String(n.attrs.value ?? '');
+      continue;
+    }
+    if (n.type.name === 'image') {
+      out += String(n.attrs.alt ?? '');
+      continue;
+    }
+    if (n.isText) {
+      let t = n.text ?? '';
+      if (n.marks.some((m) => m.type.name === 'inline_code')) {
+        // CommonMark: one leading+trailing space stripped when both present.
+        if (
+          t.length >= 2
+          && t.startsWith(' ')
+          && t.endsWith(' ')
+          && /[^ ]/.test(t.slice(1, -1))
+        ) {
+          t = t.slice(1, -1);
+        }
+      }
+      out += t;
+      continue;
+    }
+    out += n.textContent;
+  }
+  return out;
+}
+
+/**
+ * Micromark-equivalent plain alt string for a simple image label, or `null` →
+ * dialect. Owns: plain text; simple `$…$` / `$$…$$` (delimiters stripped, inner
+ * kept as text — not `math_inline` nodes); simple flat / one-level marks
+ * (`**` / `*` / `__` / `_` / `~~` / `` ` ``; snake_case `_` flanking); simple
+ * backslash escapes of ASCII punct; literal simple HTML tags as characters;
+ * angle http(s)/email autolinks (brackets stripped, text kept).
+ * Refuses: nested `[` / `]` (caller), newlines, `***` / unmatched / deep nests,
+ * multi-line HTML, constructs `tryInlineNodesFromSource` cannot own.
+ */
+function parseSimpleImageAlt(label: string): string | null {
+  if (label.includes('\n') || label.includes('\r')) return null;
+  // Fast path: no mark / math / HTML / escape / autolink markers.
+  if (!/[*_`~<!$:\\@]|https?:\/\/|www\./iu.test(label)) return label;
+  // Preserve leading/trailing spaces (tryInlineNodesFromSource trimEnds the core).
+  const lead = /^[ \t]*/.exec(label)?.[0] ?? '';
+  if (lead.length === label.length) return label;
+  const trail = /[ \t]*$/.exec(label)?.[0] ?? '';
+  const core = label.slice(lead.length, label.length - trail.length);
+  if (core.length === 0) return label;
+  const nodes = tryInlineNodesFromSource(core);
+  if (!nodes) return null;
+  const flat = flattenNodesToImageAlt(nodes);
+  if (flat === null) return null;
+  return lead + flat + trail;
 }
 
 /** Max inner mark depth (1 = outer + one nested, e.g. `**bold _em_**`). */
@@ -1414,9 +1488,14 @@ function parseSimpleAsteriskTildeCode(
       const labelStart = i + openLen;
       if (!isImage && input[labelStart] === '^') return null; // footnote ref
       // Find label closer; nested `[` inside label → dialect.
+      // Backslash escapes (e.g. `\\]`) do not close the label (CommonMark).
       let labelEnd = -1;
       for (let k = labelStart; k < len; k += 1) {
         if (input[k] === '\n') break;
+        if (input[k] === '\\') {
+          if (k + 1 < len) k += 1;
+          continue;
+        }
         if (input[k] === '[') {
           labelEnd = -2;
           break;
@@ -1471,10 +1550,11 @@ function parseSimpleAsteriskTildeCode(
 
         if (isImage) {
           if (parentMarks.length > 0) return null;
-          if (/[*_`~[\]<!$:\\]|https?:\/\//u.test(label)) return null;
+          const alt = parseSimpleImageAlt(label);
+          if (alt === null) return null;
           nodes.push(schema.nodes.image.create({
             src: '',
-            alt: label,
+            alt: alt,
             title: null,
             referenceType,
             identifier: refIdentifier,
@@ -1563,11 +1643,11 @@ function parseSimpleAsteriskTildeCode(
       if (isImage) {
         // Images are atoms; marks wrapping only an image stay dialect.
         if (parentMarks.length > 0) return null;
-        // Alt stays plain (no marks / brackets / escapes).
-        if (/[*_`~[\]<!$:\\]|https?:\/\//u.test(label)) return null;
+        const alt = parseSimpleImageAlt(label);
+        if (alt === null) return null;
         nodes.push(schema.nodes.image.create({
           src: href,
-          alt: label,
+          alt: alt,
           title,
           referenceType: null,
         }));
