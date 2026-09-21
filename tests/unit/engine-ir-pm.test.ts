@@ -1363,8 +1363,8 @@ describe('enrich skip for engine-owned spans', () => {
     expect(parseSimpleTableSource('| a \\| b |\n| --- |')).not.toBeNull();
     expect(blockFromEngineSpan('table', '| a \\| b |\n| --- |')?.child(0).child(0).textContent).toBe('a | b');
     expect(parseSimpleTableSource('| a \\| b |\n| - | - |')).toBeNull();
-    // Math still dialect.
-    expect(canSkipDialectEnrich('paragraph', 'Has $math$')).toBe(false);
+    // Inline math is engine-owned (see dedicated test below).
+    expect(canSkipDialectEnrich('paragraph', 'Has $math$')).toBe(true);
   });
 
   it('engine-owns simple inline HTML', () => {
@@ -1413,8 +1413,70 @@ describe('enrich skip for engine-owned spans', () => {
     const auto = blockFromEngineSpan('paragraph', 'See <https://example.com> now.');
     expect(auto?.textContent).toBe('See https://example.com now.');
 
-    // Math still dialect.
-    expect(canSkipDialectEnrich('paragraph', 'Has $math$ and <br>')).toBe(false);
+    // Math + HTML together still owned.
+    expect(canSkipDialectEnrich('paragraph', 'Has $math$ and <br>')).toBe(true);
+  });
+
+  it('engine-owns simple inline math', () => {
+    const span = blockFromEngineSpan('paragraph', 'Has $E=mc^2$ here.');
+    expect(span?.type.name).toBe('paragraph');
+    expect(canSkipDialectEnrich('paragraph', 'Has $E=mc^2$ here.')).toBe(true);
+    const kinds = [...Array(span!.childCount)].map((_, i) => {
+      const n = span!.child(i);
+      return n.type.name === 'math_inline' ? `math:${n.textContent}` : `text:${n.text}`;
+    });
+    expect(kinds).toEqual([
+      'text:Has ',
+      'math:E=mc^2',
+      'text: here.',
+    ]);
+
+    const padded = blockFromEngineSpan('paragraph', 'Space $ x $ spaced.');
+    const padMath = [...Array(padded!.childCount)].map((_, i) => padded!.child(i))
+      .find((n) => n.type.name === 'math_inline');
+    expect(padMath?.textContent).toBe('x');
+
+    const dbl = blockFromEngineSpan('paragraph', 'Alone $$y$$ on line.');
+    const dblMath = [...Array(dbl!.childCount)].map((_, i) => dbl!.child(i))
+      .find((n) => n.type.name === 'math_inline');
+    expect(dblMath?.textContent).toBe('y');
+
+    const inStrong = blockFromEngineSpan('paragraph', 'Mark **around $x$ tag**');
+    expect(inStrong?.textContent).toBe('Mark around x tag');
+    const mathKid = [...Array(inStrong!.childCount)].map((_, i) => inStrong!.child(i))
+      .find((n) => n.type.name === 'math_inline');
+    expect(mathKid?.textContent).toBe('x');
+    // from-mdast parity: math_inline carries no marks even inside strong.
+    expect(mathKid!.marks).toHaveLength(0);
+    const around = [...Array(inStrong!.childCount)].map((_, i) => inStrong!.child(i))
+      .find((n) => n.isText && n.text === 'around ');
+    expect(around!.marks.some((m) => m.type.name === 'strong')).toBe(true);
+
+    // Escaped dollars stay literal.
+    const esc = blockFromEngineSpan('paragraph', 'Escaped \\$notmath\\$.');
+    expect(esc?.textContent).toBe('Escaped $notmath$.');
+    expect([...Array(esc!.childCount)].some((_, i) => esc!.child(i).type.name === 'math_inline')).toBe(false);
+
+    // Code spans keep dollars.
+    const code = blockFromEngineSpan('paragraph', 'Code `$not$` keeps.');
+    expect(code?.textContent).toBe('Code $not$ keeps.');
+    expect([...Array(code!.childCount)].some((_, i) => code!.child(i).type.name === 'math_inline')).toBe(false);
+
+    // Currency-style greedy match (micromark parity): first $ to next $.
+    const price = blockFromEngineSpan('paragraph', 'Price is $5 and $10.');
+    const priceMath = [...Array(price!.childCount)].map((_, i) => price!.child(i))
+      .find((n) => n.type.name === 'math_inline');
+    expect(priceMath?.textContent).toBe('5 and ');
+
+    // Image alt with math stays dialect for this cut.
+    expect(canSkipDialectEnrich('paragraph', '![alt $x$](url)')).toBe(false);
+
+    // Link label with math is owned.
+    const link = blockFromEngineSpan('paragraph', 'See [$link$](https://example.com).');
+    expect(link).not.toBeNull();
+    const linkMath = [...Array(link!.childCount)].map((_, i) => link!.child(i))
+      .find((n) => n.type.name === 'math_inline');
+    expect(linkMath?.textContent).toBe('link');
   });
 
 

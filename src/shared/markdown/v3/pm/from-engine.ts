@@ -19,7 +19,7 @@
  * cells incl. escaped pipes; consistent **or ragged** body columns — micromark keeps
  * short/long body rows as-is), the PM node is fully
  * determined by that IR — no micromark / mdast pass. Multi-block items, deep /
- * ambiguous nested marks / math / multi-line HTML, and complex tables (HTML / math
+ * ambiguous nested marks / multi-line HTML, and complex tables (HTML / math
  * in cells, delimiter≠header) still go
  * through `from-mdast.ts` after dialect enrich. **Simple backslash escapes**
  * (ASCII punctuation + trailing-`\\` hard breaks), including **escaped pipes
@@ -37,7 +37,8 @@
  * **Simple www. autolinks** (`www.…`; href `http://www.…`; GFM-ish trail trim; alnum previous blocks)
  * and **simple email autolinks** (bare `user@host.tld` + angle `<user@host.tld>` /
  * `<mailto:…>`; href `mailto:…`) are engine-owned. **Simple inline HTML** is
- * engine-owned as `inline_html` atoms (math / multi-line HTML stay dialect).
+ * engine-owned as `inline_html` atoms. **Simple inline math** (`$…$` / `$$…$$`)
+ * is engine-owned as `math_inline` (multi-line HTML / exotic constructs stay dialect).
  * **Simple wiki links** (`[[target]]` / `[[target|alias]]`) are engine-owned
  * as literal text (decoration plugin owns display).
  * **Simple GFM alerts / callouts** (incl. collapsible / plain-titled /
@@ -77,19 +78,19 @@ export const ENGINE_LEAF_KINDS: ReadonlySet<NotoBlockKind> = new Set([
  */
 const INLINE_DIALECT_RE = /[*_~`[\]<!$:\\@]|https?:\/\/|www\./iu;
 /**
- * Markers that always force dialect even with the simple-marked / link subset:
- * math (`$`). Simple backslash escapes and **simple inline HTML** are engine-owned.
- * Multi-line / exotic HTML is refused in the scanner when `<` is not a simple
- * `<http(s)://…>` / email / mailto autolink or simple HTML tag. Bare `http(s)://`,
- * `www.`, email, and angle-bracket http(s)/email are engine-owned (URLs inside
- * `[text](url)` destinations are consumed by the link branch).
- * Do **not** put `:` here — it would refuse every `https://` destination.
+ * No remaining single-character "always dialect" gate: math (`$`) and simple
+ * inline HTML are engine-owned. Multi-line / exotic HTML is refused in the
+ * scanner when `<` is not a simple `<http(s)://…>` / email / mailto autolink
+ * or simple HTML tag. Bare `http(s)://`, `www.`, email, and angle-bracket
+ * http(s)/email are engine-owned (URLs inside `[text](url)` destinations are
+ * consumed by the link branch).
+ * Do **not** put `:` in a refuse class — it would refuse every `https://`
+ * destination.
  * Brackets are scanned for simple `[text](url)` / `![alt](url)`, simple
  * `[text][id]` / `[text][]` / `![alt][id]` / `![alt][]`, and simple wiki
  * `[[target]]` / `[[target|alias]]` (footnotes stay dialect). Underscore
  * emphasis is owned (snake_case-safe flanking).
  */
-const HEAVY_INLINE_RE = /[$]/;
 /** CommonMark / vault hard break: two+ spaces before newline. */
 const HARD_BREAK_RE = / {2,}\r?\n/;
 /** CommonMark escapable ASCII punctuation (backslash escapes). */
@@ -104,8 +105,9 @@ export function needsDialectInline(markdown: string): boolean {
  *
  * Owns plain `[!NOTE]`, collapsible `[!NOTE]-` / `[!NOTE]+`, optional same-line
  * plain titles (`[!NOTE] Title`), and **simple-marked titles** (`[!NOTE] Title
- * **x**`, wiki / links / autolinks / simple escapes in the title). Heavy titles
- * (math / deep nests / multi-line HTML) stay dialect. The alert-plugin decorates from the
+ * **x**`, wiki / links / autolinks / simple escapes / simple inline math in the
+ * title). Heavy titles (deep nests / multi-line HTML) stay dialect. The
+ * alert-plugin decorates from the
  * leading `[!NOTE]` token either way.
  */
 const ALERT_MARKER_RE = /^\[!(NOTE|TIP|IMPORTANT|WARNING|CAUTION)\]([+-])?[ \t]*([^\n]*)(?:\n|$)/;
@@ -133,7 +135,7 @@ export function hasHardBreak(markdown: string): boolean {
  * plain or simple-marked (hard breaks + simple inline links / images +
  * simple reference links / images + simple bare http(s) + angle-bracket
  * http(s) + www. + email autolinks + simple wiki links + simple backslash
- * escapes + simple inline HTML allowed — engine-owned).
+ * escapes + simple inline HTML + simple inline math allowed — engine-owned).
  */
 export function canSkipDialectEnrich(kind: NotoBlockKind, markdown: string): boolean {
   if (ENGINE_LEAF_KINDS.has(kind)) return true;
@@ -220,10 +222,11 @@ export interface TryInlineOptions {
  * autolinks** (`<https://…>`; text === href), **simple www. autolinks**,
  * **simple email autolinks** (bare + angle / mailto), and **simple wiki**
  * (`[[target]]` / `[[target|alias]]` as literal text). Deep / ambiguous nests
- * (`***`, same-delimiter stacks), math / multi-line HTML, nested-bracket wiki,
+ * (`***`, same-delimiter stacks), multi-line HTML, nested-bracket wiki,
  * and unmatched delimiters
  * return `null` (dialect enrich). Simple backslash escapes (ASCII punctuation
- * + trailing-`\\` hard breaks) and **simple inline HTML** are owned. Snake_case underscores (`mcp_register`) stay
+ * + trailing-`\\` hard breaks), **simple inline HTML**, and **simple inline math**
+ * (`$…$` / `$$…$$`) are owned. Snake_case underscores (`mcp_register`) stay
  * literal via CommonMark-ish flanking. Bare `[…]` / `array[0]` (no trailing
  * `[]` / `[id]` / `(url)`) stay literal text. Footnotes `[^…]` stay dialect.
  */
@@ -246,7 +249,7 @@ export function tryInlineNodesFromSource(
       const rest = normalized.slice(prefix.length);
       // Same-line title may be plain (whole prefix as text) or simple-marked /
       // wiki / autolink / link (split marker+fold / spaces / title / newline).
-      // Heavy titles (math) and unparseable nests stay dialect.
+      // Deep / unparseable nests stay dialect; simple math / HTML / marks owned.
       if (title.length > 0 && INLINE_DIALECT_RE.test(title)) {
         const markerAndFold = `[!${match[1]}]${match[2] ?? ''}`;
         const afterMarker = prefix.slice(markerAndFold.length);
@@ -255,7 +258,6 @@ export function tryInlineNodesFromSource(
         const titleAndNl = afterMarker.slice(spaces.length);
         const hasNl = titleAndNl.endsWith('\n');
         const titleOnly = hasNl ? titleAndNl.slice(0, -1) : titleAndNl;
-        if (HEAVY_INLINE_RE.test(titleOnly)) return null;
         const titleNodes = tryInlineNodesFromSource(titleOnly);
         if (!titleNodes) return null;
         const nodes: ProseNode[] = [
@@ -279,7 +281,6 @@ export function tryInlineNodesFromSource(
   if (!INLINE_DIALECT_RE.test(normalized)) {
     return inlineNodesFromPlainSource(normalized);
   }
-  if (HEAVY_INLINE_RE.test(normalized)) return null;
   return parseSimpleAsteriskTildeCode(normalized);
 }
 
@@ -538,6 +539,69 @@ function endOfSimpleInlineHtml(input: string, at: number): number {
 }
 
 /** True when `<` at `at` looks like the start of HTML (not `a < b`). */
+
+/**
+ * Trim one leading and one trailing space/EOL from inline-math content when
+ * both ends are pad chars and the body holds non-whitespace (micromark
+ * mathText padding). `$ $` / `$ \n $` stay untrimmed.
+ */
+function padTrimMathValue(raw: string): string {
+  if (raw.length < 2) return raw;
+  const lead = raw[0]!;
+  const trail = raw[raw.length - 1]!;
+  const isPad = (c: string): boolean => c === ' ' || c === '\n' || c === '\r';
+  if (!isPad(lead) || !isPad(trail)) return raw;
+  if (!/[^ \t\r\n]/.test(raw)) return raw;
+  return raw.slice(1, -1);
+}
+
+/**
+ * Exclusive end (past closing `$` run) of simple micromark-extension-math
+ * inline math at `at`, or -1. Owns `$…$` and `$$…$$` (and longer equal-length
+ * runs) with `singleDollarTextMath: true` parity: closing run must match open
+ * length exactly; a longer/shorter `$` run mid-span is data. Newlines allowed
+ * in content. Returns -1 when unclosed. Value is pad-trimmed.
+ *
+ * Caller should emit `math_inline` with the returned value (no parent marks;
+ * from-mdast parity).
+ */
+function endOfSimpleInlineMath(input: string, at: number): { end: number; value: string } | null {
+  if (input[at] !== '$') return null;
+  // micromark `previous`: a `$` cannot start math when the previous code is `$`
+  // (unless that `$` was an escape — escapes are consumed before we reach here).
+  if (at > 0 && input[at - 1] === '$') return null;
+
+  let sizeOpen = 0;
+  let i = at;
+  const len = input.length;
+  while (i < len && input[i] === '$') {
+    sizeOpen += 1;
+    i += 1;
+  }
+  if (sizeOpen < 1) return null;
+
+  const contentStart = i;
+  while (i < len) {
+    if (input[i] !== '$') {
+      i += 1;
+      continue;
+    }
+    // Potential close run.
+    let size = 0;
+    const closeStart = i;
+    while (i < len && input[i] === '$') {
+      size += 1;
+      i += 1;
+    }
+    if (size === sizeOpen) {
+      const raw = input.slice(contentStart, closeStart);
+      return { end: i, value: padTrimMathValue(raw) };
+    }
+    // Longer/shorter run → data; keep scanning (i already past the run).
+  }
+  return null;
+}
+
 function looksLikeInlineHtmlStart(input: string, at: number): boolean {
   const next = input[at + 1];
   if (next === undefined) return false;
@@ -629,10 +693,10 @@ function parseSimpleAsteriskTildeCode(
   };
 
   const contentNeedsNest = (content: string, underscoreOuter: boolean): boolean => {
-    // Bare / angle http(s) / www. / email inside a mark needs a nest pass so
-    // the autolink branch runs (plainRunNodes alone would keep strong/em
-    // without the link).
-    if (/https?:\/\//i.test(content) || /www\./i.test(content) || content.includes('@') || content.includes('<')) return true;
+    // Bare / angle http(s) / www. / email / math / HTML inside a mark needs a
+    // nest pass so those branches run (plainRunNodes alone would keep marks
+    // without the nested atoms).
+    if (/https?:\/\//i.test(content) || /www\./i.test(content) || content.includes('@') || content.includes('<') || content.includes('$')) return true;
     if (underscoreOuter) return UNDERSCORE_FORBIDDEN.test(content);
     return ASTERISK_TILDE_FORBIDDEN.test(content) || hasNonSnakeUnderscore(content);
   };
@@ -663,6 +727,11 @@ function parseSimpleAsteriskTildeCode(
    * Returns end index exclusive, or -1 if unmatched / ambiguous.
    */
   const skipNestedSpan = (at: number): number => {
+    if (input[at] === '$') {
+      const math = endOfSimpleInlineMath(input, at);
+      if (!math) return -1;
+      return math.end;
+    }
     if (input[at] === '<') {
       const httpEnd = endOfSimpleAngleAutolink(input, at);
       if (httpEnd >= 0) return httpEnd;
@@ -846,6 +915,12 @@ function parseSimpleAsteriskTildeCode(
         search = afterEscape(search);
         continue;
       }
+      if (input[search] === '$') {
+        const math = endOfSimpleInlineMath(input, search);
+        if (!math) return -1;
+        search = math.end;
+        continue;
+      }
       if (input[search] === '<') {
         const httpEnd = endOfSimpleAngleAutolink(input, search);
         if (httpEnd >= 0) {
@@ -932,6 +1007,12 @@ function parseSimpleAsteriskTildeCode(
         search = afterEscape(search);
         continue;
       }
+      if (input[search] === '$') {
+        const math = endOfSimpleInlineMath(input, search);
+        if (!math) return -1;
+        search = math.end;
+        continue;
+      }
       if (input[search] === '<') {
         const httpEnd = endOfSimpleAngleAutolink(input, search);
         if (httpEnd >= 0) {
@@ -988,6 +1069,12 @@ function parseSimpleAsteriskTildeCode(
     while (search < len) {
       if (input[search] === '\\') {
         search = afterEscape(search);
+        continue;
+      }
+      if (input[search] === '$') {
+        const math = endOfSimpleInlineMath(input, search);
+        if (!math) return -1;
+        search = math.end;
         continue;
       }
       if (input[search] === '<') {
@@ -1073,6 +1160,22 @@ function parseSimpleAsteriskTildeCode(
       }
       emitPlain(i, i + 1);
       i += 1;
+      continue;
+    }
+
+    // Simple inline math `$…$` / `$$…$$` (micromark singleDollarTextMath parity).
+    // from-mdast: math_inline carries no parent marks.
+    if (input[i] === '$') {
+      const math = endOfSimpleInlineMath(input, i);
+      if (!math) {
+        // Unclosed / adjacent `$` — literal dollar (or dialect if it looks open).
+        emitPlain(i, i + 1);
+        i += 1;
+        continue;
+      }
+      const kids = math.value.length > 0 ? [schema.text(math.value)] : [];
+      nodes.push(schema.nodes.math_inline.create(null, kids));
+      i = math.end;
       continue;
     }
 
@@ -1394,7 +1497,7 @@ function parseSimpleAsteriskTildeCode(
           i = end;
           continue;
         }
-        if (/[\[\]<!$:\\]|https?:\/\//u.test(label)) return null;
+        if (/[\[\]<!:\\]|https?:\/\//u.test(label)) return null;
         if (!INLINE_DIALECT_RE.test(label)) {
           nodes.push(...plainRunNodes(label, childMarks, false));
         } else {
@@ -1484,7 +1587,7 @@ function parseSimpleAsteriskTildeCode(
         i = end;
         continue;
       }
-      if (/[\[\]<!$:\\]|https?:\/\//u.test(label)) return null;
+      if (/[\[\]<!:\\]|https?:\/\//u.test(label)) return null;
       if (!INLINE_DIALECT_RE.test(label)) {
         nodes.push(...plainRunNodes(label, childMarks, false));
       } else {
@@ -1513,7 +1616,7 @@ function parseSimpleAsteriskTildeCode(
     let j = i + 1;
     while (j < len) {
       const ch = input[j]!;
-      if (ch === '\\' || ch === '*' || ch === '~' || ch === '`' || ch === '_' || ch === '[' || ch === '!' || ch === '<') break;
+      if (ch === '\\' || ch === '*' || ch === '~' || ch === '`' || ch === '_' || ch === '[' || ch === '!' || ch === '<' || ch === '$') break;
       // Stop before bare http(s) / www. / email so the next iteration can own it.
       if (/^https?:\/\//i.test(input.slice(j))) break;
       if (/^www\./i.test(input.slice(j)) && endOfSimpleWwwAutolink(input, j) > 0) break;
