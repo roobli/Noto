@@ -49,7 +49,8 @@ Small public fixtures for comparing the **micromark** product path against
 | `simple-nested-lists.md` | same-family nested bullet/ordered at any depth (plain items; soft-wrap then nest; depth-2+); no marked items |
 | `simple-mixed-marker-nested-lists.md` | mixed-marker nests (bullet under ordered / ordered under bullet / deep mix); closes Phase 16 intentional gap; plain items only |
 | `simple-gfm-tables.md` | simple GFM pipe tables (align row; plain cells; indent; compact); no marked/ragged cells |
-| `simple-ragged-tables.md` | ragged body rows (short / long cell counts) on simple GFM tables owned on the flagged IR→PM path; delimiter≠header stays dialect |
+| `simple-ragged-tables.md` | ragged body rows (short / long cell counts) on simple GFM tables owned on the flagged IR→PM path |
+| `simple-table-header-delim-columns.md` | GFM table header/delimiter column-count parity (`@roobli/md` ≥ v0.1.14 Phase 17): mismatched counts stay paragraph; matching counts + ragged body stay table; mismatch does not interrupt a preceding paragraph |
 | `simple-math-html-in-tables.md` | simple `$…$` / `$$…$$` and simple inline HTML tags inside GFM table cells owned on the flagged IR→PM path (docs previously claimed dialect — stale) |
 | `simple-footnote-defs.md` | simple `[^id]:` footnote definitions (plain body, soft-wrap, cased label) |
 | `empty-footnote-defs.md` | empty / whitespace-only `[^id]:` footnote definitions (cased label) |
@@ -59,7 +60,7 @@ Small public fixtures for comparing the **micromark** product path against
 | `empty-fence.md` | empty fenced code (plain + language) |
 | `escapes.md` | backslash-escaped emphasis / code / brackets / pipe |
 | `simple-escapes.md` | simple CommonMark backslash escapes (ASCII punctuation + `\\` hard breaks) owned on the flagged IR→PM path; math / multi-line HTML stay dialect |
-| `simple-escapes-in-tables.md` | escaped `|` inside simple GFM table cells owned on the flagged IR→PM path; delimiter≠header stays dialect |
+| `simple-escapes-in-tables.md` | escaped `|` inside simple GFM table cells owned on the flagged IR→PM path |
 | `simple-inline-html.md` | simple single-line inline HTML (`<span>`, `</span>`, `<br/>`, comments) owned on the flagged IR→PM path; multi-line / exotic HTML stay dialect |
 | `simple-inline-math.md` | simple inline math (`$…$` / `$$…$$`) owned on the flagged IR→PM path; multi-line HTML stay dialect |
 | `simple-image-alts.md` | simple image alts with math / marks / escapes / literal HTML (micromark-equivalent plain alt string) in para/heading/list/quote/table + reference forms; nested-bracket / `***` / unmatched stay dialect |
@@ -80,6 +81,11 @@ out of this directory so the suite stays loud-fail-only on match):
    (Phase 16). Covered by `simple-mixed-marker-nested-lists.md` (bullet under
    ordered / ordered under bullet / deep mix). Same-family nests remain in
    `simple-nested-lists.md`.
+3. ~~**GFM table header/delimiter column-count**~~ — **closed** in
+   `@roobli/md` v0.1.14 (Phase 17). Covered by
+   `simple-table-header-delim-columns.md` (mismatched counts → paragraph;
+   matching + ragged body → table; mismatch does not interrupt a preceding
+   paragraph).
 
 Every fixture **in this directory** is expected to match on:
 

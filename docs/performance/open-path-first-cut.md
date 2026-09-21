@@ -173,9 +173,11 @@ engine-owned; deep / ambiguous nests / multi-line HTML still take the dialect pa
 `parseHeadingSource` (`@roobli/md` ≥ v0.1.12 Phase 15 closes the former
 split gap; covered by `simple-setext-dash-headings.md`). Mixed-marker nested lists
 need `@roobli/md` ≥ v0.1.13 (Phase 16; `simple-mixed-marker-nested-lists.md`).
+Header/delimiter column-count parity needs `@roobli/md` ≥ v0.1.14 (Phase 17;
+`simple-table-header-delim-columns.md` — mismatched counts stay paragraph at
+split, matching micromark).
 
-Cross-family nests, multi-block items, heavy callout titles, complex /
-complex tables (delimiter≠header; not GFM), deep / ambiguous nested marks / multi-line HTML still need dialect (ragged body rows + simple HTML/math in table cells + simple image alts + simple inline math are engine-owned)
+Cross-family nests, multi-block items, heavy callout titles, deep / ambiguous nested marks / multi-line HTML still need dialect (ragged body rows + simple HTML/math in table cells + simple image alts + simple inline math are engine-owned; Phase 17 mismatched header/delim are paragraphs, not tables)
 enrich + `from-mdast` (empty footnote bodies, nests at any depth incl. mixed-marker,
 nested plain quotes, simple lists-in-quotes, hard breaks in quotes, lazy nest
 continuation via fewer `>` **or true no-`>`**, hard breaks inside simple lists /
@@ -201,9 +203,9 @@ Does **not** flip default-on.
    depth) + simple GFM table skip mdast (`pm/from-engine.ts`); enrich flags +
    `enrichSpansInRange` honour the skip.
 2. ~~Kind-aware structural stand-ins (heading/fence/…)~~ — shipped (#90).
-3. Extend IR→PM to more kinds when safe (complex tables with delimiter≠header, deep
+3. Extend IR→PM to more kinds when safe (deep
    nested marks / multi-line HTML, marked footnote bodies with heavy
-   inline, heavy callout titles still dialect; simple escapes + escaped pipes in simple tables + simple inline HTML + simple inline math + simple HTML/math in table cells + simple image alts owned; collapsible/plain-titled/simple-marked-title callouts owned; simple flat + one-level
+   inline, heavy callout titles still dialect; Phase 17 header/delim column parity owned at split; simple escapes + escaped pipes in simple tables + simple inline HTML + simple inline math + simple HTML/math in table cells + simple image alts owned; collapsible/plain-titled/simple-marked-title callouts owned; simple flat + one-level
    nested `**`/`*`/`__`/`_`/`~~`/`` ` `` marks owned across paras/headings/lists/
    tables/quotes/callouts/footnotes; simple inline links/images + simple reference
    links/images + simple bare + angle-bracket http(s) + www. + email + simple wiki `[[…]]` (literal text) owned; snake_case underscores stay literal). Plain hard-break paragraphs/headings,
@@ -220,7 +222,7 @@ Does **not** flip default-on.
    lists, simple GFM tables, simple footnote-defs, empty footnote-defs, CJK
    emphasis, hard-breaks, images, empty/meta fences, escapes, table-align,
    ordered-start, inline HTML, simple-reference-links landed; intentional engine gaps documented in
-   that README; simple-angle-autolinks / simple-www-autolinks / simple-email-autolinks / simple-escapes / simple-escapes-in-tables / simple-ragged-tables / simple-inline-html / simple-inline-math / simple-image-alts / simple-math-html-in-tables / simple-marked-callout-titles / simple-setext-dash-headings / simple-mixed-marker-nested-lists landed.
+   that README; simple-angle-autolinks / simple-www-autolinks / simple-email-autolinks / simple-escapes / simple-escapes-in-tables / simple-ragged-tables / simple-inline-html / simple-inline-math / simple-image-alts / simple-math-html-in-tables / simple-marked-callout-titles / simple-setext-dash-headings / simple-mixed-marker-nested-lists / simple-table-header-delim-columns landed.
 
 Do not defer main’s file-truth structural parse; do not flip the product
 default from this doc.

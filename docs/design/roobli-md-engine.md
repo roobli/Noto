@@ -2,7 +2,7 @@
 
 Noto’s markdown v3 stack (`src/shared/markdown/v3/`) still defaults to micromark.
 The long-term engine that should own that hot path is the public MIT package
-**[@roobli/md](https://github.com/roobli/md)** v0.1.13 (“WYSIWYG-first markdown
+**[@roobli/md](https://github.com/roobli/md)** v0.1.14 (“WYSIWYG-first markdown
 engine for Noto”).
 
 ## Why
@@ -16,7 +16,7 @@ mdast dump.
 ## Dependency
 
 ```
-"@roobli/md": "github:roobli/md#v0.1.13"
+"@roobli/md": "github:roobli/md#v0.1.14"
 ```
 
 pnpm must allow its `prepare` (tsc) build — see `allowBuilds` in
@@ -59,7 +59,7 @@ quotes/callouts and native indented-code match micromark (`@roobli/md` v0.1.2+).
 `semanticKey` computation, wire `nodes` (mdast). Native engine spans ship
 `node: null`; the adapter attaches mdast via Noto’s `syntax.ts` dialect when a
 ProseMirror-ready node is required. Engine serialize + split dialect (Phase
-7–16 in `@roobli/md` v0.1.13) owns hard-break → two spaces, list marker /
+7–17 in `@roobli/md` v0.1.14) owns hard-break → two spaces, list marker /
 delimiter from `node.data`, verbatim runs (wiki / alert / footnote / TOC /
 snake_case), bare http(s) autolinks, table delimiter widening (vault
 three-dash; content cells stay unpadded), line-prefix offset alignment
@@ -110,7 +110,7 @@ Coverage today: headings, lists (incl. nested any depth, mixed-marker), tables, 
 math/code fences, frontmatter, CJK, alerts/callout edges, footnotes,
 indented-code, tight quotes, GFM strikethrough/autolink, HTML blocks,
 setext+hr, link-definitions, simple quotes, simple flat lists, simple-nested-lists, simple GFM
-tables, simple footnote-defs, empty footnote-defs, CJK emphasis, hard-breaks (incl. in quotes + lazy nest)/images/empty-fence/escapes/table-align/ordered-start/fence-meta/html-inline. Intentional diffs (mixed-marker nested lists closed in v0.1.13; setext-`---` closed in v0.1.12) are listed in `tests/fixtures/markdown-golden/README.md` and
+tables, simple footnote-defs, empty footnote-defs, CJK emphasis, hard-breaks (incl. in quotes + lazy nest)/images/empty-fence/escapes/table-align/ordered-start/fence-meta/html-inline. Intentional diffs (table header/delim columns closed in v0.1.14; mixed-marker nested lists closed in v0.1.13; setext-`---` closed in v0.1.12) are listed in `tests/fixtures/markdown-golden/README.md` and
 kept out of the strict directory; silent divergence fails the gate loudly
 (`GOLDEN GATE FAIL …`).
 
@@ -150,7 +150,7 @@ reviewed:
 | Flagged open-path deferred + viewport enrich + IR→PM leaf/plain(incl. hard-break)/link-def/simple-footnote(incl. empty + hard breaks)/simple-quote(incl. nested + lists-in-quotes + hard breaks)/flat-or-nested-list(any depth, incl. hard breaks)/simple-table(incl. ragged body)/simple inline HTML+math | Landed (still flagged-only) |
 | Flagged serialize (identity / single / multi) + `reparseFromText` host wiring | Landed |
 | Packaged / e2e open feel on medium under the flag | Not a flip gate alone; measure before flip |
-| Intentional diffs documented in `markdown-golden/README.md` | Mixed-marker nested lists closed (v0.1.13 + `simple-mixed-marker-nested-lists.md`); setext-`---` closed (v0.1.12 + `simple-setext-dash-headings.md`) |
+| Intentional diffs documented in `markdown-golden/README.md` | Table header/delim columns closed (v0.1.14 + `simple-table-header-delim-columns.md`); mixed-marker nested lists closed (v0.1.13 + `simple-mixed-marker-nested-lists.md`); setext-`---` closed (v0.1.12 + `simple-setext-dash-headings.md`) |
 
 **Prefer not flipping** until golden coverage is obviously broader than the
 current curated set and open-path IR→PM has a clear story for marked-up
@@ -165,7 +165,7 @@ paragraphs (still dialect today). Optional local: `NOTO_MARKDOWN_ENGINE=roobli-m
 
 ## Status
 
-**Adapter spike landed (default-off).** `@roobli/md` v0.1.13 is the pinned
+**Adapter spike landed (default-off).** `@roobli/md` v0.1.14 is the pinned
 flagged backend; micromark remains the product default. Quote/callout and
 indented-code split parity are closed; engine serialize dialect (hard-break /
 list-marker / verbatim / bare autolink / table delimiters / Phase 12 CJK
@@ -173,7 +173,7 @@ emphasis), Phase 10 line-prefix offsets, Phase 11 `reparseFromText`, and
 Phase 13 CommonMark lazy continuation (no-`>` quotes / unindented list soft-wrap) and
 Phase 14 nest/interrupt parity (definition lazy; GFM tables interrupt paragraphs;
 list-nested indented blocks; v0.1.11 adjacent defs stay separate spans) and
-Phase 15 setext-`---` vs thematic-break parity (v0.1.12) and Phase 16 mixed-marker nested lists (v0.1.13) are available on the flagged path.
+Phase 15 setext-`---` vs thematic-break parity (v0.1.12), Phase 16 mixed-marker nested lists (v0.1.13), and Phase 17 GFM table header/delimiter column-count parity (v0.1.14) are available on the flagged path.
 
 **Host wiring (flagged `replaceMarkdown`).** `PriorSplitCache`
 (`src/shared/markdown/v3/prior-split-cache.ts`) seeds a structural split on
@@ -211,7 +211,7 @@ breaks; nested children may nest only) + simple GFM tables (alignment row; plain
 or simple-marked cells incl. escaped pipes; consistent or ragged body columns);
 enrich flags mark those done — see `docs/performance/open-path-first-cut.md`.
 Cross-family nests, multi-block items, heavy callout titles, complex tables
-(delimiter≠header; not GFM), and heavy inline (deep / ambiguous
+(legacy IR→PM refuse if a mismatched span is forced; Phase 17 split keeps them paragraphs), and heavy inline (deep / ambiguous
 nested marks, multi-line HTML, nested-bracket wiki / nested-bracket image alts) stay on dialect.
 Ragged body rows on otherwise-simple GFM tables are engine-owned.
 Simple inline math (`$…$` / `$$…$$`) and simple HTML/math in table cells are engine-owned.
@@ -231,7 +231,7 @@ simple GFM tables**, and **simple inline HTML** (single-line tags / comments / P
 Product default stays micromark.
 
 Next: keep growing `markdown-golden/` (more GFM / vault edges), extend IR→PM
-only where micromark parity is locked (complex tables with delimiter≠header /
+only where micromark parity is locked (Phase 17 mismatched header/delim are paragraphs at split; residual dialect for deep nests /
 deeper mark nests / multi-line HTML / heavy callout titles), then reconsider
 default-on. Hard-breaks, images, empty/meta fences, escapes, table-align,
 ordered-start, inline HTML, simple-flat-lists, simple-nested-lists,
@@ -240,10 +240,10 @@ simple-lazy-continuations-in-quotes, simple-no-marker-lazy-in-quotes,
 simple-lazy-list-continuations, simple-hard-breaks-in-lists,
 simple-hard-breaks-in-footnotes, simple-callouts, simple-titled-collapsible-callouts, simple-marked-callout-titles, simple-marked-phrasing,
 simple-underscore-emphasis, simple-nested-marks, simple-inline-links, simple-bare-autolinks, simple-angle-autolinks, simple-www-autolinks, simple-email-autolinks / simple-escapes / simple-escapes-in-tables / simple-ragged-tables / simple-inline-html / simple-inline-math / simple-image-alts / simple-math-html-in-tables, simple-reference-links, simple-wiki-links, simple-gfm-tables,
-simple-footnote-defs, empty-footnote-defs, simple-setext-dash-headings, simple-mixed-marker-nested-lists, and cjk-emphasis goldens landed.
+simple-footnote-defs, empty-footnote-defs, simple-setext-dash-headings, simple-mixed-marker-nested-lists, simple-table-header-delim-columns, and cjk-emphasis goldens landed.
 Do **not** flip the product default yet.
 
 **Noto `0.0.2-alpha.9`** shipped the adapter (#37) plus `@roobli/md` v0.1.1 quote/
-callout parity (#38). Pin is now `@roobli/md` v0.1.13 (Phase 16 mixed-marker nested lists on top of Phase 15 setext-`---` /
-Phase 14 nest/interrupt + adjacent-def / Phase 13 lazy / Phase 12 CJK / Phase 11 / 10 / 9 / 8 / 7 / v0.1.2). Optional:
+callout parity (#38). Pin is now `@roobli/md` v0.1.14 (Phase 17 table header/delim columns on top of Phase 16 mixed-marker nested lists /
+Phase 15 setext-`---` / Phase 14 nest/interrupt + adjacent-def / Phase 13 lazy / Phase 12 CJK / Phase 11 / 10 / 9 / 8 / 7 / v0.1.2). Optional:
 `NOTO_MARKDOWN_ENGINE=roobli-md` (micromark remains default).
