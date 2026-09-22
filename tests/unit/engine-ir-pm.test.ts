@@ -5,7 +5,7 @@
  * plain + hard breaks + lists-in-quotes + simple GFM alerts / callouts with
  * plain or simple-marked bodies + lazy continuation (fewer `>` and true no-`>`)
  * + simple flat / same-family nested list (any depth, incl. hard breaks +
- * simple marks incl. flat underscore + up to three-level nested marks + collapsible/plain-titled/simple-marked-title callouts + unindented lazy
+ * simple marks incl. flat underscore + up to four-level nested marks + collapsible/plain-titled/simple-marked-title callouts + unindented lazy
  * soft-wrap) + simple GFM table with plain or simple-marked cells incl.
  * escaped pipes + simple inline links / images + simple reference links /
  * images + simple bare http(s) + angle-bracket http(s) + www. + email
@@ -935,7 +935,7 @@ describe('blockFromEngineSpan', () => {
     expect(nestedBit!.marks.map((m) => m.type.name).sort()).toEqual(['emphasis', 'emphasis', 'strong']);
     expect(canSkipDialectEnrich('paragraph', '**a *b `code` c* d**')).toBe(true);
     expect(blockFromEngineSpan('paragraph', '**a *b `code` c* d**')?.textContent).toBe('a b code c d');
-    // Three-level nests (MAX_MARK_NEST = 3).
+    // Three-level nests (MAX_MARK_NEST ≥ 3).
     const three = blockFromEngineSpan('paragraph', '**a *b ~~c _d_ c~~ b* a**');
     expect(three?.textContent).toBe('a b c d c b a');
     const dBit = [...Array(three!.childCount)].map((_, i) => three!.child(i)).find((n) => n.text === 'd');
@@ -950,8 +950,30 @@ describe('blockFromEngineSpan', () => {
     const emBit = [...Array(threeB!.childCount)].map((_, i) => threeB!.child(i)).find((n) => n.text === 'em');
     expect(emBit!.marks.map((m) => m.type.name).sort()).toEqual(['emphasis', 'strikethrough', 'strong']);
     expect(canSkipDialectEnrich('paragraph', '**a *b ~~c _d_ c~~ b* a**')).toBe(true);
-    // Four-level + ambiguous / same-delimiter stay dialect.
-    expect(blockFromEngineSpan('paragraph', '**a *b ~~c _d `e` d_ c~~ b* a**')).toBeNull();
+    // Four-level nests (MAX_MARK_NEST = 4).
+    const four = blockFromEngineSpan('paragraph', '**a *b ~~c _d `e` d_ c~~ b* a**');
+    expect(four?.textContent).toBe('a b c d e d c b a');
+    const eBit = [...Array(four!.childCount)].map((_, i) => four!.child(i)).find((n) => n.text === 'e');
+    expect(eBit!.marks.map((m) => m.type.name).sort()).toEqual([
+      'emphasis',
+      'emphasis',
+      'inline_code',
+      'strikethrough',
+      'strong',
+    ]);
+    const fourB = blockFromEngineSpan('paragraph', '*em **bold ~~del _x `y` x_~~ more** rest*');
+    expect(fourB?.textContent).toBe('em bold del x y x more rest');
+    const yBit = [...Array(fourB!.childCount)].map((_, i) => fourB!.child(i)).find((n) => n.text === 'y');
+    expect(yBit!.marks.map((m) => m.type.name).sort()).toEqual([
+      'emphasis',
+      'emphasis',
+      'inline_code',
+      'strikethrough',
+      'strong',
+    ]);
+    expect(canSkipDialectEnrich('paragraph', '**a *b ~~c _d `e` d_ c~~ b* a**')).toBe(true);
+    // Five-level + ambiguous / same-delimiter stay dialect.
+    expect(blockFromEngineSpan('paragraph', '**v *w ~~x _y *z `a` z* y_ x~~ w* v**')).toBeNull();
     expect(blockFromEngineSpan('paragraph', '**bold `code`**')?.textContent).toBe('bold code');
     expect(blockFromEngineSpan('paragraph', '***triple***')).toBeNull();
     expect(blockFromEngineSpan('paragraph', '**a **b** c**')).toBeNull();
@@ -1228,6 +1250,8 @@ describe('blockFromEngineSpan', () => {
       '**a *b `code` c* d**\n',
       '**a *b ~~c _d_ c~~ b* a**\n',
       '~~del **bold *em* rest** del~~\n',
+      '**a *b ~~c _d `e` d_ c~~ b* a**\n',
+      '*em **bold ~~del _x `y` x_~~ more** rest*\n',
       '**bold `code`**\n',
       '[docs](https://example.com/path)\n',
       '![alt](./a.png)\n',
