@@ -169,6 +169,7 @@ describe('markdown golden gates — fixture inventory', () => {
       'simple-escapes.md',
       'simple-flat-lists.md',
       'simple-footnote-defs.md',
+      'simple-four-level-nested-marks.md',
       'simple-gfm-tables.md',
       'simple-hard-breaks-in-footnotes.md',
       'simple-hard-breaks-in-lists.md',
