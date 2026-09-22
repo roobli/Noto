@@ -5,7 +5,7 @@
  * plain + hard breaks + lists-in-quotes + simple GFM alerts / callouts with
  * plain or simple-marked bodies + lazy continuation (fewer `>` and true no-`>`)
  * + simple flat / same-family nested list (any depth, incl. hard breaks +
- * simple marks incl. flat underscore + up to two-level nested marks + collapsible/plain-titled/simple-marked-title callouts + unindented lazy
+ * simple marks incl. flat underscore + up to three-level nested marks + collapsible/plain-titled/simple-marked-title callouts + unindented lazy
  * soft-wrap) + simple GFM table with plain or simple-marked cells incl.
  * escaped pipes + simple inline links / images + simple reference links /
  * images + simple bare http(s) + angle-bracket http(s) + www. + email
@@ -923,7 +923,7 @@ describe('blockFromEngineSpan', () => {
     expect(emStrong?.textContent).toBe('em strong em');
     const strongBit = [...Array(emStrong!.childCount)].map((_, i) => emStrong!.child(i)).find((n) => n.text === 'strong');
     expect(strongBit!.marks.map((m) => m.type.name).sort()).toEqual(['emphasis', 'strong']);
-    // Two-level nests (MAX_MARK_NEST = 2).
+    // Two-level nests (MAX_MARK_NEST ≥ 2).
     const two = blockFromEngineSpan('paragraph', '**bold *em ~~strike~~ more* bold**');
     expect(two?.textContent).toBe('bold em strike more bold');
     const strikeBit = [...Array(two!.childCount)].map((_, i) => two!.child(i)).find((n) => n.text === 'strike');
@@ -935,8 +935,23 @@ describe('blockFromEngineSpan', () => {
     expect(nestedBit!.marks.map((m) => m.type.name).sort()).toEqual(['emphasis', 'emphasis', 'strong']);
     expect(canSkipDialectEnrich('paragraph', '**a *b `code` c* d**')).toBe(true);
     expect(blockFromEngineSpan('paragraph', '**a *b `code` c* d**')?.textContent).toBe('a b code c d');
-    // Three-level + ambiguous / same-delimiter stay dialect.
-    expect(blockFromEngineSpan('paragraph', '**a *b ~~c _d_ c~~ b* a**')).toBeNull();
+    // Three-level nests (MAX_MARK_NEST = 3).
+    const three = blockFromEngineSpan('paragraph', '**a *b ~~c _d_ c~~ b* a**');
+    expect(three?.textContent).toBe('a b c d c b a');
+    const dBit = [...Array(three!.childCount)].map((_, i) => three!.child(i)).find((n) => n.text === 'd');
+    expect(dBit!.marks.map((m) => m.type.name).sort()).toEqual([
+      'emphasis',
+      'emphasis',
+      'strikethrough',
+      'strong',
+    ]);
+    const threeB = blockFromEngineSpan('paragraph', '~~del **bold *em* rest** del~~');
+    expect(threeB?.textContent).toBe('del bold em rest del');
+    const emBit = [...Array(threeB!.childCount)].map((_, i) => threeB!.child(i)).find((n) => n.text === 'em');
+    expect(emBit!.marks.map((m) => m.type.name).sort()).toEqual(['emphasis', 'strikethrough', 'strong']);
+    expect(canSkipDialectEnrich('paragraph', '**a *b ~~c _d_ c~~ b* a**')).toBe(true);
+    // Four-level + ambiguous / same-delimiter stay dialect.
+    expect(blockFromEngineSpan('paragraph', '**a *b ~~c _d `e` d_ c~~ b* a**')).toBeNull();
     expect(blockFromEngineSpan('paragraph', '**bold `code`**')?.textContent).toBe('bold code');
     expect(blockFromEngineSpan('paragraph', '***triple***')).toBeNull();
     expect(blockFromEngineSpan('paragraph', '**a **b** c**')).toBeNull();
@@ -1211,6 +1226,8 @@ describe('blockFromEngineSpan', () => {
       '*em **bold _nested_** more*\n',
       '~~del **bold _em_** del~~\n',
       '**a *b `code` c* d**\n',
+      '**a *b ~~c _d_ c~~ b* a**\n',
+      '~~del **bold *em* rest** del~~\n',
       '**bold `code`**\n',
       '[docs](https://example.com/path)\n',
       '![alt](./a.png)\n',
