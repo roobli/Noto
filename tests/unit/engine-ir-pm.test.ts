@@ -5,7 +5,7 @@
  * plain + hard breaks + lists-in-quotes + simple GFM alerts / callouts with
  * plain or simple-marked bodies + lazy continuation (fewer `>` and true no-`>`)
  * + simple flat / same-family nested list (any depth, incl. hard breaks +
- * simple marks incl. flat underscore + up to five-level nested marks + collapsible/plain-titled/simple-marked-title callouts + unindented lazy
+ * simple marks incl. flat underscore + up to six-level nested marks + collapsible/plain-titled/simple-marked-title callouts + unindented lazy
  * soft-wrap) + simple GFM table with plain or simple-marked cells incl.
  * escaped pipes + simple inline links / images + simple reference links /
  * images + simple bare http(s) + angle-bracket http(s) + www. + email
@@ -972,7 +972,7 @@ describe('blockFromEngineSpan', () => {
       'strong',
     ]);
     expect(canSkipDialectEnrich('paragraph', '**a *b ~~c _d `e` d_ c~~ b* a**')).toBe(true);
-    // Five-level nests (MAX_MARK_NEST = 5).
+    // Five-level nests (MAX_MARK_NEST ≥ 5).
     const five = blockFromEngineSpan('paragraph', '**v *w ~~x _y *z `a` z* y_ x~~ w* v**');
     expect(five?.textContent).toBe('v w x y z a z y x w v');
     const aBit = [...Array(five!.childCount)].map((_, i) => five!.child(i)).find((n) => n.text === 'a');
@@ -996,8 +996,34 @@ describe('blockFromEngineSpan', () => {
       'strong',
     ]);
     expect(canSkipDialectEnrich('paragraph', '**v *w ~~x _y *z `a` z* y_ x~~ w* v**')).toBe(true);
-    // Six-level + ambiguous / same-delimiter stay dialect.
-    expect(blockFromEngineSpan('paragraph', '**u *v ~~w _x *y _z `a` z_ y* x_ w~~ v* u**')).toBeNull();
+    // Six-level nests (MAX_MARK_NEST = 6).
+    const six = blockFromEngineSpan('paragraph', '**u *v ~~w _x *y _z `a` z_ y* x_ w~~ v* u**');
+    expect(six?.textContent).toBe('u v w x y z a z y x w v u');
+    const sixA = [...Array(six!.childCount)].map((_, i) => six!.child(i)).find((n) => n.text === 'a');
+    expect(sixA!.marks.map((m) => m.type.name).sort()).toEqual([
+      'emphasis',
+      'emphasis',
+      'emphasis',
+      'emphasis',
+      'inline_code',
+      'strikethrough',
+      'strong',
+    ]);
+    const sixB = blockFromEngineSpan('paragraph', '*em **bold ~~del _x *y _z `a` z_ y* x_~~ more** rest*');
+    expect(sixB?.textContent).toBe('em bold del x y z a z y x more rest');
+    const sixBA = [...Array(sixB!.childCount)].map((_, i) => sixB!.child(i)).find((n) => n.text === 'a');
+    expect(sixBA!.marks.map((m) => m.type.name).sort()).toEqual([
+      'emphasis',
+      'emphasis',
+      'emphasis',
+      'emphasis',
+      'inline_code',
+      'strikethrough',
+      'strong',
+    ]);
+    expect(canSkipDialectEnrich('paragraph', '**u *v ~~w _x *y _z `a` z_ y* x_ w~~ v* u**')).toBe(true);
+    // Seven-level + ambiguous / same-delimiter stay dialect.
+    expect(blockFromEngineSpan('paragraph', '**t *u ~~v _w *x ~~y _z `a` z_ y~~ x* w_ v~~ u* t**')).toBeNull();
     expect(blockFromEngineSpan('paragraph', '**bold `code`**')?.textContent).toBe('bold code');
     expect(blockFromEngineSpan('paragraph', '***triple***')).toBeNull();
     expect(blockFromEngineSpan('paragraph', '**a **b** c**')).toBeNull();

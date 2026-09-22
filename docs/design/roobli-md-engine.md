@@ -211,7 +211,7 @@ breaks; nested children may nest only) + simple GFM tables (alignment row; plain
 or simple-marked cells incl. escaped pipes; consistent or ragged body columns);
 enrich flags mark those done — see `docs/performance/open-path-first-cut.md`.
 Cross-family nests, multi-block items, heavy callout titles, complex tables
-(legacy IR→PM refuse if a mismatched span is forced; Phase 17 split keeps them paragraphs), and heavy inline (six+ / ambiguous
+(legacy IR→PM refuse if a mismatched span is forced; Phase 17 split keeps them paragraphs), and heavy inline (seven+ / ambiguous
 nested marks, multi-line HTML, nested-bracket wiki / nested-bracket image alts) stay on dialect.
 Ragged body rows on otherwise-simple GFM tables are engine-owned.
 Simple inline math (`$…$` / `$$…$$`) and simple HTML/math in table cells are engine-owned.
@@ -221,8 +221,8 @@ any depth, nested plain quotes, simple lists-in-quotes, plain / simple-marked
 callouts, hard breaks in quotes, lazy nest continuation via fewer `>` **and
 true no-`>`**, hard breaks inside simple lists / footnotes, flat simple marked
 phrasing (`**` / `*` / `__` / `_` / `~~` / `` ` ``; snake_case literal),
-**up to five-level nested marks** (`**bold _em_**`, `*em **strong** em*`,
-`**bold *em ~~strike~~ more* bold**`, `**a *b ~~c _d_ c~~ b* a**`, `**a *b ~~c _d `e` d_ c~~ b* a**`, `**v *w ~~x _y *z `a` z* y_ x~~ w* v**`, code inside nested marks), **simple inline links / images** (`[text](url)`, `![alt](url)`,
+**up to six-level nested marks** (`**bold _em_**`, `*em **strong** em*`,
+`**bold *em ~~strike~~ more* bold**`, `**a *b ~~c _d_ c~~ b* a**`, `**a *b ~~c _d `e` d_ c~~ b* a**`, `**v *w ~~x _y *z `a` z* y_ x~~ w* v**`, `**u *v ~~w _x *y _z `a` z_ y* x_ w~~ v* u**`, code inside nested marks), **simple inline links / images** (`[text](url)`, `![alt](url)`,
 optional title; plain or simple-marked link text; **simple image alts** with math/marks/escapes/literal HTML), **simple reference links /
 images** (`[text][id]` / `[text][]` / `![alt][id]` / `![alt][]`), **simple bare
 http(s) autolinks**, **simple angle-bracket http(s) autolinks**, **simple www. autolinks**, **simple email autolinks** (bare + angle / mailto), **simple wiki links** (`[[target]]` / `[[target|alias]]` as literal text; decoration
@@ -231,7 +231,7 @@ simple GFM tables**, and **simple inline HTML** (single-line tags / comments / P
 Product default stays micromark.
 
 Next: keep growing `markdown-golden/` (more GFM / vault edges), extend IR→PM
-only where micromark parity is locked (Phase 17 mismatched header/delim are paragraphs at split; residual dialect for six+ /
+only where micromark parity is locked (Phase 17 mismatched header/delim are paragraphs at split; residual dialect for seven+ /
 ambiguous mark nests / multi-line HTML / heavy callout titles), then reconsider
 default-on. Hard-breaks, images, empty/meta fences, escapes, table-align,
 ordered-start, inline HTML, simple-flat-lists, simple-nested-lists,
@@ -239,7 +239,7 @@ simple-nested-quotes, simple-lists-in-quotes, simple-hard-breaks-in-quotes,
 simple-lazy-continuations-in-quotes, simple-no-marker-lazy-in-quotes,
 simple-lazy-list-continuations, simple-hard-breaks-in-lists,
 simple-hard-breaks-in-footnotes, simple-callouts, simple-titled-collapsible-callouts, simple-marked-callout-titles, simple-marked-phrasing,
-simple-underscore-emphasis, simple-nested-marks, simple-two-level-nested-marks, simple-three-level-nested-marks, simple-four-level-nested-marks, simple-five-level-nested-marks, simple-inline-links, simple-bare-autolinks, simple-angle-autolinks, simple-www-autolinks, simple-email-autolinks / simple-escapes / simple-escapes-in-tables / simple-ragged-tables / simple-inline-html / simple-inline-math / simple-image-alts / simple-math-html-in-tables, simple-reference-links, simple-wiki-links, simple-gfm-tables,
+simple-underscore-emphasis, simple-nested-marks, simple-two-level-nested-marks, simple-three-level-nested-marks, simple-four-level-nested-marks, simple-five-level-nested-marks, simple-six-level-nested-marks, simple-inline-links, simple-bare-autolinks, simple-angle-autolinks, simple-www-autolinks, simple-email-autolinks / simple-escapes / simple-escapes-in-tables / simple-ragged-tables / simple-inline-html / simple-inline-math / simple-image-alts / simple-math-html-in-tables, simple-reference-links, simple-wiki-links, simple-gfm-tables,
 simple-footnote-defs, empty-footnote-defs, simple-setext-dash-headings, simple-mixed-marker-nested-lists, simple-table-header-delim-columns, and cjk-emphasis goldens landed.
 Do **not** flip the product default yet.
 
