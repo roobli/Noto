@@ -5,7 +5,7 @@
  * plain + hard breaks + lists-in-quotes + simple GFM alerts / callouts with
  * plain or simple-marked bodies + lazy continuation (fewer `>` and true no-`>`)
  * + simple flat / same-family nested list (any depth, incl. hard breaks +
- * simple marks incl. flat underscore + up to eleven-level nested marks + collapsible/plain-titled/simple-marked-title callouts + unindented lazy
+ * simple marks incl. flat underscore + up to twelve-level nested marks + collapsible/plain-titled/simple-marked-title callouts + unindented lazy
  * soft-wrap) + simple GFM table with plain or simple-marked cells incl.
  * escaped pipes + simple inline links / images + simple reference links /
  * images + simple bare http(s) + angle-bracket http(s) + www. + email
@@ -1146,7 +1146,7 @@ describe('blockFromEngineSpan', () => {
       'strong',
     ]);
     expect(canSkipDialectEnrich('paragraph', '_q *r **s _t *u ~~v _w *x _y *z `a` z* y_ x* w_ v~~ u* t_ s** r* q_')).toBe(true);
-    // Eleven-level nests (MAX_MARK_NEST = 11).
+    // Eleven-level nests (MAX_MARK_NEST ≥ 11).
     const eleven = blockFromEngineSpan('paragraph', '**p _q *r **s _t *u ~~v _w *x _y *z `a` z* y_ x* w_ v~~ u* t_ s** r* q_ p**');
     expect(eleven?.textContent).toBe('p q r s t u v w x y z a z y x w v u t s r q p');
     const elevenA = [...Array(eleven!.childCount)].map((_, i) => eleven!.child(i)).find((n) => n.text === 'a');
@@ -1182,8 +1182,46 @@ describe('blockFromEngineSpan', () => {
       'strong',
     ]);
     expect(canSkipDialectEnrich('paragraph', '**p _q *r **s _t *u ~~v _w *x _y *z `a` z* y_ x* w_ v~~ u* t_ s** r* q_ p**')).toBe(true);
-    // Twelve-level + ambiguous / same-delimiter stay dialect.
-    expect(blockFromEngineSpan('paragraph', '*o **p _q *r **s _t *u ~~v _w *x _y *z `a` z* y_ x* w_ v~~ u* t_ s** r* q_ p** o*')).toBeNull();
+    // Twelve-level nests (MAX_MARK_NEST = 12).
+    const twelve = blockFromEngineSpan('paragraph', '*o **p _q *r **s _t *u ~~v _w *x _y *z `a` z* y_ x* w_ v~~ u* t_ s** r* q_ p** o*');
+    expect(twelve?.textContent).toBe('o p q r s t u v w x y z a z y x w v u t s r q p o');
+    const twelveA = [...Array(twelve!.childCount)].map((_, i) => twelve!.child(i)).find((n) => n.text === 'a');
+    expect(twelveA!.marks.map((m) => m.type.name).sort()).toEqual([
+      'emphasis',
+      'emphasis',
+      'emphasis',
+      'emphasis',
+      'emphasis',
+      'emphasis',
+      'emphasis',
+      'emphasis',
+      'emphasis',
+      'inline_code',
+      'strikethrough',
+      'strong',
+      'strong',
+    ]);
+    const twelveB = blockFromEngineSpan('paragraph', '**o _p *em **bold ~~del _x *y _z *w _v *u _t `a` t_ u* v_ w* z_ y* x_~~ more** rest* p_ o**');
+    expect(twelveB?.textContent).toBe('o p em bold del x y z w v u t a t u v w z y x more rest p o');
+    const twelveBA = [...Array(twelveB!.childCount)].map((_, i) => twelveB!.child(i)).find((n) => n.text === 'a');
+    expect(twelveBA!.marks.map((m) => m.type.name).sort()).toEqual([
+      'emphasis',
+      'emphasis',
+      'emphasis',
+      'emphasis',
+      'emphasis',
+      'emphasis',
+      'emphasis',
+      'emphasis',
+      'emphasis',
+      'inline_code',
+      'strikethrough',
+      'strong',
+      'strong',
+    ]);
+    expect(canSkipDialectEnrich('paragraph', '*o **p _q *r **s _t *u ~~v _w *x _y *z `a` z* y_ x* w_ v~~ u* t_ s** r* q_ p** o*')).toBe(true);
+    // Thirteen-level + ambiguous / same-delimiter stay dialect.
+    expect(blockFromEngineSpan('paragraph', '_n *o **p _q *r **s _t *u ~~v _w *x _y *z `a` z* y_ x* w_ v~~ u* t_ s** r* q_ p** o* n_')).toBeNull();
     expect(blockFromEngineSpan('paragraph', '**t *u ~~v _w *x ~~y _z `a` z_ y~~ x* w_ v~~ u* t**')).toBeNull();
     expect(blockFromEngineSpan('paragraph', '**bold `code`**')?.textContent).toBe('bold code');
     expect(blockFromEngineSpan('paragraph', '***triple***')).toBeNull();
