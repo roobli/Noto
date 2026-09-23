@@ -201,6 +201,7 @@ describe('markdown golden gates — fixture inventory', () => {
       'simple-setext-dash-headings.md',
       'simple-seven-level-nested-marks.md',
       'simple-six-level-nested-marks.md',
+      'simple-sixteen-level-nested-marks.md',
       'simple-table-header-delim-columns.md',
       'simple-ten-level-nested-marks.md',
       'simple-thirteen-level-nested-marks.md',
