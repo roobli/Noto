@@ -709,8 +709,8 @@ function parseSimpleImageAlt(label: string): string | null {
   return lead + flat + trail;
 }
 
-/** Max nest depth (11 = outer + eleven nested, e.g. `**p _q *r **s _t *u ~~v _w *x _y *z `a` z* y_ x* w_ v~~ u* t_ s** r* q_ p**`). */
-const MAX_MARK_NEST = 11;
+/** Max nest depth (12 = outer + twelve nested, e.g. `*o **p _q *r **s _t *u ~~v _w *x _y *z `a` z* y_ x* w_ v~~ u* t_ s** r* q_ p** o*`). */
+const MAX_MARK_NEST = 12;
 
 function parseSimpleAsteriskTildeCode(
   md: string,
@@ -846,7 +846,9 @@ function parseSimpleAsteriskTildeCode(
     }
     if (input.startsWith('**', at)) {
       if (isWs(input[at + 2])) return -1;
-      // Nested ** content must not itself hold ** (no same-delimiter stacks).
+      // Skip cross-family nests (`*` / `_` / `__` / `~~` / code) that may
+      // embed `**` (parity with findDoubleClose). Bare nested `**` is still
+      // the closer — same-delimiter stacks stay dialect.
       let search = at + 2;
       while (search < len) {
         if (input[search] === '\\') {
@@ -860,6 +862,19 @@ function parseSimpleAsteriskTildeCode(
           continue;
         }
         if (input.startsWith('~~', search)) {
+          const next = skipNestedSpan(search);
+          if (next < 0) return -1;
+          search = next;
+          continue;
+        }
+        // Nested `*em*` / `_em_` / `__strong__` may hold `**`; skip them.
+        if (input[search] === '*' && !input.startsWith('**', search)) {
+          const next = skipNestedSpan(search);
+          if (next < 0) return -1;
+          search = next;
+          continue;
+        }
+        if (input.startsWith('__', search) || input[search] === '_') {
           const next = skipNestedSpan(search);
           if (next < 0) return -1;
           search = next;
