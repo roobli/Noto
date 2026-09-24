@@ -76,12 +76,12 @@ test.describe('the rail tree', () => {
       await expect(chapters).toHaveCSS('position', 'sticky');
       await expect(chapters).toHaveCSS('top', '0px');
       // Shallower ancestors sit above deeper ones (theme ladder).
-      await expect(chapters).toHaveCSS('z-index', '110');
+      await expect(chapters).toHaveCSS('z-index', '20');
       // The file's whole node holds, since its row fills the node.
       await expect(firstNode).toHaveCSS('position', 'sticky');
       // One row down, and a row is --tree-row (32).
       await expect(firstNode).toHaveCSS('top', '32px');
-      await expect(firstNode).toHaveCSS('z-index', '99');
+      await expect(firstNode).toHaveCSS('z-index', '10');
       await expect(page.getByTestId('tree-vault')).not.toHaveCSS('position', 'sticky');
       await expect(chapters).not.toHaveAttribute('data-stuck');
 
@@ -149,12 +149,12 @@ test.describe('the rail tree', () => {
         const row = pathDirs.nth(depth - 1);
         await expect(row).toHaveCSS('position', 'sticky');
         await expect(row).toHaveCSS('top', `${(depth - 1) * 32}px`);
-        await expect(row).toHaveCSS('z-index', `${111 - depth}`);
+        await expect(row).toHaveCSS('z-index', `${21 - depth}`);
       }
       const active = page.locator('.tree-node-active');
       await expect(active).toHaveCSS('position', 'sticky');
       await expect(active).toHaveCSS('top', `${6 * 32}px`);
-      await expect(active).toHaveCSS('z-index', '99');
+      await expect(active).toHaveCSS('z-index', '10');
 
       // Scroll deep: every on-path ancestor + the active file stick; no path strip.
       await page.getByTestId('tree-file').filter({ hasText: 'note-40' }).scrollIntoViewIfNeeded();
@@ -185,7 +185,7 @@ test.describe('the rail tree', () => {
       expect(layout.tops).toEqual([0, 32, 64, 96, 128, 160]);
       expect(layout.activeTop).toBe(192);
       // Higher ancestors keep higher z-index (no overlapping paint).
-      expect(layout.z).toEqual([110, 109, 108, 107, 106, 105]);
+      expect(layout.z).toEqual([20, 19, 18, 17, 16, 15]);
       expect(layout.guideZ).toBeLessThanOrEqual(layout.minStickyZ);
       expect(layout.bg).not.toMatch(/rgba\(0,\s*0,\s*0,\s*0\)|transparent/);
     } finally {

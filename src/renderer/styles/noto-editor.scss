@@ -1402,11 +1402,14 @@
    multiples of --tree-row (32), capped at 10 levels like the theme.
    Opaque panel/active fill lives on the sticky element itself so scrolled
    names never ghost through; z-index falls with depth so higher ancestors
-   stay above lower ones (theme 110→101, active 99). */
+   stay above lower ones (20→11, active 10 — under chrome menus). */
 .tree-directory.tree-on-path[aria-expanded='true'] {
   position: sticky;
   top: calc((min(var(--tree-depth, 1), 10) - 1) * var(--tree-row));
-  z-index: calc(111 - min(var(--tree-depth, 1), 10));
+  /* Ladder 20→11: above guides (0), below vault menu / chrome (≥40). Theme
+     uses 110→101; matching that magnitude covered .vault-menu-list (z-index
+     40) so Reveal-in-Finder could not be clicked over a stuck active file. */
+  z-index: calc(21 - min(var(--tree-depth, 1), 10));
   background: var(--panel);
 }
 
@@ -1415,7 +1418,7 @@
 .tree-node.tree-node-active {
   position: sticky;
   top: calc((min(var(--tree-depth, 1), 10) - 1) * var(--tree-row));
-  z-index: 99;
+  z-index: 10;
   background: var(--surface-active);
 }
 
