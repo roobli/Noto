@@ -5,7 +5,7 @@
  * plain + hard breaks + lists-in-quotes + simple GFM alerts / callouts with
  * plain or simple-marked bodies + lazy continuation (fewer `>` and true no-`>`)
  * + simple flat / same-family nested list (any depth, incl. hard breaks +
- * simple marks incl. flat underscore + up to nineteen-level nested marks + collapsible/plain-titled/simple-marked-title callouts + unindented lazy
+ * simple marks incl. flat underscore + up to twenty-one-level nested marks + collapsible/plain-titled/simple-marked-title callouts + unindented lazy
  * soft-wrap) + simple GFM table with plain or simple-marked cells incl.
  * escaped pipes + simple inline links / images + simple reference links /
  * images + simple bare http(s) + angle-bracket http(s) + www. + email
@@ -1596,8 +1596,64 @@ describe('blockFromEngineSpan', () => {
       'strong',
     ]);
     expect(canSkipDialectEnrich('paragraph', '**g _h *i **j _k *l **m _n *o **p _q *r **s _t *u ~~v _w *x _y *z `a` z* y_ x* w_ v~~ u* t_ s** r* q_ p** o* n_ m** l* k_ j** i* h_ g**')).toBe(true);
-    // Twenty-one-level + ambiguous / same-delimiter stay dialect.
-    expect(blockFromEngineSpan('paragraph', '*f **g _h *i **j _k *l **m _n *o **p _q *r **s _t *u ~~v _w *x _y *z `a` z* y_ x* w_ v~~ u* t_ s** r* q_ p** o* n_ m** l* k_ j** i* h_ g** f*')).toBeNull();
+    // Twenty-one-level nests (MAX_MARK_NEST = 21).
+    const twentyOne = blockFromEngineSpan('paragraph', '*f **g _h *i **j _k *l **m _n *o **p _q *r **s _t *u ~~v _w *x _y *z `a` z* y_ x* w_ v~~ u* t_ s** r* q_ p** o* n_ m** l* k_ j** i* h_ g** f*');
+    expect(twentyOne?.textContent).toBe('f g h i j k l m n o p q r s t u v w x y z a z y x w v u t s r q p o n m l k j i h g f');
+    const twentyOneA = [...Array(twentyOne!.childCount)].map((_, i) => twentyOne!.child(i)).find((n) => n.text === 'a');
+    expect(twentyOneA!.marks.map((m) => m.type.name).sort()).toEqual([
+      'emphasis',
+      'emphasis',
+      'emphasis',
+      'emphasis',
+      'emphasis',
+      'emphasis',
+      'emphasis',
+      'emphasis',
+      'emphasis',
+      'emphasis',
+      'emphasis',
+      'emphasis',
+      'emphasis',
+      'emphasis',
+      'emphasis',
+      'inline_code',
+      'strikethrough',
+      'strong',
+      'strong',
+      'strong',
+      'strong',
+      'strong',
+    ]);
+    const twentyOneB = blockFromEngineSpan('paragraph', '**f *g _h **i _j *k **l _m *n **o _p *em **bold ~~del _x *y _z *w _v *u _t `a` t_ u* v_ w* z_ y* x_~~ more** rest* p_ o** n* m_ l** k* j_ i** h_ g* f**');
+    expect(twentyOneB?.textContent).toBe('f g h i j k l m n o p em bold del x y z w v u t a t u v w z y x more rest p o n m l k j i h g f');
+    const twentyOneBA = [...Array(twentyOneB!.childCount)].map((_, i) => twentyOneB!.child(i)).find((n) => n.text === 'a');
+    expect(twentyOneBA!.marks.map((m) => m.type.name).sort()).toEqual([
+      'emphasis',
+      'emphasis',
+      'emphasis',
+      'emphasis',
+      'emphasis',
+      'emphasis',
+      'emphasis',
+      'emphasis',
+      'emphasis',
+      'emphasis',
+      'emphasis',
+      'emphasis',
+      'emphasis',
+      'emphasis',
+      'emphasis',
+      'inline_code',
+      'strikethrough',
+      'strong',
+      'strong',
+      'strong',
+      'strong',
+      'strong',
+    ]);
+    expect(canSkipDialectEnrich('paragraph', '*f **g _h *i **j _k *l **m _n *o **p _q *r **s _t *u ~~v _w *x _y *z `a` z* y_ x* w_ v~~ u* t_ s** r* q_ p** o* n_ m** l* k_ j** i* h_ g** f*')).toBe(true);
+    // Twenty-two-level + ambiguous / same-delimiter stay dialect.
+    expect(blockFromEngineSpan('paragraph', '_e *f **g _h *i **j _k *l **m _n *o **p _q *r **s _t *u ~~v _w *x _y *z `a` z* y_ x* w_ v~~ u* t_ s** r* q_ p** o* n_ m** l* k_ j** i* h_ g** f* e_')).toBeNull();
     expect(blockFromEngineSpan('paragraph', '**t *u ~~v _w *x ~~y _z `a` z_ y~~ x* w_ v~~ u* t**')).toBeNull();
     expect(blockFromEngineSpan('paragraph', '**bold `code`**')?.textContent).toBe('bold code');
     expect(blockFromEngineSpan('paragraph', '***triple***')).toBeNull();
