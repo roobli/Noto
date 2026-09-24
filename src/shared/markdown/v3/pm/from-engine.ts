@@ -709,8 +709,8 @@ function parseSimpleImageAlt(label: string): string | null {
   return lead + flat + trail;
 }
 
-/** Max nest depth (23 = outer + twenty-three nested, e.g. `**d _e *f **g _h *i **j _k *l **m _n *o **p _q *r **s _t *u ~~v _w *x _y *z `a` z* y_ x* w_ v~~ u* t_ s** r* q_ p** o* n_ m** l* k_ j** i* h_ g** f* e_ d**`). */
-const MAX_MARK_NEST = 23;
+/** Max nest depth (24 = outer + twenty-four nested, e.g. `*c **d _e *f **g _h *i **j _k *l **m _n *o **p _q *r **s _t *u ~~v _w *x _y *z `a` z* y_ x* w_ v~~ u* t_ s** r* q_ p** o* n_ m** l* k_ j** i* h_ g** f* e_ d** c*`). */
+const MAX_MARK_NEST = 24;
 
 function parseSimpleAsteriskTildeCode(
   md: string,
