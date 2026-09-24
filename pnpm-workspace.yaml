@@ -11,6 +11,7 @@ nodeLinker: hoisted
 strictPeerDependencies: false
 
 allowBuilds:
+  '@roobli/md@https://codeload.github.com/roobli/md/tar.gz/9187fd092af6231eb82cb861ca5db1f81a3b477c': true
   '@roobli/md': true
   '@roobli/md@https://codeload.github.com/roobli/md/tar.gz/411335986ebf52c45bdafb230916d939a536b36b': true
   '@roobli/md@https://codeload.github.com/roobli/md/tar.gz/13e17b7d1b6e6286d2c483358777d55a50b0cecf': true
