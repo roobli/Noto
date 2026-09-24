@@ -62,9 +62,12 @@ test.describe("Typora's menus", () => {
       await expect(editor(page).locator('table')).toHaveCount(1);
       await expect(editor(page).locator('th')).toHaveCount(4);
       await expect(editor(page).locator('tr')).toHaveCount(2);
-      // Escape leaves without a table.
+      // Escape leaves without a table. Focus a field first: on packaged
+      // macOS a bare Escape can miss the capture listener while focus is
+      // still settling after the menu click (dialog stayed open → flake).
       await invokeMenu(app, 'table-insert');
       await expect(page.getByTestId('table-dialog')).toBeVisible();
+      await page.getByTestId('table-rows').focus();
       await page.keyboard.press('Escape');
       await expect(page.getByTestId('table-dialog')).toHaveCount(0);
       await expect(editor(page).locator('table')).toHaveCount(1);
