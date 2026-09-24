@@ -62,7 +62,7 @@ test.describe('code viewer', () => {
       const viewer = page.getByTestId('code-viewer');
       await expect(viewer).toBeVisible({ timeout: 10_000 });
       await expect(viewer.locator('.code-viewer-name')).toHaveText('sample.py');
-      await expect(viewer.locator('.code-viewer-ro')).toHaveText('Read only');
+      await expect(viewer.locator('.code-viewer-ro')).toHaveText('Read-only');
       await expect(viewer.locator('.code-viewer-lang')).toHaveText('python');
       await expect(viewer.locator('.code-viewer-src').first()).toContainText('def');
 
@@ -74,4 +74,53 @@ test.describe('code viewer', () => {
       await app.close();
     }
   });
+
+  test('opens .html and .svg with isolated Preview, Source toggle, Read-only badge', async () => {
+    const workspace = path.join(resultRoot, 'markup');
+    await rm(workspace, { recursive: true, force: true });
+    await mkdir(workspace, { recursive: true });
+    await writeFile(
+      path.join(workspace, 'page.html'),
+      '<!doctype html><html><head><title>Hi</title></head><body><h1 data-testid="html-body">Hello HTML</h1></body></html>\n',
+      'utf8',
+    );
+    await writeFile(
+      path.join(workspace, 'icon.svg'),
+      '<svg xmlns="http://www.w3.org/2000/svg" width="40" height="40"><rect width="40" height="40" fill="#4c8bf5"/></svg>\n',
+      'utf8',
+    );
+    const { app, page } = await launch(workspace);
+    try {
+      await page.locator('[data-testid="tree-file"][data-path$="page.html"]').click();
+      const viewer = page.getByTestId('code-viewer');
+      await expect(viewer).toBeVisible({ timeout: 10_000 });
+      await expect(viewer).toHaveAttribute('data-preview-mode', 'preview');
+      await expect(viewer).toHaveAttribute('data-markup-preview', 'html');
+      await expect(viewer.locator('.code-viewer-ro')).toHaveText('Read-only');
+      const htmlPreview = page.getByTestId('code-viewer-preview');
+      await expect(htmlPreview).toHaveAttribute('data-preview-kind', 'html');
+      const frame = htmlPreview.locator('iframe.code-viewer-preview-frame');
+      await expect(frame).toBeVisible();
+      await expect(frame).toHaveAttribute('sandbox', '');
+      await expect(page.getByTestId('code-viewer-mode-toggle')).toHaveText('Source');
+
+      await page.getByTestId('code-viewer-mode-toggle').click();
+      await expect(viewer).toHaveAttribute('data-preview-mode', 'source');
+      await expect(page.getByTestId('code-viewer-preview')).toHaveCount(0);
+      await expect(viewer.locator('.code-viewer-src').first()).toContainText('doctype');
+      await expect(page.getByTestId('code-viewer-mode-toggle')).toHaveText('Preview');
+
+      await page.locator('[data-testid="tree-file"][data-path$="icon.svg"]').click();
+      await expect(viewer).toHaveAttribute('data-path', /icon\.svg$/);
+      await expect(viewer).toHaveAttribute('data-preview-mode', 'preview');
+      await expect(viewer).toHaveAttribute('data-markup-preview', 'svg');
+      const svgPreview = page.getByTestId('code-viewer-preview');
+      await expect(svgPreview).toHaveAttribute('data-preview-kind', 'svg');
+      await expect(svgPreview.locator('img.code-viewer-preview-img')).toBeVisible();
+      await expect(viewer.locator('.code-viewer-ro')).toHaveText('Read-only');
+    } finally {
+      await app.close();
+    }
+  });
+
 });

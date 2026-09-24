@@ -3,12 +3,15 @@ import { isProbablyBinary } from '../../src/shared/code-viewer/binary';
 import {
   isDrawioFileName,
   isDrawioSvgFileName,
+  isHtmlMarkupFileName,
   isMarkdownFileName,
+  isRenderableMarkupFileName,
+  isSvgMarkupFileName,
   isViewableCodeFile,
   languageFor,
 } from '../../src/shared/code-viewer/languages';
 import { highlightCodeLines } from '../../src/renderer/code-viewer-highlight';
-import { looksLikeSvgContent } from '../../src/renderer/CodeViewer';
+import { looksLikeSvgContent, markupPreviewKindFor } from '../../src/renderer/CodeViewer';
 import { CODE_VIEW_MAX_BYTES, CODE_VIEW_MAX_LINES } from '../../src/shared/code-viewer/limits';
 
 describe('recognising what to open', () => {
@@ -90,5 +93,37 @@ describe('drawio recognition', () => {
     expect(looksLikeSvgContent('<svg viewBox="0 0 1 1"/>')).toBe(true);
     expect(looksLikeSvgContent('')).toBe(false);
     expect(looksLikeSvgContent('<mxfile host="app.diagrams.net"></mxfile>')).toBe(false);
+  });
+});
+
+describe('html/svg markup preview recognition', () => {
+  it('flags html/htm/xhtml/svg (incl. drawio.svg) as renderable markup', () => {
+    expect(isRenderableMarkupFileName('page.html')).toBe(true);
+    expect(isRenderableMarkupFileName('page.HTM')).toBe(true);
+    expect(isRenderableMarkupFileName('page.xhtml')).toBe(true);
+    expect(isRenderableMarkupFileName('icon.svg')).toBe(true);
+    expect(isRenderableMarkupFileName('flow.drawio.svg')).toBe(true);
+    expect(isRenderableMarkupFileName('arch.drawio')).toBe(false);
+    expect(isRenderableMarkupFileName('main.py')).toBe(false);
+    expect(isHtmlMarkupFileName('a/b/c.html')).toBe(true);
+    expect(isHtmlMarkupFileName('icon.svg')).toBe(false);
+    expect(isSvgMarkupFileName('icon.svg')).toBe(true);
+    expect(isSvgMarkupFileName('flow.drawio.svg')).toBe(true);
+    expect(isSvgMarkupFileName('page.html')).toBe(false);
+  });
+
+  it('defaults preview for svg/html and refuses when notice or non-svg body', () => {
+    const svg = '<svg xmlns="http://www.w3.org/2000/svg"></svg>';
+    const html = '<!doctype html><title>x</title><p>hi</p>';
+    expect(markupPreviewKindFor('a.svg', svg, null)).toBe('svg');
+    expect(markupPreviewKindFor('a.drawio.svg', svg, null)).toBe('svg');
+    expect(markupPreviewKindFor('a.html', html, null)).toBe('html');
+    expect(markupPreviewKindFor('a.htm', html, null)).toBe('html');
+    expect(markupPreviewKindFor('a.xhtml', html, null)).toBe('html');
+    expect(markupPreviewKindFor('a.drawio', '<mxfile/>', null)).toBeNull();
+    expect(markupPreviewKindFor('a.py', 'print(1)', null)).toBeNull();
+    expect(markupPreviewKindFor('a.svg', '<mxfile/>', null)).toBeNull();
+    expect(markupPreviewKindFor('a.html', html, 'too large')).toBeNull();
+    expect(markupPreviewKindFor('a.html', '', null)).toBeNull();
   });
 });

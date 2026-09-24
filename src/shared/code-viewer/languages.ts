@@ -4,8 +4,8 @@
  * Ported from the author's typora-plugin-lite `code-viewer`: a known text/code
  * extension opens read-only; markdown stays a real document; an unknown but
  * textual extension opens as plain text rather than being refused.
- * `.drawio` opens as XML; `.drawio.svg` is still `markup` and the viewer
- * can render a preview from the SVG body.
+ * `.drawio` opens as XML (source-only); `.html`/`.htm`/`.xhtml`/`.svg` and
+ * `.drawio.svg` are `markup` and the viewer can offer an isolated Preview.
  */
 
 const MARKDOWN_EXTS = new Set(['md', 'markdown', 'mdown', 'mkd', 'mdx', 'txt']);
@@ -71,6 +71,33 @@ function splitExt(fileName: string): { base: string; ext: string } {
   return { base: name, ext: name.slice(dot + 1) };
 }
 
+
+/**
+ * True for files that describe a page (HTML / XHTML / SVG), so the code
+ * viewer can offer an isolated Preview as well as Source.
+ *
+ * Matches the author's typora-plugin-lite `isRenderableMarkup`. Plain
+ * `.drawio` XML is excluded; `.drawio.svg` matches via the `.svg` suffix.
+ */
+export function isRenderableMarkupFileName(fileName: string): boolean {
+  const name = fileName.replace(/\\/g, '/').split('/').pop() ?? '';
+  return /\.(html?|xhtml|svg)$/i.test(name);
+}
+
+/** True for `.html` / `.htm` / `.xhtml` (sandboxed iframe preview). */
+export function isHtmlMarkupFileName(fileName: string): boolean {
+  const name = fileName.replace(/\\/g, '/').split('/').pop() ?? '';
+  return /\.(html?|xhtml)$/i.test(name);
+}
+
+/**
+ * True for any `.svg` including `.drawio.svg` (blob `<img>` preview).
+ * Distinguishing the draw.io export uses `isDrawioSvgFileName`.
+ */
+export function isSvgMarkupFileName(fileName: string): boolean {
+  const name = fileName.replace(/\\/g, '/').split('/').pop() ?? '';
+  return /\.svg$/i.test(name);
+}
 
 /** True for diagrams.net / draw.io native XML (`.drawio`). */
 export function isDrawioFileName(fileName: string): boolean {
