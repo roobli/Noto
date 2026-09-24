@@ -1296,12 +1296,10 @@
  * colour, over the quiet stem the whole way. This is V2 of the author's four
  * guide-line schemes, "one stroke with the current branch lit".
  *
- * Drawn as elements of the level rather than as its background, and above the
- * rows that hold at the top of the rail rather than behind them. A held row
- * carries an opaque band to hide the rows sliding under it, and that band was
- * hiding the guides of every level to its left: the stack read as a lid over
- * the tree, where Typora's keeps the lines running through it. They begin
- * below their own held row, so no line crosses the row it hangs from.
+ * Drawn as elements of the level rather than as its background, under sticky
+ * path rows (z-index 0). They begin below their own held row via --stem-start,
+ * so no line crosses the row it hangs from; sticking the guides above the
+ * opaque lid painted stems through folder names.
  */
 .tree-level:not(.is-root)::before,
 .tree-level:not(.is-root)::after {
@@ -1314,28 +1312,19 @@
 }
 
 /*
- * Only the branch to the note in front is drawn over the held rows.
- *
- * A held row carries an opaque band to hide everything sliding under it, and
- * the lines that must survive it are the ones that lead to the row itself:
- * the levels its own path hangs from. A level off that path is behind the
- * band where it belongs. Drawn over it, the stem of some unrelated folder
- * whose rows happen to be on screen appeared across the held stack for as
- * long as it took the next frame to move it.
+ * Guide stems stay under sticky path rows. Sticky content is an opaque lid
+ * (Claude Like theme); lines live on children levels and begin below a held
+ * row via --stem-start. Raising path guides above sticky painted stems
+ * through the held stack and read as bleed-through / overlapping glyphs.
  */
-.tree-vault > .tree-level::before,
-.tree-vault > .tree-level::after,
-.tree-node:has(> .tree-directory.tree-on-path) > .tree-level::before,
-.tree-node:has(> .tree-directory.tree-on-path) > .tree-level::after {
-  z-index: 3;
-}
-
 .tree-level:not(.is-root)::before {
+  z-index: 0;
   height: max(0px, calc(var(--stem-stop) - var(--stem-start)));
   background: var(--tree-line);
 }
 
 .tree-level:not(.is-root)::after {
+  z-index: 0;
   height: max(0px, calc(var(--path-stop) - var(--stem-start)));
   background: var(--tree-lit);
 }
@@ -1408,34 +1397,37 @@
 
 /* The path to the current file holds at the top while its contents scroll
    past: each open ancestor a row below its parent, and the file's own row
-   beneath them, which is the author's Typora theme's rule. Other open folders
-   scroll like anything else, and so does the folder's own row, so the top of
-   the rail reads as where the file you are in lives, never as a stack of
-   every folder you opened. The offset is the row's depth in rows, counted
-   from the first level; the panel colour covers the stem and the arms
-   sliding under it. A row that is actually stuck, which the tree marks, gets
-   a rule beneath it; one merely resting in place does not. */
-.tree-directory.tree-on-path[aria-expanded='true'],
-.tree-node.tree-node-active {
+   beneath them — Claude Like theme shared.css (~1174–1250), 只叠不卸.
+   Other open folders scroll away; the vault row is not sticky. Tops are
+   multiples of --tree-row (32), capped at 10 levels like the theme.
+   Opaque panel/active fill lives on the sticky element itself so scrolled
+   names never ghost through; z-index falls with depth so higher ancestors
+   stay above lower ones (theme 110→101, active 99). */
+.tree-directory.tree-on-path[aria-expanded='true'] {
   position: sticky;
-  top: calc((var(--tree-depth, 1) - 1) * var(--tree-row));
-  z-index: 2;
+  top: calc((min(var(--tree-depth, 1), 10) - 1) * var(--tree-row));
+  z-index: calc(111 - min(var(--tree-depth, 1), 10));
+  background: var(--panel);
 }
 
 /* The file's whole node is the sticky thing, as in the theme: a leaf's row
    fills its node and would have no room to hold. */
+.tree-node.tree-node-active {
+  position: sticky;
+  top: calc((min(var(--tree-depth, 1), 10) - 1) * var(--tree-row));
+  z-index: 99;
+  background: var(--surface-active);
+}
 
-/* A stuck row spans the whole rail, flush, as Typora's does. The row is an
-   indented box inside its level, so on its own it left the stems of every
-   level to its left sliding past in the open, which read as light leaking
-   through the stack. A pseudo-element behind the row reaches far past the
-   rail's left edge, where the scrollport clips it, and carries the panel
-   colour, the rule beneath and the faint edge; the hover fill moves onto it
-   too, since it paints over the row's own background. */
+/* A stuck row spans the whole rail, flush. The row is an indented box, so a
+   ::before reaches past the left gutter (stems/arms) where the scrollport
+   clips it, and adds the hairline + faint shadow the theme shows when pinned.
+   The sticky element's own opaque fill stays — clearing it to transparent and
+   relying only on a z-index:-1 band let deeper sticky siblings and guides
+   paint through as overlapping glyphs. */
 .tree-directory[data-stuck],
 .tree-node-active[data-stuck] > .tree-row {
   border-radius: 0;
-  background: transparent;
 }
 
 .tree-directory[data-stuck]::before,
@@ -1456,6 +1448,9 @@
   pointer-events: none;
 }
 
+.tree-directory[data-stuck]:hover {
+  background: var(--raised);
+}
 .tree-directory[data-stuck]:hover::before { background: var(--raised); }
 .tree-node-active[data-stuck]::before { background: var(--surface-active); }
 
@@ -1532,9 +1527,9 @@
   min-width: 100%;
 }
 
-/* Exactly 26px tall, so the sticky offsets, which are multiples of it, meet
-   with no seam. As wide as the name needs and at least the rail, so a long
-   name is scrolled to rather than cut. */
+/* Exactly --tree-row (32px) tall, so the sticky offsets, which are multiples
+   of it, meet with no seam. As wide as the name needs and at least the rail,
+   so a long name is scrolled to rather than cut. */
 .tree-row {
   position: relative;
   display: flex;

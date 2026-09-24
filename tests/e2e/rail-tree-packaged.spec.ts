@@ -75,10 +75,13 @@ test.describe('the rail tree', () => {
       const firstNode = page.locator('.tree-node-active');
       await expect(chapters).toHaveCSS('position', 'sticky');
       await expect(chapters).toHaveCSS('top', '0px');
+      // Shallower ancestors sit above deeper ones (theme ladder).
+      await expect(chapters).toHaveCSS('z-index', '110');
       // The file's whole node holds, since its row fills the node.
       await expect(firstNode).toHaveCSS('position', 'sticky');
-      // One row down, and a row is Typora's 32.
+      // One row down, and a row is --tree-row (32).
       await expect(firstNode).toHaveCSS('top', '32px');
+      await expect(firstNode).toHaveCSS('z-index', '99');
       await expect(page.getByTestId('tree-vault')).not.toHaveCSS('position', 'sticky');
       await expect(chapters).not.toHaveAttribute('data-stuck');
 
@@ -103,6 +106,88 @@ test.describe('the rail tree', () => {
       // Back at the top, the folder rests in place again.
       await page.locator('.rail-view').evaluate((element) => element.scrollTo(0, 0));
       await expect(chapters).not.toHaveAttribute('data-stuck');
+    } finally {
+      await app.close();
+    }
+  });
+
+  test('stacks many on-path ancestors cleanly with the active file below', async () => {
+    const workspace = path.join(resultRoot, 'sticky-deep');
+    await rm(workspace, { recursive: true, force: true });
+    const vault = path.join(workspace, 'vault');
+    // Six nested folders (Chinese names OK) so ≥6 stuck ancestors engage.
+    const nest = ['甲库', '乙层', '丙层', '丁层', '戊层', '己层'];
+    let dir = vault;
+    for (const name of nest) {
+      dir = path.join(dir, name);
+      await mkdir(dir, { recursive: true });
+    }
+    await mkdir(path.join(workspace, 'user-data'), { recursive: true });
+    // Filler siblings so the rail must scroll past the leaf.
+    for (let index = 1; index <= 40; index += 1) {
+      await writeFile(path.join(dir, `note-${String(index).padStart(2, '0')}.md`), `# ${index}\n`, 'utf8');
+    }
+    const app = await electron.launch({
+      executablePath: packagedExecutable(),
+      args: [`--user-data-dir=${path.join(workspace, 'user-data')}`, vault],
+    });
+    try {
+      const page = await app.firstWindow();
+      await page.setViewportSize({ width: 1100, height: 520 });
+      await page.waitForSelector('[data-testid="file-tree"]', { state: 'visible', timeout: 30_000 });
+
+      // Walk the nest open so the leaf is reachable, then open the file.
+      for (const name of nest) {
+        await page.getByTestId('tree-directory').filter({ hasText: name }).click();
+      }
+      await page.getByTestId('tree-file').filter({ hasText: 'note-01' }).click();
+      await page.waitForSelector('.tree-node-active', { state: 'visible' });
+
+      const pathDirs = page.locator('.tree-directory.tree-on-path[aria-expanded="true"]');
+      await expect(pathDirs).toHaveCount(6);
+      for (let depth = 1; depth <= 6; depth += 1) {
+        const row = pathDirs.nth(depth - 1);
+        await expect(row).toHaveCSS('position', 'sticky');
+        await expect(row).toHaveCSS('top', `${(depth - 1) * 32}px`);
+        await expect(row).toHaveCSS('z-index', `${111 - depth}`);
+      }
+      const active = page.locator('.tree-node-active');
+      await expect(active).toHaveCSS('position', 'sticky');
+      await expect(active).toHaveCSS('top', `${6 * 32}px`);
+      await expect(active).toHaveCSS('z-index', '99');
+
+      // Scroll deep: every on-path ancestor + the active file stick; no path strip.
+      await page.getByTestId('tree-file').filter({ hasText: 'note-40' }).scrollIntoViewIfNeeded();
+      await expect(pathDirs).toHaveCount(6);
+      for (let depth = 0; depth < 6; depth += 1) {
+        await expect(pathDirs.nth(depth)).toHaveAttribute('data-stuck');
+      }
+      await expect(active).toHaveAttribute('data-stuck');
+      await expect(page.locator('.tree-path-strip')).toHaveCount(0);
+
+      const layout = await page.evaluate(() => {
+        const scroller = document.querySelector<HTMLElement>('.rail-view')!;
+        const pad = Number.parseFloat(getComputedStyle(scroller).paddingTop);
+        const top0 = scroller.getBoundingClientRect().top + pad;
+        const stuck = [...document.querySelectorAll<HTMLElement>('.tree-directory.tree-on-path[data-stuck]')];
+        const activeNode = document.querySelector<HTMLElement>('.tree-node-active')!;
+        const tops = stuck.map((row) => Math.round(row.getBoundingClientRect().top - top0));
+        const activeTop = Math.round(activeNode.getBoundingClientRect().top - top0);
+        // Opaque cover: stuck row background must not be transparent.
+        const bg = getComputedStyle(stuck[0]!).backgroundColor;
+        const z = stuck.map((row) => Number.parseInt(getComputedStyle(row).zIndex, 10));
+        const guideZ = Number.parseInt(
+          getComputedStyle(document.querySelector<HTMLElement>('.tree-level:not(.is-root)')!, '::before').zIndex || '0',
+          10,
+        );
+        return { tops, activeTop, bg, z, guideZ, minStickyZ: Math.min(...z) };
+      });
+      expect(layout.tops).toEqual([0, 32, 64, 96, 128, 160]);
+      expect(layout.activeTop).toBe(192);
+      // Higher ancestors keep higher z-index (no overlapping paint).
+      expect(layout.z).toEqual([110, 109, 108, 107, 106, 105]);
+      expect(layout.guideZ).toBeLessThanOrEqual(layout.minStickyZ);
+      expect(layout.bg).not.toMatch(/rgba\(0,\s*0,\s*0,\s*0\)|transparent/);
     } finally {
       await app.close();
     }
