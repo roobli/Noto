@@ -142,3 +142,35 @@ export async function placeCaretAtStart(page: Page, target: Locator): Promise<vo
     document.dispatchEvent(new Event('selectionchange'));
   });
 }
+
+/**
+ * Put the caret at the end of `target`'s first text node via the Selection API,
+ * after focusing the editor.
+ *
+ * Meta+ArrowRight / End can scroll or leave the caret at the click point on
+ * packaged macOS (toc-packaged: typed "ation" before "Install" → "ationInstall").
+ */
+export async function placeCaretAtEnd(page: Page, target: Locator): Promise<void> {
+  await placeCaret(page, target);
+  await target.evaluate((node) => {
+    const root = node.closest('.ProseMirror');
+    if (!(root instanceof HTMLElement)) throw new Error('no ProseMirror root');
+    root.focus();
+    const walker = document.createTreeWalker(node, NodeFilter.SHOW_TEXT);
+    let text: Node | null = null;
+    let next: Node | null = walker.nextNode();
+    while (next) {
+      text = next;
+      next = walker.nextNode();
+    }
+    if (!text || !(text instanceof Text)) throw new Error('no text to put the caret in');
+    const range = document.createRange();
+    range.setStart(text, text.data.length);
+    range.collapse(true);
+    const selection = window.getSelection();
+    selection?.removeAllRanges();
+    selection?.addRange(range);
+    root.focus();
+    document.dispatchEvent(new Event('selectionchange'));
+  });
+}

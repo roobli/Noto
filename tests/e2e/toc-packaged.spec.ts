@@ -1,7 +1,7 @@
 import { mkdir, rm, writeFile } from 'node:fs/promises';
 import path from 'node:path';
 import { expect, test, _electron as electron } from '@playwright/test';
-import { packagedExecutable } from './packaged-app';
+import { packagedExecutable, placeCaretAtEnd } from './packaged-app';
 
 const NOTE = '# Guide\n\n[TOC]\n\n## Setup\n\nwords\n\n### Install\n\n## Use\n\nmore\n';
 
@@ -37,9 +37,10 @@ test('[TOC] is drawn as the headings, goes to one on a click, and shows itself u
     await expect(editor.locator('.noto-active-block')).toHaveText('Install');
 
     // Typing a heading changes the list.
-    // To the end of the heading's line; End scrolls on a Mac without moving the caret.
-    await page.keyboard.press(process.platform === 'darwin' ? 'Meta+ArrowRight' : 'End');
-    await expect(page.locator('.canvas-slot:not([hidden]) [data-testid="noto-editor"]')).toHaveAttribute('data-caret', /\d+/);
+    // Meta+ArrowRight / End can leave the caret at the click point on packaged
+    // macOS; place it at the end of the active heading via Selection API.
+    await placeCaretAtEnd(page, editor.locator('.noto-active-block'));
+    await expect(editor.locator('.noto-active-block')).toHaveText('Install');
     await page.keyboard.type('ation');
     await expect(toc.locator('.noto-toc-item').nth(2)).toHaveText('Installation');
 
