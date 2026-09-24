@@ -161,7 +161,7 @@ through React state and a settings round trip puts that whole path between the
 pointer and the edge it is dragging, which is the lag that makes a resize feel
 broken.
 
-Tree rows are 26px, which is the density a four-level tree needs. No background
+Tree rows are 32px (`--tree-row`), matching Typora's measured sidebar row so sticky offsets stay in step. No background
 at rest, `--raised` on hover, and the current file gets a tint plus the spine.
 The folder itself is the first row, set in ink at weight 600 with nothing to
 press, and the first level hangs from it the way every deeper level hangs from

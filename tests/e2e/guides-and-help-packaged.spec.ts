@@ -47,7 +47,7 @@ async function launch(name: string): Promise<{ app: ElectronApplication; page: P
 }
 
 test.describe('the guide lines under a held row', () => {
-  test('begin below the row that holds them, and are drawn over the stack', async () => {
+  test('begin below the row that holds them, and stay under the sticky stack', async () => {
     const { app, page } = await launch('stems');
     try {
       // The folder beside the path is opened too, so its own level exists and
@@ -76,19 +76,19 @@ test.describe('the guide lines under a held row', () => {
         expect(Math.abs(level.gap)).toBeLessThan(1.5);
       }
 
-      // The stems paint above the held rows, which carry an opaque band.
+      // Stems stay under sticky path rows (Claude Like / product lock): an
+      // earlier pass raised path guides above sticky and painted lines through
+      // held names. Opaque sticky fill covers scrolled glyphs; --stem-start
+      // keeps each level's line starting below its own held row.
       const order = await page.evaluate(() => {
         const level = document.querySelector<HTMLElement>('.tree-level:not(.is-root)');
         const stem = level ? getComputedStyle(level, '::before').zIndex : '';
-        // The row itself is what holds; the file's whole node is what holds
-        // for a leaf. Either way it is the thing carrying the opaque band.
         const row = document.querySelector<HTMLElement>('.tree-directory[data-stuck]');
         return { stem, row: row ? getComputedStyle(row).zIndex : '' };
       });
-      expect(Number(order.stem)).toBeGreaterThan(Number(order.row));
+      expect(Number(order.stem)).toBeLessThanOrEqual(Number(order.row));
 
-      // And only the branch to the note in front is drawn over them. A folder
-      // beside it, open and on screen, keeps its stem behind the band.
+      // An open folder beside the path likewise keeps its stem under the band.
       const aside = await page.evaluate(() => {
         const row = Array.from(document.querySelectorAll<HTMLElement>('.tree-directory'))
           .find((candidate) => candidate.textContent?.includes('aside'));
@@ -96,7 +96,7 @@ test.describe('the guide lines under a held row', () => {
         return level ? getComputedStyle(level, '::before').zIndex : 'missing';
       });
       expect(aside).not.toBe('missing');
-      expect(Number(aside)).not.toBeGreaterThan(Number(order.row));
+      expect(Number(aside)).toBeLessThanOrEqual(Number(order.row));
     } finally {
       await app.close();
     }
