@@ -68,6 +68,7 @@ Small public fixtures for comparing the **micromark** product path against
 | `simple-flat-lists.md` | flat bullet/ordered/task lists (markers `-*+`, `.`/`)`, start≠1, loose, soft-wrap); no nest or marked items |
 | `simple-nested-lists.md` | same-family nested bullet/ordered at any depth (plain items; soft-wrap then nest; depth-2+); no marked items |
 | `simple-mixed-marker-nested-lists.md` | mixed-marker nests (bullet under ordered / ordered under bullet / deep mix); closes Phase 16 intentional gap; plain items only |
+| `simple-same-indent-list-markers.md` | same-indent sibling lists with different bullet (`-`/`+`/`*`) or ordered delimiter (`.`/`)`) open a new span (`@roobli/md` ≥ v0.1.16 Phase 19); Phase 16 indented mixed nests stay one span |
 | `simple-gfm-tables.md` | simple GFM pipe tables (align row; plain cells; indent; compact); no marked/ragged cells |
 | `simple-ragged-tables.md` | ragged body rows (short / long cell counts) on simple GFM tables owned on the flagged IR→PM path |
 | `simple-table-header-delim-columns.md` | GFM table header/delimiter column-count parity (`@roobli/md` ≥ v0.1.14 Phase 17): mismatched counts stay paragraph; matching counts + ragged body stay table; mismatch does not interrupt a preceding paragraph |
@@ -106,6 +107,10 @@ out of this directory so the suite stays loud-fail-only on match):
    `simple-table-header-delim-columns.md` (mismatched counts → paragraph;
    matching + ragged body → table; mismatch does not interrupt a preceding
    paragraph).
+4. ~~**Same-indent list marker/delimiter split**~~ — **closed** in
+   `@roobli/md` v0.1.16 (Phase 19). Covered by
+   `simple-same-indent-list-markers.md` (sibling `-`/`+`/`*` or ordered
+   `.`/`)` open a new span; Phase 16 indented mixed nests stay one).
 
 Every fixture **in this directory** is expected to match on:
 

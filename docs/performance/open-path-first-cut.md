@@ -178,6 +178,8 @@ Header/delimiter column-count parity needs `@roobli/md` ≥ v0.1.14 (Phase 17;
 `simple-table-header-delim-columns.md` — mismatched counts stay paragraph at
 split, matching micromark).
 
+Same-indent sibling lists with a different bullet/delimiter split into new spans under `@roobli/md` ≥ v0.1.16 (Phase 19; Phase 16 indented mixed nests unchanged).
+
 Cross-family nests, multi-block items, heavy callout titles, twenty-two+ / ambiguous nested marks / multi-line HTML still need dialect (ragged body rows + simple HTML/math in table cells + simple image alts + simple inline math are engine-owned; Phase 17 mismatched header/delim are paragraphs, not tables)
 enrich + `from-mdast` (empty footnote bodies, nests at any depth incl. mixed-marker,
 nested plain quotes, simple lists-in-quotes, hard breaks in quotes, lazy nest

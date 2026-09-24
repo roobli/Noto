@@ -200,6 +200,7 @@ describe('markdown golden gates — fixture inventory', () => {
       'simple-quotes.md',
       'simple-ragged-tables.md',
       'simple-reference-links.md',
+      'simple-same-indent-list-markers.md',
       'simple-setext-dash-headings.md',
       'simple-seven-level-nested-marks.md',
       'simple-seventeen-level-nested-marks.md',

@@ -9,8 +9,8 @@ importers:
   .:
     dependencies:
       '@roobli/md':
-        specifier: github:roobli/md#v0.1.14
-        version: https://codeload.github.com/roobli/md/tar.gz/411335986ebf52c45bdafb230916d939a536b36b(@types/mdast@4.0.4)(micromark-util-types@2.0.2)(micromark@4.0.2(supports-color@8.1.1))(supports-color@8.1.1)
+        specifier: github:roobli/md#v0.1.16
+        version: https://codeload.github.com/roobli/md/tar.gz/9187fd092af6231eb82cb861ca5db1f81a3b477c(@types/mdast@4.0.4)(micromark-util-types@2.0.2)(micromark@4.0.2(supports-color@8.1.1))(supports-color@8.1.1)
       electron-updater:
         specifier: 6.8.9
         version: 6.8.9(supports-color@8.1.1)
@@ -618,10 +618,11 @@ packages:
   '@rolldown/pluginutils@1.0.1':
     resolution: {integrity: sha512-2j9bGt5Jh8hj+vPtgzPtl72j0yRxHAyumoo6TNfAjsLB04UtpSvPbPcDcBMxz7n+9CYB0c1GxQFxYRg2jimqGw==}
 
-  '@roobli/md@https://codeload.github.com/roobli/md/tar.gz/411335986ebf52c45bdafb230916d939a536b36b':
-    resolution: {gitHosted: true, integrity: sha512-d3LCfCwhsNQGmxwukT/HR2/DRHqC5sq7JPkYNtPtctK1QOh16RHNAGvBa4CzuYsTtSC8v39SU+Bs5sNLMxbimA==, tarball: https://codeload.github.com/roobli/md/tar.gz/411335986ebf52c45bdafb230916d939a536b36b}
-    version: 0.1.14
+  '@roobli/md@https://codeload.github.com/roobli/md/tar.gz/9187fd092af6231eb82cb861ca5db1f81a3b477c':
+    resolution: {gitHosted: true, integrity: sha512-GnuVLP/2Bw84TCfxSe40zMu0TvJhTMxJyqVFR8ggAe55SpqhNxA66qfd4HO9mOlmzIaNje/s2sKgiFl3S69RNQ==, tarball: https://codeload.github.com/roobli/md/tar.gz/9187fd092af6231eb82cb861ca5db1f81a3b477c}
+    version: 0.1.16
     engines: {node: '>=22.12.0'}
+    hasBin: true
 
   '@sindresorhus/is@4.6.0':
     resolution: {integrity: sha512-t09vSN3MdfsyCHoFcTRCH/iUtG7OJ0CsjzB8cjAmKc/va/kIgeDI/TxsigdncE/4be734m0cvIYwNaV4i2XqAw==}
@@ -4099,7 +4100,7 @@ snapshots:
 
   '@rolldown/pluginutils@1.0.1': {}
 
-  '@roobli/md@https://codeload.github.com/roobli/md/tar.gz/411335986ebf52c45bdafb230916d939a536b36b(@types/mdast@4.0.4)(micromark-util-types@2.0.2)(micromark@4.0.2(supports-color@8.1.1))(supports-color@8.1.1)':
+  '@roobli/md@https://codeload.github.com/roobli/md/tar.gz/9187fd092af6231eb82cb861ca5db1f81a3b477c(@types/mdast@4.0.4)(micromark-util-types@2.0.2)(micromark@4.0.2(supports-color@8.1.1))(supports-color@8.1.1)':
     dependencies:
       mdast-util-frontmatter: 2.0.1(supports-color@8.1.1)
       mdast-util-gfm: 3.1.0(supports-color@8.1.1)
