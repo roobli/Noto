@@ -1326,9 +1326,13 @@ a CSS gutter so a copy never carries line numbers — and leaves the bytes on
 disk untouched. Markdown notes still open as documents. Binary and oversized
 files show a notice instead of a pane.
 
-Not in this slice: rendering HTML/SVG as a framed page, language overrides
-remembered per extension, or indexing code files into quick open. The hard
-requirement that the original file is never rewritten is what this one does.
+HTML / SVG / `.drawio.svg` open with an isolated Preview by default and a
+Preview ↔ Source toggle (plain `.drawio` stays XML source-only). SVG uses
+`<img>` + blob `image/svg+xml`; HTML uses a sandboxed iframe + blob
+`text/html` with an empty `sandbox` (no scripts / same-origin). Fail falls
+back to Source. Still not in this slice: language overrides remembered per
+extension, indexing code files into quick open, or trust-scripts. The hard
+requirement that the original file is never rewritten still holds.
 
 ## 69. The whole note could not be edited as text. Closed.
 
