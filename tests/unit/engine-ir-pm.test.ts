@@ -5,7 +5,7 @@
  * plain + hard breaks + lists-in-quotes + simple GFM alerts / callouts with
  * plain or simple-marked bodies + lazy continuation (fewer `>` and true no-`>`)
  * + simple flat / same-family nested list (any depth, incl. hard breaks +
- * simple marks incl. flat underscore + up to twenty-four-level nested marks + collapsible/plain-titled/simple-marked-title callouts + unindented lazy
+ * simple marks incl. flat underscore + up to twenty-five-level nested marks + collapsible/plain-titled/simple-marked-title callouts + unindented lazy
  * soft-wrap) + simple GFM table with plain or simple-marked cells incl.
  * escaped pipes + simple inline links / images + simple reference links /
  * images + simple bare http(s) + angle-bracket http(s) + www. + email
@@ -1770,7 +1770,7 @@ describe('blockFromEngineSpan', () => {
       'strong',
     ]);
     expect(canSkipDialectEnrich('paragraph', '**d _e *f **g _h *i **j _k *l **m _n *o **p _q *r **s _t *u ~~v _w *x _y *z `a` z* y_ x* w_ v~~ u* t_ s** r* q_ p** o* n_ m** l* k_ j** i* h_ g** f* e_ d**')).toBe(true);
-    // Twenty-four-level nests (MAX_MARK_NEST = 24).
+    // Twenty-four-level nests (MAX_MARK_NEST ≥ 24).
     const twentyFour = blockFromEngineSpan('paragraph', '*c **d _e *f **g _h *i **j _k *l **m _n *o **p _q *r **s _t *u ~~v _w *x _y *z `a` z* y_ x* w_ v~~ u* t_ s** r* q_ p** o* n_ m** l* k_ j** i* h_ g** f* e_ d** c*');
     expect(twentyFour?.textContent).toBe('c d e f g h i j k l m n o p q r s t u v w x y z a z y x w v u t s r q p o n m l k j i h g f e d c');
     const twentyFourA = [...Array(twentyFour!.childCount)].map((_, i) => twentyFour!.child(i)).find((n) => n.text === 'a');
@@ -1832,8 +1832,72 @@ describe('blockFromEngineSpan', () => {
       'strong',
     ]);
     expect(canSkipDialectEnrich('paragraph', '*c **d _e *f **g _h *i **j _k *l **m _n *o **p _q *r **s _t *u ~~v _w *x _y *z `a` z* y_ x* w_ v~~ u* t_ s** r* q_ p** o* n_ m** l* k_ j** i* h_ g** f* e_ d** c*')).toBe(true);
-    // Twenty-five-level + ambiguous / same-delimiter stay dialect.
-    expect(blockFromEngineSpan('paragraph', '_b *c **d _e *f **g _h *i **j _k *l **m _n *o **p _q *r **s _t *u ~~v _w *x _y *z `a` z* y_ x* w_ v~~ u* t_ s** r* q_ p** o* n_ m** l* k_ j** i* h_ g** f* e_ d** c* b_')).toBeNull();
+    // Twenty-five-level nests (MAX_MARK_NEST = 25).
+    const twentyFive = blockFromEngineSpan('paragraph', '_b *c **d _e *f **g _h *i **j _k *l **m _n *o **p _q *r **s _t *u ~~v _w *x _y *z `a` z* y_ x* w_ v~~ u* t_ s** r* q_ p** o* n_ m** l* k_ j** i* h_ g** f* e_ d** c* b_');
+    expect(twentyFive?.textContent).toBe('b c d e f g h i j k l m n o p q r s t u v w x y z a z y x w v u t s r q p o n m l k j i h g f e d c b');
+    const twentyFiveA = [...Array(twentyFive!.childCount)].map((_, i) => twentyFive!.child(i)).find((n) => n.text === 'a');
+    expect(twentyFiveA!.marks.map((m) => m.type.name).sort()).toEqual([
+      'emphasis',
+      'emphasis',
+      'emphasis',
+      'emphasis',
+      'emphasis',
+      'emphasis',
+      'emphasis',
+      'emphasis',
+      'emphasis',
+      'emphasis',
+      'emphasis',
+      'emphasis',
+      'emphasis',
+      'emphasis',
+      'emphasis',
+      'emphasis',
+      'emphasis',
+      'emphasis',
+      'inline_code',
+      'strikethrough',
+      'strong',
+      'strong',
+      'strong',
+      'strong',
+      'strong',
+      'strong',
+    ]);
+    const twentyFiveB = blockFromEngineSpan('paragraph', '*a **b *c _e **f *g _h **i _j *k **l _m *n **o _p *em **bold ~~del _x *y _z *w _v *u _t `a` t_ u* v_ w* z_ y* x_~~ more** rest* p_ o** n* m_ l** k* j_ i** h_ g* f** e_ c* b** a*');
+    expect(twentyFiveB?.textContent).toBe('a b c e f g h i j k l m n o p em bold del x y z w v u t a t u v w z y x more rest p o n m l k j i h g f e c b a');
+    const twentyFiveBA = [...Array(twentyFiveB!.childCount)].map((_, i) => twentyFiveB!.child(i)).find((n) => n.text === 'a' && n.marks.some(m => m.type.name === 'inline_code'));
+    expect(twentyFiveBA!.marks.map((m) => m.type.name).sort()).toEqual([
+      'emphasis',
+      'emphasis',
+      'emphasis',
+      'emphasis',
+      'emphasis',
+      'emphasis',
+      'emphasis',
+      'emphasis',
+      'emphasis',
+      'emphasis',
+      'emphasis',
+      'emphasis',
+      'emphasis',
+      'emphasis',
+      'emphasis',
+      'emphasis',
+      'emphasis',
+      'emphasis',
+      'inline_code',
+      'strikethrough',
+      'strong',
+      'strong',
+      'strong',
+      'strong',
+      'strong',
+      'strong',
+    ]);
+    expect(canSkipDialectEnrich('paragraph', '_b *c **d _e *f **g _h *i **j _k *l **m _n *o **p _q *r **s _t *u ~~v _w *x _y *z `a` z* y_ x* w_ v~~ u* t_ s** r* q_ p** o* n_ m** l* k_ j** i* h_ g** f* e_ d** c* b_')).toBe(true);
+    // Twenty-six-level + ambiguous / same-delimiter stay dialect.
+    expect(blockFromEngineSpan('paragraph', '**a _b *c **d _e *f **g _h *i **j _k *l **m _n *o **p _q *r **s _t *u ~~v _w *x _y *z `a` z* y_ x* w_ v~~ u* t_ s** r* q_ p** o* n_ m** l* k_ j** i* h_ g** f* e_ d** c* b_ a**')).toBeNull();
     expect(blockFromEngineSpan('paragraph', '**t *u ~~v _w *x ~~y _z `a` z_ y~~ x* w_ v~~ u* t**')).toBeNull();
     expect(blockFromEngineSpan('paragraph', '**bold `code`**')?.textContent).toBe('bold code');
     expect(blockFromEngineSpan('paragraph', '***triple***')).toBeNull();
