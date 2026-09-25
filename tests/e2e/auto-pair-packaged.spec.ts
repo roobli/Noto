@@ -1,7 +1,7 @@
 import { mkdir, rm, writeFile } from 'node:fs/promises';
 import path from 'node:path';
 import { expect, test, _electron as electron, type ElectronApplication, type Page } from '@playwright/test';
-import { packagedExecutable, placeCaret } from './packaged-app';
+import { packagedExecutable, placeCaret, selectTextIn } from './packaged-app';
 
 const resultRoot = path.join(process.cwd(), 'test-results', 'auto-pair');
 
@@ -69,11 +69,11 @@ test.describe('closing what you open', () => {
     const { app, page } = await launch('wrap');
     try {
       const paragraph = page.locator('.ProseMirror > p').last();
-      await placeCaret(page, paragraph);
-      await page.keyboard.press(process.platform === 'darwin' ? 'Meta+ArrowRight' : 'End');
-      // Select the word before the full stop.
-      await page.keyboard.press('ArrowLeft');
-      for (let i = 0; i < 4; i += 1) await page.keyboard.press('Shift+ArrowLeft');
+      // Shift+ArrowLeft from End can leave an empty caret before the period on
+      // packaged macos-14, so the opener pairs instead of wrapping. Select
+      // "Here" via the Selection API (same harden as placeCaretAtStart/End).
+      await selectTextIn(page, paragraph, 0, 4);
+      await expect.poll(() => page.evaluate(() => window.getSelection()?.toString() ?? '')).toBe('Here');
       await page.keyboard.type('（');
       await expect.poll(() => text(page)).toBe('（Here）.');
     } finally {

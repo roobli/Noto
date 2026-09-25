@@ -174,3 +174,37 @@ export async function placeCaretAtEnd(page: Page, target: Locator): Promise<void
     document.dispatchEvent(new Event('selectionchange'));
   });
 }
+
+/**
+ * Select a half-open character range inside `target`'s first text node via the
+ * Selection API, after focusing the editor.
+ *
+ * Shift+ArrowLeft from End is unreliable on packaged macos-14: the caret can
+ * sit between the word and the period with an empty selection, so typing an
+ * opener pairs instead of wrapping (auto-pair: expected "（Here）.", got
+ * "Here（）.").
+ */
+export async function selectTextIn(
+  page: Page,
+  target: Locator,
+  startOffset: number,
+  endOffset: number,
+): Promise<void> {
+  await placeCaret(page, target);
+  await target.evaluate((node, rangeOffsets: { startOffset: number; endOffset: number }) => {
+    const root = node.closest('.ProseMirror');
+    if (!(root instanceof HTMLElement)) throw new Error('no ProseMirror root');
+    root.focus();
+    const walker = document.createTreeWalker(node, NodeFilter.SHOW_TEXT);
+    const text = walker.nextNode();
+    if (!text || !(text instanceof Text)) throw new Error('no text to select');
+    const range = document.createRange();
+    range.setStart(text, rangeOffsets.startOffset);
+    range.setEnd(text, rangeOffsets.endOffset);
+    const selection = window.getSelection();
+    selection?.removeAllRanges();
+    selection?.addRange(range);
+    root.focus();
+    document.dispatchEvent(new Event('selectionchange'));
+  }, { startOffset, endOffset });
+}
