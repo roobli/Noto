@@ -5,7 +5,7 @@
  * plain + hard breaks + lists-in-quotes + simple GFM alerts / callouts with
  * plain or simple-marked bodies + lazy continuation (fewer `>` and true no-`>`)
  * + simple flat / same-family nested list (any depth, incl. hard breaks +
- * simple marks incl. flat underscore + up to twenty-nine-level nested marks + collapsible/plain-titled/simple-marked-title callouts + unindented lazy
+ * simple marks incl. flat underscore + up to thirty-level nested marks + collapsible/plain-titled/simple-marked-title callouts + unindented lazy
  * soft-wrap) + simple GFM table with plain or simple-marked cells incl.
  * escaped pipes + simple inline links / images + simple reference links /
  * images + simple bare http(s) + angle-bracket http(s) + www. + email
@@ -2100,7 +2100,7 @@ describe('blockFromEngineSpan', () => {
       'strong',
     ]);
     expect(canSkipDialectEnrich('paragraph', '_y *z **a _b *c **d _e *f **g _h *i **j _k *l **m _n *o **p _q *r **s _t *u ~~v _w *x _y *z `a` z* y_ x* w_ v~~ u* t_ s** r* q_ p** o* n_ m** l* k_ j** i* h_ g** f* e_ d** c* b_ a** z* y_')).toBe(true);
-    // Twenty-nine-level nests (MAX_MARK_NEST = 29).
+    // Twenty-nine-level nests (MAX_MARK_NEST ≥ 29).
     const twentyNine = blockFromEngineSpan('paragraph', '**x _y *z **a _b *c **d _e *f **g _h *i **j _k *l **m _n *o **p _q *r **s _t *u ~~v _w *x _y *z `a` z* y_ x* w_ v~~ u* t_ s** r* q_ p** o* n_ m** l* k_ j** i* h_ g** f* e_ d** c* b_ a** z* y_ x**');
     expect(twentyNine?.textContent).toBe('x y z a b c d e f g h i j k l m n o p q r s t u v w x y z a z y x w v u t s r q p o n m l k j i h g f e d c b a z y x');
     const twentyNineA = [...Array(twentyNine!.childCount)].map((_, i) => twentyNine!.child(i)).find((n) => n.text === 'a' && n.marks.some(m => m.type.name === 'inline_code'));
@@ -2172,8 +2172,82 @@ describe('blockFromEngineSpan', () => {
       'strong',
     ]);
     expect(canSkipDialectEnrich('paragraph', '**x _y *z **a _b *c **d _e *f **g _h *i **j _k *l **m _n *o **p _q *r **s _t *u ~~v _w *x _y *z `a` z* y_ x* w_ v~~ u* t_ s** r* q_ p** o* n_ m** l* k_ j** i* h_ g** f* e_ d** c* b_ a** z* y_ x**')).toBe(true);
-    // Thirty-level + ambiguous / same-delimiter stay dialect.
-    expect(blockFromEngineSpan('paragraph', '*w **x _y *z **a _b *c **d _e *f **g _h *i **j _k *l **m _n *o **p _q *r **s _t *u ~~v _w *x _y *z `a` z* y_ x* w_ v~~ u* t_ s** r* q_ p** o* n_ m** l* k_ j** i* h_ g** f* e_ d** c* b_ a** z* y_ x** w*')).toBeNull();
+    // Thirty-level nests (MAX_MARK_NEST = 30).
+    const thirty = blockFromEngineSpan('paragraph', '*w **x _y *z **a _b *c **d _e *f **g _h *i **j _k *l **m _n *o **p _q *r **s _t *u ~~v _w *x _y *z `a` z* y_ x* w_ v~~ u* t_ s** r* q_ p** o* n_ m** l* k_ j** i* h_ g** f* e_ d** c* b_ a** z* y_ x** w*');
+    expect(thirty?.textContent).toBe('w x y z a b c d e f g h i j k l m n o p q r s t u v w x y z a z y x w v u t s r q p o n m l k j i h g f e d c b a z y x w');
+    const thirtyA = [...Array(thirty!.childCount)].map((_, i) => thirty!.child(i)).find((n) => n.text === 'a' && n.marks.some(m => m.type.name === 'inline_code'));
+    expect(thirtyA!.marks.map((m) => m.type.name).sort()).toEqual([
+      'emphasis',
+      'emphasis',
+      'emphasis',
+      'emphasis',
+      'emphasis',
+      'emphasis',
+      'emphasis',
+      'emphasis',
+      'emphasis',
+      'emphasis',
+      'emphasis',
+      'emphasis',
+      'emphasis',
+      'emphasis',
+      'emphasis',
+      'emphasis',
+      'emphasis',
+      'emphasis',
+      'emphasis',
+      'emphasis',
+      'emphasis',
+      'inline_code',
+      'strikethrough',
+      'strong',
+      'strong',
+      'strong',
+      'strong',
+      'strong',
+      'strong',
+      'strong',
+      'strong',
+    ]);
+    const thirtyB = blockFromEngineSpan('paragraph', '**z _a *b **c _d *a **b *c _e **f *g _h **i _j *k **l _m *n **o _p *em **bold ~~del _x *y _z *w _v *u _t `a` t_ u* v_ w* z_ y* x_~~ more** rest* p_ o** n* m_ l** k* j_ i** h_ g* f** e_ c* b** a* d_ c** b* a_ z**');
+    expect(thirtyB?.textContent).toBe('z a b c d a b c e f g h i j k l m n o p em bold del x y z w v u t a t u v w z y x more rest p o n m l k j i h g f e c b a d c b a z');
+    const thirtyBA = [...Array(thirtyB!.childCount)].map((_, i) => thirtyB!.child(i)).find((n) => n.text === 'a' && n.marks.some(m => m.type.name === 'inline_code'));
+    expect(thirtyBA!.marks.map((m) => m.type.name).sort()).toEqual([
+      'emphasis',
+      'emphasis',
+      'emphasis',
+      'emphasis',
+      'emphasis',
+      'emphasis',
+      'emphasis',
+      'emphasis',
+      'emphasis',
+      'emphasis',
+      'emphasis',
+      'emphasis',
+      'emphasis',
+      'emphasis',
+      'emphasis',
+      'emphasis',
+      'emphasis',
+      'emphasis',
+      'emphasis',
+      'emphasis',
+      'emphasis',
+      'inline_code',
+      'strikethrough',
+      'strong',
+      'strong',
+      'strong',
+      'strong',
+      'strong',
+      'strong',
+      'strong',
+      'strong',
+    ]);
+    expect(canSkipDialectEnrich('paragraph', '*w **x _y *z **a _b *c **d _e *f **g _h *i **j _k *l **m _n *o **p _q *r **s _t *u ~~v _w *x _y *z `a` z* y_ x* w_ v~~ u* t_ s** r* q_ p** o* n_ m** l* k_ j** i* h_ g** f* e_ d** c* b_ a** z* y_ x** w*')).toBe(true);
+    // Thirty-one-level + ambiguous / same-delimiter stay dialect.
+    expect(blockFromEngineSpan('paragraph', '_v *w **x _y *z **a _b *c **d _e *f **g _h *i **j _k *l **m _n *o **p _q *r **s _t *u ~~v _w *x _y *z `a` z* y_ x* w_ v~~ u* t_ s** r* q_ p** o* n_ m** l* k_ j** i* h_ g** f* e_ d** c* b_ a** z* y_ x** w* v_')).toBeNull();
     expect(blockFromEngineSpan('paragraph', '**t *u ~~v _w *x ~~y _z `a` z_ y~~ x* w_ v~~ u* t**')).toBeNull();
     expect(blockFromEngineSpan('paragraph', '**bold `code`**')?.textContent).toBe('bold code');
     expect(blockFromEngineSpan('paragraph', '***triple***')).toBeNull();
