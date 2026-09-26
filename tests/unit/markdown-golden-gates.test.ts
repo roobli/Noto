@@ -213,6 +213,7 @@ describe('markdown golden gates — fixture inventory', () => {
       'simple-thirty-four-level-nested-marks.md',
       'simple-thirty-level-nested-marks.md',
       'simple-thirty-one-level-nested-marks.md',
+      'simple-thirty-seven-level-nested-marks.md',
       'simple-thirty-six-level-nested-marks.md',
       'simple-thirty-three-level-nested-marks.md',
       'simple-thirty-two-level-nested-marks.md',
