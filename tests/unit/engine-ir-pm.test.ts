@@ -5,7 +5,7 @@
  * plain + hard breaks + lists-in-quotes + simple GFM alerts / callouts with
  * plain or simple-marked bodies + lazy continuation (fewer `>` and true no-`>`)
  * + simple flat / same-family nested list (any depth, incl. hard breaks +
- * simple marks incl. flat underscore + up to thirty-three-level nested marks + collapsible/plain-titled/simple-marked-title callouts + unindented lazy
+ * simple marks incl. flat underscore + up to thirty-four-level nested marks + collapsible/plain-titled/simple-marked-title callouts + unindented lazy
  * soft-wrap) + simple GFM table with plain or simple-marked cells incl.
  * escaped pipes + simple inline links / images + simple reference links /
  * images + simple bare http(s) + angle-bracket http(s) + www. + email
@@ -2400,7 +2400,7 @@ describe('blockFromEngineSpan', () => {
       'strong',
     ]);
     expect(canSkipDialectEnrich('paragraph', '**u _v *w **x _y *z **a _b *c **d _e *f **g _h *i **j _k *l **m _n *o **p _q *r **s _t *u ~~v _w *x _y *z `a` z* y_ x* w_ v~~ u* t_ s** r* q_ p** o* n_ m** l* k_ j** i* h_ g** f* e_ d** c* b_ a** z* y_ x** w* v_ u**')).toBe(true);
-    // Thirty-three-level nests (MAX_MARK_NEST = 33).
+    // Thirty-three-level nests (MAX_MARK_NEST ≥ 33).
     const thirtyThree = blockFromEngineSpan('paragraph', '*t **u _v *w **x _y *z **a _b *c **d _e *f **g _h *i **j _k *l **m _n *o **p _q *r **s _t *u ~~v _w *x _y *z `a` z* y_ x* w_ v~~ u* t_ s** r* q_ p** o* n_ m** l* k_ j** i* h_ g** f* e_ d** c* b_ a** z* y_ x** w* v_ u** t*');
     expect(thirtyThree?.textContent).toBe('t u v w x y z a b c d e f g h i j k l m n o p q r s t u v w x y z a z y x w v u t s r q p o n m l k j i h g f e d c b a z y x w v u t');
     const thirtyThreeA = [...Array(thirtyThree!.childCount)].map((_, i) => thirtyThree!.child(i)).find((n) => n.text === 'a' && n.marks.some(m => m.type.name === 'inline_code'));
@@ -2480,8 +2480,90 @@ describe('blockFromEngineSpan', () => {
       'strong',
     ]);
     expect(canSkipDialectEnrich('paragraph', '*t **u _v *w **x _y *z **a _b *c **d _e *f **g _h *i **j _k *l **m _n *o **p _q *r **s _t *u ~~v _w *x _y *z `a` z* y_ x* w_ v~~ u* t_ s** r* q_ p** o* n_ m** l* k_ j** i* h_ g** f* e_ d** c* b_ a** z* y_ x** w* v_ u** t*')).toBe(true);
-    // Thirty-four-level + ambiguous / same-delimiter stay dialect.
-    expect(blockFromEngineSpan('paragraph', '_s *t **u _v *w **x _y *z **a _b *c **d _e *f **g _h *i **j _k *l **m _n *o **p _q *r **s _t *u ~~v _w *x _y *z `a` z* y_ x* w_ v~~ u* t_ s** r* q_ p** o* n_ m** l* k_ j** i* h_ g** f* e_ d** c* b_ a** z* y_ x** w* v_ u** t* s_')).toBeNull();
+    // Thirty-four-level nests (MAX_MARK_NEST = 34).
+    const thirtyFour = blockFromEngineSpan('paragraph', '_s *t **u _v *w **x _y *z **a _b *c **d _e *f **g _h *i **j _k *l **m _n *o **p _q *r **s _t *u ~~v _w *x _y *z `a` z* y_ x* w_ v~~ u* t_ s** r* q_ p** o* n_ m** l* k_ j** i* h_ g** f* e_ d** c* b_ a** z* y_ x** w* v_ u** t* s_');
+    expect(thirtyFour?.textContent).toBe('s t u v w x y z a b c d e f g h i j k l m n o p q r s t u v w x y z a z y x w v u t s r q p o n m l k j i h g f e d c b a z y x w v u t s');
+    const thirtyFourA = [...Array(thirtyFour!.childCount)].map((_, i) => thirtyFour!.child(i)).find((n) => n.text === 'a' && n.marks.some(m => m.type.name === 'inline_code'));
+    expect(thirtyFourA!.marks.map((m) => m.type.name).sort()).toEqual([
+      'emphasis',
+      'emphasis',
+      'emphasis',
+      'emphasis',
+      'emphasis',
+      'emphasis',
+      'emphasis',
+      'emphasis',
+      'emphasis',
+      'emphasis',
+      'emphasis',
+      'emphasis',
+      'emphasis',
+      'emphasis',
+      'emphasis',
+      'emphasis',
+      'emphasis',
+      'emphasis',
+      'emphasis',
+      'emphasis',
+      'emphasis',
+      'emphasis',
+      'emphasis',
+      'emphasis',
+      'inline_code',
+      'strikethrough',
+      'strong',
+      'strong',
+      'strong',
+      'strong',
+      'strong',
+      'strong',
+      'strong',
+      'strong',
+      'strong',
+    ]);
+    const thirtyFourB = blockFromEngineSpan('paragraph', '*v **w _x *y **z _a *b **c _d *a **b *c _e **f *g _h **i _j *k **l _m *n **o _p *em **bold ~~del _x *y _z *w _v *u _t `a` t_ u* v_ w* z_ y* x_~~ more** rest* p_ o** n* m_ l** k* j_ i** h_ g* f** e_ c* b** a* d_ c** b* a_ z** y* x_ w** v*');
+    expect(thirtyFourB?.textContent).toBe('v w x y z a b c d a b c e f g h i j k l m n o p em bold del x y z w v u t a t u v w z y x more rest p o n m l k j i h g f e c b a d c b a z y x w v');
+    const thirtyFourBA = [...Array(thirtyFourB!.childCount)].map((_, i) => thirtyFourB!.child(i)).find((n) => n.text === 'a' && n.marks.some(m => m.type.name === 'inline_code'));
+    expect(thirtyFourBA!.marks.map((m) => m.type.name).sort()).toEqual([
+      'emphasis',
+      'emphasis',
+      'emphasis',
+      'emphasis',
+      'emphasis',
+      'emphasis',
+      'emphasis',
+      'emphasis',
+      'emphasis',
+      'emphasis',
+      'emphasis',
+      'emphasis',
+      'emphasis',
+      'emphasis',
+      'emphasis',
+      'emphasis',
+      'emphasis',
+      'emphasis',
+      'emphasis',
+      'emphasis',
+      'emphasis',
+      'emphasis',
+      'emphasis',
+      'emphasis',
+      'inline_code',
+      'strikethrough',
+      'strong',
+      'strong',
+      'strong',
+      'strong',
+      'strong',
+      'strong',
+      'strong',
+      'strong',
+      'strong',
+    ]);
+    expect(canSkipDialectEnrich('paragraph', '_s *t **u _v *w **x _y *z **a _b *c **d _e *f **g _h *i **j _k *l **m _n *o **p _q *r **s _t *u ~~v _w *x _y *z `a` z* y_ x* w_ v~~ u* t_ s** r* q_ p** o* n_ m** l* k_ j** i* h_ g** f* e_ d** c* b_ a** z* y_ x** w* v_ u** t* s_')).toBe(true);
+    // Thirty-five-level + ambiguous / same-delimiter stay dialect.
+    expect(blockFromEngineSpan('paragraph', '**r _s *t **u _v *w **x _y *z **a _b *c **d _e *f **g _h *i **j _k *l **m _n *o **p _q *r **s _t *u ~~v _w *x _y *z `a` z* y_ x* w_ v~~ u* t_ s** r* q_ p** o* n_ m** l* k_ j** i* h_ g** f* e_ d** c* b_ a** z* y_ x** w* v_ u** t* s_ r**')).toBeNull();
     expect(blockFromEngineSpan('paragraph', '**t *u ~~v _w *x ~~y _z `a` z_ y~~ x* w_ v~~ u* t**')).toBeNull();
     expect(blockFromEngineSpan('paragraph', '**bold `code`**')?.textContent).toBe('bold code');
     expect(blockFromEngineSpan('paragraph', '***triple***')).toBeNull();
