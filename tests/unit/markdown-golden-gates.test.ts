@@ -244,6 +244,7 @@ describe('markdown golden gates — fixture inventory', () => {
       'simple-twenty-three-level-nested-marks.md',
       'simple-twenty-two-level-nested-marks.md',
       'simple-two-level-nested-marks.md',
+      'simple-under-indented-structural-nest-exit.md',
       'simple-underscore-emphasis.md',
       'simple-wiki-links.md',
       'simple-www-autolinks.md',

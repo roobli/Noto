@@ -150,7 +150,7 @@ export function hasHardBreak(markdown: string): boolean {
  * link-definitions; simple footnote-definitions (incl. hard breaks + simple
  * marks); simple quotes (incl. nested, hard breaks, lists-in-quotes, plain /
  * simple-marked / collapsible / plain-titled / simple-marked-title / heavy-title GFM alerts / callouts, lazy nest + no-`>` lazy); simple flat
- * or nested lists (same-family or mixed-marker, any depth, incl. hard breaks + simple marks + multi-paragraph items + lazy soft-wrap after blank + structural quote/fence/ATX-heading/HTML/table/hr children + setext-shaped tight `---`/`===` after a paragraph + cross-family same-indent sibling marker mixes);
+ * or nested lists (same-family or mixed-marker, any depth, incl. hard breaks + simple marks + multi-paragraph items + lazy soft-wrap after blank + structural quote/fence/ATX-heading/HTML/table/hr children + setext-shaped tight `---`/`===` after a paragraph + cross-family same-indent sibling marker mixes + under-indented structural nest-exit);
  * simple GFM tables (plain or simple-marked cells incl. escaped pipes; ragged body rows; pipe-optional leading `|`); paragraph / heading when
  * plain or simple-marked (hard breaks + simple inline links / images +
  * simple reference links / images + simple bare http(s) + angle-bracket
@@ -2771,9 +2771,10 @@ export type ParsedListItemChild =
 export interface ParsedFlatListItem {
   readonly checked: boolean | null;
   /**
-   * Item body in document order. Soft-wrap newlines stay inside one paragraph
-   * entry; a blank + indented continuation starts a new paragraph (multi-block)
-   * or an owned structural child (simple quote / fence / ATX heading / HTML / table / hr).
+   * Item body in document order before nested lists. Soft-wrap newlines stay
+   * inside one paragraph entry; a blank + indented continuation starts a new
+   * paragraph (multi-block) or an owned structural child (simple quote / fence /
+   * ATX heading / HTML / table / hr).
    */
   readonly children: readonly ParsedListItemChild[];
   /**
@@ -2782,6 +2783,12 @@ export interface ParsedFlatListItem {
    * nested list (micromark parity); Phase 16 keeps the outer span one piece.
    */
   readonly nestedLists: readonly ParsedFlatList[];
+  /**
+   * Children after nested lists (under-indented structural nest-exit: hr / ATX /
+   * quote / fence / HTML / table re-homed onto the parent item). Omitted when
+   * the item has no post-nest content.
+   */
+  readonly trailingChildren?: readonly ParsedListItemChild[];
 }
 
 export interface ParsedFlatList {
@@ -2832,6 +2839,35 @@ function ownedStructuralKind(
 }
 
 /**
+ * Under-indented line that an ancestor list item can claim as an owned
+ * structural child (micromark nest-exit). Walks deepest→shallowest; the first
+ * ancestor whose content indent claims the line wins. Tables only when
+ * `allowTable` (after a blank — tight under-indent `|…|` stays lazy soft-wrap).
+ * Non-structural ancestor claims (lazy text / `===`) return null so the caller
+ * can soft-wrap the open nest paragraph instead.
+ */
+function findStructuralNestExit(
+  stack: readonly DraftListLevel[],
+  line: string,
+  allowTable: boolean,
+): { ancestorIdx: number; rest: string } | null {
+  for (let s = stack.length - 2; s >= 0; s -= 1) {
+    const ancRest = listContinuationRest(line, stack[s]!.indent);
+    if (ancRest === null) continue;
+    const kind = ownedStructuralKind(ancRest);
+    if (kind === null) {
+      if (allowTable && ancRest.includes('|')) {
+        return { ancestorIdx: s, rest: ancRest };
+      }
+      return null;
+    }
+    if (kind === 'table' && !allowTable) return null;
+    return { ancestorIdx: s, rest: ancRest };
+  }
+  return null;
+}
+
+/**
  * Continuous setext underline after list-item indent strip (CommonMark /
  * micromark). Spaced thematic rules (`- - -`) and `***` / `___` do not match.
  */
@@ -2848,7 +2884,8 @@ function promoteTrailingParagraphToSetext(
   item: DraftListItem,
   underline: string,
 ): boolean | null {
-  const last = item.children[item.children.length - 1];
+  const bucket = item.afterNested ? item.trailingChildren : item.children;
+  const last = bucket[bucket.length - 1];
   if (!last || last.type !== 'paragraph') return false;
   let text = last.lines.join('\n').trimEnd();
   // GFM task checkbox is paragraph-only; setext absorbs `[ ]`/`[x]` into
@@ -2861,7 +2898,7 @@ function promoteTrailingParagraphToSetext(
   if (text.length === 0) return false;
   if (tryInlineNodesFromSource(text) === null) return null;
   const marker = underline.trimStart()[0];
-  item.children[item.children.length - 1] = {
+  bucket[bucket.length - 1] = {
     type: 'heading',
     level: marker === '=' ? 1 : 2,
     text,
@@ -2968,6 +3005,13 @@ type DraftListItem = {
   nested: DraftListLevel | null;
   /** Nested lists closed by a same-indent marker-family split (micromark). */
   closedNested: DraftListLevel[];
+  /**
+   * Post-nest children (nest-exit structural / following parent-indent blocks).
+   * PM / mdast emit these after `nestedLists`.
+   */
+  trailingChildren: DraftListChild[];
+  /** Once set, further non-list children go to `trailingChildren`. */
+  afterNested: boolean;
 };
 
 type DraftListLevel = {
@@ -3179,9 +3223,11 @@ function peekTableDelimiter(
  * (quotes); a single-list span still uses this helper (Phase 19 already splits
  * top-level mixes into separate IR spans). Loose lists set `spread` on that
  * level. Task checkboxes are allowed. Returns `null` when dialect enrich is
- * still needed (heavy inline / under-indented structural nest-exit / root-level
- * marker mix). Lazy soft-wrap of an open paragraph after a blank (unindented or
- * under-indented once that paragraph was opened with proper indent) is owned.
+ * still needed (heavy inline / nest-sibling after nest-exit structural /
+ * root-level marker mix). Lazy soft-wrap of an open paragraph after a blank
+ * (unindented or under-indented once that paragraph was opened with proper
+ * indent) is owned. Under-indented structural nest-exit (hr / ATX / quote /
+ * fence / HTML; table after blank) re-homes onto the parent item (micromark).
  * A new paragraph after a blank still needs proper indent (safety refuse when a
  * mis-split feeds bare lazy-after-blank). Setext-shaped tight `---` / `===` after
  * a paragraph promote that paragraph to a heading (micromark). Empty-item + blank
@@ -3254,9 +3300,48 @@ export function parseSimpleFlatListsSource(md: string): ParsedFlatList[] | null 
         if (!nested) return null;
         nestedLists.push(nested);
       }
+      const trailingChildren: ParsedListItemChild[] = [];
+      for (const child of item.trailingChildren) {
+        if (child.type === 'paragraph') {
+          const joined = child.lines.join('\n').trimEnd();
+          if (tryInlineNodesFromSource(joined) === null) return null;
+          trailingChildren.push({ type: 'paragraph', text: joined });
+        } else if (child.type === 'quote') {
+          trailingChildren.push({ type: 'quote', children: child.children });
+        } else if (child.type === 'fence') {
+          trailingChildren.push({
+            type: 'fence',
+            lang: child.lang,
+            meta: child.meta,
+            value: child.value,
+          });
+        } else if (child.type === 'heading') {
+          trailingChildren.push({
+            type: 'heading',
+            level: child.level,
+            text: child.text,
+          });
+        } else if (child.type === 'html') {
+          trailingChildren.push({ type: 'html', value: child.value });
+        } else if (child.type === 'table') {
+          trailingChildren.push({
+            type: 'table',
+            align: child.align,
+            rows: child.rows,
+          });
+        } else {
+          trailingChildren.push({ type: 'hr' });
+        }
+      }
       // Allow empty children only when a nested list carries the item (rare).
-      if (children.length === 0 && nestedLists.length === 0) return null;
-      items.push({ checked: item.checked, children, nestedLists });
+      if (children.length === 0 && nestedLists.length === 0 && trailingChildren.length === 0) {
+        return null;
+      }
+      items.push(
+        trailingChildren.length > 0
+          ? { checked: item.checked, children, nestedLists, trailingChildren }
+          : { checked: item.checked, children, nestedLists },
+      );
     }
     return {
       ordered: level.ordered,
@@ -3278,6 +3363,8 @@ export function parseSimpleFlatListsSource(md: string): ParsedFlatList[] | null 
       children: [{ type: 'paragraph', lines: [text] }],
       nested: null,
       closedNested: [],
+      trailingChildren: [],
+      afterNested: false,
     });
   };
 
@@ -3339,6 +3426,56 @@ export function parseSimpleFlatListsSource(md: string): ParsedFlatList[] | null 
     parentItem.nested = next;
     stack.push(next);
     return true;
+  };
+
+  /** Pop nest levels down to `ancestorIdx` (exclusive keep). Leave `nested` pointers for finalize. */
+  const popNestsTo = (ancestorIdx: number): void => {
+    while (stack.length - 1 > ancestorIdx) {
+      const removed = stack.pop()!;
+      if (removed.pendingBlank) {
+        stack[stack.length - 1]!.pendingBlank = true;
+      }
+    }
+  };
+
+  /** Append a child before or after nested lists depending on nest-exit state. */
+  const appendItemChild = (item: DraftListItem, child: DraftListChild): void => {
+    if (item.afterNested) item.trailingChildren.push(child);
+    else item.children.push(child);
+  };
+
+  /**
+   * Apply under-indented structural nest-exit onto an ancestor item.
+   * Returns the next line index, or null → dialect.
+   */
+  const applyStructuralNestExit = (
+    lineIdx: number,
+    exit: { ancestorIdx: number; rest: string },
+    fromBlank: boolean,
+  ): number | null => {
+    popNestsTo(exit.ancestorIdx);
+    const anc = stack[exit.ancestorIdx]!;
+    if (anc.items.length === 0) return null;
+    const ancItem = anc.items[anc.items.length - 1]!;
+    const kind = ownedStructuralKind(exit.rest);
+    if (kind === 'table' || (kind === null && exit.rest.includes('|'))) {
+      if (itemIsEmptyPlaceholder(ancItem) && fromBlank) return null;
+      const tableCollected = tryCollectTableChild(lines, lineIdx, anc.indent, exit.rest);
+      if (!tableCollected) return null;
+      ancItem.afterNested = true;
+      appendItemChild(ancItem, tableCollected.child);
+      if (fromBlank) anc.spread = true;
+      anc.pendingBlank = false;
+      return tableCollected.nextIdx;
+    }
+    if (fromBlank && itemIsEmptyPlaceholder(ancItem)) return null;
+    const collected = collectStructuralChild(lines, lineIdx, anc.indent, exit.rest);
+    if (!collected) return null;
+    ancItem.afterNested = true;
+    appendItemChild(ancItem, collected.child);
+    if (fromBlank) anc.spread = true;
+    anc.pendingBlank = false;
+    return collected.nextIdx;
   };
 
   let i = 0;
@@ -3540,9 +3677,10 @@ export function parseSimpleFlatListsSource(md: string): ParsedFlatList[] | null 
 
     // Continuation of the current deepest item: soft-wrap, new paragraph after
     // a blank, or an owned structural child (quote / fence / ATX heading / HTML /
-    // table / hr). A brand-new paragraph after a blank needs proper indent
-    // (CommonMark); bare lazy-after-blank without that indent is outside the
-    // list at split — refuse if a mis-split still feeds it here.
+    // table / hr). Under-indented structural may nest-exit onto an ancestor.
+    // A brand-new paragraph after a blank needs proper indent (CommonMark);
+    // bare lazy-after-blank without that indent is outside the list at split —
+    // refuse if a mis-split still feeds it here.
     if (!sawItem || stack.length === 0) return null;
     const top = stack[stack.length - 1]!;
     if (top.items.length === 0) return null;
@@ -3550,7 +3688,15 @@ export function parseSimpleFlatListsSource(md: string): ParsedFlatList[] | null 
 
     if (top.pendingBlank) {
       const rest = listContinuationRest(line, top.indent);
-      if (rest === null) return null; // new para after blank needs content indent
+      if (rest === null) {
+        // Under-indented after blank: structural nest-exit (incl. table) onto parent.
+        const exit = findStructuralNestExit(stack, line, true);
+        if (!exit) return null;
+        const nextIdx = applyStructuralNestExit(i, exit, true);
+        if (nextIdx === null) return null;
+        i = nextIdx;
+        continue;
+      }
       const structural = ownedStructuralKind(rest);
       if (structural) {
         // Empty item + blank + structural is outside the list at split
@@ -3558,7 +3704,7 @@ export function parseSimpleFlatListsSource(md: string): ParsedFlatList[] | null 
         if (itemIsEmptyPlaceholder(cur)) return null;
         const collected = collectStructuralChild(lines, i, top.indent, rest);
         if (!collected) return null;
-        cur.children.push(collected.child);
+        appendItemChild(cur, collected.child);
         top.spread = true;
         top.pendingBlank = false;
         i = collected.nextIdx;
@@ -3569,7 +3715,7 @@ export function parseSimpleFlatListsSource(md: string): ParsedFlatList[] | null 
         if (itemIsEmptyPlaceholder(cur)) return null;
         const tableCollected = tryCollectTableChild(lines, i, top.indent, rest);
         if (tableCollected) {
-          cur.children.push(tableCollected.child);
+          appendItemChild(cur, tableCollected.child);
           top.spread = true;
           top.pendingBlank = false;
           i = tableCollected.nextIdx;
@@ -3580,7 +3726,7 @@ export function parseSimpleFlatListsSource(md: string): ParsedFlatList[] | null 
       if (restLooksStructural(rest) || tryInlineNodesFromSource(rest) === null) {
         return null;
       }
-      cur.children.push({ type: 'paragraph', lines: [rest] });
+      appendItemChild(cur, { type: 'paragraph', lines: [rest] });
       top.spread = true;
       top.pendingBlank = false;
       i += 1;
@@ -3589,16 +3735,30 @@ export function parseSimpleFlatListsSource(md: string): ParsedFlatList[] | null 
 
     let rest = listContinuationRest(line, top.indent);
     // Under-indented / unindented soft-wrap of an *open* paragraph (incl. the
-    // paragraph that started after a blank with proper indent). Do not run
-    // setext / structural ownership on this path — under-indented `---` / ATX /
-    // fences are often re-homed on a parent item (micromark); stay dialect.
+    // paragraph that started after a blank with proper indent). Under-indented
+    // structural (hr / ATX / quote / fence / HTML) nest-exits onto a parent
+    // item; tight under-indent tables stay lazy soft-wrap (micromark).
     let lazySoftWrap = false;
     if (rest === null) {
-      const openPara = cur.children[cur.children.length - 1];
+      const exit = findStructuralNestExit(stack, line, false);
+      if (exit) {
+        const nextIdx = applyStructuralNestExit(i, exit, false);
+        if (nextIdx === null) return null;
+        i = nextIdx;
+        continue;
+      }
+      const bucket = cur.afterNested ? cur.trailingChildren : cur.children;
+      const openPara = bucket[bucket.length - 1];
       if (openPara && openPara.type === 'paragraph') {
         const stripped = line.replace(/^[ \t]+/u, '');
         if (stripped.length === 0) return null;
-        if (restLooksStructural(stripped) || tryInlineNodesFromSource(stripped) === null) {
+        // Tight under-indent `|…|` stays lazy (micromark); other structural that
+        // did not nest-exit stays dialect.
+        const tableLazy = stripped.startsWith('|');
+        if (
+          (!tableLazy && restLooksStructural(stripped))
+          || tryInlineNodesFromSource(stripped) === null
+        ) {
           return null;
         }
         rest = stripped;
@@ -3629,8 +3789,8 @@ export function parseSimpleFlatListsSource(md: string): ParsedFlatList[] | null 
         // Tight structural child (no blank). Drop empty marker placeholder.
         const collected = collectStructuralChild(lines, i, top.indent, rest);
         if (!collected) return null;
-        dropEmptyPlaceholder(cur);
-        cur.children.push(collected.child);
+        if (!cur.afterNested) dropEmptyPlaceholder(cur);
+        appendItemChild(cur, collected.child);
         top.pendingBlank = false;
         i = collected.nextIdx;
         continue;
@@ -3639,8 +3799,8 @@ export function parseSimpleFlatListsSource(md: string): ParsedFlatList[] | null 
       if (rest.includes('|')) {
         const tableCollected = tryCollectTableChild(lines, i, top.indent, rest);
         if (tableCollected) {
-          dropEmptyPlaceholder(cur);
-          cur.children.push(tableCollected.child);
+          if (!cur.afterNested) dropEmptyPlaceholder(cur);
+          appendItemChild(cur, tableCollected.child);
           top.pendingBlank = false;
           i = tableCollected.nextIdx;
           continue;
@@ -3651,11 +3811,12 @@ export function parseSimpleFlatListsSource(md: string): ParsedFlatList[] | null 
         return null;
       }
     }
-    const last = cur.children[cur.children.length - 1];
+    const bucket = cur.afterNested ? cur.trailingChildren : cur.children;
+    const last = bucket[bucket.length - 1];
     if (last && last.type === 'paragraph') {
       last.lines.push(rest);
     } else {
-      cur.children.push({ type: 'paragraph', lines: [rest] });
+      appendItemChild(cur, { type: 'paragraph', lines: [rest] });
     }
     top.pendingBlank = false;
     i += 1;
@@ -3964,6 +4125,7 @@ function pmListFromParsed(list: ParsedFlatList): ProseNode {
   const items = list.items.map((item) => {
     const children: ProseNode[] = item.children.map(pmListItemChildNodes);
     for (const nested of item.nestedLists) children.push(pmListFromParsed(nested));
+    for (const trail of item.trailingChildren ?? []) children.push(pmListItemChildNodes(trail));
     if (children.length === 0) children.push(schema.nodes.paragraph.create());
     return schema.nodes.list_item.create({ checked: item.checked }, children);
   });
