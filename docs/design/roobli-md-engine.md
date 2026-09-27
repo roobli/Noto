@@ -211,7 +211,9 @@ breaks; nested children may nest only) + simple GFM tables (alignment row; plain
 or simple-marked cells incl. escaped pipes; consistent or ragged body columns; pipe-optional leading `|`);
 enrich flags mark those done — see `docs/performance/open-path-first-cut.md`.
 Cross-family nests, multi-block items, and heavy inline (thirty-eight+ /
-nested-bracket wiki / nested-bracket image alts / footnote·nested-bracket callout titles) stay on dialect; matched `***`/`___`, mixed triple closers, same-delimiter stacks, and multi-line inline HTML owned.
+nested-bracket image alts / footnote-ref callout titles) stay on dialect.
+Nested-bracket wiki (incl. in callout titles) is engine-owned as literal text.
+Matched `***`/`___`, mixed triple closers, same-delimiter stacks, and multi-line inline HTML owned.
 Ragged body rows and **pipe-optional** GFM tables (omit leading/trailing `|` when the row still contains `|`) are engine-owned; list-steal `- | -` pipe-less delimiters and Phase 17 mismatched header/delim (paragraphs at split) stay dialect.
 Simple inline math (`$…$` / `$$…$$`) and simple HTML/math in table cells are engine-owned.
 Simple image alts (math / marks / escapes / literal HTML → micromark plain alt string) are engine-owned.
@@ -230,7 +232,7 @@ simple GFM tables**, and **simple inline HTML** (single- or multi-line tags / co
 Product default stays micromark.
 
 Next: keep growing `markdown-golden/` (more GFM / vault edges), extend IR→PM
-only where micromark parity is locked (Phase 17 mismatched header/delim are paragraphs at split; residual dialect for thirty-eight+ / footnote·nested-bracket titles / multi-block items / cross-family nests;
+only where micromark parity is locked (Phase 17 mismatched header/delim are paragraphs at split; residual dialect for thirty-eight+ / footnote-ref callout titles / multi-block items / cross-family nests;
 pipe-optional tables + heavy callout titles owned; mixed triple closers + same-delimiter stacks + multi-line inline HTML owned), then reconsider
 default-on. Hard-breaks, images, empty/meta fences, escapes, table-align,
 ordered-start, inline HTML, simple-flat-lists, simple-nested-lists,

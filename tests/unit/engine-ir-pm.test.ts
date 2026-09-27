@@ -5,7 +5,7 @@
  * plain + hard breaks + lists-in-quotes + simple GFM alerts / callouts with
  * plain or simple-marked bodies + lazy continuation (fewer `>` and true no-`>`)
  * + simple flat / same-family nested list (any depth, incl. hard breaks +
- * simple marks incl. flat underscore + up to thirty-seven-level nested marks + collapsible/plain-titled/simple-marked-title/heavy-title callouts + unindented lazy
+ * simple marks incl. flat underscore + up to thirty-seven-level nested marks + collapsible/plain-titled/simple-marked-title/heavy-title (incl. nested-bracket wiki) callouts + unindented lazy
  * soft-wrap) + simple GFM table with plain or simple-marked cells incl.
  * escaped pipes + pipe-optional leading `|` + simple inline links / images + simple reference links /
  * images + simple bare http(s) + angle-bracket http(s) + www. + email
@@ -75,6 +75,8 @@ describe('from-engine IR helpers', () => {
     expect(needsDialectInlineInQuote('[!NOTE] See [docs](https://example.com)\nbody')).toBe(false);
     expect(needsDialectInlineInQuote('[!NOTE] ***both***\nbody')).toBe(false);
     expect(needsDialectInlineInQuote('[!NOTE] note[^1]\nbody')).toBe(true);
+    expect(needsDialectInlineInQuote('[!NOTE] [[a[[b]]]]\nbody')).toBe(false);
+    expect(needsDialectInlineInQuote('[!NOTE] Fold [[x[y]z]]\nbody')).toBe(false);
     expect(needsDialectInlineInQuote('plain')).toBe(false);
   });
 
@@ -91,6 +93,7 @@ describe('from-engine IR helpers', () => {
     expect(canSkipDialectEnrich('table', '| a \\| b |\n| --- |')).toBe(true);
     expect(canSkipDialectEnrich('paragraph', 'Break  \n**x**')).toBe(true);
     expect(canSkipDialectEnrich('paragraph', 'Hello [[wiki]]')).toBe(true);
+    expect(canSkipDialectEnrich('paragraph', '[[a[[b]]]]')).toBe(true);
     expect(canSkipDialectEnrich('paragraph', 'bare https://example.com')).toBe(true);
     expect(canSkipDialectEnrich('paragraph', 'angle <https://example.com>')).toBe(true);
     expect(canSkipDialectEnrich('paragraph', 'see www.example.com')).toBe(true);
@@ -123,6 +126,7 @@ describe('from-engine IR helpers', () => {
     expect(canSkipDialectEnrich('quote', '> [!NOTE] Energy $E=mc^2$\n> body')).toBe(true);
     expect(canSkipDialectEnrich('quote', '> [!TIP]- Folded <span>html</span> title\n> body')).toBe(true);
     expect(canSkipDialectEnrich('quote', '> [!IMPORTANT] See [docs](https://example.com) and ***both***\n> body')).toBe(true);
+    expect(canSkipDialectEnrich('quote', '> [!NOTE] [[a[[b]]]]\n> body')).toBe(true);
     expect(canSkipDialectEnrich('quote', '> [!NOTE] note[^1]\n> body')).toBe(false);
     expect(canSkipDialectEnrich('quote', '> [!WARNING]\n> has **bold**')).toBe(true);
     expect(canSkipDialectEnrich('quote', '> [!WARNING]\n> has [[wiki]]')).toBe(true);
@@ -317,6 +321,7 @@ describe('from-engine IR helpers', () => {
     expect(parseSimpleQuoteSource('> [!NOTE] Energy $E=mc^2$\n> x')).not.toBeNull();
     expect(parseSimpleQuoteSource('> [!TIP]- <span>x</span>\n> x')).not.toBeNull();
     expect(parseSimpleQuoteSource('> [!NOTE] note[^1]\n> x')).toBeNull();
+    expect(parseSimpleQuoteSource('> [!NOTE] [[a[[b]]]]\n> x')).not.toBeNull();
     expect(parseSimpleQuoteSource('> [!WARNING]\n> has **bold**')).not.toBeNull();
     expect(parseSimpleQuoteSource('> [!WARNING]\n> has [[wiki]]')).not.toBeNull();
     expect(parseSimpleFlatListSource('- a\n- b')).toEqual({
@@ -665,7 +670,7 @@ describe('blockFromEngineSpan', () => {
     const nestTitle = blockFromEngineSpan('quote', '> [!WARNING] **bold *em* nest**\n> body');
     expect(nestTitle?.textContent).toBe('[!WARNING] bold em nest\nbody');
     expect(blockFromEngineSpan('quote', '> [!NOTE] note[^1]\n> body')).toBeNull();
-    expect(blockFromEngineSpan('quote', '> [!NOTE] [[a[[b]]]]\n> body')).toBeNull();
+    expect(blockFromEngineSpan('quote', '> [!NOTE] [[a[[b]]]]\n> body')?.textContent).toBe('[!NOTE] [[a[[b]]]]\nbody');
     const markedAlert = blockFromEngineSpan('quote', '> [!WARNING]\n> has **bold**');
     expect(markedAlert?.textContent).toBe('[!WARNING]\nhas bold');
     expect(blockFromEngineSpan('quote', '> > nest\n> **bold**')?.textContent).toBe('nest\nbold');
@@ -991,6 +996,8 @@ describe('blockFromEngineSpan', () => {
     expect(strong.text).toBe('bold');
     expect(strong.marks.some((m) => m.type.name === 'strong')).toBe(true);
     expect(blockFromEngineSpan('paragraph', 'Hello [[wiki]]')?.textContent).toBe('Hello [[wiki]]');
+    expect(blockFromEngineSpan('paragraph', '[[a[[b]]]]')?.textContent).toBe('[[a[[b]]]]');
+    expect(blockFromEngineSpan('paragraph', '[[x[y]z]]')?.textContent).toBe('[[x[y]z]]');
     const us = blockFromEngineSpan('paragraph', 'Hello __underscore__ and _em_');
     expect(us?.textContent).toBe('Hello underscore and em');
     expect(us!.child(1).marks.some((m) => m.type.name === 'strong')).toBe(true);
@@ -2999,7 +3006,7 @@ describe('blockFromEngineSpan', () => {
     expect(markedWiki?.textContent).toBe('Go [[Home]] now');
     const wikiStrong = [...Array(markedWiki!.childCount)].map((_, i) => markedWiki!.child(i)).find((n) => n.text === '[[Home]]');
     expect(wikiStrong!.marks.some((m) => m.type.name === 'strong')).toBe(true);
-    expect(blockFromEngineSpan('paragraph', '[[a] [b]]')).toBeNull();
+    expect(blockFromEngineSpan('paragraph', '[[a] [b]]')?.textContent).toBe('[[a] [b]]');
     const fullRef = blockFromEngineSpan('paragraph', 'See [ref link][Alpha] nearby');
     expect(fullRef?.textContent).toBe('See ref link nearby');
     const fullBit = [...Array(fullRef!.childCount)].map((_, i) => fullRef!.child(i)).find((n) => n.text === 'ref link');
@@ -3541,11 +3548,16 @@ describe('enrich skip for engine-owned spans', () => {
       expect(block?.type.name).toBe('blockquote');
       expect(block?.textContent).toBe(textContent);
     }
-    // Footnote / nested-bracket titles stay dialect.
+    // Nested-bracket wiki titles owned as literal; footnote-ref titles stay dialect
+    // (micromark only promotes [^id] when a matching def exists elsewhere).
+    expect(canSkipDialectEnrich('quote', '> [!NOTE] [[a[[b]]]]\n> body')).toBe(true);
+    expect(blockFromEngineSpan('quote', '> [!NOTE] [[a[[b]]]]\n> body')?.textContent).toBe('[!NOTE] [[a[[b]]]]\nbody');
+    expect(canSkipDialectEnrich('quote', '> [!TIP]- Fold [[x[y]z]] title\n> body')).toBe(true);
+    expect(blockFromEngineSpan('quote', '> [!TIP]- Fold [[x[y]z]] title\n> body')?.textContent).toBe('[!TIP]- Fold [[x[y]z]] title\nbody');
+    expect(canSkipDialectEnrich('quote', '> [!WARNING] Mix **bold** and [[a[[b]]]] title\n> body')).toBe(true);
+    expect(blockFromEngineSpan('quote', '> [!WARNING] Mix **bold** and [[a[[b]]]] title\n> body')?.textContent).toBe('[!WARNING] Mix bold and [[a[[b]]]] title\nbody');
     expect(canSkipDialectEnrich('quote', '> [!NOTE] note[^1]\n> body')).toBe(false);
     expect(blockFromEngineSpan('quote', '> [!NOTE] note[^1]\n> body')).toBeNull();
-    expect(canSkipDialectEnrich('quote', '> [!NOTE] [[a[[b]]]]\n> body')).toBe(false);
-    expect(blockFromEngineSpan('quote', '> [!NOTE] [[a[[b]]]]\n> body')).toBeNull();
   });
 
   it('engine-owns simple inline math', () => {
