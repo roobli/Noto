@@ -5,7 +5,7 @@
  * plain + hard breaks + lists-in-quotes + simple GFM alerts / callouts with
  * plain or simple-marked bodies + lazy continuation (fewer `>` and true no-`>`)
  * + simple flat / same-family nested list (any depth, incl. hard breaks +
- * simple marks incl. flat underscore + up to thirty-seven-level nested marks + collapsible/plain-titled/simple-marked-title callouts + unindented lazy
+ * simple marks incl. flat underscore + up to thirty-seven-level nested marks + collapsible/plain-titled/simple-marked-title/heavy-title callouts + unindented lazy
  * soft-wrap) + simple GFM table with plain or simple-marked cells incl.
  * escaped pipes + simple inline links / images + simple reference links /
  * images + simple bare http(s) + angle-bracket http(s) + www. + email
@@ -70,6 +70,11 @@ describe('from-engine IR helpers', () => {
     expect(needsDialectInlineInQuote('[!NOTE] Title\nbody')).toBe(false);
     expect(needsDialectInlineInQuote('[!NOTE] Title with **bold**\nbody')).toBe(false);
     expect(needsDialectInlineInQuote('[!NOTE] Title with \\*escape\\*\nbody')).toBe(false);
+    expect(needsDialectInlineInQuote('[!NOTE] Energy $E=mc^2$\nbody')).toBe(false);
+    expect(needsDialectInlineInQuote('[!NOTE] Hello <span>x</span>\nbody')).toBe(false);
+    expect(needsDialectInlineInQuote('[!NOTE] See [docs](https://example.com)\nbody')).toBe(false);
+    expect(needsDialectInlineInQuote('[!NOTE] ***both***\nbody')).toBe(false);
+    expect(needsDialectInlineInQuote('[!NOTE] note[^1]\nbody')).toBe(true);
     expect(needsDialectInlineInQuote('plain')).toBe(false);
   });
 
@@ -115,6 +120,10 @@ describe('from-engine IR helpers', () => {
     expect(canSkipDialectEnrich('quote', '> [!NOTE] Title\n> body')).toBe(true);
     expect(canSkipDialectEnrich('quote', '> [!NOTE] Title **x**\n> body')).toBe(true);
     expect(canSkipDialectEnrich('quote', '> [!NOTE] Title \\*x\\*\n> body')).toBe(true);
+    expect(canSkipDialectEnrich('quote', '> [!NOTE] Energy $E=mc^2$\n> body')).toBe(true);
+    expect(canSkipDialectEnrich('quote', '> [!TIP]- Folded <span>html</span> title\n> body')).toBe(true);
+    expect(canSkipDialectEnrich('quote', '> [!IMPORTANT] See [docs](https://example.com) and ***both***\n> body')).toBe(true);
+    expect(canSkipDialectEnrich('quote', '> [!NOTE] note[^1]\n> body')).toBe(false);
     expect(canSkipDialectEnrich('quote', '> [!WARNING]\n> has **bold**')).toBe(true);
     expect(canSkipDialectEnrich('quote', '> [!WARNING]\n> has [[wiki]]')).toBe(true);
     expect(canSkipDialectEnrich('quote', '> > nested\n> lazy')).toBe(true);
@@ -303,6 +312,9 @@ describe('from-engine IR helpers', () => {
     expect(parseSimpleQuoteSource('> [!NOTE] Title\n> x')).not.toBeNull();
     expect(parseSimpleQuoteSource('> [!NOTE] Title **x**\n> x')).not.toBeNull();
     expect(parseSimpleQuoteSource('> [!NOTE] Title \\*x\\*\n> x')).not.toBeNull();
+    expect(parseSimpleQuoteSource('> [!NOTE] Energy $E=mc^2$\n> x')).not.toBeNull();
+    expect(parseSimpleQuoteSource('> [!TIP]- <span>x</span>\n> x')).not.toBeNull();
+    expect(parseSimpleQuoteSource('> [!NOTE] note[^1]\n> x')).toBeNull();
     expect(parseSimpleQuoteSource('> [!WARNING]\n> has **bold**')).not.toBeNull();
     expect(parseSimpleQuoteSource('> [!WARNING]\n> has [[wiki]]')).not.toBeNull();
     expect(parseSimpleFlatListSource('- a\n- b')).toEqual({
@@ -604,6 +616,22 @@ describe('blockFromEngineSpan', () => {
     expect(strongTitle).toBe(true);
     const escapedTitle = blockFromEngineSpan('quote', '> [!NOTE] Title \\*x\\*\n> body');
     expect(escapedTitle?.textContent).toBe('[!NOTE] Title *x*\nbody');
+    const mathTitle = blockFromEngineSpan('quote', '> [!NOTE] Energy $E=mc^2$\n> body');
+    expect(mathTitle?.textContent).toBe('[!NOTE] Energy E=mc^2\nbody');
+    const mathKid = [...Array(mathTitle!.child(0).childCount)].map((_, i) => mathTitle!.child(0).child(i))
+      .find((n) => n.type.name === 'math_inline');
+    expect(mathKid?.textContent).toBe('E=mc^2');
+    const htmlTitle = blockFromEngineSpan('quote', '> [!TIP]- Folded <span>html</span> title\n> body');
+    expect(htmlTitle?.textContent).toBe('[!TIP]- Folded html title\nbody');
+    const htmlKid = [...Array(htmlTitle!.child(0).childCount)].map((_, i) => htmlTitle!.child(0).child(i))
+      .find((n) => n.type.name === 'inline_html');
+    expect(htmlKid?.attrs.value).toBe('<span>');
+    const linkTitle = blockFromEngineSpan('quote', '> [!IMPORTANT] See [docs](https://example.com) and ***both***\n> body');
+    expect(linkTitle?.textContent).toBe('[!IMPORTANT] See docs and both\nbody');
+    const nestTitle = blockFromEngineSpan('quote', '> [!WARNING] **bold *em* nest**\n> body');
+    expect(nestTitle?.textContent).toBe('[!WARNING] bold em nest\nbody');
+    expect(blockFromEngineSpan('quote', '> [!NOTE] note[^1]\n> body')).toBeNull();
+    expect(blockFromEngineSpan('quote', '> [!NOTE] [[a[[b]]]]\n> body')).toBeNull();
     const markedAlert = blockFromEngineSpan('quote', '> [!WARNING]\n> has **bold**');
     expect(markedAlert?.textContent).toBe('[!WARNING]\nhas bold');
     expect(blockFromEngineSpan('quote', '> > nest\n> **bold**')?.textContent).toBe('nest\nbold');
@@ -3188,6 +3216,13 @@ describe('blockFromEngineSpan', () => {
       'Mark **around <br\n/> tag** still.\n',
       '- item <!--\nc--> here\n',
       '> has <!--\nx--> in body\n',
+      '> [!NOTE] Energy $E=mc^2$ owned\n> Body under math title.\n',
+      '> [!TIP]- Folded <span>html</span> title\n> Collapsible with inline HTML title.\n',
+      '> [!WARNING] Escape \\*star\\* and **bold *em* nest**\n> Escapes + nested marks in title.\n',
+      '> [!IMPORTANT] See [docs](https://example.com) and ***both***\n> Link + triple delimiter title.\n',
+      '> [!CAUTION] ![alt](https://example.com/i.png) and `code`\n> Image + code title.\n',
+      '> [!NOTE] Same *a *b* c* stack\n> Same-delimiter stack in title.\n',
+      '> [!TIP] Mixed ***x* y** closer\n> Mixed triple closer in title.\n',
 
     ];
     for (const md of samples) {
@@ -3431,6 +3466,29 @@ describe('enrich skip for engine-owned spans', () => {
 
     expect(canSkipDialectEnrich('quote', '> has <!--\nx--> in body')).toBe(true);
     expect(blockFromEngineSpan('quote', '> has <!--\nx--> in body')?.textContent).toBe('has  in body');
+  });
+
+  it('engine-owns heavy callout titles (math/HTML/escapes/nests/links/triples)', () => {
+    const cases: Array<[string, string]> = [
+      ['> [!NOTE] Energy $E=mc^2$ owned\n> Body under math title.', '[!NOTE] Energy E=mc^2 owned\nBody under math title.'],
+      ['> [!TIP]- Folded <span>html</span> title\n> Collapsible with inline HTML title.', '[!TIP]- Folded html title\nCollapsible with inline HTML title.'],
+      ['> [!WARNING] Escape \\*star\\* and **bold *em* nest**\n> Escapes + nested marks in title.', '[!WARNING] Escape *star* and bold em nest\nEscapes + nested marks in title.'],
+      ['> [!IMPORTANT] See [docs](https://example.com) and ***both***\n> Link + triple delimiter title.', '[!IMPORTANT] See docs and both\nLink + triple delimiter title.'],
+      ['> [!CAUTION] ![alt](https://example.com/i.png) and `code`\n> Image + code title.', '[!CAUTION]  and code\nImage + code title.'],
+      ['> [!NOTE] Same *a *b* c* stack\n> Same-delimiter stack in title.', '[!NOTE] Same a b c stack\nSame-delimiter stack in title.'],
+      ['> [!TIP] Mixed ***x* y** closer\n> Mixed triple closer in title.', '[!TIP] Mixed x y closer\nMixed triple closer in title.'],
+    ];
+    for (const [md, textContent] of cases) {
+      expect(canSkipDialectEnrich('quote', md)).toBe(true);
+      const block = blockFromEngineSpan('quote', md);
+      expect(block?.type.name).toBe('blockquote');
+      expect(block?.textContent).toBe(textContent);
+    }
+    // Footnote / nested-bracket titles stay dialect.
+    expect(canSkipDialectEnrich('quote', '> [!NOTE] note[^1]\n> body')).toBe(false);
+    expect(blockFromEngineSpan('quote', '> [!NOTE] note[^1]\n> body')).toBeNull();
+    expect(canSkipDialectEnrich('quote', '> [!NOTE] [[a[[b]]]]\n> body')).toBe(false);
+    expect(blockFromEngineSpan('quote', '> [!NOTE] [[a[[b]]]]\n> body')).toBeNull();
   });
 
   it('engine-owns simple inline math', () => {

@@ -47,8 +47,10 @@
  * **Simple wiki links** (`[[target]]` / `[[target|alias]]`) are engine-owned
  * as literal text (decoration plugin owns display).
  * **Simple GFM alerts / callouts** (incl. collapsible / plain-titled /
- * simple-marked titles) keep the marker as plain text for the alert
- * decoration plugin; title marks are real PM marks after the marker.
+ * simple-marked / **heavy** same-line titles — math / HTML / escapes / nested
+ * marks / triples / links / images / stacks) keep the marker as plain text for
+ * the alert decoration plugin; title marks are real PM marks after the marker.
+ * Footnote refs / nested-bracket wiki in titles stay dialect.
  *
  * See docs/performance/open-path-first-cut.md and docs/design/roobli-md-engine.md.
  */
@@ -109,11 +111,12 @@ export function needsDialectInline(markdown: string): boolean {
  * GFM alert / callout marker at the start of a quote paragraph.
  *
  * Owns plain `[!NOTE]`, collapsible `[!NOTE]-` / `[!NOTE]+`, optional same-line
- * plain titles (`[!NOTE] Title`), and **simple-marked titles** (`[!NOTE] Title
- * **x**`, wiki / links / autolinks / simple escapes / simple inline math in the
- * title). Heavy titles (exotic marks) stay dialect. The
- * alert-plugin decorates from the
- * leading `[!NOTE]` token either way.
+ * plain titles (`[!NOTE] Title`), **simple-marked titles**, and **heavy titles**
+ * (`[!NOTE] $E=mc^2$` / `<span>x</span>` / `\*esc\*` / nested marks / `***` /
+ * mixed triples / same-delimiter stacks / links / images — via
+ * `tryInlineNodesFromSource`). Footnote refs / nested-bracket wiki in titles
+ * stay dialect. The alert-plugin decorates from the leading `[!NOTE]` token
+ * either way.
  */
 const ALERT_MARKER_RE = /^\[!(NOTE|TIP|IMPORTANT|WARNING|CAUTION)\]([+-])?[ \t]*([^\n]*)(?:\n|$)/;
 
@@ -134,7 +137,7 @@ export function hasHardBreak(markdown: string): boolean {
  * True when dialect enrich can be skipped: leaf kinds always; parseable
  * link-definitions; simple footnote-definitions (incl. hard breaks + simple
  * marks); simple quotes (incl. nested, hard breaks, lists-in-quotes, plain /
- * simple-marked / collapsible / plain-titled / simple-marked-title GFM alerts / callouts, lazy nest + no-`>` lazy); simple flat
+ * simple-marked / collapsible / plain-titled / simple-marked-title / heavy-title GFM alerts / callouts, lazy nest + no-`>` lazy); simple flat
  * or nested lists (same-family or mixed-marker, any depth, incl. hard breaks + simple marks);
  * simple GFM tables (plain or simple-marked cells incl. escaped pipes; ragged body rows); paragraph / heading when
  * plain or simple-marked (hard breaks + simple inline links / images +
@@ -2703,10 +2706,10 @@ function parseQuoteChildren(
  * lists (any reasonable depth; lazy into list items). Returns a child tree
  * matching CommonMark / mdast shape for the owned subset, or `null` when the
  * span still needs dialect enrich (nested marks / nested / heavy inline,
- * multi-para lists, pathological depth, exotic callout titles).
- * Plain / collapsible / plain-titled / simple-marked-title GFM alerts
- * (`> [!NOTE]`, `> [!NOTE]-`, `> [!NOTE] Title **x**` …) and simple-marked
- * bodies are accepted.
+ * multi-para lists, pathological depth, footnote / nested-bracket titles).
+ * Plain / collapsible / plain-titled / simple-marked-title / heavy-title GFM
+ * alerts (`> [!NOTE]`, `> [!NOTE]-`, `> [!NOTE] $E=mc^2$` / `<span>x</span>` /
+ * nested marks / triples / links …) and simple-marked bodies are accepted.
  */
 export function parseSimpleQuoteSource(md: string): ParsedQuoteChild[] | null {
   const trimmed = md.replace(/\r\n/g, '\n').trimEnd();
