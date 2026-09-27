@@ -869,7 +869,7 @@ describe('blockFromEngineSpan', () => {
     expect(multiWrap?.child(0).childCount).toBe(2);
     expect(multiWrap?.child(0).child(1).textContent).toBe('b\nc');
     // Simple marks in extra paragraphs are owned; quote/fence/heading/HTML/table/hr structural owned.
-    // Empty+blank+structural closed at split (@roobli/md ≥ v0.1.17); setext tight `---` +
+    // Empty+blank+structural closed at split (@roobli/md ≥ v0.1.17); setext tight `---` owned;
     // lazy-after-blank stay dialect. Combined empty+blank+structural markdown still refuses (safety).
     expect(blockFromEngineSpan('bullet-list', '- a\n\n  **bold**')?.child(0).child(1).textContent).toBe('bold');
     const withQuote = blockFromEngineSpan('bullet-list', '- a\n\n  > quote');
@@ -895,8 +895,33 @@ describe('blockFromEngineSpan', () => {
     const withHr = blockFromEngineSpan('bullet-list', '- a\n\n  ---');
     expect(withHr?.child(0).child(1).type.name).toBe('horizontal_rule');
     expect(blockFromEngineSpan('bullet-list', '- a\n  ***')?.child(0).child(1).type.name).toBe('horizontal_rule');
-    // Tight quote (no blank) owned; setext tight --- + lazy-after-blank stay dialect.
+    // Tight quote (no blank) owned; setext tight --- / === promote paragraph → heading.
     expect(blockFromEngineSpan('bullet-list', '- a\n  > q')?.child(0).child(1).type.name).toBe('blockquote');
+    const setextDash = blockFromEngineSpan('bullet-list', '- a\n  ---');
+    expect(setextDash?.type.name).toBe('bullet_list');
+    expect(setextDash?.child(0).childCount).toBe(1);
+    expect(setextDash?.child(0).child(0).type.name).toBe('heading');
+    expect(setextDash?.child(0).child(0).attrs.level).toBe(2);
+    expect(setextDash?.child(0).child(0).textContent).toBe('a');
+    const setextEq = blockFromEngineSpan('bullet-list', '- a\n  ===');
+    expect(setextEq?.child(0).child(0).type.name).toBe('heading');
+    expect(setextEq?.child(0).child(0).attrs.level).toBe(1);
+    expect(blockFromEngineSpan('bullet-list', '- a\n  -')?.child(0).child(0).attrs.level).toBe(2);
+    expect(blockFromEngineSpan('bullet-list', '- a\n  --')?.child(0).child(0).textContent).toBe('a');
+    const setextMarks = blockFromEngineSpan('bullet-list', '- **x**\n  ---');
+    expect(setextMarks?.child(0).child(0).type.name).toBe('heading');
+    expect(setextMarks?.child(0).child(0).textContent).toBe('x');
+    const setextAfter = blockFromEngineSpan('bullet-list', '- a\n  ---\n  more');
+    expect(setextAfter?.child(0).childCount).toBe(2);
+    expect(setextAfter?.child(0).child(0).type.name).toBe('heading');
+    expect(setextAfter?.child(0).child(1).type.name).toBe('paragraph');
+    expect(setextAfter?.child(0).child(1).textContent).toBe('more');
+    const setextTask = blockFromEngineSpan('bullet-list', '- [ ] a\n  ---');
+    expect(setextTask?.child(0).attrs.checked).toBeNull();
+    expect(setextTask?.child(0).child(0).type.name).toBe('heading');
+    expect(setextTask?.child(0).child(0).textContent).toBe('[ ] a');
+    expect(blockFromEngineSpan('bullet-list', '- a\n  - - -')?.child(0).child(1).type.name).toBe('horizontal_rule');
+    expect(blockFromEngineSpan('ordered-list', '1. a\n   ---')?.child(0).child(0).type.name).toBe('heading');
     // Phase 20: marker-only empty spans + mid-list empty siblings owned; tight empty+struct nests.
     expect(blockFromEngineSpan('bullet-list', '-')?.type.name).toBe('bullet_list');
     expect(blockFromEngineSpan('bullet-list', '-')?.child(0).childCount).toBe(1);
@@ -912,7 +937,7 @@ describe('blockFromEngineSpan', () => {
     expect(tightEmpty?.child(0).child(0).textContent).toBe('quote');
     // Safety: combined empty+blank+structural markdown (pre-Phase-20 mis-split) still refuses.
     expect(blockFromEngineSpan('bullet-list', '- \n\n  > q')).toBeNull();
-    expect(blockFromEngineSpan('bullet-list', '- a\n  ---')).toBeNull();
+    // Tight setext `---` is owned above; empty+blank+structural still refuses.
     expect(blockFromEngineSpan('bullet-list', '- \n\n  <div>x</div>')).toBeNull();
     expect(blockFromEngineSpan('bullet-list', '- a\n\nlazy')).toBeNull();
     // Multi-para then nested list.

@@ -1,6 +1,6 @@
 # Open-path / `parseDocument` — measured cuts
 
-Status: **lazy / deferred wire nodes + viewport-driven enrich + incremental PM patch + kind-aware stand-ins + engine-owned IR→PM (common blocks + simple quotes incl. nested plain + lists-in-quotes + hard breaks in quotes + lazy nest continuation + true no-`>` lazy + simple flat / nested lists (same-family or mixed-marker) any depth incl. hard breaks + unindented lazy soft-wrap + multi-paragraph items + structural quote/fence/ATX-heading/HTML/table/hr children + empty-item+blank+structural outside at split + simple GFM tables (incl. escaped pipes + ragged body rows + pipe-optional leading `|`) + simple footnote-defs incl. empty + hard breaks + plain/simple-marked/simple-marked-title/heavy-title (incl. nested-bracket wiki) callouts + simple marked phrasing `**`/`*`/`~~`/`` ` `` incl. up to thirty-seven-level nests + matched `***`/`___` triple delimiters + mixed triple closers + same-delimiter stacks + simple inline links/images (incl. simple image alts) + simple reference links/images + simple bare http(s) + angle-bracket http(s) + www. + email autolinks + simple wiki links + setext-`---` headings + multi-line inline HTML)** under the flagged `@roobli/md` path.
+Status: **lazy / deferred wire nodes + viewport-driven enrich + incremental PM patch + kind-aware stand-ins + engine-owned IR→PM (common blocks + simple quotes incl. nested plain + lists-in-quotes + hard breaks in quotes + lazy nest continuation + true no-`>` lazy + simple flat / nested lists (same-family or mixed-marker) any depth incl. hard breaks + unindented lazy soft-wrap + multi-paragraph items + structural quote/fence/ATX-heading/HTML/table/hr children + setext-shaped tight `---`/`===` in list items + empty-item+blank+structural outside at split + simple GFM tables (incl. escaped pipes + ragged body rows + pipe-optional leading `|`) + simple footnote-defs incl. empty + hard breaks + plain/simple-marked/simple-marked-title/heavy-title (incl. nested-bracket wiki) callouts + simple marked phrasing `**`/`*`/`~~`/`` ` `` incl. up to thirty-seven-level nests + matched `***`/`___` triple delimiters + mixed triple closers + same-delimiter stacks + simple inline links/images (incl. simple image alts) + simple reference links/images + simple bare http(s) + angle-bracket http(s) + www. + email autolinks + simple wiki links + setext-`---` headings + multi-line inline HTML)** under the flagged `@roobli/md` path.
 Product default remains micromark. Do **not** flip `NOTO_MARKDOWN_ENGINE`
 default-on from this work.
 
@@ -180,7 +180,7 @@ split, matching micromark).
 
 Same-indent sibling lists with a different bullet/delimiter split into new spans under `@roobli/md` ≥ v0.1.16 (Phase 19; Phase 16 indented mixed nests unchanged). Marker-only empty list item + blank + structural opens outside under `@roobli/md` ≥ v0.1.17 (Phase 20).
 
-Cross-family same-indent sibling marker mixes within one span (nested under a parent item, or consecutive lists inside a quote — micromark splits each mix) are engine-owned (`simple-cross-family-same-indent-lists.md`). Thirty-eight+ nests and footnote-ref callout titles still need dialect (ragged body rows + pipe-optional GFM tables + simple HTML/math in table cells + simple image alts + simple inline math + multi-paragraph list items + structural quote/fence/ATX-heading/HTML/table/hr children inside list items are engine-owned; Phase 17 mismatched header/delim are paragraphs, not tables; list-steal `- | -` pipe-less delimiters stay dialect)
+Cross-family same-indent sibling marker mixes within one span (nested under a parent item, or consecutive lists inside a quote — micromark splits each mix) are engine-owned (`simple-cross-family-same-indent-lists.md`). Thirty-eight+ nests and footnote-ref callout titles / lazy-after-blank still need dialect (ragged body rows + pipe-optional GFM tables + simple HTML/math in table cells + simple image alts + simple inline math + multi-paragraph list items + structural quote/fence/ATX-heading/HTML/table/hr children + setext-shaped tight `---` in list items are engine-owned; Phase 17 mismatched header/delim are paragraphs, not tables; list-steal `- | -` pipe-less delimiters stay dialect)
 enrich + `from-mdast` (empty footnote bodies, nests at any depth incl. mixed-marker,
 nested plain quotes, simple lists-in-quotes, hard breaks in quotes, lazy nest
 continuation via fewer `>` **or true no-`>`**, hard breaks inside simple lists /
@@ -192,7 +192,7 @@ Does **not** flip default-on.
 ## API (additions for Cut 5)
 
 - `pm/from-engine.ts` — `blockFromEngineSpan` / `canSkipDialectEnrich` /
-  `engineSemanticKey` / fence+heading+simple-quote (incl. nested plain + lists-in-quotes + hard breaks + lazy nest)+flat-or-nested-list (incl. hard breaks + multi-paragraph items + structural quote/fence/ATX-heading/HTML/table/hr children)+simple-table+simple-footnote-def (incl. empty + hard breaks) source parsers
+  `engineSemanticKey` / fence+heading+simple-quote (incl. nested plain + lists-in-quotes + hard breaks + lazy nest)+flat-or-nested-list (incl. hard breaks + multi-paragraph items + structural quote/fence/ATX-heading/HTML/table/hr children + setext tight ---)+simple-table+simple-footnote-def (incl. empty + hard breaks) source parsers
 - `createEnrichFlags(length, enrichedExclusiveTo, spans?)` — optional spans
   mark engine-owned remainder as already enriched
 - `enrichSpansInRange` — skips micromark for engine-owned spans; contiguous
@@ -222,7 +222,7 @@ Does **not** flip default-on.
 4. Keep growing `tests/fixtures/markdown-golden/` before default-on; GFM inline,
    nested lists, simple-nested-lists (depth-2+), simple-nested-quotes,
    simple-lists-in-quotes, simple-hard-breaks-in-quotes,
-   simple-lazy-continuations-in-quotes, simple-hard-breaks-in-lists, simple-multi-block-list-items, simple-list-item-structural-children, simple-list-item-html-table-hr,
+   simple-lazy-continuations-in-quotes, simple-hard-breaks-in-lists, simple-multi-block-list-items, simple-list-item-structural-children, simple-list-item-html-table-hr, simple-list-item-setext-tight,
    simple-hard-breaks-in-footnotes, simple-callouts,
    HTML blocks, callout edges, hr/setext, link-defs, simple quotes, simple flat
    lists, simple GFM tables, simple footnote-defs, empty footnote-defs, CJK
