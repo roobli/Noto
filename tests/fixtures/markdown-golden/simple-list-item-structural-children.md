@@ -36,4 +36,4 @@
 
 - next plain
 
-After list-item structural children (quote / fence / ATX heading).
+After list-item structural children (quote / fence / ATX heading). HTML/table/hr in simple-list-item-html-table-hr.md.

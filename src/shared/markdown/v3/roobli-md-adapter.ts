@@ -9,7 +9,7 @@
  * Flagged open uses `enrich: 'none'` on main then `enrichSpansInRange` in the
  * renderer for a first-paint window (and the remainder after paint) — see
  * `SpanEnrichMode` and docs/performance/open-path-first-cut.md. Engine-owned
- * leaf / plain paragraph+heading / simple quote (incl. nested plain + lists-in-quotes + hard breaks + lazy nest + no-`>` lazy) / flat or nested list (same-family or mixed-marker, any depth, incl. hard breaks + unindented lazy soft-wrap + multi-paragraph items + structural quote/fence/ATX-heading children) / simple footnote-def (incl. hard breaks) / simple table skip mdast (IR → PM via `pm/from-engine.ts`).
+ * leaf / plain paragraph+heading / simple quote (incl. nested plain + lists-in-quotes + hard breaks + lazy nest + no-`>` lazy) / flat or nested list (same-family or mixed-marker, any depth, incl. hard breaks + unindented lazy soft-wrap + multi-paragraph items + structural quote/fence/ATX-heading/HTML/table/hr children) / simple footnote-def (incl. hard breaks) / simple table skip mdast (IR → PM via `pm/from-engine.ts`).
  *
  * Flagged block-mode saves (identity, single-block, multi-block insert/delete)
  * map into engine shapes, call `serializeDocument`, then the host re-attaches
@@ -449,11 +449,30 @@ function mdastListItemChild(
       value: child.value,
     };
   }
-  return {
-    type: 'heading' as const,
-    depth: child.level as 1 | 2 | 3 | 4 | 5 | 6,
-    children: child.text.length > 0 ? [{ type: 'text' as const, value: child.text }] : [],
-  };
+  if (child.type === 'heading') {
+    return {
+      type: 'heading' as const,
+      depth: child.level as 1 | 2 | 3 | 4 | 5 | 6,
+      children: child.text.length > 0 ? [{ type: 'text' as const, value: child.text }] : [],
+    };
+  }
+  if (child.type === 'html') {
+    return { type: 'html' as const, value: child.value };
+  }
+  if (child.type === 'table') {
+    return {
+      type: 'table' as const,
+      align: child.align.map((value) => value),
+      children: child.rows.map((row) => ({
+        type: 'tableRow' as const,
+        children: row.map((cell) => ({
+          type: 'tableCell' as const,
+          children: cell.length > 0 ? [{ type: 'text' as const, value: cell }] : [],
+        })),
+      })),
+    };
+  }
+  return { type: 'thematicBreak' as const };
 }
 
 function mdastListFromParsed(list: ParsedFlatList): Extract<RootContent, { type: 'list' }> {
