@@ -17,7 +17,9 @@
  * plain or simple-marked single-paragraph items incl. hard breaks and
  * unindented lazy soft-wrap), and **simple GFM tables** (alignment row; plain or simple-marked
  * cells incl. escaped pipes; consistent **or ragged** body columns — micromark keeps
- * short/long body rows as-is), the PM node is fully
+ * short/long body rows as-is; **pipe-optional** rows — leading/trailing `|` may be
+ * omitted when a row still contains `|`, matching GFM; delimiter rows that would be
+ * stolen by a bullet list marker (`- | -` without a leading `|`) stay dialect), the PM node is fully
  * determined by that IR — no micromark / mdast pass. Multi-block items, deep /
  * deeper (thirty-eight+) nests still go through `from-mdast.ts` after
  * dialect enrich. Mismatched header/delimiter column counts are paragraphs at
@@ -139,7 +141,7 @@ export function hasHardBreak(markdown: string): boolean {
  * marks); simple quotes (incl. nested, hard breaks, lists-in-quotes, plain /
  * simple-marked / collapsible / plain-titled / simple-marked-title / heavy-title GFM alerts / callouts, lazy nest + no-`>` lazy); simple flat
  * or nested lists (same-family or mixed-marker, any depth, incl. hard breaks + simple marks);
- * simple GFM tables (plain or simple-marked cells incl. escaped pipes; ragged body rows); paragraph / heading when
+ * simple GFM tables (plain or simple-marked cells incl. escaped pipes; ragged body rows; pipe-optional leading `|`); paragraph / heading when
  * plain or simple-marked (hard breaks + simple inline links / images +
  * simple reference links / images + simple bare http(s) + angle-bracket
  * http(s) + www. + email autolinks + simple wiki links + simple backslash
@@ -3078,10 +3080,14 @@ function alignmentOfDelimiterCell(cell: string): TableAlign | undefined {
  * plain or simple-marked (`**` / `*` / `~~` / `` ` ``) including CommonMark
  * backslash escapes (escaped `|` stays inside the cell); header and delimiter
  * column counts must match; **body rows may be ragged** (fewer or more cells
- * than the header — kept as-is, matching micromark/mdast); no blank lines
- * inside the span. Nested / heavy inline (cell newlines / exotic math) fall through
- * to dialect. Delimiter≠header returns null (Phase 17 split keeps those as
- * paragraphs; this refuse is a safety net).
+ * than the header — kept as-is, matching micromark/mdast); **pipe-optional**
+ * rows (leading/trailing `|` may be omitted when the row still contains `|`,
+ * matching GFM; 0–3 space indent); no blank lines inside the span. Nested /
+ * heavy inline (cell newlines / exotic math / footnote refs) fall through to
+ * dialect. Delimiter≠header returns null (Phase 17 split keeps those as
+ * paragraphs; this refuse is a safety net). Pipe-less delimiter rows that
+ * micromark treats as a bullet list (`- | -` — marker + space, no leading `|`)
+ * also return null so IR→PM stays at micromark parity.
  * Returns `null` when enrich is still needed.
  */
 export function parseSimpleTableSource(md: string): ParsedSimpleTable | null {
@@ -3090,14 +3096,21 @@ export function parseSimpleTableSource(md: string): ParsedSimpleTable | null {
   const lines = trimmed.split('\n');
   if (lines.length < 2) return null;
 
-  // Require a leading `|` after optional CommonMark indent (0–3 spaces).
+  // GFM: leading `|` after 0–3 spaces is optional when the row still contains `|`.
   const normalized: string[] = [];
   for (const line of lines) {
     if (/^[ \t]*$/u.test(line)) return null; // blank ends a GFM table
-    const m = /^( {0,3})(\|.*)$/u.exec(line);
+    const m = /^( {0,3})(.*\S.*)$/u.exec(line);
     if (!m) return null;
-    normalized.push(m[2]!);
+    const content = m[2]!;
+    if (!content.includes('|')) return null;
+    normalized.push(content);
   }
+
+  // Micromark steals pipe-less `- | -` as a bullet list (marker + space). Compact
+  // `-|-` / leading-`|` rows are fine; refuse the list-steal shape only.
+  const delimLine = normalized[1]!;
+  if (!delimLine.startsWith('|') && /^[-*+]\s/u.test(delimLine)) return null;
 
   const header = splitTableRow(normalized[0]!);
   if (header.length === 0) return null;
