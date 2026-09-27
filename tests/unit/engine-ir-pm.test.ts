@@ -2820,9 +2820,11 @@ describe('blockFromEngineSpan', () => {
       'strong',
     ]);
     expect(canSkipDialectEnrich('paragraph', '_p *q **r _s *t **u _v *w **x _y *z **a _b *c **d _e *f **g _h *i **j _k *l **m _n *o **p _q *r **s _t *u ~~v _w *x _y *z `a` z* y_ x* w_ v~~ u* t_ s** r* q_ p** o* n_ m** l* k_ j** i* h_ g** f* e_ d** c* b_ a** z* y_ x** w* v_ u** t* s_ r** q* p_')).toBe(true);
-    // Thirty-eight-level + same-delimiter / mixed triple closers stay dialect.
+    // Thirty-eight-level still dialect (depth gate). Same-delimiter ~~ nest inside ** is owned.
     expect(blockFromEngineSpan('paragraph', '**o _p *q **r _s *t **u _v *w **x _y *z **a _b *c **d _e *f **g _h *i **j _k *l **m _n *o **p _q *r **s _t *u ~~v _w *x _y *z `a` z* y_ x* w_ v~~ u* t_ s** r* q_ p** o* n_ m** l* k_ j** i* h_ g** f* e_ d** c* b_ a** z* y_ x** w* v_ u** t* s_ r** q* p_ o**')).toBeNull();
-    expect(blockFromEngineSpan('paragraph', '**t *u ~~v _w *x ~~y _z `a` z_ y~~ x* w_ v~~ u* t**')).toBeNull();
+    const strikeNest = blockFromEngineSpan('paragraph', '**t *u ~~v _w *x ~~y _z `a` z_ y~~ x* w_ v~~ u* t**');
+    expect(strikeNest?.textContent).toBe('t u v w x y z a z y x w v u t');
+    expect(canSkipDialectEnrich('paragraph', '**t *u ~~v _w *x ~~y _z `a` z_ y~~ x* w_ v~~ u* t**')).toBe(true);
     expect(blockFromEngineSpan('paragraph', '**bold `code`**')?.textContent).toBe('bold code');
     // Matched `***` / `___` → emphasis + strong (micromark parity).
     const triple = blockFromEngineSpan('paragraph', '***triple***');
@@ -2836,11 +2838,37 @@ describe('blockFromEngineSpan', () => {
     expect(tripleNest?.textContent).toBe('bold em more');
     const tripleEmBit = [...Array(tripleNest!.childCount)].map((_, i) => tripleNest!.child(i)).find((n) => n.text === 'em');
     expect(tripleEmBit!.marks.map((m) => m.type.name).sort()).toEqual(['emphasis', 'emphasis', 'strong']);
-    // Mixed closer forms / same-delimiter stacks stay dialect.
+    // Mixed closer forms stay dialect.
     expect(blockFromEngineSpan('paragraph', '***x* y**')).toBeNull();
     expect(blockFromEngineSpan('paragraph', '**x *y***')).toBeNull();
-    expect(blockFromEngineSpan('paragraph', '**a **b** c**')).toBeNull();
-    expect(blockFromEngineSpan('paragraph', '*a *b* c*')).toBeNull();
+    // Same-delimiter stacks → nested marks (micromark/CommonMark-ish parity).
+    const starStack = blockFromEngineSpan('paragraph', '*a *b* c*');
+    expect(starStack?.textContent).toBe('a b c');
+    expect(canSkipDialectEnrich('paragraph', '*a *b* c*')).toBe(true);
+    const starInner = [...Array(starStack!.childCount)].map((_, i) => starStack!.child(i)).find((n) => n.text === 'b');
+    expect(starInner!.marks.map((m) => m.type.name)).toEqual(['emphasis', 'emphasis']);
+    const starOuter = [...Array(starStack!.childCount)].map((_, i) => starStack!.child(i)).find((n) => n.text === 'a ');
+    expect(starOuter!.marks.map((m) => m.type.name)).toEqual(['emphasis']);
+    const dblStack = blockFromEngineSpan('paragraph', '**a **b** c**');
+    expect(dblStack?.textContent).toBe('a b c');
+    const dblInner = [...Array(dblStack!.childCount)].map((_, i) => dblStack!.child(i)).find((n) => n.text === 'b');
+    expect(dblInner!.marks.map((m) => m.type.name)).toEqual(['strong', 'strong']);
+    const usStack = blockFromEngineSpan('paragraph', '_a _b_ c_');
+    expect(usStack?.textContent).toBe('a b c');
+    const usInner = [...Array(usStack!.childCount)].map((_, i) => usStack!.child(i)).find((n) => n.text === 'b');
+    expect(usInner!.marks.map((m) => m.type.name)).toEqual(['emphasis', 'emphasis']);
+    const usDbl = blockFromEngineSpan('paragraph', '__a __b__ c__');
+    expect(usDbl?.textContent).toBe('a b c');
+    const usDblInner = [...Array(usDbl!.childCount)].map((_, i) => usDbl!.child(i)).find((n) => n.text === 'b');
+    expect(usDblInner!.marks.map((m) => m.type.name)).toEqual(['strong', 'strong']);
+    const strikeStack = blockFromEngineSpan('paragraph', '~~a ~~b~~ c~~');
+    expect(strikeStack?.textContent).toBe('a b c');
+    const strikeInner = [...Array(strikeStack!.childCount)].map((_, i) => strikeStack!.child(i)).find((n) => n.text === 'b');
+    expect(strikeInner!.marks.map((m) => m.type.name)).toEqual(['strikethrough', 'strikethrough']);
+    const deepStack = blockFromEngineSpan('paragraph', '*a *b *c* b* a*');
+    expect(deepStack?.textContent).toBe('a b c b a');
+    const deepC = [...Array(deepStack!.childCount)].map((_, i) => deepStack!.child(i)).find((n) => n.text === 'c');
+    expect(deepC!.marks.map((m) => m.type.name)).toEqual(['emphasis', 'emphasis', 'emphasis']);
     expect(tryInlineNodesFromSource('2 * 3 * 4')?.map((n) => n.textContent ?? n.type.name).join('')).toBe('2 * 3 * 4');
 
     const link = blockFromEngineSpan('paragraph', 'See [docs](https://example.com/path) please');
