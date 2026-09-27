@@ -14,15 +14,16 @@
  * simple-marked same-line titles, and CommonMark
  * lazy continuation via fewer `>` **or true no-`>` lazy lines**), **simple
  * flat / nested lists** (same-family or mixed-marker nests at every depth;
- * plain or simple-marked single-paragraph items incl. hard breaks and
- * unindented lazy soft-wrap), and **simple GFM tables** (alignment row; plain or simple-marked
+ * plain or simple-marked items incl. hard breaks, unindented lazy soft-wrap,
+ * and multi-paragraph items after a blank + indent), and **simple GFM tables** (alignment row; plain or simple-marked
  * cells incl. escaped pipes; consistent **or ragged** body columns — micromark keeps
  * short/long body rows as-is; **pipe-optional** rows — leading/trailing `|` may be
  * omitted when a row still contains `|`, matching GFM; delimiter rows that would be
  * stolen by a bullet list marker (`- | -` without a leading `|`) stay dialect), the PM node is fully
- * determined by that IR — no micromark / mdast pass. Multi-block items, deep /
- * deeper (thirty-eight+) nests still go through `from-mdast.ts` after
- * dialect enrich. Mismatched header/delimiter column counts are paragraphs at
+ * determined by that IR — no micromark / mdast pass. Structural children
+ * inside list items (quote / fence / heading / …), cross-family same-indent
+ * sibling marker mixes within one span, and deeper (thirty-eight+) nests still
+ * go through `from-mdast.ts` after dialect enrich. Mismatched header/delimiter column counts are paragraphs at
  * split (`@roobli/md` ≥ v0.1.14); `parseSimpleTableSource` still refuses a forced
  * mismatched table span. **Simple HTML
  * and simple inline math in GFM table cells** are engine-owned. **Simple backslash escapes**
@@ -144,7 +145,7 @@ export function hasHardBreak(markdown: string): boolean {
  * link-definitions; simple footnote-definitions (incl. hard breaks + simple
  * marks); simple quotes (incl. nested, hard breaks, lists-in-quotes, plain /
  * simple-marked / collapsible / plain-titled / simple-marked-title / heavy-title GFM alerts / callouts, lazy nest + no-`>` lazy); simple flat
- * or nested lists (same-family or mixed-marker, any depth, incl. hard breaks + simple marks);
+ * or nested lists (same-family or mixed-marker, any depth, incl. hard breaks + simple marks + multi-paragraph items);
  * simple GFM tables (plain or simple-marked cells incl. escaped pipes; ragged body rows; pipe-optional leading `|`); paragraph / heading when
  * plain or simple-marked (hard breaks + simple inline links / images +
  * simple reference links / images + simple bare http(s) + angle-bracket
@@ -2742,7 +2743,11 @@ export type FlatListDelimiter = '.' | ')';
 
 export interface ParsedFlatListItem {
   readonly checked: boolean | null;
-  readonly text: string;
+  /**
+   * Paragraph bodies in document order. Soft-wrap newlines stay inside one
+   * entry; a blank + indented continuation starts a new entry (multi-block).
+   */
+  readonly paragraphs: readonly string[];
   /** Nested list under this item (any depth); null when the item is flat. */
   readonly nested: ParsedFlatList | null;
 }
@@ -2805,13 +2810,15 @@ function splitTaskPrefix(rest: string): { checked: boolean | null; text: string 
 
 /**
  * Simple flat or nested list (any depth): bullet or ordered delimiter at each
- * level, each item a single plain paragraph (optional soft-wrap continuation;
- * CommonMark hard breaks are engine-owned). Same-family and mixed-marker nests
- * are owned (`@roobli/md` ≥ v0.1.13 Phase 16 keeps mixed nests one span).
- * Sibling markers at one level still share orderedness / bullet / delimiter.
- * Loose lists (blank between sibling items) set `spread` on that level. Task
- * checkboxes are allowed. Returns `null` when dialect enrich is still needed
- * (marked phrasing / multi-para items).
+ * level, each item one or more plain/simple-marked paragraphs (optional
+ * soft-wrap continuation; CommonMark hard breaks are engine-owned; blank +
+ * indented continuation starts another paragraph and marks the list loose).
+ * Same-family and mixed-marker nests are owned (`@roobli/md` ≥ v0.1.13 Phase 16
+ * keeps mixed nests one span). Sibling markers at one level still share
+ * orderedness / bullet / delimiter. Loose lists (blank between sibling items
+ * or multi-paragraph items) set `spread` on that level. Task checkboxes are
+ * allowed. Returns `null` when dialect enrich is still needed (heavy inline /
+ * structural children inside an item / lazy line after a blank).
  */
 export function parseSimpleFlatListSource(md: string): ParsedFlatList | null {
   const trimmed = md.replace(/\r\n/g, '\n').trimEnd();
@@ -2820,7 +2827,8 @@ export function parseSimpleFlatListSource(md: string): ParsedFlatList | null {
 
   type DraftItem = {
     checked: boolean | null;
-    lines: string[];
+    /** Soft-wrap line groups; each group becomes one paragraph. */
+    paragraphs: string[][];
     nested: DraftLevel | null;
   };
   type DraftLevel = {
@@ -2841,16 +2849,20 @@ export function parseSimpleFlatListSource(md: string): ParsedFlatList | null {
     if (level.items.length === 0) return null;
     const items: ParsedFlatListItem[] = [];
     for (const item of level.items) {
-      const joined = item.lines.join('\n');
-      const text = joined.trimEnd();
-      // Hard breaks + simple marked phrasing in list items are engine-owned.
-      if (tryInlineNodesFromSource(text) === null) return null;
+      const paragraphs: string[] = [];
+      for (const lines of item.paragraphs) {
+        const joined = lines.join('\n').trimEnd();
+        // Hard breaks + simple marked phrasing in list items are engine-owned.
+        if (tryInlineNodesFromSource(joined) === null) return null;
+        paragraphs.push(joined);
+      }
+      if (paragraphs.length === 0) return null;
       let nested: ParsedFlatList | null = null;
       if (item.nested) {
         nested = finalizeLevel(item.nested);
         if (!nested) return null;
       }
-      items.push({ checked: item.checked, text, nested });
+      items.push({ checked: item.checked, paragraphs, nested });
     }
     return {
       ordered: level.ordered,
@@ -2867,7 +2879,7 @@ export function parseSimpleFlatListSource(md: string): ParsedFlatList | null {
     checked: boolean | null,
     text: string,
   ): void => {
-    level.items.push({ checked, lines: [text], nested: null });
+    level.items.push({ checked, paragraphs: [[text]], nested: null });
   };
 
   for (const line of lines) {
@@ -3019,11 +3031,26 @@ export function parseSimpleFlatListSource(md: string): ParsedFlatList | null {
       return null;
     }
 
-    // Soft-wrap continuation of the current deepest item.
+    // Continuation of the current deepest item: soft-wrap, or a new paragraph
+    // after a blank (multi-block item). Lazy after a blank is not in the item
+    // (CommonMark) — refuse so the span stays dialect rather than mis-owning.
     if (!sawItem || stack.length === 0) return null;
     const top = stack[stack.length - 1]!;
-    if (top.pendingBlank) return null; // blank then non-marker = multi-para item
     if (top.items.length === 0) return null;
+    const cur = top.items[top.items.length - 1]!;
+
+    if (top.pendingBlank) {
+      const rest = listContinuationRest(line, top.indent);
+      if (rest === null) return null; // lazy / weird indent after blank → dialect
+      if (restLooksStructural(rest) || tryInlineNodesFromSource(rest) === null) {
+        return null;
+      }
+      cur.paragraphs.push([rest]);
+      top.spread = true;
+      top.pendingBlank = false;
+      continue;
+    }
+
     let rest = listContinuationRest(line, top.indent);
     if (rest === null) {
       // CommonMark lazy continuation (Phase 13 / @roobli/md v0.1.9): unindented
@@ -3034,7 +3061,7 @@ export function parseSimpleFlatListSource(md: string): ParsedFlatList | null {
     if (restLooksStructural(rest) || tryInlineNodesFromSource(rest) === null) {
       return null;
     }
-    top.items[top.items.length - 1]!.lines.push(rest);
+    cur.paragraphs[cur.paragraphs.length - 1]!.push(rest);
     top.pendingBlank = false;
   }
 
@@ -3302,9 +3329,9 @@ function pmQuoteFromParsed(children: readonly ParsedQuoteChild[]): ProseNode {
 
 function pmListFromParsed(list: ParsedFlatList): ProseNode {
   const items = list.items.map((item) => {
-    const children: ProseNode[] = [
-      schema.nodes.paragraph.create(null, requireInlineNodes(item.text)),
-    ];
+    const children: ProseNode[] = item.paragraphs.map((text) => (
+      schema.nodes.paragraph.create(null, requireInlineNodes(text))
+    ));
     if (item.nested) children.push(pmListFromParsed(item.nested));
     return schema.nodes.list_item.create({ checked: item.checked }, children);
   });

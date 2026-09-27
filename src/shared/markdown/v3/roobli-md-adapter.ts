@@ -432,15 +432,15 @@ function mdastListFromParsed(list: ParsedFlatList): Extract<RootContent, { type:
     start: list.ordered ? list.start : null,
     spread: list.spread,
     children: list.items.map((item) => {
-      const kids: BlockContent[] = [{
-        type: 'paragraph',
-        children: item.text.length > 0 ? [{ type: 'text', value: item.text }] : [],
-      }];
+      const kids: BlockContent[] = item.paragraphs.map((text) => ({
+        type: 'paragraph' as const,
+        children: text.length > 0 ? [{ type: 'text' as const, value: text }] : [],
+      }));
       if (item.nested) kids.push(mdastListFromParsed(item.nested));
       return {
         type: 'listItem' as const,
         checked: item.checked,
-        spread: false,
+        spread: item.paragraphs.length > 1,
         children: kids,
       };
     }),

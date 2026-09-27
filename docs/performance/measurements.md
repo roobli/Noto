@@ -575,12 +575,12 @@ Medium scroll/idle tick **~58 ms** vs full remainder **704 ms** (~12×). Large
 **82 ms** vs **3084 ms** (~38×). Post-paint critical path is one budgeted window
 (~`OPEN_VIEWPORT_ENRICH_BUDGET` spans), not the full remainder.
 
-Next residual: keep growing markdown-golden before default-on; thirty-eight+ nests / footnote-ref callout titles / multi-block list items / cross-family nests still dialect (math / HTML / heavy callout titles incl. nested-bracket wiki / pipe-optional tables owned) (no-`>` lazy + list lazy + simple marked phrasing + flat underscore + one-level nested marks + simple inline links/images + simple reference links/images + simple bare http(s) + angle-bracket http(s) + www. + email autolinks + simple-marked callout titles + simple wiki `[[…]]` owned with `@roobli/md` ≥ v0.1.9); Nested plain quotes, simple lists-in-quotes, plain-body GFM alerts /
+Next residual: keep growing markdown-golden before default-on; thirty-eight+ nests / footnote-ref callout titles / structural children inside list items / cross-family same-indent sibling mixes still dialect (multi-paragraph list items owned) (math / HTML / heavy callout titles incl. nested-bracket wiki / pipe-optional tables owned) (no-`>` lazy + list lazy + simple marked phrasing + flat underscore + one-level nested marks + simple inline links/images + simple reference links/images + simple bare http(s) + angle-bracket http(s) + www. + email autolinks + simple-marked callout titles + simple wiki `[[…]]` owned with `@roobli/md` ≥ v0.1.9); Nested plain quotes, simple lists-in-quotes, plain-body GFM alerts /
 callouts, hard breaks in quotes, lazy nest continuation via fewer `>`, hard
 breaks in simple lists / footnotes, and same-family nested lists (any depth) are
 engine-owned (flagged). Kind-aware stand-ins (#90), IR→PM common blocks (+ link-definition +
 simple footnote-def incl. empty + hard breaks + simple quote + simple flat /
-nested list incl. hard breaks + simple GFM table + simple wiki), and incremental PM patch per
+nested list incl. hard breaks + multi-paragraph items + simple GFM table + simple wiki), and incremental PM patch per
 enrich tick shipped (flagged). Plain paragraph IR→PM trims trailing spaces
 (wiki-trigger save flake). Golden set expanded with GFM/callout/HTML/nested-list/
 trailing-spaces/simple-quote/simple-flat-list/simple-gfm-table edges plus

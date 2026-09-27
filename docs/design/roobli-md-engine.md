@@ -147,7 +147,7 @@ reviewed:
 | ---- | ------ |
 | Split / identity / multi-block golden on current `markdown-golden/` | Green (expanded; keep growing) |
 | Broader corpus / vault-shaped edges (GFM inline, nested lists, HTML, callout edges, link-defs, simple quotes, simple flat lists, simple GFM tables, simple footnote-defs, empty footnote-defs, CJK emphasis, hard-breaks, images, empty/meta fences, escapes, table-align, ordered-start, inline HTML) in golden | Landed this cycle; more edges welcome |
-| Flagged open-path deferred + viewport enrich + IR→PM leaf/plain(incl. hard-break)/link-def/simple-footnote(incl. empty + hard breaks)/simple-quote(incl. nested + lists-in-quotes + hard breaks)/flat-or-nested-list(any depth, incl. hard breaks)/simple-table(incl. ragged body)/simple inline HTML(incl. multi-line)+math | Landed (still flagged-only) |
+| Flagged open-path deferred + viewport enrich + IR→PM leaf/plain(incl. hard-break)/link-def/simple-footnote(incl. empty + hard breaks)/simple-quote(incl. nested + lists-in-quotes + hard breaks)/flat-or-nested-list(any depth, incl. hard breaks + multi-paragraph items)/simple-table(incl. ragged body)/simple inline HTML(incl. multi-line)+math | Landed (still flagged-only) |
 | Flagged serialize (identity / single / multi) + `reparseFromText` host wiring | Landed |
 | Packaged / e2e open feel on medium under the flag | Not a flip gate alone; measure before flip |
 | Intentional diffs documented in `markdown-golden/README.md` | Same-indent list marker/delimiter split closed (v0.1.16 + `simple-same-indent-list-markers.md`); table header/delim columns closed (v0.1.14 + `simple-table-header-delim-columns.md`); mixed-marker nested lists closed (v0.1.13 + `simple-mixed-marker-nested-lists.md`); setext-`---` closed (v0.1.12 + `simple-setext-dash-headings.md`) |
@@ -207,10 +207,10 @@ simple blockquotes (every line `>`-prefixed; plain paragraphs incl. hard breaks,
 nested plain quotes, simple lists-in-quotes, plain-body GFM alerts / callouts,
 and lazy nest continuation via fewer `>` markers) +
 simple flat lists and nested lists (same-family or mixed-marker, any depth; plain items incl. hard
-breaks; nested children may nest only) + simple GFM tables (alignment row; plain
+breaks + multi-paragraph items; nested children may nest only) + simple GFM tables (alignment row; plain
 or simple-marked cells incl. escaped pipes; consistent or ragged body columns; pipe-optional leading `|`);
 enrich flags mark those done — see `docs/performance/open-path-first-cut.md`.
-Cross-family nests, multi-block items, and heavy inline (thirty-eight+ /
+Cross-family same-indent sibling mixes, structural children inside list items, and heavy inline (thirty-eight+ /
 nested-bracket image alts / footnote-ref callout titles) stay on dialect.
 Nested-bracket wiki (incl. in callout titles) is engine-owned as literal text.
 Matched `***`/`___`, mixed triple closers, same-delimiter stacks, and multi-line inline HTML owned.
@@ -232,13 +232,13 @@ simple GFM tables**, and **simple inline HTML** (single- or multi-line tags / co
 Product default stays micromark.
 
 Next: keep growing `markdown-golden/` (more GFM / vault edges), extend IR→PM
-only where micromark parity is locked (Phase 17 mismatched header/delim are paragraphs at split; residual dialect for thirty-eight+ / footnote-ref callout titles / multi-block items / cross-family nests;
+only where micromark parity is locked (Phase 17 mismatched header/delim are paragraphs at split; residual dialect for thirty-eight+ / footnote-ref callout titles / structural children inside list items / cross-family same-indent sibling mixes;
 pipe-optional tables + heavy callout titles owned; mixed triple closers + same-delimiter stacks + multi-line inline HTML owned), then reconsider
 default-on. Hard-breaks, images, empty/meta fences, escapes, table-align,
 ordered-start, inline HTML, simple-flat-lists, simple-nested-lists,
 simple-nested-quotes, simple-lists-in-quotes, simple-hard-breaks-in-quotes,
 simple-lazy-continuations-in-quotes, simple-no-marker-lazy-in-quotes,
-simple-lazy-list-continuations, simple-hard-breaks-in-lists,
+simple-lazy-list-continuations, simple-hard-breaks-in-lists, simple-multi-block-list-items,
 simple-hard-breaks-in-footnotes, simple-callouts, simple-titled-collapsible-callouts, simple-marked-callout-titles, simple-heavy-callout-titles, simple-marked-phrasing,
 simple-underscore-emphasis, simple-nested-marks, simple-two-level-nested-marks, simple-three-level-nested-marks, simple-four-level-nested-marks, simple-five-level-nested-marks, simple-six-level-nested-marks, simple-seven-level-nested-marks, simple-eight-level-nested-marks, simple-nine-level-nested-marks, simple-ten-level-nested-marks, simple-eleven-level-nested-marks, simple-twelve-level-nested-marks, simple-thirteen-level-nested-marks, simple-fourteen-level-nested-marks, simple-fifteen-level-nested-marks, simple-sixteen-level-nested-marks, simple-seventeen-level-nested-marks, simple-eighteen-level-nested-marks, simple-nineteen-level-nested-marks, simple-twenty-level-nested-marks, simple-twenty-one-level-nested-marks, simple-twenty-two-level-nested-marks, simple-twenty-three-level-nested-marks, simple-twenty-four-level-nested-marks, simple-twenty-five-level-nested-marks, simple-twenty-six-level-nested-marks, simple-twenty-seven-level-nested-marks, simple-twenty-eight-level-nested-marks, simple-twenty-nine-level-nested-marks, simple-thirty-level-nested-marks, simple-thirty-one-level-nested-marks, simple-thirty-two-level-nested-marks, simple-thirty-three-level-nested-marks, simple-thirty-four-level-nested-marks, simple-thirty-five-level-nested-marks, simple-thirty-six-level-nested-marks, simple-thirty-seven-level-nested-marks, simple-triple-delimiter-marks, simple-inline-links, simple-bare-autolinks, simple-angle-autolinks, simple-www-autolinks, simple-email-autolinks / simple-escapes / simple-escapes-in-tables / simple-ragged-tables / simple-pipe-optional-tables / simple-inline-html / simple-inline-math / simple-image-alts / simple-math-html-in-tables, simple-reference-links, simple-wiki-links, simple-gfm-tables,
 simple-footnote-defs, empty-footnote-defs, simple-setext-dash-headings, simple-mixed-marker-nested-lists, simple-table-header-delim-columns, simple-same-indent-list-markers, and cjk-emphasis goldens landed.
