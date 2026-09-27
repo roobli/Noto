@@ -7,7 +7,7 @@
  * + simple flat / same-family nested list (any depth, incl. hard breaks +
  * simple marks incl. flat underscore + up to thirty-seven-level nested marks + collapsible/plain-titled/simple-marked-title/heavy-title callouts + unindented lazy
  * soft-wrap) + simple GFM table with plain or simple-marked cells incl.
- * escaped pipes + simple inline links / images + simple reference links /
+ * escaped pipes + pipe-optional leading `|` + simple inline links / images + simple reference links /
  * images + simple bare http(s) + angle-bracket http(s) + www. + email
  * autolinks + simple wiki links).
  * Flagged `@roobli/md` path; does not flip product default.
@@ -148,6 +148,8 @@ describe('from-engine IR helpers', () => {
     expect(canSkipDialectEnrich('table', '| a |\n| - |\n| **x** |')).toBe(true);
     expect(canSkipDialectEnrich('table', '| a |\n| - |\n| [[wiki]] |')).toBe(true);
     expect(canSkipDialectEnrich('table', '| a | b |\n| - |\n| 1 | 2 |')).toBe(false);
+    expect(canSkipDialectEnrich('table', 'a | b\n--- | ---\n1 | 2')).toBe(true);
+    expect(canSkipDialectEnrich('table', 'a | b\n- | -\n1 | 2')).toBe(false);
   });
 
   it('parses fence / heading source', () => {
@@ -410,6 +412,38 @@ describe('from-engine IR helpers', () => {
     });
     // Escaped pipe in header collapses width → delimiter mismatch → dialect.
     expect(parseSimpleTableSource('| a \\| b |\n| - | - |')).toBeNull();
+    // Pipe-optional GFM rows (no leading `|`) owned; list-steal `- | -` stays dialect.
+    expect(parseSimpleTableSource('a | b\n--- | ---\n1 | 2')).toEqual({
+      align: [null, null],
+      rows: [['a', 'b'], ['1', '2']],
+    });
+    expect(parseSimpleTableSource('Left | Right\n:--- | ---:\nalpha | 1')).toEqual({
+      align: ['left', 'right'],
+      rows: [['Left', 'Right'], ['alpha', '1']],
+    });
+    expect(parseSimpleTableSource('| a | b\n| --- | ---\n1 | 2')).toEqual({
+      align: [null, null],
+      rows: [['a', 'b'], ['1', '2']],
+    });
+    expect(parseSimpleTableSource('a | b |\n--- | ---\n| 1 | 2 |')).toEqual({
+      align: [null, null],
+      rows: [['a', 'b'], ['1', '2']],
+    });
+    expect(parseSimpleTableSource('  x | y\n  --- | ---\n  1 | 2')).toEqual({
+      align: [null, null],
+      rows: [['x', 'y'], ['1', '2']],
+    });
+    expect(parseSimpleTableSource('a|b\n---|---\n1|2')).toEqual({
+      align: [null, null],
+      rows: [['a', 'b'], ['1', '2']],
+    });
+    // Compact pipe-less single-dash delimiter is fine (not a list marker + space).
+    expect(parseSimpleTableSource('a|b\n-|-\n1|2')).toEqual({
+      align: [null, null],
+      rows: [['a', 'b'], ['1', '2']],
+    });
+    // Micromark list-steal: pipe-less `- | -` → paragraph; refuse IR→PM.
+    expect(parseSimpleTableSource('a | b\n- | -\n1 | 2')).toBeNull();
   });
 });
 
@@ -854,7 +888,7 @@ describe('blockFromEngineSpan', () => {
     expect(blockFromEngineSpan('footnote-definition', '[^m]: a  \n  **b**')?.textContent).toBe('ab');
   });
 
-  it('builds simple GFM tables incl. simple-marked + ragged body rows; refuses heavy / delimiter≠header', () => {
+  it('builds simple GFM tables incl. simple-marked + ragged + pipe-optional; refuses heavy / delimiter≠header / list-steal', () => {
     const t = blockFromEngineSpan('table', '| Left | Right |\n| :--- | ---: |\n| alpha | 1 |\n| beta | 2 |');
     expect(t?.type.name).toBe('table');
     expect(t?.childCount).toBe(3);
@@ -920,6 +954,29 @@ describe('blockFromEngineSpan', () => {
     expect(raggedMarked?.child(1).childCount).toBe(1);
     expect(raggedMarked?.child(1).child(0).textContent).toBe('x');
     expect(raggedMarked!.child(1).child(0).child(0).marks.some((m) => m.type.name === 'strong')).toBe(true);
+    // Pipe-optional / mixed leading `|` (micromark-parity shapes).
+    const pipeless = blockFromEngineSpan('table', 'a | b\n--- | ---\n1 | 2');
+    expect(pipeless?.type.name).toBe('table');
+    expect(pipeless?.childCount).toBe(2);
+    expect(pipeless?.child(0).child(0).textContent).toBe('a');
+    expect(pipeless?.child(1).child(1).textContent).toBe('2');
+    const pipeAlign = blockFromEngineSpan('table', 'Left | Right\n:--- | ---:\nalpha | 1');
+    expect(pipeAlign?.child(0).child(0).attrs.align).toBe('left');
+    expect(pipeAlign?.child(0).child(1).attrs.align).toBe('right');
+    expect(pipeAlign?.child(1).child(0).textContent).toBe('alpha');
+    const mixedPipes = blockFromEngineSpan('table', '| a | b\n| --- | ---\n1 | 2');
+    expect(mixedPipes?.type.name).toBe('table');
+    expect(mixedPipes?.textContent).toBe('ab12');
+    const indentPipe = blockFromEngineSpan('table', '  x | y\n  --- | ---\n  1 | 2');
+    expect(indentPipe?.type.name).toBe('table');
+    expect(indentPipe?.textContent).toBe('xy12');
+    const compact = blockFromEngineSpan('table', 'a|b\n---|---\n1|2');
+    expect(compact?.type.name).toBe('table');
+    expect(compact?.textContent).toBe('ab12');
+    // List-steal delimiter stays dialect (micromark → paragraph).
+    expect(blockFromEngineSpan('table', 'a | b\n- | -\n1 | 2')).toBeNull();
+    expect(canSkipDialectEnrich('table', 'a | b\n--- | ---\n1 | 2')).toBe(true);
+    expect(canSkipDialectEnrich('table', 'a | b\n- | -\n1 | 2')).toBe(false);
   });
 
   it('builds plain and simple-marked paragraph / heading; refuses heavy inline', () => {

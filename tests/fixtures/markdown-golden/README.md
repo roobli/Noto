@@ -91,6 +91,7 @@ Small public fixtures for comparing the **micromark** product path against
 | `simple-same-indent-list-markers.md` | same-indent sibling lists with different bullet (`-`/`+`/`*`) or ordered delimiter (`.`/`)`) open a new span (`@roobli/md` ≥ v0.1.16 Phase 19); Phase 16 indented mixed nests stay one span |
 | `simple-gfm-tables.md` | simple GFM pipe tables (align row; plain cells; indent; compact); no marked/ragged cells |
 | `simple-ragged-tables.md` | ragged body rows (short / long cell counts) on simple GFM tables owned on the flagged IR→PM path |
+| `simple-pipe-optional-tables.md` | GFM pipe-optional tables (no leading/trailing `|` required when a row still contains `|`; mixed pipes; indent; compact) owned on the flagged IR→PM path; list-steal `- | -` delimiter stays dialect |
 | `simple-table-header-delim-columns.md` | GFM table header/delimiter column-count parity (`@roobli/md` ≥ v0.1.14 Phase 17): mismatched counts stay paragraph; matching counts + ragged body stay table; mismatch does not interrupt a preceding paragraph |
 | `simple-math-html-in-tables.md` | simple `$…$` / `$$…$$` and simple inline HTML tags inside GFM table cells owned on the flagged IR→PM path (docs previously claimed dialect — stale) |
 | `simple-footnote-defs.md` | simple `[^id]:` footnote definitions (plain body, soft-wrap, cased label) |
