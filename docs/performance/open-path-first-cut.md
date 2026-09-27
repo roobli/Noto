@@ -180,7 +180,7 @@ split, matching micromark).
 
 Same-indent sibling lists with a different bullet/delimiter split into new spans under `@roobli/md` ≥ v0.1.16 (Phase 19; Phase 16 indented mixed nests unchanged). Marker-only empty list item + blank + structural opens outside under `@roobli/md` ≥ v0.1.17 (Phase 20).
 
-Cross-family same-indent sibling marker mixes within one span (nested under a parent item, or consecutive lists inside a quote — micromark splits each mix) are engine-owned (`simple-cross-family-same-indent-lists.md`). Under-indented structural nest-exit (hr / ATX / quote / fence / HTML; table after blank) is engine-owned (`simple-under-indented-structural-nest-exit.md`); nest-sibling after nest-exit structural stays dialect. Thirty-eight+ nests and footnote-ref callout titles still need dialect (ragged body rows + pipe-optional GFM tables + simple HTML/math in table cells + simple image alts + simple inline math + multi-paragraph list items + lazy-after-blank soft-wrap + structural quote/fence/ATX-heading/HTML/table/hr children + setext-shaped tight `---` in list items + under-indented structural nest-exit are engine-owned; Phase 17 mismatched header/delim are paragraphs, not tables; list-steal `- | -` pipe-less delimiters stay dialect)
+Cross-family same-indent sibling marker mixes within one span (nested under a parent item, or consecutive lists inside a quote — micromark splits each mix) are engine-owned (`simple-cross-family-same-indent-lists.md`). Under-indented structural nest-exit (hr / ATX / quote / fence / HTML; table after blank) is engine-owned (`simple-under-indented-structural-nest-exit.md`); nest-sibling after nest-exit structural is engine-owned (`simple-nest-sibling-after-nest-exit.md`). Thirty-eight+ nests and footnote-ref callout titles still need dialect (ragged body rows + pipe-optional GFM tables + simple HTML/math in table cells + simple image alts + simple inline math + multi-paragraph list items + lazy-after-blank soft-wrap + structural quote/fence/ATX-heading/HTML/table/hr children + setext-shaped tight `---` in list items + under-indented structural nest-exit + nest-sibling after nest-exit are engine-owned; Phase 17 mismatched header/delim are paragraphs, not tables; list-steal `- | -` pipe-less delimiters stay dialect)
 enrich + `from-mdast` (empty footnote bodies, nests at any depth incl. mixed-marker,
 nested plain quotes, simple lists-in-quotes, hard breaks in quotes, lazy nest
 continuation via fewer `>` **or true no-`>`**, hard breaks inside simple lists /
@@ -200,16 +200,15 @@ Does **not** flip default-on.
 
 ## Default-on readiness (do **not** flip yet)
 
-After under-indented structural nest-exit, flagged IR→PM leftovers that would
+After nest-sibling after nest-exit structural, flagged IR→PM leftovers that would
 still be **dialect** if `NOTO_MARKDOWN_ENGINE` flipped tomorrow:
 
 | Residual | Why still dialect |
 | -------- | ----------------- |
 | Thirty-eight+ nested marks | Intentional `MAX_MARK_NEST` cap (37); leave alone |
 | Footnote-ref callout titles | Need doc-wide def lookup; per-span IR→PM cannot know |
-| Nest-sibling after nest-exit structural (`---` then `- c`) | Trailing interleaved nest not modeled yet |
 | List-steal pipe-less `- \| -` delimiters | Split/shape mismatch vs micromark |
-| Under-indented **paragraph** nest-exit after blank | Not this cut (structural only) |
+| Under-indented **paragraph** nest-exit after blank | Paragraph (non-structural) nest-exit not owned yet |
 
 Golden / open-path gates are otherwise green on the curated set. Still prefer
 broader corpus + packaged open feel before flipping the product default.
@@ -234,11 +233,11 @@ broader corpus + packaged open feel before flipping the product default.
    and hard breaks in simple footnotes are engine-owned. Structural quote /
    fence / ATX-heading / HTML / table / hr children inside list items are
    engine-owned; cross-family same-indent sibling marker mixes within one span
-   are engine-owned; under-indented structural nest-exit owned; footnote-ref callout titles stay dialect.
+   are engine-owned; under-indented structural nest-exit owned; nest-sibling after nest-exit owned; footnote-ref callout titles stay dialect.
 4. Keep growing `tests/fixtures/markdown-golden/` before default-on; GFM inline,
    nested lists, simple-nested-lists (depth-2+), simple-nested-quotes,
    simple-lists-in-quotes, simple-hard-breaks-in-quotes,
-   simple-lazy-continuations-in-quotes, simple-hard-breaks-in-lists, simple-multi-block-list-items, simple-list-item-structural-children, simple-list-item-html-table-hr, simple-list-item-setext-tight, simple-under-indented-structural-nest-exit,
+   simple-lazy-continuations-in-quotes, simple-hard-breaks-in-lists, simple-multi-block-list-items, simple-list-item-structural-children, simple-list-item-html-table-hr, simple-list-item-setext-tight, simple-under-indented-structural-nest-exit, simple-nest-sibling-after-nest-exit,
    simple-hard-breaks-in-footnotes, simple-callouts,
    HTML blocks, callout edges, hr/setext, link-defs, simple quotes, simple flat
    lists, simple GFM tables, simple footnote-defs, empty footnote-defs, CJK
