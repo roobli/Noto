@@ -19,15 +19,15 @@
  * cells incl. escaped pipes; consistent **or ragged** body columns — micromark keeps
  * short/long body rows as-is), the PM node is fully
  * determined by that IR — no micromark / mdast pass. Multi-block items, deep /
- * deeper (thirty-eight+) / multi-line HTML still go through `from-mdast.ts` after
+ * deeper (thirty-eight+) nests still go through `from-mdast.ts` after
  * dialect enrich. Mismatched header/delimiter column counts are paragraphs at
  * split (`@roobli/md` ≥ v0.1.14); `parseSimpleTableSource` still refuses a forced
  * mismatched table span. **Simple HTML
  * and simple inline math in GFM table cells** are engine-owned. **Simple backslash escapes**
  * (ASCII punctuation + trailing-`\\` hard breaks), including **escaped pipes
  * inside simple GFM table cells**, are engine-owned. **Simple inline HTML**
- * (open/close/self-closing tags, comments, PI, declarations, CDATA; single-line)
- * is engine-owned as `inline_html` atoms.
+ * (open/close/self-closing tags, comments, PI, declarations, CDATA; single- or
+ * multi-line) is engine-owned as `inline_html` atoms.
  * **Simple inline links** (`[text](url)` /
  * optional title) and **images** (`![alt](url)`) with plain or **simple image alts**
  * (micromark-equivalent plain string: math / marks / escapes / literal HTML) are
@@ -42,8 +42,8 @@
  * `<mailto:…>`; href `mailto:…`) are engine-owned. **Simple inline HTML** is
  * engine-owned as `inline_html` atoms. **Simple inline math** (`$…$` / `$$…$$`)
  * is engine-owned as `math_inline` in phrasing; inside image alts, math/marks strip
- * to a plain micromark-equivalent alt string (not phrasing nodes). Multi-line HTML /
- * nested-bracket alts / exotic constructs stay dialect.
+ * to a plain micromark-equivalent alt string (not phrasing nodes). Nested-bracket
+ * alts / newlines in alts / exotic constructs stay dialect.
  * **Simple wiki links** (`[[target]]` / `[[target|alias]]`) are engine-owned
  * as literal text (decoration plugin owns display).
  * **Simple GFM alerts / callouts** (incl. collapsible / plain-titled /
@@ -78,7 +78,7 @@ export const ENGINE_LEAF_KINDS: ReadonlySet<NotoBlockKind> = new Set([
  * nesting), simple inline links / images, simple reference links / images,
  * simple bare http(s) + angle-bracket http(s) + www. + email autolinks, and
  * simple wiki `[[…]]` (literal text) are engine-owned via `tryInlineNodesFromSource`;
- * thirty-eight+ / multi-line HTML and heavier constructs stay on dialect. Snake_case
+ * thirty-eight+ nests and heavier constructs stay on dialect. Snake_case
  * underscores are literal (CommonMark flanking).
  */
 const INLINE_DIALECT_RE = /[*_~`[\]<!$:\\@]|https?:\/\/|www\./iu;
@@ -111,7 +111,7 @@ export function needsDialectInline(markdown: string): boolean {
  * Owns plain `[!NOTE]`, collapsible `[!NOTE]-` / `[!NOTE]+`, optional same-line
  * plain titles (`[!NOTE] Title`), and **simple-marked titles** (`[!NOTE] Title
  * **x**`, wiki / links / autolinks / simple escapes / simple inline math in the
- * title). Heavy titles (multi-line HTML / exotic marks) stay dialect. The
+ * title). Heavy titles (exotic marks) stay dialect. The
  * alert-plugin decorates from the
  * leading `[!NOTE]` token either way.
  */
@@ -227,10 +227,10 @@ export interface TryInlineOptions {
  * autolinks** (`<https://…>`; text === href), **simple www. autolinks**,
  * **simple email autolinks** (bare + angle / mailto), and **simple wiki**
  * (`[[target]]` / `[[target|alias]]` as literal text). Matched `***` / `___` are
- * engine-owned (emphasis+strong). Mixed triple closers (`***x* y**` / `**x *y***` / `***x** y*` + underscore) owned; same-delimiter stacks owned; thirty-eight+ nests, multi-line HTML, nested-bracket wiki,
+ * engine-owned (emphasis+strong). Mixed triple closers (`***x* y**` / `**x *y***` / `***x** y*` + underscore) owned; same-delimiter stacks owned; thirty-eight+ nests, nested-bracket wiki,
  * and unmatched delimiters
  * return `null` (dialect enrich). Simple backslash escapes (ASCII punctuation
- * + trailing-`\\` hard breaks), **simple inline HTML**, and **simple inline math**
+ * + trailing-`\\` hard breaks), **simple inline HTML** (incl. multi-line), and **simple inline math**
  * (`$…$` / `$$…$$`) are owned. Snake_case underscores (`mcp_register`) stay
  * literal via CommonMark-ish flanking. Bare `[…]` / `array[0]` (no trailing
  * `[]` / `[id]` / `(url)`) stay literal text. Footnotes `[^…]` stay dialect.
@@ -430,24 +430,30 @@ function endOfSimpleAngleEmail(input: string, at: number): number {
   return close + 1;
 }
 
+/** CommonMark HTML tag whitespace: space / tab / line ending. */
+function isHtmlTagWs(ch: string | undefined): boolean {
+  return ch === ' ' || ch === '\t' || ch === '\n' || ch === '\r';
+}
+
 /**
- * Exclusive end (past terminator) of simple CommonMark inline HTML at `at`, or
- * -1. Owns single-line open/close/self-closing tags, comments, processing
- * instructions, declarations, and CDATA. No newlines inside. Autolinks are
- * handled separately — call after those fail.
+ * Exclusive end of simple CommonMark inline HTML at `at`, or -1.
+ * Owns single-line and multi-line comments / CDATA / declarations / PIs /
+ * open+self-closing+closing tags (newlines allowed as tag whitespace and
+ * inside quoted attribute values / comment·CDATA·PI bodies — micromark
+ * parity). Unclosed / malformed forms return -1 (caller may dialect via
+ * `looksLikeInlineHtmlStart`).
  */
 function endOfSimpleInlineHtml(input: string, at: number): number {
   if (input[at] !== '<') return -1;
   const len = input.length;
   if (at + 1 >= len) return -1;
 
-  // HTML comment <!-- ... -->
+  // HTML comment <!-- ... --> (newlines owned)
   if (input.startsWith('<!--', at)) {
     const start = at + 4;
     if (input[start] === '>' || (input[start] === '-' && input[start + 1] === '>')) return -1;
     let i = start;
     while (i < len) {
-      if (input[i] === '\n' || input[i] === '\r') return -1;
       if (input.startsWith('--', i)) {
         if (input[i + 2] === '>') return i + 3;
         return -1;
@@ -457,31 +463,27 @@ function endOfSimpleInlineHtml(input: string, at: number): number {
     return -1;
   }
 
-  // CDATA section
+  // CDATA section (newlines owned)
   if (input.startsWith('<![CDATA[', at)) {
     const close = input.indexOf(']]>', at + 9);
     if (close < 0) return -1;
-    const body = input.slice(at + 9, close);
-    if (body.includes('\n') || body.includes('\r')) return -1;
     return close + 3;
   }
 
-  // Declaration <!LETTER ... >
+  // Declaration <!LETTER ... > (newlines owned)
   if (input[at + 1] === '!' && /[A-Za-z]/.test(input[at + 2] ?? '')) {
     let i = at + 2;
     while (i < len) {
-      if (input[i] === '\n' || input[i] === '\r') return -1;
       if (input[i] === '>') return i + 1;
       i += 1;
     }
     return -1;
   }
 
-  // Processing instruction <? ... ?>
+  // Processing instruction <? ... ?> (newlines owned)
   if (input.startsWith('<?', at)) {
     let i = at + 2;
     while (i < len) {
-      if (input[i] === '\n' || input[i] === '\r') return -1;
       if (input[i] === '?' && input[i + 1] === '>') return i + 2;
       i += 1;
     }
@@ -493,7 +495,7 @@ function endOfSimpleInlineHtml(input: string, at: number): number {
     if (!/[A-Za-z]/.test(input[at + 2] ?? '')) return -1;
     let i = at + 3;
     while (i < len && /[A-Za-z0-9-]/.test(input[i]!)) i += 1;
-    while (i < len && (input[i] === ' ' || input[i] === '\t')) i += 1;
+    while (i < len && isHtmlTagWs(input[i])) i += 1;
     if (input[i] === '>') return i + 1;
     return -1;
   }
@@ -504,9 +506,8 @@ function endOfSimpleInlineHtml(input: string, at: number): number {
   while (i < len && /[A-Za-z0-9-]/.test(input[i]!)) i += 1;
 
   while (i < len) {
-    if (input[i] === '\n' || input[i] === '\r') return -1;
-    if (input[i] === ' ' || input[i] === '\t') {
-      while (i < len && (input[i] === ' ' || input[i] === '\t')) i += 1;
+    if (isHtmlTagWs(input[i])) {
+      while (i < len && isHtmlTagWs(input[i])) i += 1;
       if (i >= len) return -1;
       if (input[i] === '/') {
         i += 1;
@@ -522,10 +523,8 @@ function endOfSimpleInlineHtml(input: string, at: number): number {
         if (input[i] === '"' || input[i] === "'") {
           const q = input[i]!;
           i += 1;
-          while (i < len && input[i] !== q) {
-            if (input[i] === '\n' || input[i] === '\r') return -1;
-            i += 1;
-          }
+          // Quoted attribute values may include newlines (CommonMark / micromark).
+          while (i < len && input[i] !== q) i += 1;
           if (input[i] !== q) return -1;
           i += 1;
         } else {
@@ -692,7 +691,7 @@ function flattenNodesToImageAlt(nodes: readonly ProseNode[]): string | null {
  * backslash escapes of ASCII punct; literal simple HTML tags as characters;
  * angle http(s)/email autolinks (brackets stripped, text kept).
  * Refuses: nested `[` / `]` (caller), newlines, unmatched /
- * thirty-eight+-level nests, multi-line HTML, constructs `tryInlineNodesFromSource` cannot own.
+ * thirty-eight+-level nests, newlines in alt, constructs `tryInlineNodesFromSource` cannot own.
  */
 function parseSimpleImageAlt(label: string): string | null {
   if (label.includes('\n') || label.includes('\r')) return null;
@@ -2704,7 +2703,7 @@ function parseQuoteChildren(
  * lists (any reasonable depth; lazy into list items). Returns a child tree
  * matching CommonMark / mdast shape for the owned subset, or `null` when the
  * span still needs dialect enrich (nested marks / nested / heavy inline,
- * multi-para lists, pathological depth, multi-line-HTML callout titles).
+ * multi-para lists, pathological depth, exotic callout titles).
  * Plain / collapsible / plain-titled / simple-marked-title GFM alerts
  * (`> [!NOTE]`, `> [!NOTE]-`, `> [!NOTE] Title **x**` …) and simple-marked
  * bodies are accepted.
@@ -3077,7 +3076,7 @@ function alignmentOfDelimiterCell(cell: string): TableAlign | undefined {
  * backslash escapes (escaped `|` stays inside the cell); header and delimiter
  * column counts must match; **body rows may be ragged** (fewer or more cells
  * than the header — kept as-is, matching micromark/mdast); no blank lines
- * inside the span. Nested / heavy inline (multi-line HTML / math) fall through
+ * inside the span. Nested / heavy inline (cell newlines / exotic math) fall through
  * to dialect. Delimiter≠header returns null (Phase 17 split keeps those as
  * paragraphs; this refuse is a safety net).
  * Returns `null` when enrich is still needed.
