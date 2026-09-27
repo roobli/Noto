@@ -957,9 +957,32 @@ describe('blockFromEngineSpan', () => {
     expect(nestLazy?.child(0).child(1).child(0).childCount).toBe(2);
     expect(nestLazy?.child(0).child(1).child(0).child(1).textContent).toBe('b\nlazy');
     expect(blockFromEngineSpan('bullet-list', '- a\n\n  para\n===')?.child(0).child(1).textContent).toBe('para\n===');
-    // Under-indented structural nest-exit stays dialect.
-    expect(blockFromEngineSpan('bullet-list', '- outer\n  - a\n\n    b\n  ---')).toBeNull();
-    expect(blockFromEngineSpan('bullet-list', '- outer\n  - a\n\n    b\n  ## H')).toBeNull();
+    // Under-indented structural nest-exit re-homes onto the parent item.
+    const nestHr = blockFromEngineSpan('bullet-list', '- outer\n  - a\n\n    b\n  ---');
+    expect(nestHr?.type.name).toBe('bullet_list');
+    expect(nestHr?.child(0).childCount).toBe(3); // para + nest + hr
+    expect(nestHr?.child(0).child(0).textContent).toBe('outer');
+    expect(nestHr?.child(0).child(1).type.name).toBe('bullet_list');
+    expect(nestHr?.child(0).child(1).child(0).child(1).textContent).toBe('b');
+    expect(nestHr?.child(0).child(2).type.name).toBe('horizontal_rule');
+    const nestAtx = blockFromEngineSpan('bullet-list', '- outer\n  - a\n\n    b\n  ## H');
+    expect(nestAtx?.child(0).child(2).type.name).toBe('heading');
+    expect(nestAtx?.child(0).child(2).textContent).toBe('H');
+    expect(blockFromEngineSpan('bullet-list', '- outer\n  - a\n  ---')?.child(0).child(2).type.name).toBe('horizontal_rule');
+    expect(blockFromEngineSpan('bullet-list', '- outer\n  - a\n\n    b\n  > q')?.child(0).child(2).type.name).toBe('blockquote');
+    expect(blockFromEngineSpan('bullet-list', '- outer\n  - a\n\n    b\n  ```\n  x\n  ```')?.child(0).child(2).type.name).toBe('code_block');
+    expect(blockFromEngineSpan('bullet-list', '- outer\n  - a\n\n    b\n  <div>x</div>')?.child(0).child(2).type.name).toBe('html_block');
+    const nestHrMore = blockFromEngineSpan('bullet-list', '- outer\n  - a\n\n    b\n  ---\n  more');
+    expect(nestHrMore?.child(0).childCount).toBe(4); // para + nest + hr + para
+    expect(nestHrMore?.child(0).child(3).textContent).toBe('more');
+    // Deep nest-exit onto mid ancestor.
+    const deep = blockFromEngineSpan('bullet-list', '- o\n  - m\n    - a\n\n      b\n    ---');
+    expect(deep?.child(0).child(1).child(0).childCount).toBe(3); // para m + nest + hr
+    expect(deep?.child(0).child(1).child(0).child(2).type.name).toBe('horizontal_rule');
+    // Tight under-indent table stays lazy (not nest-exit).
+    expect(blockFromEngineSpan('bullet-list', '- outer\n  - a\n  | h |\n  | - |')?.child(0).child(1).child(0).textContent).toBe('a\n| h |\n| - |');
+    // Nest-sibling after nest-exit structural stays dialect (trailing interleaved).
+    expect(blockFromEngineSpan('bullet-list', '- outer\n  - a\n\n    b\n  ---\n  - c')).toBeNull();
     // Multi-para then nested list.
     const multiNest = blockFromEngineSpan('bullet-list', '- a\n\n  b\n  - nest');
     expect(multiNest?.attrs.spread).toBe(true);
