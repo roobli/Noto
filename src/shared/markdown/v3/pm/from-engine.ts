@@ -19,7 +19,7 @@
  * cells incl. escaped pipes; consistent **or ragged** body columns — micromark keeps
  * short/long body rows as-is), the PM node is fully
  * determined by that IR — no micromark / mdast pass. Multi-block items, deep /
- * deeper (thirty-eight+) / ambiguous same-delimiter nests / multi-line HTML still go through `from-mdast.ts` after
+ * deeper (thirty-eight+) / mixed triple closers / multi-line HTML still go through `from-mdast.ts` after
  * dialect enrich. Mismatched header/delimiter column counts are paragraphs at
  * split (`@roobli/md` ≥ v0.1.14); `parseSimpleTableSource` still refuses a forced
  * mismatched table span. **Simple HTML
@@ -78,7 +78,7 @@ export const ENGINE_LEAF_KINDS: ReadonlySet<NotoBlockKind> = new Set([
  * nesting), simple inline links / images, simple reference links / images,
  * simple bare http(s) + angle-bracket http(s) + www. + email autolinks, and
  * simple wiki `[[…]]` (literal text) are engine-owned via `tryInlineNodesFromSource`;
- * thirty-eight+ / same-delimiter nests and heavier constructs stay on dialect. Snake_case
+ * thirty-eight+ / mixed triple closers / multi-line HTML and heavier constructs stay on dialect. Snake_case
  * underscores are literal (CommonMark flanking).
  */
 const INLINE_DIALECT_RE = /[*_~`[\]<!$:\\@]|https?:\/\/|www\./iu;
@@ -111,7 +111,7 @@ export function needsDialectInline(markdown: string): boolean {
  * Owns plain `[!NOTE]`, collapsible `[!NOTE]-` / `[!NOTE]+`, optional same-line
  * plain titles (`[!NOTE] Title`), and **simple-marked titles** (`[!NOTE] Title
  * **x**`, wiki / links / autolinks / simple escapes / simple inline math in the
- * title). Heavy titles (same-delimiter nests / multi-line HTML) stay dialect. The
+ * title). Heavy titles (mixed triple closers / multi-line HTML) stay dialect. The
  * alert-plugin decorates from the
  * leading `[!NOTE]` token either way.
  */
@@ -227,7 +227,7 @@ export interface TryInlineOptions {
  * autolinks** (`<https://…>`; text === href), **simple www. autolinks**,
  * **simple email autolinks** (bare + angle / mailto), and **simple wiki**
  * (`[[target]]` / `[[target|alias]]` as literal text). Matched `***` / `___` are
- * engine-owned (emphasis+strong). Same-delimiter stacks, thirty-eight+ nests, multi-line HTML, nested-bracket wiki,
+ * engine-owned (emphasis+strong). Same-delimiter stacks owned; thirty-eight+ nests, mixed triple closers, multi-line HTML, nested-bracket wiki,
  * and unmatched delimiters
  * return `null` (dialect enrich). Simple backslash escapes (ASCII punctuation
  * + trailing-`\\` hard breaks), **simple inline HTML**, and **simple inline math**
@@ -292,8 +292,9 @@ export function tryInlineNodesFromSource(
 /**
  * Simple `*` / `**` / `_` / `__` / `~~` / `` ` `` scanner with optional
  * nesting. Prefer longer delimiters. Matched `***` / `___` → emphasis+strong.
- * Same-delimiter stacks / mixed triple closers / bare unmatched / thirty-eight+
- * nests fall through to dialect. Underscores use a
+ * Same-delimiter stacks (`*a *b* c*` / `**a **b** c**` / `_`/`__`/`~~` counterparts)
+ * are owned. Mixed triple closers / bare unmatched / thirty-eight+ nests fall through
+ * to dialect. Underscores use a
  * CommonMark-ish word-flanking rule so `snake_case` stays literal while
  * `__strong__` / `_em_` are owned.
  */
@@ -690,7 +691,7 @@ function flattenNodesToImageAlt(nodes: readonly ProseNode[]): string | null {
  * (`**` / `*` / `__` / `_` / `~~` / `` ` ``; snake_case `_` flanking); simple
  * backslash escapes of ASCII punct; literal simple HTML tags as characters;
  * angle http(s)/email autolinks (brackets stripped, text kept).
- * Refuses: nested `[` / `]` (caller), newlines, unmatched / same-delimiter /
+ * Refuses: nested `[` / `]` (caller), newlines, unmatched / mixed triple closers /
  * thirty-eight+-level nests, multi-line HTML, constructs `tryInlineNodesFromSource` cannot own.
  */
 function parseSimpleImageAlt(label: string): string | null {
@@ -838,7 +839,16 @@ function parseSimpleAsteriskTildeCode(
           continue;
         }
         if (input.startsWith('~~', search)) {
-          if (search === at + 2 || isWs(input[search - 1])) return -1;
+          if (search === at + 2) return -1;
+          if (isWs(input[search - 1])) {
+            if (search + 2 < len && !isWs(input[search + 2])) {
+              const next = skipNestedSpan(search);
+              if (next < 0) return -1;
+              search = next;
+              continue;
+            }
+            return -1;
+          }
           return search + 2;
         }
         search += 1;
@@ -848,8 +858,8 @@ function parseSimpleAsteriskTildeCode(
     if (input.startsWith('**', at)) {
       if (isWs(input[at + 2])) return -1;
       // Skip cross-family nests (`*` / `_` / `__` / `~~` / code) that may
-      // embed `**` (parity with findDoubleClose). Bare nested `**` is still
-      // the closer — same-delimiter stacks stay dialect.
+      // embed `**` (parity with findDoubleClose). Same-delimiter nested `**`
+      // openers (ws before) are skipped below; bare non-ws-preceded `**` closes.
       let search = at + 2;
       while (search < len) {
         if (input[search] === '\\') {
@@ -882,7 +892,17 @@ function parseSimpleAsteriskTildeCode(
           continue;
         }
         if (input.startsWith('**', search)) {
-          if (search === at + 2 || isWs(input[search - 1])) return -1;
+          if (search === at + 2) return -1;
+          if (isWs(input[search - 1])) {
+            // Same-delimiter nest (`**a **b** c**`): skip inner opener.
+            if (search + 2 < len && !isWs(input[search + 2])) {
+              const next = skipNestedSpan(search);
+              if (next < 0) return -1;
+              search = next;
+              continue;
+            }
+            return -1;
+          }
           return search + 2;
         }
         search += 1;
@@ -899,7 +919,16 @@ function parseSimpleAsteriskTildeCode(
           continue;
         }
         if (input.startsWith('__', search)) {
-          if (search === at + 2 || isWs(input[search - 1])) return -1;
+          if (search === at + 2) return -1;
+          if (isWs(input[search - 1])) {
+            if (search + 2 < len && !isWs(input[search + 2])) {
+              const next = skipNestedSpan(search);
+              if (next < 0) return -1;
+              search = next;
+              continue;
+            }
+            return -1;
+          }
           if (isWordChar(input[search - 1]) && isWordChar(input[search + 2])) {
             search += 2;
             continue;
@@ -943,7 +972,16 @@ function parseSimpleAsteriskTildeCode(
           continue;
         }
         if (input[search] === '*') {
-          if (search === at + 1 || isWs(input[search - 1])) return -1;
+          if (search === at + 1) return -1;
+          if (isWs(input[search - 1])) {
+            if (search + 1 < len && !isWs(input[search + 1]) && !input.startsWith('**', search)) {
+              const next = skipNestedSpan(search);
+              if (next < 0) return -1;
+              search = next;
+              continue;
+            }
+            return -1;
+          }
           return search + 1;
         }
         search += 1;
@@ -976,7 +1014,17 @@ function parseSimpleAsteriskTildeCode(
           continue;
         }
         if (input[search] === '_') {
-          if (search === at + 1 || isWs(input[search - 1])) {
+          if (search === at + 1) {
+            search += 1;
+            continue;
+          }
+          if (isWs(input[search - 1])) {
+            if (search + 1 < len && !isWs(input[search + 1]) && !input.startsWith('__', search)) {
+              const next = skipNestedSpan(search);
+              if (next < 0) return -1;
+              search = next;
+              continue;
+            }
             search += 1;
             continue;
           }
@@ -995,9 +1043,8 @@ function parseSimpleAsteriskTildeCode(
 
   /**
    * Find closer for `**` / `~~` / `__`. Skip code and cross-family nests that
-   * may embed the delimiter. The first non-skipped `delim` is the closer
-   * (same-delimiter stacks with a space before an inner `**` fail the ws check
-   * and fall through to dialect).
+   * may embed the delimiter. Same-delimiter stacks (`**a **b** c**`) skip the
+   * inner opener (ws before + non-ws after) via `skipNestedSpan`.
    */
   const findDoubleClose = (openAt: number, delim: '**' | '~~' | '__'): number => {
     const dlen = delim.length;
@@ -1080,7 +1127,17 @@ function parseSimpleAsteriskTildeCode(
         }
       }
       if (input.startsWith(delim, search)) {
-        if (search === openAt + dlen || isWs(input[search - 1])) return -1;
+        if (search === openAt + dlen) return -1;
+        if (isWs(input[search - 1])) {
+          // Same-delimiter nest: skip inner opener, keep scanning for outer closer.
+          if (search + dlen < len && !isWs(input[search + dlen])) {
+            const next = skipNestedSpan(search);
+            if (next < 0) return -1;
+            search = next;
+            continue;
+          }
+          return -1;
+        }
         if (delim === '__' && isWordChar(input[search - 1]) && isWordChar(input[search + 2])) {
           return -1;
         }
@@ -1133,21 +1190,23 @@ function parseSimpleAsteriskTildeCode(
       }
       if (input.startsWith('**', search) || input[search] === '`' || input.startsWith('~~', search)
         || input.startsWith('__', search) || input[search] === '_') {
-        // Same-delimiter single `*` nest is refused by skip returning past inner.
-        if (input[search] === '*' && !input.startsWith('**', search)) {
-          // Bare `*` inside `*` → same-delimiter nest → dialect.
-          return -1;
-        }
-        if (input[search] === '_' || input.startsWith('__', search) || input.startsWith('**', search)
-          || input[search] === '`' || input.startsWith('~~', search)) {
-          const next = skipNestedSpan(search);
-          if (next < 0) return -1;
-          search = next;
-          continue;
-        }
+        const next = skipNestedSpan(search);
+        if (next < 0) return -1;
+        search = next;
+        continue;
       }
       if (input[search] === '*') {
-        if (search === openAt + 1 || isWs(input[search - 1])) return -1;
+        if (search === openAt + 1) return -1;
+        if (isWs(input[search - 1])) {
+          // Same-delimiter nest (`*a *b* c*`): skip inner opener.
+          if (search + 1 < len && !isWs(input[search + 1]) && !input.startsWith('**', search)) {
+            const next = skipNestedSpan(search);
+            if (next < 0) return -1;
+            search = next;
+            continue;
+          }
+          return -1;
+        }
         return search;
       }
       search += 1;
@@ -1208,7 +1267,17 @@ function parseSimpleAsteriskTildeCode(
         continue;
       }
       if (input[search] === '_') {
-        if (search === openAt + 1 || isWs(input[search - 1])) {
+        if (search === openAt + 1) {
+          search += 1;
+          continue;
+        }
+        if (isWs(input[search - 1])) {
+          if (search + 1 < len && !isWs(input[search + 1]) && !input.startsWith('__', search)) {
+            const next = skipNestedSpan(search);
+            if (next < 0) return -1;
+            search = next;
+            continue;
+          }
           search += 1;
           continue;
         }
@@ -1334,7 +1403,7 @@ function parseSimpleAsteriskTildeCode(
 
   while (i < len) {
     // Matched `***…***` / `___…___` → emphasis + strong (micromark parity).
-    // Mixed closer forms and same-delimiter stacks stay dialect.
+    // Mixed closer forms stay dialect; same-delimiter `*`/`**`/`_`/`__`/`~~` stacks owned.
     if (input.startsWith('***', i)) {
       if (isWs(input[i + 3])) {
         emitPlain(i, i + 3);
@@ -2146,7 +2215,7 @@ function parseQuoteChildren(
  * lists (any reasonable depth; lazy into list items). Returns a child tree
  * matching CommonMark / mdast shape for the owned subset, or `null` when the
  * span still needs dialect enrich (nested marks / nested / heavy inline,
- * multi-para lists, pathological depth, same-delimiter / multi-line-HTML callout titles).
+ * multi-para lists, pathological depth, mixed-triple / multi-line-HTML callout titles).
  * Plain / collapsible / plain-titled / simple-marked-title GFM alerts
  * (`> [!NOTE]`, `> [!NOTE]-`, `> [!NOTE] Title **x**` …) and simple-marked
  * bodies are accepted.

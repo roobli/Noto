@@ -211,8 +211,8 @@ breaks; nested children may nest only) + simple GFM tables (alignment row; plain
 or simple-marked cells incl. escaped pipes; consistent or ragged body columns);
 enrich flags mark those done — see `docs/performance/open-path-first-cut.md`.
 Cross-family nests, multi-block items, heavy callout titles, complex tables
-(legacy IR→PM refuse if a mismatched span is forced; Phase 17 split keeps them paragraphs), and heavy inline (thirty-eight+ / same-delimiter /
-mixed triple closers, multi-line HTML, nested-bracket wiki / nested-bracket image alts) stay on dialect; matched `***`/`___` owned.
+(legacy IR→PM refuse if a mismatched span is forced; Phase 17 split keeps them paragraphs), and heavy inline (thirty-eight+ / mixed triple closers /
+multi-line HTML, nested-bracket wiki / nested-bracket image alts) stay on dialect; matched `***`/`___` and same-delimiter stacks owned.
 Ragged body rows on otherwise-simple GFM tables are engine-owned.
 Simple inline math (`$…$` / `$$…$$`) and simple HTML/math in table cells are engine-owned.
 Simple image alts (math / marks / escapes / literal HTML → micromark plain alt string) are engine-owned.
@@ -232,7 +232,7 @@ Product default stays micromark.
 
 Next: keep growing `markdown-golden/` (more GFM / vault edges), extend IR→PM
 only where micromark parity is locked (Phase 17 mismatched header/delim are paragraphs at split; residual dialect for thirty-eight+ /
-same-delimiter / mixed triple closers / multi-line HTML / heavy callout titles), then reconsider
+mixed triple closers / multi-line HTML / heavy callout titles; same-delimiter stacks owned), then reconsider
 default-on. Hard-breaks, images, empty/meta fences, escapes, table-align,
 ordered-start, inline HTML, simple-flat-lists, simple-nested-lists,
 simple-nested-quotes, simple-lists-in-quotes, simple-hard-breaks-in-quotes,
