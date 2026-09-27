@@ -150,7 +150,7 @@ export function hasHardBreak(markdown: string): boolean {
  * link-definitions; simple footnote-definitions (incl. hard breaks + simple
  * marks); simple quotes (incl. nested, hard breaks, lists-in-quotes, plain /
  * simple-marked / collapsible / plain-titled / simple-marked-title / heavy-title GFM alerts / callouts, lazy nest + no-`>` lazy); simple flat
- * or nested lists (same-family or mixed-marker, any depth, incl. hard breaks + simple marks + multi-paragraph items + structural quote/fence/ATX-heading/HTML/table/hr children + cross-family same-indent sibling marker mixes);
+ * or nested lists (same-family or mixed-marker, any depth, incl. hard breaks + simple marks + multi-paragraph items + structural quote/fence/ATX-heading/HTML/table/hr children + setext-shaped tight `---`/`===` after a paragraph + cross-family same-indent sibling marker mixes);
  * simple GFM tables (plain or simple-marked cells incl. escaped pipes; ragged body rows; pipe-optional leading `|`); paragraph / heading when
  * plain or simple-marked (hard breaks + simple inline links / images +
  * simple reference links / images + simple bare http(s) + angle-bracket
@@ -2831,6 +2831,44 @@ function ownedStructuralKind(
   return null;
 }
 
+/**
+ * Continuous setext underline after list-item indent strip (CommonMark /
+ * micromark). Spaced thematic rules (`- - -`) and `***` / `___` do not match.
+ */
+function isSetextUnderlineRest(rest: string): boolean {
+  return /^([=-])\1*[ \t]*$/u.test(rest);
+}
+
+/**
+ * Promote the item's trailing paragraph to a setext heading (micromark).
+ * Returns false when there is nothing to promote (caller falls through).
+ * Returns null when inline IR refuses (caller should dialect).
+ */
+function promoteTrailingParagraphToSetext(
+  item: DraftListItem,
+  underline: string,
+): boolean | null {
+  const last = item.children[item.children.length - 1];
+  if (!last || last.type !== 'paragraph') return false;
+  let text = last.lines.join('\n').trimEnd();
+  // GFM task checkbox is paragraph-only; setext absorbs `[ ]`/`[x]` into
+  // heading text and clears checked (micromark parity).
+  if (item.checked !== null) {
+    const box = item.checked ? '[x]' : '[ ]';
+    text = text.length > 0 ? `${box} ${text}` : box;
+    item.checked = null;
+  }
+  if (text.length === 0) return false;
+  if (tryInlineNodesFromSource(text) === null) return null;
+  const marker = underline.trimStart()[0];
+  item.children[item.children.length - 1] = {
+    type: 'heading',
+    level: marker === '=' ? 1 : 2,
+    text,
+  };
+  return true;
+}
+
 /** CommonMark HTML block tag names (type 6). */
 const LIST_HTML_BLOCK_TAGS = new Set([
   'address', 'article', 'aside', 'base', 'basefont', 'blockquote', 'body',
@@ -3141,10 +3179,11 @@ function peekTableDelimiter(
  * (quotes); a single-list span still uses this helper (Phase 19 already splits
  * top-level mixes into separate IR spans). Loose lists set `spread` on that
  * level. Task checkboxes are allowed. Returns `null` when dialect enrich is
- * still needed (heavy inline / lazy line after a blank / setext-shaped tight
- * `---` after a paragraph / root-level marker mix). Empty-item + blank +
- * structural is closed at split (`@roobli/md` ≥ v0.1.17 Phase 20 — outside the
- * list span); the refuse below stays as a safety net.
+ * still needed (heavy inline / lazy line after a blank / root-level marker
+ * mix). Setext-shaped tight `---` / `===` after a paragraph promote that
+ * paragraph to a heading (micromark). Empty-item + blank + structural is closed
+ * at split (`@roobli/md` ≥ v0.1.17 Phase 20 — outside the list span); the refuse
+ * below stays as a safety net.
  */
 export function parseSimpleFlatListSource(md: string): ParsedFlatList | null {
   const lists = parseSimpleFlatListsSource(md);
@@ -3315,7 +3354,22 @@ export function parseSimpleFlatListsSource(md: string): ParsedFlatList[] | null 
     const bulletMatch = BULLET_MARKER_RE.exec(line);
     const orderedMatch = bulletMatch ? null : ORDERED_MARKER_RE.exec(line);
 
-    if (bulletMatch || orderedMatch) {
+    // Tight setext / thematic-break lines can look like a nested bullet
+    // (`  -`, `  - - -`). Prefer paragraph setext / hr (micromark) over opening
+    // a nested item — fall through to the continuation handler below.
+    let listMarker = Boolean(bulletMatch || orderedMatch);
+    if (listMarker && stack.length > 0) {
+      const peekTop = stack[stack.length - 1]!;
+      const peekRest = listContinuationRest(line, peekTop.indent);
+      if (
+        peekRest !== null
+        && (isSetextUnderlineRest(peekRest) || ownedStructuralKind(peekRest) === 'hr')
+      ) {
+        listMarker = false;
+      }
+    }
+
+    if (listMarker) {
       const indent = (bulletMatch ?? orderedMatch)![1]!;
       if (indent.length > MAX_LIST_MARKER_INDENT) return null;
 
@@ -3536,15 +3590,20 @@ export function parseSimpleFlatListsSource(md: string): ParsedFlatList[] | null 
       if (/^[ \t]/.test(line)) return null;
       rest = line;
     }
+    // Tight continuous setext underline after a paragraph → heading (micromark).
+    // Spaced `- - -` / `***` / `___` fall through as thematic breaks; empty
+    // placeholder paras (no task box) fall through so `---` alone stays hr.
+    if (isSetextUnderlineRest(rest)) {
+      const promoted = promoteTrailingParagraphToSetext(cur, rest);
+      if (promoted === null) return null;
+      if (promoted) {
+        top.pendingBlank = false;
+        i += 1;
+        continue;
+      }
+    }
     const structural = ownedStructuralKind(rest);
     if (structural) {
-      // Tight `---` / setext-looking dash rule after a paragraph is setext in
-      // micromark — stay dialect (ATX headings are owned; setext is not).
-      if (structural === 'hr') {
-        const marker = /^[ \t]*([*\-_])/u.exec(rest)?.[1];
-        const last = cur.children[cur.children.length - 1];
-        if (marker === '-' && last && last.type === 'paragraph') return null;
-      }
       // Tight structural child (no blank). Drop empty marker placeholder.
       const collected = collectStructuralChild(lines, i, top.indent, rest);
       if (!collected) return null;
