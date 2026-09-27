@@ -187,6 +187,7 @@ describe('markdown golden gates — fixture inventory', () => {
       'simple-inline-math.md',
       'simple-lazy-continuations-in-quotes.md',
       'simple-lazy-list-continuations.md',
+      'simple-list-item-html-table-hr.md',
       'simple-list-item-structural-children.md',
       'simple-lists-in-quotes.md',
       'simple-marked-callout-titles.md',

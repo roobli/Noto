@@ -804,8 +804,8 @@ describe('blockFromEngineSpan', () => {
     expect(multiWrap?.attrs.spread).toBe(true);
     expect(multiWrap?.child(0).childCount).toBe(2);
     expect(multiWrap?.child(0).child(1).textContent).toBe('b\nc');
-    // Simple marks in extra paragraphs are owned; quote/fence/heading structural owned;
-    // HTML/table/hr structural + lazy-after-blank stay dialect.
+    // Simple marks in extra paragraphs are owned; quote/fence/heading/HTML/table/hr structural owned;
+    // empty+blank+structural + setext tight `---` + lazy-after-blank stay dialect.
     expect(blockFromEngineSpan('bullet-list', '- a\n\n  **bold**')?.child(0).child(1).textContent).toBe('bold');
     const withQuote = blockFromEngineSpan('bullet-list', '- a\n\n  > quote');
     expect(withQuote?.type.name).toBe('bullet_list');
@@ -821,10 +821,20 @@ describe('blockFromEngineSpan', () => {
     expect(withHeading?.child(0).child(1).type.name).toBe('heading');
     expect(withHeading?.child(0).child(1).attrs.level).toBe(2);
     expect(withHeading?.child(0).child(1).textContent).toBe('Head');
-    // Tight quote (no blank) owned; empty+blank+structural stays dialect (micromark).
+    const withHtml = blockFromEngineSpan('bullet-list', '- a\n\n  <div>\n  x\n  </div>');
+    expect(withHtml?.child(0).child(1).type.name).toBe('html_block');
+    expect(withHtml?.child(0).child(1).textContent).toBe('<div>\nx\n</div>');
+    const withTable = blockFromEngineSpan('bullet-list', '- a\n\n  | x | y |\n  | - | - |\n  | 1 | 2 |');
+    expect(withTable?.child(0).child(1).type.name).toBe('table');
+    expect(withTable?.child(0).child(1).textContent).toBe('xy12');
+    const withHr = blockFromEngineSpan('bullet-list', '- a\n\n  ---');
+    expect(withHr?.child(0).child(1).type.name).toBe('horizontal_rule');
+    expect(blockFromEngineSpan('bullet-list', '- a\n  ***')?.child(0).child(1).type.name).toBe('horizontal_rule');
+    // Tight quote (no blank) owned; empty+blank+structural + setext tight --- stay dialect (micromark).
     expect(blockFromEngineSpan('bullet-list', '- a\n  > q')?.child(0).child(1).type.name).toBe('blockquote');
     expect(blockFromEngineSpan('bullet-list', '- \n\n  > q')).toBeNull();
-    expect(blockFromEngineSpan('bullet-list', '- a\n\n  <div>x</div>')).toBeNull();
+    expect(blockFromEngineSpan('bullet-list', '- a\n  ---')).toBeNull();
+    expect(blockFromEngineSpan('bullet-list', '- \n\n  <div>x</div>')).toBeNull();
     expect(blockFromEngineSpan('bullet-list', '- a\n\nlazy')).toBeNull();
     // Multi-para then nested list.
     const multiNest = blockFromEngineSpan('bullet-list', '- a\n\n  b\n  - nest');

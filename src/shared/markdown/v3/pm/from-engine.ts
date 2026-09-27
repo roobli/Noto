@@ -16,14 +16,14 @@
  * flat / nested lists** (same-family or mixed-marker nests at every depth;
  * plain or simple-marked items incl. hard breaks, unindented lazy soft-wrap,
  * and multi-paragraph items after a blank + indent; **structural children**
- * inside items — simple quote / fence / ATX heading), and **simple GFM tables** (alignment row; plain or simple-marked
+ * inside items — simple quote / fence / ATX heading / HTML / table / hr), and **simple GFM tables** (alignment row; plain or simple-marked
  * cells incl. escaped pipes; consistent **or ragged** body columns — micromark keeps
  * short/long body rows as-is; **pipe-optional** rows — leading/trailing `|` may be
  * omitted when a row still contains `|`, matching GFM; delimiter rows that would be
  * stolen by a bullet list marker (`- | -` without a leading `|`) stay dialect), the PM node is fully
- * determined by that IR — no micromark / mdast pass. HTML / table / hr children inside
- * list items, cross-family same-indent sibling marker mixes within one span, and deeper
- * (thirty-eight+) nests still go through `from-mdast.ts` after dialect enrich. Mismatched header/delimiter column counts are paragraphs at
+ * determined by that IR — no micromark / mdast pass. Cross-family same-indent sibling
+ * marker mixes within one span and deeper (thirty-eight+) nests still go through
+ * `from-mdast.ts` after dialect enrich. Mismatched header/delimiter column counts are paragraphs at
  * split (`@roobli/md` ≥ v0.1.14); `parseSimpleTableSource` still refuses a forced
  * mismatched table span. **Simple HTML
  * and simple inline math in GFM table cells** are engine-owned. **Simple backslash escapes**
@@ -145,7 +145,7 @@ export function hasHardBreak(markdown: string): boolean {
  * link-definitions; simple footnote-definitions (incl. hard breaks + simple
  * marks); simple quotes (incl. nested, hard breaks, lists-in-quotes, plain /
  * simple-marked / collapsible / plain-titled / simple-marked-title / heavy-title GFM alerts / callouts, lazy nest + no-`>` lazy); simple flat
- * or nested lists (same-family or mixed-marker, any depth, incl. hard breaks + simple marks + multi-paragraph items + structural quote/fence/ATX-heading children);
+ * or nested lists (same-family or mixed-marker, any depth, incl. hard breaks + simple marks + multi-paragraph items + structural quote/fence/ATX-heading/HTML/table/hr children);
  * simple GFM tables (plain or simple-marked cells incl. escaped pipes; ragged body rows; pipe-optional leading `|`); paragraph / heading when
  * plain or simple-marked (hard breaks + simple inline links / images +
  * simple reference links / images + simple bare http(s) + angle-bracket
@@ -2754,14 +2754,21 @@ export type ParsedListItemChild =
     readonly meta: string;
     readonly value: string;
   }
-  | { readonly type: 'heading'; readonly level: number; readonly text: string };
+  | { readonly type: 'heading'; readonly level: number; readonly text: string }
+  | { readonly type: 'html'; readonly value: string }
+  | {
+    readonly type: 'table';
+    readonly align: readonly TableAlign[];
+    readonly rows: readonly (readonly string[])[];
+  }
+  | { readonly type: 'hr' };
 
 export interface ParsedFlatListItem {
   readonly checked: boolean | null;
   /**
    * Item body in document order. Soft-wrap newlines stay inside one paragraph
    * entry; a blank + indented continuation starts a new paragraph (multi-block)
-   * or an owned structural child (simple quote / fence / ATX heading).
+   * or an owned structural child (simple quote / fence / ATX heading / HTML / table / hr).
    */
   readonly children: readonly ParsedListItemChild[];
   /** Nested list under this item (any depth); null when the item is flat. */
@@ -2792,18 +2799,84 @@ function restLooksStructural(rest: string): boolean {
   if (rest.startsWith('>')) return true;
   if (/^#{1,6}(?:[ \t]|$)/u.test(rest)) return true;
   if (/^(`{3,}|~{3,})/u.test(rest)) return true;
-  if (rest.startsWith('<')) return true;
+  if (rest.startsWith('<')) return listHtmlBlockKind(rest) !== null;
   if (rest.startsWith('|')) return true;
   if (/^([*\-_])(?:[ \t]*\1){2,}[ \t]*$/u.test(rest)) return true;
   return false;
 }
 
-/** Owned structural continuations inside a list item (HTML / table / hr stay dialect). */
-function ownedStructuralKind(rest: string): 'quote' | 'fence' | 'heading' | null {
+/**
+ * Owned structural continuations inside a list item.
+ * Tables may also start with a pipe-optional header (`x | y`); those are peeked
+ * via `tryCollectTableChild` rather than this classifier.
+ */
+function ownedStructuralKind(
+  rest: string,
+): 'quote' | 'fence' | 'heading' | 'hr' | 'html' | 'table' | null {
   if (rest.startsWith('>')) return 'quote';
   if (/^#{1,6}(?:[ \t]|$)/u.test(rest)) return 'heading';
   if (/^(`{3,}|~{3,})/u.test(rest)) return 'fence';
+  if (/^([*\-_])(?:[ \t]*\1){2,}[ \t]*$/u.test(rest)) return 'hr';
+  if (rest.startsWith('<') && listHtmlBlockKind(rest) !== null) return 'html';
+  if (rest.startsWith('|')) return 'table';
   return null;
+}
+
+/** CommonMark HTML block tag names (type 6). */
+const LIST_HTML_BLOCK_TAGS = new Set([
+  'address', 'article', 'aside', 'base', 'basefont', 'blockquote', 'body',
+  'caption', 'center', 'col', 'colgroup', 'dd', 'details', 'dialog', 'dir',
+  'div', 'dl', 'dt', 'fieldset', 'figcaption', 'figure', 'footer', 'form',
+  'frame', 'frameset', 'h1', 'h2', 'h3', 'h4', 'h5', 'h6', 'head', 'header',
+  'hr', 'html', 'iframe', 'legend', 'li', 'link', 'main', 'menu', 'menuitem',
+  'nav', 'noframes', 'ol', 'optgroup', 'option', 'p', 'param', 'search',
+  'section', 'summary', 'table', 'tbody', 'td', 'tfoot', 'th', 'thead',
+  'title', 'tr', 'track', 'ul',
+]);
+
+type ListHtmlKind =
+  | { type: 1; endTag: string }
+  | { type: 2 | 3 | 4 | 5 }
+  | { type: 6 | 7 };
+
+/** Detect CommonMark HTML block start on indent-stripped list continuation text. */
+function listHtmlBlockKind(content: string): ListHtmlKind | null {
+  if (!content.startsWith('<')) return null;
+  if (/^<!--/u.test(content)) return { type: 2 };
+  if (/^<\?/u.test(content)) return { type: 3 };
+  if (/^<![A-Za-z]/u.test(content)) return { type: 4 };
+  if (/^<!\[CDATA\[/iu.test(content)) return { type: 5 };
+  const type1 = /^<\/?((?:script|pre|style|textarea))(?:[\s\/>]|$)/iu.exec(content);
+  if (type1) return { type: 1, endTag: type1[1]!.toLowerCase() };
+  const type6 = /^<\/?([A-Za-z][A-Za-z0-9]*)(?=[\s\/>]|$)/u.exec(content);
+  if (type6 && LIST_HTML_BLOCK_TAGS.has(type6[1]!.toLowerCase())) return { type: 6 };
+  if (
+    /^<[A-Za-z][A-Za-z0-9]*(?:[:][A-Za-z][A-Za-z0-9]*)?(?:\s+[^\s>][^>]*)?\s*\/?>\s*$/u.test(content)
+    || /^<\/[A-Za-z][A-Za-z0-9]*(?:[:][A-Za-z][A-Za-z0-9]*)?\s*>\s*$/u.test(content)
+  ) {
+    return { type: 7 };
+  }
+  return null;
+}
+
+function listHtmlBlockLineEnds(content: string, kind: ListHtmlKind): boolean {
+  switch (kind.type) {
+    case 1:
+      return new RegExp(`</${kind.endTag}>`, 'i').test(content);
+    case 2:
+      return content.includes('-->');
+    case 3:
+      return content.includes('?>');
+    case 4:
+      return content.includes('>');
+    case 5:
+      return content.includes(']]>');
+    case 6:
+    case 7:
+      return false; // blank line ends — caller stops
+    default:
+      return false;
+  }
 }
 
 /**
@@ -2836,7 +2909,10 @@ type DraftListChild =
   | { type: 'paragraph'; lines: string[] }
   | { type: 'quote'; children: ParsedQuoteChild[] }
   | { type: 'fence'; lang: string; meta: string; value: string }
-  | { type: 'heading'; level: number; text: string };
+  | { type: 'heading'; level: number; text: string }
+  | { type: 'html'; value: string }
+  | { type: 'table'; align: TableAlign[]; rows: string[][] }
+  | { type: 'hr' };
 
 type DraftListItem = {
   checked: boolean | null;
@@ -2869,8 +2945,9 @@ function dropEmptyPlaceholder(item: DraftListItem): void {
 }
 
 /**
- * Collect an owned structural child (quote / fence / ATX heading) starting at
- * `startIdx`. Returns the next line index after the child, or null → dialect.
+ * Collect an owned structural child (quote / fence / ATX heading / HTML /
+ * table / hr) starting at `startIdx`. Returns the next line index after the
+ * child, or null → dialect.
  */
 function collectStructuralChild(
   lines: readonly string[],
@@ -2892,6 +2969,10 @@ function collectStructuralChild(
     };
   }
 
+  if (kind === 'hr') {
+    return { child: { type: 'hr' }, nextIdx: startIdx + 1 };
+  }
+
   if (kind === 'quote') {
     const rests: string[] = [firstRest];
     let j = startIdx + 1;
@@ -2908,6 +2989,41 @@ function collectStructuralChild(
     const quote = parseSimpleQuoteSource(rests.join('\n'));
     if (!quote) return null;
     return { child: { type: 'quote', children: quote }, nextIdx: j };
+  }
+
+  if (kind === 'html') {
+    const htmlKind = listHtmlBlockKind(firstRest);
+    if (!htmlKind) return null;
+    const collected = [firstRest];
+    let j = startIdx + 1;
+    if (htmlKind.type <= 5 && listHtmlBlockLineEnds(firstRest, htmlKind)) {
+      return { child: { type: 'html', value: firstRest }, nextIdx: j };
+    }
+    while (j < lines.length) {
+      const line = lines[j]!;
+      if (/^[ \t]*$/u.test(line)) {
+        // Type 6/7 end on blank (blank not part of the HTML). Type 1–5 keep blanks.
+        if (htmlKind.type === 6 || htmlKind.type === 7) break;
+        collected.push('');
+        j += 1;
+        continue;
+      }
+      const rest = listContinuationRest(line, markerIndent);
+      if (rest === null) {
+        // Unindented / sibling marker: type 6/7 may end at EOF-like boundary;
+        // type 1–5 need their closer → dialect.
+        if (htmlKind.type === 6 || htmlKind.type === 7) break;
+        return null;
+      }
+      collected.push(rest);
+      j += 1;
+      if (htmlKind.type <= 5 && listHtmlBlockLineEnds(rest, htmlKind)) break;
+    }
+    return { child: { type: 'html', value: collected.join('\n') }, nextIdx: j };
+  }
+
+  if (kind === 'table') {
+    return tryCollectTableChild(lines, startIdx, markerIndent, firstRest);
   }
 
   // fence — firstRest is already indent-stripped.
@@ -2951,17 +3067,67 @@ function collectStructuralChild(
 }
 
 /**
+ * Collect a simple GFM table under a list item (indent already stripped on
+ * `firstRest`). Pipe-optional rows allowed. Returns null when the lines are
+ * not a simple table (caller may fall through or refuse).
+ */
+function tryCollectTableChild(
+  lines: readonly string[],
+  startIdx: number,
+  markerIndent: string,
+  firstRest: string,
+): { child: DraftListChild; nextIdx: number } | null {
+  if (!firstRest.includes('|')) return null;
+  const collected = [firstRest];
+  let j = startIdx + 1;
+  while (j < lines.length) {
+    const line = lines[j]!;
+    if (/^[ \t]*$/u.test(line)) break; // blank ends a GFM table
+    const rest = listContinuationRest(line, markerIndent);
+    if (rest === null) break;
+    if (!rest.includes('|')) break;
+    collected.push(rest);
+    j += 1;
+  }
+  const parsed = parseSimpleTableSource(collected.join('\n'));
+  if (!parsed) return null;
+  return {
+    child: {
+      type: 'table',
+      align: [...parsed.align],
+      rows: parsed.rows.map((row) => [...row]),
+    },
+    nextIdx: j,
+  };
+}
+
+/** True when the line after `startIdx` looks like a GFM table delimiter row. */
+function peekTableDelimiter(
+  lines: readonly string[],
+  startIdx: number,
+  markerIndent: string,
+): boolean {
+  const j = startIdx + 1;
+  if (j >= lines.length) return false;
+  if (/^[ \t]*$/u.test(lines[j]!)) return false;
+  const rest = listContinuationRest(lines[j]!, markerIndent);
+  if (rest === null || !rest.includes('|')) return false;
+  const cells = splitTableRow(rest);
+  return cells.length > 0 && cells.every((cell) => TABLE_DELIMITER_CELL.test(cell));
+}
+
+/**
  * Simple flat or nested list (any depth): bullet or ordered delimiter at each
  * level, each item plain/simple-marked paragraphs (optional soft-wrap;
  * CommonMark hard breaks are engine-owned; blank + indented continuation starts
  * another paragraph and marks the list loose) and/or owned structural children
- * (simple quote / fence / ATX heading). Same-family and mixed-marker nests are
- * owned (`@roobli/md` ≥ v0.1.13 Phase 16 keeps mixed nests one span). Sibling
- * markers at one level still share orderedness / bullet / delimiter. Loose lists
- * (blank between sibling items or multi-block items) set `spread` on that level.
- * Task checkboxes are allowed. Returns `null` when dialect enrich is still
- * needed (heavy inline / HTML|table|hr children / lazy line after a blank /
- * empty-item + blank + structural).
+ * (simple quote / fence / ATX heading / HTML / table / hr). Same-family and
+ * mixed-marker nests are owned (`@roobli/md` ≥ v0.1.13 Phase 16 keeps mixed nests
+ * one span). Sibling markers at one level still share orderedness / bullet /
+ * delimiter. Loose lists (blank between sibling items or multi-block items) set
+ * `spread` on that level. Task checkboxes are allowed. Returns `null` when
+ * dialect enrich is still needed (heavy inline / lazy line after a blank /
+ * empty-item + blank + structural / setext-shaped tight `---` after a paragraph).
  */
 export function parseSimpleFlatListSource(md: string): ParsedFlatList | null {
   const trimmed = md.replace(/\r\n/g, '\n').trimEnd();
@@ -2990,12 +3156,22 @@ export function parseSimpleFlatListSource(md: string): ParsedFlatList | null {
             meta: child.meta,
             value: child.value,
           });
-        } else {
+        } else if (child.type === 'heading') {
           children.push({
             type: 'heading',
             level: child.level,
             text: child.text,
           });
+        } else if (child.type === 'html') {
+          children.push({ type: 'html', value: child.value });
+        } else if (child.type === 'table') {
+          children.push({
+            type: 'table',
+            align: child.align,
+            rows: child.rows,
+          });
+        } else {
+          children.push({ type: 'hr' });
         }
       }
       if (children.length === 0 && !item.nested) return null;
@@ -3187,9 +3363,9 @@ export function parseSimpleFlatListSource(md: string): ParsedFlatList | null {
     }
 
     // Continuation of the current deepest item: soft-wrap, new paragraph after
-    // a blank, or an owned structural child (quote / fence / ATX heading).
-    // Lazy after a blank is not in the item (CommonMark) — refuse so the span
-    // stays dialect rather than mis-owning.
+    // a blank, or an owned structural child (quote / fence / ATX heading / HTML /
+    // table / hr). Lazy after a blank is not in the item (CommonMark) — refuse
+    // so the span stays dialect rather than mis-owning.
     if (!sawItem || stack.length === 0) return null;
     const top = stack[stack.length - 1]!;
     if (top.items.length === 0) return null;
@@ -3211,6 +3387,19 @@ export function parseSimpleFlatListSource(md: string): ParsedFlatList | null {
         i = collected.nextIdx;
         continue;
       }
+      // Pipe-optional table header (no leading `|`) after a blank.
+      if (rest.includes('|')) {
+        if (itemIsEmptyPlaceholder(cur)) return null;
+        const tableCollected = tryCollectTableChild(lines, i, top.indent, rest);
+        if (tableCollected) {
+          cur.children.push(tableCollected.child);
+          top.spread = true;
+          top.pendingBlank = false;
+          i = tableCollected.nextIdx;
+          continue;
+        }
+        if (peekTableDelimiter(lines, i, top.indent)) return null;
+      }
       if (restLooksStructural(rest) || tryInlineNodesFromSource(rest) === null) {
         return null;
       }
@@ -3230,6 +3419,13 @@ export function parseSimpleFlatListSource(md: string): ParsedFlatList | null {
     }
     const structural = ownedStructuralKind(rest);
     if (structural) {
+      // Tight `---` / setext-looking dash rule after a paragraph is setext in
+      // micromark — stay dialect (ATX headings are owned; setext is not).
+      if (structural === 'hr') {
+        const marker = /^[ \t]*([*\-_])/u.exec(rest)?.[1];
+        const last = cur.children[cur.children.length - 1];
+        if (marker === '-' && last && last.type === 'paragraph') return null;
+      }
       // Tight structural child (no blank). Drop empty marker placeholder.
       const collected = collectStructuralChild(lines, i, top.indent, rest);
       if (!collected) return null;
@@ -3238,6 +3434,18 @@ export function parseSimpleFlatListSource(md: string): ParsedFlatList | null {
       top.pendingBlank = false;
       i = collected.nextIdx;
       continue;
+    }
+    // Pipe-optional table header (no leading `|`) as a tight continuation.
+    if (rest.includes('|')) {
+      const tableCollected = tryCollectTableChild(lines, i, top.indent, rest);
+      if (tableCollected) {
+        dropEmptyPlaceholder(cur);
+        cur.children.push(tableCollected.child);
+        top.pendingBlank = false;
+        i = tableCollected.nextIdx;
+        continue;
+      }
+      if (peekTableDelimiter(lines, i, top.indent)) return null;
     }
     if (restLooksStructural(rest) || tryInlineNodesFromSource(rest) === null) {
       return null;
@@ -3530,6 +3738,21 @@ function pmListItemChildNodes(child: ParsedListItemChild): ProseNode {
         { level: child.level },
         requireInlineNodes(child.text),
       );
+    case 'html':
+      return schema.nodes.html_block.create(null, textNodes(child.value));
+    case 'table': {
+      const pmRows = child.rows.map((row, rowIndex) => {
+        const cellType = rowIndex === 0 ? schema.nodes.table_header : schema.nodes.table_cell;
+        const cells = row.map((cell, columnIndex) => cellType.create(
+          { align: child.align[columnIndex] ?? null },
+          requireInlineNodes(cell),
+        ));
+        return schema.nodes.table_row.create(null, cells);
+      });
+      return schema.nodes.table.create(null, pmRows);
+    }
+    case 'hr':
+      return schema.nodes.horizontal_rule.create();
   }
 }
 
