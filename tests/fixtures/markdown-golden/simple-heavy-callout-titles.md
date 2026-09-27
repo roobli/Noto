@@ -20,3 +20,12 @@
 > Mixed triple closer in title.
 
 After heavy callout titles.
+
+> [!NOTE] See [[a[[b]]]] nested wiki
+> Nested-bracket wiki title owned as literal.
+
+> [!TIP]- Fold [[x[y]z]] lone-bracket wiki
+> Lone ] inside wiki title owned as literal.
+
+> [!WARNING] Mix **bold** and [[a[[b]]]] title
+> Marks + nested-bracket wiki in title.

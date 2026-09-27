@@ -52,7 +52,10 @@
  * simple-marked / **heavy** same-line titles — math / HTML / escapes / nested
  * marks / triples / links / images / stacks) keep the marker as plain text for
  * the alert decoration plugin; title marks are real PM marks after the marker.
- * Footnote refs / nested-bracket wiki in titles stay dialect.
+ * Nested-bracket wiki in titles is engine-owned as literal text; footnote
+ * refs in titles stay dialect (micromark only promotes `[^id]` when a
+ * matching definition exists elsewhere in the document — per-span IR→PM
+ * cannot know).
  *
  * See docs/performance/open-path-first-cut.md and docs/design/roobli-md-engine.md.
  */
@@ -116,8 +119,9 @@ export function needsDialectInline(markdown: string): boolean {
  * plain titles (`[!NOTE] Title`), **simple-marked titles**, and **heavy titles**
  * (`[!NOTE] $E=mc^2$` / `<span>x</span>` / `\*esc\*` / nested marks / `***` /
  * mixed triples / same-delimiter stacks / links / images — via
- * `tryInlineNodesFromSource`). Footnote refs / nested-bracket wiki in titles
- * stay dialect. The alert-plugin decorates from the leading `[!NOTE]` token
+ * `tryInlineNodesFromSource`). Nested-bracket wiki titles are literal text;
+ * footnote refs in titles stay dialect (need a matching def elsewhere).
+ * The alert-plugin decorates from the leading `[!NOTE]` token
  * either way.
  */
 const ALERT_MARKER_RE = /^\[!(NOTE|TIP|IMPORTANT|WARNING|CAUTION)\]([+-])?[ \t]*([^\n]*)(?:\n|$)/;
@@ -232,7 +236,7 @@ export interface TryInlineOptions {
  * autolinks** (`<https://…>`; text === href), **simple www. autolinks**,
  * **simple email autolinks** (bare + angle / mailto), and **simple wiki**
  * (`[[target]]` / `[[target|alias]]` as literal text). Matched `***` / `___` are
- * engine-owned (emphasis+strong). Mixed triple closers (`***x* y**` / `**x *y***` / `***x** y*` + underscore) owned; same-delimiter stacks owned; thirty-eight+ nests, nested-bracket wiki,
+ * engine-owned (emphasis+strong). Mixed triple closers (`***x* y**` / `**x *y***` / `***x** y*` + underscore) owned; same-delimiter stacks owned; nested-bracket wiki owned as literal (emit `[[`); thirty-eight+ nests
  * and unmatched delimiters
  * return `null` (dialect enrich). Simple backslash escapes (ASCII punctuation
  * + trailing-`\\` hard breaks), **simple inline HTML** (incl. multi-line), and **simple inline math**
@@ -621,10 +625,13 @@ function looksLikeInlineHtmlStart(input: string, at: number): boolean {
 
 /**
  * End index (exclusive) of a simple wiki link starting at `at`.
- * Returns -1 when unclosed / not `[[`, -2 when nested `[` / lone `]` / newline
- * (dialect). Matches decoration rules in wiki-link-plugin: no nested `[`, no
- * newline inside. Empty `[[]]` still returns the span (plain text; decoration
- * ignores empty targets).
+ * Returns the close when a simple `[[…]]` (no nested `[`, no lone `]`, no
+ * newline) matches decoration rules in wiki-link-plugin. Empty `[[]]` still
+ * returns the span (plain text; decoration ignores empty targets).
+ * Returns -2 on newline inside (dialect). Nested `[` / lone `]` / unclosed
+ * return -1 so the scanner emits `[[` as literal and keeps scanning — nested-
+ * bracket wiki is therefore engine-owned as literal text (matches dialect /
+ * mdast, which never special-cases those shapes).
  */
 function endOfSimpleWiki(input: string, at: number): number {
   if (!input.startsWith('[[', at)) return -1;
@@ -633,11 +640,11 @@ function endOfSimpleWiki(input: string, at: number): number {
   while (k < len) {
     const ch = input[k]!;
     if (ch === '\n') return -2;
-    if (ch === '[') return -2;
+    if (ch === '[') return -1; // nested `[` — emit `[[` as literal, keep scanning
     if (ch === ']') {
       if (input[k + 1] === ']') return k + 2;
-      // Lone `]` inside (e.g. `[[a] [b]]`) — not a simple wiki.
-      return -2;
+      // Lone `]` inside (e.g. `[[a] [b]]`) — emit `[[` as literal.
+      return -1;
     }
     k += 1;
   }
@@ -2185,7 +2192,8 @@ function parseSimpleAsteriskTildeCode(
     }
 
     // Simple wiki `[[target]]` / `[[target|alias]]` — literal text (decoration
-    // plugin owns display). Nested `[` / newline → dialect; unclosed → emit `[[`.
+    // plugin owns display). Newline inside → dialect; nested `[` / lone `]` /
+    // unclosed → emit `[[` and keep scanning (nested-bracket wiki = literal).
     if (input.startsWith('[[', i)) {
       const wikiEnd = endOfSimpleWiki(input, i);
       if (wikiEnd === -2) return null;
@@ -2708,7 +2716,7 @@ function parseQuoteChildren(
  * lists (any reasonable depth; lazy into list items). Returns a child tree
  * matching CommonMark / mdast shape for the owned subset, or `null` when the
  * span still needs dialect enrich (nested marks / nested / heavy inline,
- * multi-para lists, pathological depth, footnote / nested-bracket titles).
+ * multi-para lists, pathological depth, footnote-ref titles).
  * Plain / collapsible / plain-titled / simple-marked-title / heavy-title GFM
  * alerts (`> [!NOTE]`, `> [!NOTE]-`, `> [!NOTE] $E=mc^2$` / `<span>x</span>` /
  * nested marks / triples / links …) and simple-marked bodies are accepted.
