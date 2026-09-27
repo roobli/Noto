@@ -2820,11 +2820,25 @@ describe('blockFromEngineSpan', () => {
       'strong',
     ]);
     expect(canSkipDialectEnrich('paragraph', '_p *q **r _s *t **u _v *w **x _y *z **a _b *c **d _e *f **g _h *i **j _k *l **m _n *o **p _q *r **s _t *u ~~v _w *x _y *z `a` z* y_ x* w_ v~~ u* t_ s** r* q_ p** o* n_ m** l* k_ j** i* h_ g** f* e_ d** c* b_ a** z* y_ x** w* v_ u** t* s_ r** q* p_')).toBe(true);
-    // Thirty-eight-level + ambiguous / same-delimiter stay dialect.
+    // Thirty-eight-level + same-delimiter / mixed triple closers stay dialect.
     expect(blockFromEngineSpan('paragraph', '**o _p *q **r _s *t **u _v *w **x _y *z **a _b *c **d _e *f **g _h *i **j _k *l **m _n *o **p _q *r **s _t *u ~~v _w *x _y *z `a` z* y_ x* w_ v~~ u* t_ s** r* q_ p** o* n_ m** l* k_ j** i* h_ g** f* e_ d** c* b_ a** z* y_ x** w* v_ u** t* s_ r** q* p_ o**')).toBeNull();
     expect(blockFromEngineSpan('paragraph', '**t *u ~~v _w *x ~~y _z `a` z_ y~~ x* w_ v~~ u* t**')).toBeNull();
     expect(blockFromEngineSpan('paragraph', '**bold `code`**')?.textContent).toBe('bold code');
-    expect(blockFromEngineSpan('paragraph', '***triple***')).toBeNull();
+    // Matched `***` / `___` → emphasis + strong (micromark parity).
+    const triple = blockFromEngineSpan('paragraph', '***triple***');
+    expect(triple?.textContent).toBe('triple');
+    expect(triple!.child(0).marks.map((m) => m.type.name).sort()).toEqual(['emphasis', 'strong']);
+    expect(canSkipDialectEnrich('paragraph', '***triple***')).toBe(true);
+    const tripleU = blockFromEngineSpan('paragraph', '___triple___');
+    expect(tripleU?.textContent).toBe('triple');
+    expect(tripleU!.child(0).marks.map((m) => m.type.name).sort()).toEqual(['emphasis', 'strong']);
+    const tripleNest = blockFromEngineSpan('paragraph', '***bold _em_ more***');
+    expect(tripleNest?.textContent).toBe('bold em more');
+    const tripleEmBit = [...Array(tripleNest!.childCount)].map((_, i) => tripleNest!.child(i)).find((n) => n.text === 'em');
+    expect(tripleEmBit!.marks.map((m) => m.type.name).sort()).toEqual(['emphasis', 'emphasis', 'strong']);
+    // Mixed closer forms / same-delimiter stacks stay dialect.
+    expect(blockFromEngineSpan('paragraph', '***x* y**')).toBeNull();
+    expect(blockFromEngineSpan('paragraph', '**x *y***')).toBeNull();
     expect(blockFromEngineSpan('paragraph', '**a **b** c**')).toBeNull();
     expect(blockFromEngineSpan('paragraph', '*a *b* c*')).toBeNull();
     expect(tryInlineNodesFromSource('2 * 3 * 4')?.map((n) => n.textContent ?? n.type.name).join('')).toBe('2 * 3 * 4');
@@ -3419,9 +3433,10 @@ describe('enrich skip for engine-owned spans', () => {
     const collapsed = blockFromEngineSpan('paragraph', '![**bold**][]');
     expect(collapsed!.child(0).attrs.alt).toBe('bold');
 
-    // Nested brackets / *** stay dialect.
+    // Nested brackets stay dialect; matched `***` in alt is engine-owned.
     expect(canSkipDialectEnrich('paragraph', '![a [x] b](u.png)')).toBe(false);
-    expect(canSkipDialectEnrich('paragraph', '![***x***](u.png)')).toBe(false);
+    expect(canSkipDialectEnrich('paragraph', '![***x***](u.png)')).toBe(true);
+    expect(blockFromEngineSpan('paragraph', '![***x***](u.png)')?.child(0).attrs.alt).toBe('x');
 
     // Table cells with simple math / HTML already skip dialect.
     const tableMd = '| A | B |\n| - | - |\n| $x$ | <br> |\n';
