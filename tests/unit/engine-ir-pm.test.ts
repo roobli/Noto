@@ -981,8 +981,36 @@ describe('blockFromEngineSpan', () => {
     expect(deep?.child(0).child(1).child(0).child(2).type.name).toBe('horizontal_rule');
     // Tight under-indent table stays lazy (not nest-exit).
     expect(blockFromEngineSpan('bullet-list', '- outer\n  - a\n  | h |\n  | - |')?.child(0).child(1).child(0).textContent).toBe('a\n| h |\n| - |');
-    // Nest-sibling after nest-exit structural stays dialect (trailing interleaved).
-    expect(blockFromEngineSpan('bullet-list', '- outer\n  - a\n\n    b\n  ---\n  - c')).toBeNull();
+    // Nest-sibling after nest-exit structural (interleaved trailing nest).
+    const nestSib = blockFromEngineSpan('bullet-list', '- outer\n  - a\n\n    b\n  ---\n  - c');
+    expect(nestSib?.type.name).toBe('bullet_list');
+    expect(nestSib?.child(0).childCount).toBe(4); // para + nest + hr + nest
+    expect(nestSib?.child(0).child(1).type.name).toBe('bullet_list');
+    expect(nestSib?.child(0).child(1).textContent).toBe('ab');
+    expect(nestSib?.child(0).child(2).type.name).toBe('horizontal_rule');
+    expect(nestSib?.child(0).child(3).type.name).toBe('bullet_list');
+    expect(nestSib?.child(0).child(3).textContent).toBe('c');
+    const atxSib = blockFromEngineSpan('bullet-list', '- outer\n  - a\n\n    b\n  ## H\n  - c');
+    expect(atxSib?.child(0).child(2).type.name).toBe('heading');
+    expect(atxSib?.child(0).child(3).textContent).toBe('c');
+    expect(blockFromEngineSpan('bullet-list', '- outer\n  - a\n  ---\n  - c')?.child(0).childCount).toBe(4);
+    expect(blockFromEngineSpan('bullet-list', '- outer\n  - a\n\n    b\n  ---\n  * c')?.child(0).child(3).attrs.bullet).toBe('*');
+    const midSib = blockFromEngineSpan('bullet-list', '- o\n  - m\n    - a\n\n      b\n    ---\n    - c');
+    expect(midSib?.child(0).child(1).child(0).childCount).toBe(4); // m + nest + hr + nest
+    expect(midSib?.child(0).child(1).child(0).child(3).textContent).toBe('c');
+    const ordSib = blockFromEngineSpan('ordered-list', '1. outer\n   1. a\n\n      b\n   ---\n   1. c');
+    expect(ordSib?.child(0).child(3).type.name).toBe('ordered_list');
+    expect(ordSib?.child(0).child(3).textContent).toBe('c');
+    const moreSib = blockFromEngineSpan('bullet-list', '- outer\n  - a\n\n    b\n  ---\n  more\n  - c');
+    expect(moreSib?.child(0).childCount).toBe(5); // para + nest + hr + more + nest
+    expect(moreSib?.child(0).child(3).textContent).toBe('more');
+    expect(moreSib?.child(0).child(4).textContent).toBe('c');
+    // Double interleave nest/structural/nest/structural/nest.
+    const dbl = blockFromEngineSpan('bullet-list', '- outer\n  - a\n  ---\n  - b\n  ## H\n  - c');
+    expect(dbl?.child(0).childCount).toBe(6); // para + nest + hr + nest + heading + nest
+    expect(dbl?.child(0).child(3).textContent).toBe('b');
+    expect(dbl?.child(0).child(4).type.name).toBe('heading');
+    expect(dbl?.child(0).child(5).textContent).toBe('c');
     // Multi-para then nested list.
     const multiNest = blockFromEngineSpan('bullet-list', '- a\n\n  b\n  - nest');
     expect(multiNest?.attrs.spread).toBe(true);
