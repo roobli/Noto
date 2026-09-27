@@ -164,6 +164,7 @@ describe('markdown golden gates — fixture inventory', () => {
       'simple-angle-autolinks.md',
       'simple-bare-autolinks.md',
       'simple-callouts.md',
+      'simple-cross-family-same-indent-lists.md',
       'simple-eight-level-nested-marks.md',
       'simple-eighteen-level-nested-marks.md',
       'simple-eleven-level-nested-marks.md',

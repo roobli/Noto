@@ -483,7 +483,7 @@ function mdastListFromParsed(list: ParsedFlatList): Extract<RootContent, { type:
     spread: list.spread,
     children: list.items.map((item) => {
       const kids: BlockContent[] = item.children.map(mdastListItemChild);
-      if (item.nested) kids.push(mdastListFromParsed(item.nested));
+      for (const nested of item.nestedLists) kids.push(mdastListFromParsed(nested));
       return {
         type: 'listItem' as const,
         checked: item.checked,
