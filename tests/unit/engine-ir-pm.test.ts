@@ -2838,9 +2838,24 @@ describe('blockFromEngineSpan', () => {
     expect(tripleNest?.textContent).toBe('bold em more');
     const tripleEmBit = [...Array(tripleNest!.childCount)].map((_, i) => tripleNest!.child(i)).find((n) => n.text === 'em');
     expect(tripleEmBit!.marks.map((m) => m.type.name).sort()).toEqual(['emphasis', 'emphasis', 'strong']);
-    // Mixed closer forms stay dialect.
-    expect(blockFromEngineSpan('paragraph', '***x* y**')).toBeNull();
-    expect(blockFromEngineSpan('paragraph', '**x *y***')).toBeNull();
+    // Mixed closer forms → micromark-parity marks (strong/em split).
+    const mixedEmStrong = blockFromEngineSpan('paragraph', '***x* y**');
+    expect(mixedEmStrong?.textContent).toBe('x y');
+    expect(canSkipDialectEnrich('paragraph', '***x* y**')).toBe(true);
+    const mixedX = [...Array(mixedEmStrong!.childCount)].map((_, i) => mixedEmStrong!.child(i)).find((n) => n.text === 'x');
+    expect(mixedX!.marks.map((m) => m.type.name).sort()).toEqual(['emphasis', 'strong']);
+    const mixedY = [...Array(mixedEmStrong!.childCount)].map((_, i) => mixedEmStrong!.child(i)).find((n) => n.text === ' y');
+    expect(mixedY!.marks.map((m) => m.type.name)).toEqual(['strong']);
+    const mixedStrongEm = blockFromEngineSpan('paragraph', '**x *y***');
+    expect(mixedStrongEm?.textContent).toBe('x y');
+    const mixedY2 = [...Array(mixedStrongEm!.childCount)].map((_, i) => mixedStrongEm!.child(i)).find((n) => n.text === 'y');
+    expect(mixedY2!.marks.map((m) => m.type.name).sort()).toEqual(['emphasis', 'strong']);
+    const mixedRev = blockFromEngineSpan('paragraph', '***foo** bar*');
+    expect(mixedRev?.textContent).toBe('foo bar');
+    const mixedUs = blockFromEngineSpan('paragraph', '___x_ y__');
+    expect(mixedUs?.textContent).toBe('x y');
+    const mixedUs2 = blockFromEngineSpan('paragraph', '__x _y___');
+    expect(mixedUs2?.textContent).toBe('x y');
     // Same-delimiter stacks → nested marks (micromark/CommonMark-ish parity).
     const starStack = blockFromEngineSpan('paragraph', '*a *b* c*');
     expect(starStack?.textContent).toBe('a b c');

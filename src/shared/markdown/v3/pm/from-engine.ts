@@ -19,7 +19,7 @@
  * cells incl. escaped pipes; consistent **or ragged** body columns — micromark keeps
  * short/long body rows as-is), the PM node is fully
  * determined by that IR — no micromark / mdast pass. Multi-block items, deep /
- * deeper (thirty-eight+) / mixed triple closers / multi-line HTML still go through `from-mdast.ts` after
+ * deeper (thirty-eight+) / multi-line HTML still go through `from-mdast.ts` after
  * dialect enrich. Mismatched header/delimiter column counts are paragraphs at
  * split (`@roobli/md` ≥ v0.1.14); `parseSimpleTableSource` still refuses a forced
  * mismatched table span. **Simple HTML
@@ -78,7 +78,7 @@ export const ENGINE_LEAF_KINDS: ReadonlySet<NotoBlockKind> = new Set([
  * nesting), simple inline links / images, simple reference links / images,
  * simple bare http(s) + angle-bracket http(s) + www. + email autolinks, and
  * simple wiki `[[…]]` (literal text) are engine-owned via `tryInlineNodesFromSource`;
- * thirty-eight+ / mixed triple closers / multi-line HTML and heavier constructs stay on dialect. Snake_case
+ * thirty-eight+ / multi-line HTML and heavier constructs stay on dialect. Snake_case
  * underscores are literal (CommonMark flanking).
  */
 const INLINE_DIALECT_RE = /[*_~`[\]<!$:\\@]|https?:\/\/|www\./iu;
@@ -111,7 +111,7 @@ export function needsDialectInline(markdown: string): boolean {
  * Owns plain `[!NOTE]`, collapsible `[!NOTE]-` / `[!NOTE]+`, optional same-line
  * plain titles (`[!NOTE] Title`), and **simple-marked titles** (`[!NOTE] Title
  * **x**`, wiki / links / autolinks / simple escapes / simple inline math in the
- * title). Heavy titles (mixed triple closers / multi-line HTML) stay dialect. The
+ * title). Heavy titles (multi-line HTML / exotic marks) stay dialect. The
  * alert-plugin decorates from the
  * leading `[!NOTE]` token either way.
  */
@@ -227,7 +227,7 @@ export interface TryInlineOptions {
  * autolinks** (`<https://…>`; text === href), **simple www. autolinks**,
  * **simple email autolinks** (bare + angle / mailto), and **simple wiki**
  * (`[[target]]` / `[[target|alias]]` as literal text). Matched `***` / `___` are
- * engine-owned (emphasis+strong). Same-delimiter stacks owned; thirty-eight+ nests, mixed triple closers, multi-line HTML, nested-bracket wiki,
+ * engine-owned (emphasis+strong). Mixed triple closers (`***x* y**` / `**x *y***` / `***x** y*` + underscore) owned; same-delimiter stacks owned; thirty-eight+ nests, multi-line HTML, nested-bracket wiki,
  * and unmatched delimiters
  * return `null` (dialect enrich). Simple backslash escapes (ASCII punctuation
  * + trailing-`\\` hard breaks), **simple inline HTML**, and **simple inline math**
@@ -293,7 +293,7 @@ export function tryInlineNodesFromSource(
  * Simple `*` / `**` / `_` / `__` / `~~` / `` ` `` scanner with optional
  * nesting. Prefer longer delimiters. Matched `***` / `___` → emphasis+strong.
  * Same-delimiter stacks (`*a *b* c*` / `**a **b** c**` / `_`/`__`/`~~` counterparts)
- * are owned. Mixed triple closers / bare unmatched / thirty-eight+ nests fall through
+ * are owned. Mixed triple closers owned. Bare unmatched / thirty-eight+ nests fall through
  * to dialect. Underscores use a
  * CommonMark-ish word-flanking rule so `snake_case` stays literal while
  * `__strong__` / `_em_` are owned.
@@ -691,7 +691,7 @@ function flattenNodesToImageAlt(nodes: readonly ProseNode[]): string | null {
  * (`**` / `*` / `__` / `_` / `~~` / `` ` ``; snake_case `_` flanking); simple
  * backslash escapes of ASCII punct; literal simple HTML tags as characters;
  * angle http(s)/email autolinks (brackets stripped, text kept).
- * Refuses: nested `[` / `]` (caller), newlines, unmatched / mixed triple closers /
+ * Refuses: nested `[` / `]` (caller), newlines, unmatched /
  * thirty-eight+-level nests, multi-line HTML, constructs `tryInlineNodesFromSource` cannot own.
  */
 function parseSimpleImageAlt(label: string): string | null {
@@ -1094,9 +1094,27 @@ function parseSimpleAsteriskTildeCode(
       }
       if (delim === '**') {
         // Skip nested `*em*` (may hold `**`); bare `**` here is our closer.
+        // When `*…***` mixed closes into a trailing triple, skipNestedSpan fails
+        // (it tries to parse `***` as nested `**`); return the `***` index so the
+        // `**` handler can own `**x *y***`.
         if (input[search] === '*' && !input.startsWith('**', search)) {
           const next = skipNestedSpan(search);
-          if (next < 0) return -1;
+          if (next < 0) {
+            let k = search + 1;
+            while (k < len - 2) {
+              if (input[k] === '\\') {
+                k = afterEscape(k);
+                continue;
+              }
+              if (input.startsWith('***', k)) {
+                if (isWs(input[k - 1]) || isWs(input[search + 1])) return -1;
+                return k;
+              }
+              if (input[k] === '*' || input.startsWith('**', k)) return -1;
+              k += 1;
+            }
+            return -1;
+          }
           search = next;
           continue;
         }
@@ -1105,10 +1123,37 @@ function parseSimpleAsteriskTildeCode(
           input.startsWith('**', search)
           || input[search] === '*'
           || input.startsWith('~~', search)
-          || (input[search] === '_' && !input.startsWith('__', search))
         ) {
           const next = skipNestedSpan(search);
           if (next < 0) return -1;
+          search = next;
+          continue;
+        }
+        if (input[search] === '_' && !input.startsWith('__', search)) {
+          const next = skipNestedSpan(search);
+          if (next < 0) {
+            let k = search + 1;
+            while (k < len - 2) {
+              if (input[k] === '\\') {
+                k = afterEscape(k);
+                continue;
+              }
+              if (input.startsWith('___', k)) {
+                if (isWs(input[k - 1]) || isWs(input[search + 1])) return -1;
+                if (isWordChar(input[k - 1]) && isWordChar(input[k + 3])) return -1;
+                return k;
+              }
+              if (input[k] === '_' || input.startsWith('__', k)) return -1;
+              k += 1;
+            }
+            return -1;
+          }
+          // skipNestedSpan for `_` treats `___` as `__` skip + `_` closer, so it
+          // succeeds and lands past the triple — detect and return the `___` start
+          // for mixed `__x _y___`.
+          if (next >= 3 && input.startsWith('___', next - 3)) {
+            return next - 3;
+          }
           search = next;
           continue;
         }
@@ -1295,8 +1340,8 @@ function parseSimpleAsteriskTildeCode(
   /**
    * Exclusive index of a matched `***` / `___` closer for micromark-shaped
    * emphasis>strong. Cross-family nests (`~~` / `_` inside `***`, `*` inside
-   * `___`, code / math / HTML / wiki) are skipped. Same-family delimiters or
-   * mixed closer forms (`***x* y**`, `**x *y***`) stay dialect (`-1`).
+   * `___`, code / math / HTML / wiki) are skipped. Same-family delimiters
+   * return `-1` so the mixed-closer path (`***x* y**` / `***x** y*`) can run.
    */
   const findTripleClose = (openAt: number, delim: '***' | '___'): number => {
     const otherFamilyIsStar = delim === '___';
@@ -1401,9 +1446,381 @@ function parseSimpleAsteriskTildeCode(
     return true;
   };
 
+  /**
+   * Emit content under `extraMarks` (nest depth += marks.length). Empty content
+   * is a no-op success.
+   */
+  const emitUnderMarks = (
+    content: string,
+    extraMarks: readonly Mark[],
+    underscoreOuter: boolean,
+  ): boolean => {
+    if (content.length === 0) return true;
+    const childMarks = [...parentMarks, ...extraMarks];
+    if (!contentNeedsNest(content, underscoreOuter)) {
+      nodes.push(...plainRunNodes(content, childMarks, false));
+      return true;
+    }
+    const add = extraMarks.length;
+    if (depth + add > MAX_MARK_NEST) return false;
+    const inner = parseSimpleAsteriskTildeCode(content, childMarks, depth + add);
+    if (!inner) return false;
+    nodes.push(...inner);
+    return true;
+  };
+
+  /**
+   * Skip shared non-delimiter atoms while scanning for mixed triple closers.
+   * Returns new search index, or -1 on hard refuse.
+   */
+  const skipMixedScanAtom = (search: number): number => {
+    if (input[search] === '\\') return afterEscape(search);
+    if (input[search] === '$') {
+      const math = endOfSimpleInlineMath(input, search);
+      if (!math) return -1;
+      return math.end;
+    }
+    if (input[search] === '<') {
+      const httpEnd = endOfSimpleAngleAutolink(input, search);
+      if (httpEnd >= 0) return httpEnd;
+      const emailEnd = endOfSimpleAngleEmail(input, search);
+      if (emailEnd >= 0) return emailEnd;
+      const htmlEnd = endOfSimpleInlineHtml(input, search);
+      if (htmlEnd >= 0) return htmlEnd;
+      if (looksLikeInlineHtmlStart(input, search)) return -1;
+      return search + 1;
+    }
+    if (input.startsWith('[[', search)) {
+      const next = skipNestedSpan(search);
+      if (next < 0) return -1;
+      return next;
+    }
+    if (input[search] === '`') {
+      const next = skipNestedSpan(search);
+      if (next < 0) return -1;
+      return next;
+    }
+    if (input.startsWith('~~', search)) {
+      const next = skipNestedSpan(search);
+      if (next < 0) return -1;
+      return next;
+    }
+    return search;
+  };
+
+  type MixedFromOpen3 =
+    | { kind: 'em-then-strong'; emClose: number; strongClose: number }
+    | { kind: 'strong-then-em'; strongClose: number; emClose: number };
+
+  /**
+   * Mixed closers after a `***` / `___` opener (micromark parity):
+   * - em-then-strong: `***x* y**` / `___x_ y__`
+   * - strong-then-em: `***x** y*` / `___x__ y_`
+   * Longer delimiter checked first at each index. Ambiguous / unclosed → null.
+   */
+  const findMixedFromOpen3 = (
+    openAt: number,
+    family: 'star' | 'underscore',
+  ): MixedFromOpen3 | null => {
+    const single = family === 'star' ? '*' : '_';
+    const dbl = family === 'star' ? '**' : '__';
+    const otherIsStar = family === 'underscore';
+    let search = openAt + 3;
+    while (search < len) {
+      const advanced = skipMixedScanAtom(search);
+      if (advanced < 0) return null;
+      if (advanced !== search) {
+        search = advanced;
+        continue;
+      }
+      // Cross-family nests — skip.
+      if (otherIsStar) {
+        if (input.startsWith('**', search) || input[search] === '*') {
+          const next = skipNestedSpan(search);
+          if (next < 0) return null;
+          search = next;
+          continue;
+        }
+      } else if (input.startsWith('__', search) || input[search] === '_') {
+        const next = skipNestedSpan(search);
+        if (next < 0) return null;
+        search = next;
+        continue;
+      }
+      // Double closer first (strong-then-em): `***…** …*`
+      if (input.startsWith(dbl, search) && !input.startsWith(dbl + single, search)) {
+        if (search === openAt + 3 || isWs(input[search - 1])) {
+          search += 2;
+          continue;
+        }
+        if (
+          family === 'underscore'
+          && isWordChar(input[search - 1])
+          && isWordChar(input[search + 2])
+        ) {
+          search += 2;
+          continue;
+        }
+        // Find single closer after this **.
+        let after = search + 2;
+        while (after < len) {
+          const adv2 = skipMixedScanAtom(after);
+          if (adv2 < 0) return null;
+          if (adv2 !== after) {
+            after = adv2;
+            continue;
+          }
+          if (otherIsStar) {
+            if (input.startsWith('**', after) || input[after] === '*') {
+              const next = skipNestedSpan(after);
+              if (next < 0) return null;
+              after = next;
+              continue;
+            }
+          } else if (input.startsWith('__', after) || input[after] === '_') {
+            const next = skipNestedSpan(after);
+            if (next < 0) return null;
+            after = next;
+            continue;
+          }
+          if (input.startsWith(dbl, after)) {
+            // Nested same-delimiter double — skip or refuse.
+            if (isWs(input[after - 1]) && after + 2 < len && !isWs(input[after + 2])) {
+              const next = skipNestedSpan(after);
+              if (next < 0) return null;
+              after = next;
+              continue;
+            }
+            return null;
+          }
+          if (input[after] === single && !input.startsWith(dbl, after)) {
+            if (isWs(input[after - 1])) {
+              if (after + 1 < len && !isWs(input[after + 1])) {
+                const next = skipNestedSpan(after);
+                if (next < 0) return null;
+                after = next;
+                continue;
+              }
+              after += 1;
+              continue;
+            }
+            if (
+              family === 'underscore'
+              && isWordChar(input[after - 1])
+              && isWordChar(input[after + 1])
+            ) {
+              after += 1;
+              continue;
+            }
+            return { kind: 'strong-then-em', strongClose: search, emClose: after };
+          }
+          after += 1;
+        }
+        return null;
+      }
+      // Single closer (em-then-strong): `***…* …**`
+      if (input[search] === single && !input.startsWith(dbl, search)) {
+        if (search === openAt + 3 || isWs(input[search - 1])) {
+          if (search + 1 < len && !isWs(input[search + 1])) {
+            const next = skipNestedSpan(search);
+            if (next < 0) return null;
+            search = next;
+            continue;
+          }
+          search += 1;
+          continue;
+        }
+        if (
+          family === 'underscore'
+          && isWordChar(input[search - 1])
+          && isWordChar(input[search + 1])
+        ) {
+          search += 1;
+          continue;
+        }
+        let after = search + 1;
+        while (after < len) {
+          const adv2 = skipMixedScanAtom(after);
+          if (adv2 < 0) return null;
+          if (adv2 !== after) {
+            after = adv2;
+            continue;
+          }
+          if (otherIsStar) {
+            if (input.startsWith('**', after) || input[after] === '*') {
+              const next = skipNestedSpan(after);
+              if (next < 0) return null;
+              after = next;
+              continue;
+            }
+          } else if (input.startsWith('__', after) || input[after] === '_') {
+            const next = skipNestedSpan(after);
+            if (next < 0) return null;
+            after = next;
+            continue;
+          }
+          if (input.startsWith(dbl, after) && !input.startsWith(dbl + single, after)) {
+            if (isWs(input[after - 1])) {
+              if (after + 2 < len && !isWs(input[after + 2])) {
+                const next = skipNestedSpan(after);
+                if (next < 0) return null;
+                after = next;
+                continue;
+              }
+              return null;
+            }
+            if (
+              family === 'underscore'
+              && isWordChar(input[after - 1])
+              && isWordChar(input[after + 2])
+            ) {
+              after += 2;
+              continue;
+            }
+            return { kind: 'em-then-strong', emClose: search, strongClose: after };
+          }
+          if (input[after] === single && !input.startsWith(dbl, after)) {
+            // Extra same-family single before the ** — skip nest or refuse.
+            if (isWs(input[after - 1]) && after + 1 < len && !isWs(input[after + 1])) {
+              const next = skipNestedSpan(after);
+              if (next < 0) return null;
+              after = next;
+              continue;
+            }
+            return null;
+          }
+          after += 1;
+        }
+        return null;
+      }
+      search += 1;
+    }
+    return null;
+  };
+
+  /**
+   * Inside a `**` / `__` span, find a same-family single delimiter that opens
+   * an emphasis closed by `closeAt` (first char of a trailing `***` / `___`).
+   * Does **not** use `skipNestedSpan` on the candidate — that would try to
+   * parse the trailing `***` as a nested `**` and fail. Body may only hold
+   * cross-family / code / math / HTML / wiki atoms (no same-family delim).
+   * Ambiguous multiples → -1.
+   */
+  const findEmOpenerClosingAt = (
+    from: number,
+    closeAt: number,
+    family: 'star' | 'underscore',
+  ): number => {
+    const single = family === 'star' ? '*' : '_';
+    const dbl = family === 'star' ? '**' : '__';
+    // Trailing single must be a right-flanking closer.
+    if (closeAt <= from || isWs(input[closeAt - 1])) return -1;
+    if (
+      family === 'underscore'
+      && isWordChar(input[closeAt - 1])
+      && isWordChar(input[closeAt + 1])
+    ) {
+      return -1;
+    }
+    let found = -1;
+    let search = from;
+    while (search < closeAt) {
+      const advanced = skipMixedScanAtom(search);
+      if (advanced < 0) return -1;
+      if (advanced !== search) {
+        search = advanced;
+        continue;
+      }
+      if (family === 'star') {
+        if (input.startsWith('__', search) || input[search] === '_') {
+          const next = skipNestedSpan(search);
+          if (next < 0 || next > closeAt) return -1;
+          search = next;
+          continue;
+        }
+      } else if (input.startsWith('**', search) || input[search] === '*') {
+        const next = skipNestedSpan(search);
+        if (next < 0 || next > closeAt) return -1;
+        search = next;
+        continue;
+      }
+      // Same-family double inside the strong prefix — skip balanced nest, but
+      // it must end before closeAt (not consume the trailing triple).
+      if (input.startsWith(dbl, search)) {
+        // Do not treat the trailing triple's first two as a nest closer.
+        if (search === closeAt) break;
+        const next = skipNestedSpan(search);
+        if (next < 0 || next > closeAt) return -1;
+        search = next;
+        continue;
+      }
+      if (input[search] === single) {
+        if (isWs(input[search + 1])) {
+          search += 1;
+          continue;
+        }
+        if (
+          family === 'underscore'
+          && isWordChar(input[search - 1])
+          && isWordChar(input[search + 1])
+        ) {
+          search += 1;
+          continue;
+        }
+        // Body (search+1 .. closeAt) must be free of same-family delimiters.
+        let body = search + 1;
+        let clean = true;
+        while (body < closeAt) {
+          const adv2 = skipMixedScanAtom(body);
+          if (adv2 < 0) {
+            clean = false;
+            break;
+          }
+          if (adv2 !== body) {
+            body = adv2;
+            continue;
+          }
+          if (family === 'star') {
+            if (input.startsWith('__', body) || input[body] === '_') {
+              const next = skipNestedSpan(body);
+              if (next < 0 || next > closeAt) {
+                clean = false;
+                break;
+              }
+              body = next;
+              continue;
+            }
+          } else if (input.startsWith('**', body) || input[body] === '*') {
+            const next = skipNestedSpan(body);
+            if (next < 0 || next > closeAt) {
+              clean = false;
+              break;
+            }
+            body = next;
+            continue;
+          }
+          if (input[body] === single || input.startsWith(dbl, body)) {
+            clean = false;
+            break;
+          }
+          body += 1;
+        }
+        if (clean) {
+          if (found >= 0) return -1;
+          found = search;
+        }
+        search += 1;
+        continue;
+      }
+      search += 1;
+    }
+    return found;
+  };
+
   while (i < len) {
     // Matched `***…***` / `___…___` → emphasis + strong (micromark parity).
-    // Mixed closer forms stay dialect; same-delimiter `*`/`**`/`_`/`__`/`~~` stacks owned.
+    // Mixed closers (`***x* y**` / `***x** y*` / underscore twins) owned below.
+    // Same-delimiter `*`/`**`/`_`/`__`/`~~` stacks owned.
     if (input.startsWith('***', i)) {
       if (isWs(input[i + 3])) {
         emitPlain(i, i + 3);
@@ -1411,10 +1828,31 @@ function parseSimpleAsteriskTildeCode(
         continue;
       }
       const close = findTripleClose(i, '***');
-      if (close < 0) return null;
-      const content = input.slice(i + 3, close);
-      if (!emitTripleMarked(content, false)) return null;
-      i = close + 3;
+      if (close >= 0) {
+        const content = input.slice(i + 3, close);
+        if (!emitTripleMarked(content, false)) return null;
+        i = close + 3;
+        continue;
+      }
+      const mixed = findMixedFromOpen3(i, 'star');
+      if (!mixed) return null;
+      const em = schema.marks.emphasis.create();
+      const strong = schema.marks.strong.create();
+      if (mixed.kind === 'em-then-strong') {
+        const emBody = input.slice(i + 3, mixed.emClose);
+        const strongTail = input.slice(mixed.emClose + 1, mixed.strongClose);
+        if (emBody.length === 0 || strongTail.length === 0) return null;
+        if (!emitUnderMarks(emBody, [em, strong], false)) return null;
+        if (!emitUnderMarks(strongTail, [strong], false)) return null;
+        i = mixed.strongClose + 2;
+        continue;
+      }
+      const strongBody = input.slice(i + 3, mixed.strongClose);
+      const emTail = input.slice(mixed.strongClose + 2, mixed.emClose);
+      if (strongBody.length === 0 || emTail.length === 0) return null;
+      if (!emitUnderMarks(strongBody, [em, strong], false)) return null;
+      if (!emitUnderMarks(emTail, [em], false)) return null;
+      i = mixed.emClose + 1;
       continue;
     }
     if (input.startsWith('___', i)) {
@@ -1429,10 +1867,31 @@ function parseSimpleAsteriskTildeCode(
         continue;
       }
       const close = findTripleClose(i, '___');
-      if (close < 0) return null;
-      const content = input.slice(i + 3, close);
-      if (!emitTripleMarked(content, true)) return null;
-      i = close + 3;
+      if (close >= 0) {
+        const content = input.slice(i + 3, close);
+        if (!emitTripleMarked(content, true)) return null;
+        i = close + 3;
+        continue;
+      }
+      const mixed = findMixedFromOpen3(i, 'underscore');
+      if (!mixed) return null;
+      const em = schema.marks.emphasis.create();
+      const strong = schema.marks.strong.create();
+      if (mixed.kind === 'em-then-strong') {
+        const emBody = input.slice(i + 3, mixed.emClose);
+        const strongTail = input.slice(mixed.emClose + 1, mixed.strongClose);
+        if (emBody.length === 0 || strongTail.length === 0) return null;
+        if (!emitUnderMarks(emBody, [em, strong], true)) return null;
+        if (!emitUnderMarks(strongTail, [strong], true)) return null;
+        i = mixed.strongClose + 2;
+        continue;
+      }
+      const strongBody = input.slice(i + 3, mixed.strongClose);
+      const emTail = input.slice(mixed.strongClose + 2, mixed.emClose);
+      if (strongBody.length === 0 || emTail.length === 0) return null;
+      if (!emitUnderMarks(strongBody, [em, strong], true)) return null;
+      if (!emitUnderMarks(emTail, [em], true)) return null;
+      i = mixed.emClose + 1;
       continue;
     }
 
@@ -1629,6 +2088,21 @@ function parseSimpleAsteriskTildeCode(
       }
       const close = findDoubleClose(i, '**');
       if (close < 0) return null;
+      // Mixed `**x *y***`: closer is first two of trailing `***`; inner `*` opens em.
+      if (input.startsWith('***', close)) {
+        const emOpen = findEmOpenerClosingAt(i + 2, close, 'star');
+        if (emOpen >= 0) {
+          const prefix = input.slice(i + 2, emOpen);
+          const emBody = input.slice(emOpen + 1, close);
+          if (emBody.length === 0) return null;
+          const strong = schema.marks.strong.create();
+          const em = schema.marks.emphasis.create();
+          if (!emitUnderMarks(prefix, [strong], false)) return null;
+          if (!emitUnderMarks(emBody, [em, strong], false)) return null;
+          i = close + 3;
+          continue;
+        }
+      }
       const content = input.slice(i + 2, close);
       if (!emitMarked(content, schema.marks.strong.create(), false)) return null;
       i = close + 2;
@@ -1649,6 +2123,21 @@ function parseSimpleAsteriskTildeCode(
       }
       const close = findDoubleClose(i, '__');
       if (close < 0) return null;
+      // Mixed `__x _y___`: closer is first two of trailing `___`; inner `_` opens em.
+      if (input.startsWith('___', close)) {
+        const emOpen = findEmOpenerClosingAt(i + 2, close, 'underscore');
+        if (emOpen >= 0) {
+          const prefix = input.slice(i + 2, emOpen);
+          const emBody = input.slice(emOpen + 1, close);
+          if (emBody.length === 0) return null;
+          const strong = schema.marks.strong.create();
+          const em = schema.marks.emphasis.create();
+          if (!emitUnderMarks(prefix, [strong], true)) return null;
+          if (!emitUnderMarks(emBody, [em, strong], true)) return null;
+          i = close + 3;
+          continue;
+        }
+      }
       const content = input.slice(i + 2, close);
       if (!emitMarked(content, schema.marks.strong.create(), true)) return null;
       i = close + 2;
@@ -2215,7 +2704,7 @@ function parseQuoteChildren(
  * lists (any reasonable depth; lazy into list items). Returns a child tree
  * matching CommonMark / mdast shape for the owned subset, or `null` when the
  * span still needs dialect enrich (nested marks / nested / heavy inline,
- * multi-para lists, pathological depth, mixed-triple / multi-line-HTML callout titles).
+ * multi-para lists, pathological depth, multi-line-HTML callout titles).
  * Plain / collapsible / plain-titled / simple-marked-title GFM alerts
  * (`> [!NOTE]`, `> [!NOTE]-`, `> [!NOTE] Title **x**` …) and simple-marked
  * bodies are accepted.
