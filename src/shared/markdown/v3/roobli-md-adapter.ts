@@ -9,7 +9,7 @@
  * Flagged open uses `enrich: 'none'` on main then `enrichSpansInRange` in the
  * renderer for a first-paint window (and the remainder after paint) — see
  * `SpanEnrichMode` and docs/performance/open-path-first-cut.md. Engine-owned
- * leaf / plain paragraph+heading / simple quote (incl. nested plain + lists-in-quotes + hard breaks + lazy nest + no-`>` lazy) / flat or nested list (same-family or mixed-marker, any depth, incl. hard breaks + unindented lazy soft-wrap) / simple footnote-def (incl. hard breaks) / simple table skip mdast (IR → PM via `pm/from-engine.ts`).
+ * leaf / plain paragraph+heading / simple quote (incl. nested plain + lists-in-quotes + hard breaks + lazy nest + no-`>` lazy) / flat or nested list (same-family or mixed-marker, any depth, incl. hard breaks + unindented lazy soft-wrap + multi-paragraph items + structural quote/fence/ATX-heading children) / simple footnote-def (incl. hard breaks) / simple table skip mdast (IR → PM via `pm/from-engine.ts`).
  *
  * Flagged block-mode saves (identity, single-block, multi-block insert/delete)
  * map into engine shapes, call `serializeDocument`, then the host re-attaches
@@ -52,6 +52,7 @@ import {
   parseLinkDefinitionSource,
   parseSimpleQuoteSource,
   type ParsedFlatList,
+  type ParsedListItemChild,
   type ParsedQuoteChild,
 } from './pm/from-engine';
 
@@ -425,6 +426,36 @@ export function enrichNextDeferredInRange<T extends AdapterBlockSpan>(
  * remainder gap from looking like raw paragraph soup when the user scrolls
  * ahead of enrich — see docs/performance/open-path-first-cut.md.
  */
+function mdastListItemChild(
+  child: ParsedListItemChild,
+): BlockContent {
+  if (child.type === 'paragraph') {
+    return {
+      type: 'paragraph' as const,
+      children: child.text.length > 0 ? [{ type: 'text' as const, value: child.text }] : [],
+    };
+  }
+  if (child.type === 'quote') {
+    return {
+      type: 'blockquote' as const,
+      children: mdastQuoteChildren(child.children),
+    };
+  }
+  if (child.type === 'fence') {
+    return {
+      type: 'code' as const,
+      lang: child.lang || null,
+      meta: child.meta || null,
+      value: child.value,
+    };
+  }
+  return {
+    type: 'heading' as const,
+    depth: child.level as 1 | 2 | 3 | 4 | 5 | 6,
+    children: child.text.length > 0 ? [{ type: 'text' as const, value: child.text }] : [],
+  };
+}
+
 function mdastListFromParsed(list: ParsedFlatList): Extract<RootContent, { type: 'list' }> {
   return {
     type: 'list',
@@ -432,15 +463,12 @@ function mdastListFromParsed(list: ParsedFlatList): Extract<RootContent, { type:
     start: list.ordered ? list.start : null,
     spread: list.spread,
     children: list.items.map((item) => {
-      const kids: BlockContent[] = item.paragraphs.map((text) => ({
-        type: 'paragraph' as const,
-        children: text.length > 0 ? [{ type: 'text' as const, value: text }] : [],
-      }));
+      const kids: BlockContent[] = item.children.map(mdastListItemChild);
       if (item.nested) kids.push(mdastListFromParsed(item.nested));
       return {
         type: 'listItem' as const,
         checked: item.checked,
-        spread: item.paragraphs.length > 1,
+        spread: item.children.length > 1,
         children: kids,
       };
     }),

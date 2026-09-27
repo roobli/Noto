@@ -31,7 +31,8 @@ Small public fixtures for comparing the **micromark** product path against
 | `simple-hard-breaks-in-quotes.md` | hard breaks (two trailing spaces) inside simple `>` quotes (incl. nested plain); no callouts, marks, lists-in-quotes with hard breaks, or lazy continuations |
 | `simple-lazy-continuations-in-quotes.md` | CommonMark lazy continuation of nested plain `>` paragraphs via fewer `>` markers (incl. hard-break lazy); no no-`>` lazy, marked lazy, or lazy-into-list |
 | `simple-hard-breaks-in-lists.md` | hard breaks (two trailing spaces) inside simple flat / nested list items (incl. task / ordered); no marked items or multi-para |
-| `simple-multi-block-list-items.md` | multi-paragraph list items (blank + indented continuation; ordered/task/nest/soft-wrap in second para); structural children + lazy-after-blank stay dialect |
+| `simple-multi-block-list-items.md` | multi-paragraph list items (blank + indented continuation; ordered/task/nest/soft-wrap in second para); lazy-after-blank stay dialect |
+| `simple-list-item-structural-children.md` | structural children inside list items (quote / fence / ATX heading; tight + blank; ordered/task; multi-line quote; para after struct); HTML/table/hr children + empty+blank+structural + lazy-after-blank stay dialect |
 | `simple-hard-breaks-in-footnotes.md` | hard breaks inside simple `[^id]:` footnote definition bodies; soft-wrap still covered; no marked bodies |
 | `simple-callouts.md` | plain-body GFM alerts / callouts (`> [!NOTE]` …); no marks, collapsible `-`, or titled alerts |
 - `simple-titled-collapsible-callouts.md` — collapsible `[!NOTE]-`/`+` and plain same-line titles owned on the flagged IR→PM path.
