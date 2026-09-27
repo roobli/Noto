@@ -3031,8 +3031,11 @@ describe('blockFromEngineSpan', () => {
     expect(loneBr?.child(0).type.name).toBe('inline_html');
     expect(loneBr?.child(0).attrs.value).toBe('<br>');
     expect(blockFromEngineSpan('paragraph', '[^note]')).toBeNull();
-    // Multi-line HTML attribute stays dialect.
-    expect(blockFromEngineSpan('paragraph', '<span\nclass="x">')).toBeNull();
+    // Multi-line HTML attribute is engine-owned.
+    const mlOpen = blockFromEngineSpan('paragraph', '<span\nclass="x">');
+    expect(mlOpen?.childCount).toBe(1);
+    expect(mlOpen?.child(0).type.name).toBe('inline_html');
+    expect(mlOpen?.child(0).attrs.value).toBe('<span\nclass="x">');
 
     const h = blockFromEngineSpan('heading', '## Title');
     expect(h?.type.name).toBe('heading');
@@ -3176,6 +3179,16 @@ describe('blockFromEngineSpan', () => {
       'also <http://example.com/plain>\n',
       '| a \\| b |\n| --- |\n| c \\| d |\n',
       '| Left \\| Mid | Right |\n| --- | --- |\n| a \\| b | 1 |\n',
+      'Para with <!--\nmulti\n--> comment.\n',
+      'Tag <span\nclass="x">body</span> here.\n',
+      'Self <br\n/> close.\n',
+      'Attr <span title="a\nb">x</span> y.\n',
+      'PI <?foo\nbar?> here.\n',
+      'CDATA <![CDATA[a\nb]]> here.\n',
+      'Mark **around <br\n/> tag** still.\n',
+      '- item <!--\nc--> here\n',
+      '> has <!--\nx--> in body\n',
+
     ];
     for (const md of samples) {
       setMarkdownEngineForTests('micromark');
@@ -3383,6 +3396,41 @@ describe('enrich skip for engine-owned spans', () => {
 
     // Math + HTML together still owned.
     expect(canSkipDialectEnrich('paragraph', 'Has $math$ and <br>')).toBe(true);
+
+    // Multi-line inline HTML (comments / tags / attr newlines / PI / CDATA).
+    const mlComment = blockFromEngineSpan('paragraph', 'Para with <!--\nmulti\n--> comment.');
+    expect(canSkipDialectEnrich('paragraph', 'Para with <!--\nmulti\n--> comment.')).toBe(true);
+    const mlHtml = [...Array(mlComment!.childCount)].map((_, i) => mlComment!.child(i))
+      .find((n) => n.type.name === 'inline_html');
+    expect(mlHtml?.attrs.value).toBe('<!--\nmulti\n-->');
+
+    const mlTag = blockFromEngineSpan('paragraph', 'Tag <span\nclass="x">body</span> here.');
+    expect(mlTag?.child(1).attrs.value).toBe('<span\nclass="x">');
+    expect(mlTag?.child(3).attrs.value).toBe('</span>');
+
+    const mlBr = blockFromEngineSpan('paragraph', 'Self <br\n/> close.');
+    expect(mlBr?.child(1).attrs.value).toBe('<br\n/>');
+
+    const mlAttr = blockFromEngineSpan('paragraph', 'Attr <span title="a\nb">x</span> y.');
+    expect(mlAttr?.child(1).attrs.value).toBe('<span title="a\nb">');
+
+    const mlPi = blockFromEngineSpan('paragraph', 'PI <?foo\nbar?> here.');
+    expect(mlPi?.child(1).attrs.value).toBe('<?foo\nbar?>');
+
+    const mlCdata = blockFromEngineSpan('paragraph', 'CDATA <![CDATA[a\nb]]> here.');
+    expect(mlCdata?.child(1).attrs.value).toBe('<![CDATA[a\nb]]>');
+
+    const mlMarked = blockFromEngineSpan('paragraph', 'Mark **around <br\n/> tag**');
+    const mlMarkedHtml = [...Array(mlMarked!.childCount)].map((_, i) => mlMarked!.child(i))
+      .find((n) => n.type.name === 'inline_html');
+    expect(mlMarkedHtml?.attrs.value).toBe('<br\n/>');
+    expect(mlMarkedHtml!.marks).toHaveLength(0);
+
+    expect(canSkipDialectEnrich('bullet-list', '- item <!--\nc--> here')).toBe(true);
+    expect(blockFromEngineSpan('bullet-list', '- item <!--\nc--> here')?.textContent).toBe('item  here');
+
+    expect(canSkipDialectEnrich('quote', '> has <!--\nx--> in body')).toBe(true);
+    expect(blockFromEngineSpan('quote', '> has <!--\nx--> in body')?.textContent).toBe('has  in body');
   });
 
   it('engine-owns simple inline math', () => {

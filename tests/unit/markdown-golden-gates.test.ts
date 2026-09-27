@@ -192,6 +192,7 @@ describe('markdown golden gates — fixture inventory', () => {
       'simple-math-html-in-tables.md',
       'simple-mixed-marker-nested-lists.md',
       'simple-mixed-triple-closers.md',
+      'simple-multiline-inline-html.md',
       'simple-nested-lists.md',
       'simple-nested-marks.md',
       'simple-nested-quotes.md',

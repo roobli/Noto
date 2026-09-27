@@ -147,7 +147,7 @@ reviewed:
 | ---- | ------ |
 | Split / identity / multi-block golden on current `markdown-golden/` | Green (expanded; keep growing) |
 | Broader corpus / vault-shaped edges (GFM inline, nested lists, HTML, callout edges, link-defs, simple quotes, simple flat lists, simple GFM tables, simple footnote-defs, empty footnote-defs, CJK emphasis, hard-breaks, images, empty/meta fences, escapes, table-align, ordered-start, inline HTML) in golden | Landed this cycle; more edges welcome |
-| Flagged open-path deferred + viewport enrich + IR→PM leaf/plain(incl. hard-break)/link-def/simple-footnote(incl. empty + hard breaks)/simple-quote(incl. nested + lists-in-quotes + hard breaks)/flat-or-nested-list(any depth, incl. hard breaks)/simple-table(incl. ragged body)/simple inline HTML+math | Landed (still flagged-only) |
+| Flagged open-path deferred + viewport enrich + IR→PM leaf/plain(incl. hard-break)/link-def/simple-footnote(incl. empty + hard breaks)/simple-quote(incl. nested + lists-in-quotes + hard breaks)/flat-or-nested-list(any depth, incl. hard breaks)/simple-table(incl. ragged body)/simple inline HTML(incl. multi-line)+math | Landed (still flagged-only) |
 | Flagged serialize (identity / single / multi) + `reparseFromText` host wiring | Landed |
 | Packaged / e2e open feel on medium under the flag | Not a flip gate alone; measure before flip |
 | Intentional diffs documented in `markdown-golden/README.md` | Same-indent list marker/delimiter split closed (v0.1.16 + `simple-same-indent-list-markers.md`); table header/delim columns closed (v0.1.14 + `simple-table-header-delim-columns.md`); mixed-marker nested lists closed (v0.1.13 + `simple-mixed-marker-nested-lists.md`); setext-`---` closed (v0.1.12 + `simple-setext-dash-headings.md`) |
@@ -212,7 +212,7 @@ or simple-marked cells incl. escaped pipes; consistent or ragged body columns);
 enrich flags mark those done — see `docs/performance/open-path-first-cut.md`.
 Cross-family nests, multi-block items, heavy callout titles, complex tables
 (legacy IR→PM refuse if a mismatched span is forced; Phase 17 split keeps them paragraphs), and heavy inline (thirty-eight+ /
-multi-line HTML, nested-bracket wiki / nested-bracket image alts) stay on dialect; matched `***`/`___`, mixed triple closers, and same-delimiter stacks owned.
+nested-bracket wiki / nested-bracket image alts) stay on dialect; matched `***`/`___`, mixed triple closers, same-delimiter stacks, and multi-line inline HTML owned.
 Ragged body rows on otherwise-simple GFM tables are engine-owned.
 Simple inline math (`$…$` / `$$…$$`) and simple HTML/math in table cells are engine-owned.
 Simple image alts (math / marks / escapes / literal HTML → micromark plain alt string) are engine-owned.
@@ -227,12 +227,12 @@ optional title; plain or simple-marked link text; **simple image alts** with mat
 images** (`[text][id]` / `[text][]` / `![alt][id]` / `![alt][]`), **simple bare
 http(s) autolinks**, **simple angle-bracket http(s) autolinks**, **simple www. autolinks**, **simple email autolinks** (bare + angle / mailto), **simple wiki links** (`[[target]]` / `[[target|alias]]` as literal text; decoration
 plugin owns display), and **simple backslash escapes** (ASCII punctuation + trailing-`\` hard breaks), including **escaped pipes in simple GFM table cells**, **ragged body rows on
-simple GFM tables**, and **simple inline HTML** (single-line tags / comments / PI / declarations / CDATA as `inline_html` atoms), and **simple inline math** (`$…$` / `$$…$$` as `math_inline`), are engine-owned.
+simple GFM tables**, and **simple inline HTML** (single- or multi-line tags / comments / PI / declarations / CDATA as `inline_html` atoms), and **simple inline math** (`$…$` / `$$…$$` as `math_inline`), are engine-owned.
 Product default stays micromark.
 
 Next: keep growing `markdown-golden/` (more GFM / vault edges), extend IR→PM
 only where micromark parity is locked (Phase 17 mismatched header/delim are paragraphs at split; residual dialect for thirty-eight+ /
-multi-line HTML / heavy callout titles; mixed triple closers + same-delimiter stacks owned), then reconsider
+heavy callout titles; mixed triple closers + same-delimiter stacks + multi-line inline HTML owned), then reconsider
 default-on. Hard-breaks, images, empty/meta fences, escapes, table-align,
 ordered-start, inline HTML, simple-flat-lists, simple-nested-lists,
 simple-nested-quotes, simple-lists-in-quotes, simple-hard-breaks-in-quotes,
