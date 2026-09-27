@@ -18,7 +18,8 @@
  * and multi-paragraph items after a blank + indent; **structural children**
  * inside items — simple quote / fence / ATX heading / HTML / table / hr;
  * **cross-family same-indent sibling marker mixes** within one span split into
- * sibling lists as micromark does), and **simple GFM tables** (alignment row; plain or simple-marked
+ * sibling lists as micromark does; marker-only empty item + blank + structural
+ * opens outside the list at split — `@roobli/md` ≥ v0.1.17), and **simple GFM tables** (alignment row; plain or simple-marked
  * cells incl. escaped pipes; consistent **or ragged** body columns — micromark keeps
  * short/long body rows as-is; **pipe-optional** rows — leading/trailing `|` may be
  * omitted when a row still contains `|`, matching GFM; delimiter rows that would be
@@ -3140,8 +3141,10 @@ function peekTableDelimiter(
  * (quotes); a single-list span still uses this helper (Phase 19 already splits
  * top-level mixes into separate IR spans). Loose lists set `spread` on that
  * level. Task checkboxes are allowed. Returns `null` when dialect enrich is
- * still needed (heavy inline / lazy line after a blank / empty-item + blank +
- * structural / setext-shaped tight `---` after a paragraph / root-level marker mix).
+ * still needed (heavy inline / lazy line after a blank / setext-shaped tight
+ * `---` after a paragraph / root-level marker mix). Empty-item + blank +
+ * structural is closed at split (`@roobli/md` ≥ v0.1.17 Phase 20 — outside the
+ * list span); the refuse below stays as a safety net.
  */
 export function parseSimpleFlatListSource(md: string): ParsedFlatList | null {
   const lists = parseSimpleFlatListsSource(md);
@@ -3492,8 +3495,8 @@ export function parseSimpleFlatListsSource(md: string): ParsedFlatList[] | null 
       if (rest === null) return null; // lazy / weird indent after blank → dialect
       const structural = ownedStructuralKind(rest);
       if (structural) {
-        // Empty item + blank + structural is outside the item in micromark —
-        // refuse so dialect owns the correct shape.
+        // Empty item + blank + structural is outside the list at split
+        // (`@roobli/md` ≥ v0.1.17). Refuse if a mis-split still feeds it here.
         if (itemIsEmptyPlaceholder(cur)) return null;
         const collected = collectStructuralChild(lines, i, top.indent, rest);
         if (!collected) return null;

@@ -169,6 +169,7 @@ describe('markdown golden gates — fixture inventory', () => {
       'simple-eighteen-level-nested-marks.md',
       'simple-eleven-level-nested-marks.md',
       'simple-email-autolinks.md',
+      'simple-empty-list-item-structural.md',
       'simple-escapes-in-tables.md',
       'simple-escapes.md',
       'simple-fifteen-level-nested-marks.md',

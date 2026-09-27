@@ -868,8 +868,9 @@ describe('blockFromEngineSpan', () => {
     expect(multiWrap?.attrs.spread).toBe(true);
     expect(multiWrap?.child(0).childCount).toBe(2);
     expect(multiWrap?.child(0).child(1).textContent).toBe('b\nc');
-    // Simple marks in extra paragraphs are owned; quote/fence/heading/HTML/table/hr structural owned;
-    // empty+blank+structural + setext tight `---` + lazy-after-blank stay dialect.
+    // Simple marks in extra paragraphs are owned; quote/fence/heading/HTML/table/hr structural owned.
+    // Empty+blank+structural closed at split (@roobli/md ≥ v0.1.17); setext tight `---` +
+    // lazy-after-blank stay dialect. Combined empty+blank+structural markdown still refuses (safety).
     expect(blockFromEngineSpan('bullet-list', '- a\n\n  **bold**')?.child(0).child(1).textContent).toBe('bold');
     const withQuote = blockFromEngineSpan('bullet-list', '- a\n\n  > quote');
     expect(withQuote?.type.name).toBe('bullet_list');
@@ -894,8 +895,22 @@ describe('blockFromEngineSpan', () => {
     const withHr = blockFromEngineSpan('bullet-list', '- a\n\n  ---');
     expect(withHr?.child(0).child(1).type.name).toBe('horizontal_rule');
     expect(blockFromEngineSpan('bullet-list', '- a\n  ***')?.child(0).child(1).type.name).toBe('horizontal_rule');
-    // Tight quote (no blank) owned; empty+blank+structural + setext tight --- stay dialect (micromark).
+    // Tight quote (no blank) owned; setext tight --- + lazy-after-blank stay dialect.
     expect(blockFromEngineSpan('bullet-list', '- a\n  > q')?.child(0).child(1).type.name).toBe('blockquote');
+    // Phase 20: marker-only empty spans + mid-list empty siblings owned; tight empty+struct nests.
+    expect(blockFromEngineSpan('bullet-list', '-')?.type.name).toBe('bullet_list');
+    expect(blockFromEngineSpan('bullet-list', '-')?.child(0).childCount).toBe(1);
+    expect(blockFromEngineSpan('bullet-list', '-')?.child(0).textContent).toBe('');
+    const midEmpty = blockFromEngineSpan('bullet-list', '- first\n\n-');
+    expect(midEmpty?.type.name).toBe('bullet_list');
+    expect(midEmpty?.attrs.spread).toBe(true);
+    expect(midEmpty?.childCount).toBe(2);
+    expect(midEmpty?.child(0).textContent).toBe('first');
+    expect(midEmpty?.child(1).textContent).toBe('');
+    const tightEmpty = blockFromEngineSpan('bullet-list', '-\n  > quote');
+    expect(tightEmpty?.child(0).child(0).type.name).toBe('blockquote');
+    expect(tightEmpty?.child(0).child(0).textContent).toBe('quote');
+    // Safety: combined empty+blank+structural markdown (pre-Phase-20 mis-split) still refuses.
     expect(blockFromEngineSpan('bullet-list', '- \n\n  > q')).toBeNull();
     expect(blockFromEngineSpan('bullet-list', '- a\n  ---')).toBeNull();
     expect(blockFromEngineSpan('bullet-list', '- \n\n  <div>x</div>')).toBeNull();
