@@ -180,7 +180,7 @@ split, matching micromark).
 
 Same-indent sibling lists with a different bullet/delimiter split into new spans under `@roobli/md` ≥ v0.1.16 (Phase 19; Phase 16 indented mixed nests unchanged).
 
-Cross-family same-indent sibling marker mixes within one span, thirty-eight+ nests, and footnote-ref callout titles still need dialect (ragged body rows + pipe-optional GFM tables + simple HTML/math in table cells + simple image alts + simple inline math + multi-paragraph list items + structural quote/fence/ATX-heading/HTML/table/hr children inside list items are engine-owned; Phase 17 mismatched header/delim are paragraphs, not tables; list-steal `- | -` pipe-less delimiters stay dialect)
+Cross-family same-indent sibling marker mixes within one span (nested under a parent item, or consecutive lists inside a quote — micromark splits each mix) are engine-owned (`simple-cross-family-same-indent-lists.md`). Thirty-eight+ nests and footnote-ref callout titles still need dialect (ragged body rows + pipe-optional GFM tables + simple HTML/math in table cells + simple image alts + simple inline math + multi-paragraph list items + structural quote/fence/ATX-heading/HTML/table/hr children inside list items are engine-owned; Phase 17 mismatched header/delim are paragraphs, not tables; list-steal `- | -` pipe-less delimiters stay dialect)
 enrich + `from-mdast` (empty footnote bodies, nests at any depth incl. mixed-marker,
 nested plain quotes, simple lists-in-quotes, hard breaks in quotes, lazy nest
 continuation via fewer `>` **or true no-`>`**, hard breaks inside simple lists /
@@ -217,7 +217,8 @@ Does **not** flip default-on.
    breaks in quotes, lazy nest continuation via fewer `>` **and true no-`>`**,
    and hard breaks in simple footnotes are engine-owned. Structural quote /
    fence / ATX-heading / HTML / table / hr children inside list items are
-   engine-owned; footnote-ref callout titles stay dialect.
+   engine-owned; cross-family same-indent sibling marker mixes within one span
+   are engine-owned; footnote-ref callout titles stay dialect.
 4. Keep growing `tests/fixtures/markdown-golden/` before default-on; GFM inline,
    nested lists, simple-nested-lists (depth-2+), simple-nested-quotes,
    simple-lists-in-quotes, simple-hard-breaks-in-quotes,

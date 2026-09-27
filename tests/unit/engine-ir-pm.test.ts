@@ -29,6 +29,7 @@ import {
   parseSimpleFootnoteDefinitionSource,
   parseSimpleQuoteSource,
   parseSimpleFlatListSource,
+  parseSimpleFlatListsSource,
   parseSimpleTableSource,
 } from '../../src/shared/markdown/v3/pm/from-engine';
 import { blockFromSpan, docFromSpans } from '../../src/shared/markdown/v3/pm/from-mdast';
@@ -145,6 +146,12 @@ describe('from-engine IR helpers', () => {
     expect(canSkipDialectEnrich('bullet-list', '- a\n  - nested')).toBe(true);
     expect(canSkipDialectEnrich('bullet-list', '- a\n  - nested\n    - deep')).toBe(true);
     expect(canSkipDialectEnrich('bullet-list', '- a\n  1. cross')).toBe(true);
+    expect(canSkipDialectEnrich('bullet-list', '- parent\n  - a\n  * b')).toBe(true);
+    expect(canSkipDialectEnrich('bullet-list', '- parent\n  - a\n  1. b')).toBe(true);
+    expect(canSkipDialectEnrich('quote', '> - a\n> * b')).toBe(true);
+    expect(canSkipDialectEnrich('quote', '> - a\n> 1. b')).toBe(true);
+    // Root-level mix is not a single list span after Phase 19.
+    expect(canSkipDialectEnrich('bullet-list', '- a\n* b')).toBe(false);
     expect(canSkipDialectEnrich('bullet-list', '- **bold**')).toBe(true);
     expect(canSkipDialectEnrich('bullet-list', '- [[wiki]]')).toBe(true);
     expect(canSkipDialectEnrich('table', '| a |\n| - |\n| 1 |')).toBe(true);
@@ -227,7 +234,7 @@ describe('from-engine IR helpers', () => {
     expect(parseSimpleQuoteSource('> - item')).toEqual([
       { type: 'list', list: {
         ordered: false, bullet: '-', delimiter: null, start: 1, spread: false,
-        items: [{ checked: null, children: [{ type: 'paragraph', text: 'item' }], nested: null }],
+        items: [{ checked: null, children: [{ type: 'paragraph', text: 'item' }], nestedLists: [] }],
       } },
     ]);
     expect(parseSimpleQuoteSource('> intro\n> - a\n> - b\n> out')).toEqual([
@@ -235,8 +242,8 @@ describe('from-engine IR helpers', () => {
       { type: 'list', list: {
         ordered: false, bullet: '-', delimiter: null, start: 1, spread: false,
         items: [
-          { checked: null, children: [{ type: 'paragraph', text: 'a' }], nested: null },
-          { checked: null, children: [{ type: 'paragraph', text: 'b' }], nested: null },
+          { checked: null, children: [{ type: 'paragraph', text: 'a' }], nestedLists: [] },
+          { checked: null, children: [{ type: 'paragraph', text: 'b' }], nestedLists: [] },
         ],
       } },
       { type: 'paragraph', text: 'out' },
@@ -246,10 +253,10 @@ describe('from-engine IR helpers', () => {
         ordered: false, bullet: '-', delimiter: null, start: 1, spread: false,
         items: [{
           checked: null, children: [{ type: 'paragraph', text: 'outer' }],
-          nested: {
+          nestedLists: [{
             ordered: false, bullet: '-', delimiter: null, start: 1, spread: false,
-            items: [{ checked: null, children: [{ type: 'paragraph', text: 'nested' }], nested: null }],
-          },
+            items: [{ checked: null, children: [{ type: 'paragraph', text: 'nested' }], nestedLists: [] }],
+          }],
         }],
       } },
     ]);
@@ -280,7 +287,7 @@ describe('from-engine IR helpers', () => {
           delimiter: null,
           start: 1,
           spread: false,
-          items: [{ checked: null, children: [{ type: 'paragraph', text: 'item\nlazy cont' }], nested: null }],
+          items: [{ checked: null, children: [{ type: 'paragraph', text: 'item\nlazy cont' }], nestedLists: [] }],
         },
       },
     ]);
@@ -306,7 +313,7 @@ describe('from-engine IR helpers', () => {
       { type: 'quote', children: [{ type: 'paragraph', text: 'nest' }] },
       { type: 'list', list: {
         ordered: false, bullet: '-', delimiter: null, start: 1, spread: false,
-        items: [{ checked: null, children: [{ type: 'paragraph', text: 'item' }], nested: null }],
+        items: [{ checked: null, children: [{ type: 'paragraph', text: 'item' }], nestedLists: [] }],
       } },
     ]);
     expect(parseSimpleQuoteSource('> > nest\n> **bold**')).not.toBeNull();
@@ -327,8 +334,8 @@ describe('from-engine IR helpers', () => {
     expect(parseSimpleFlatListSource('- a\n- b')).toEqual({
       ordered: false, bullet: '-', delimiter: null, start: 1, spread: false,
       items: [
-        { checked: null, children: [{ type: 'paragraph', text: 'a' }], nested: null },
-        { checked: null, children: [{ type: 'paragraph', text: 'b' }], nested: null },
+        { checked: null, children: [{ type: 'paragraph', text: 'a' }], nestedLists: [] },
+        { checked: null, children: [{ type: 'paragraph', text: 'b' }], nestedLists: [] },
       ],
     });
     expect(parseSimpleFlatListSource('* star\n* two')?.bullet).toBe('*');
@@ -339,44 +346,99 @@ describe('from-engine IR helpers', () => {
     expect(parseSimpleFlatListSource('1) a\n2) b')?.delimiter).toBe(')');
     expect(parseSimpleFlatListSource('- a\n\n- b')?.spread).toBe(true);
     expect(parseSimpleFlatListSource('- [ ] todo\n- [x] done')?.items).toEqual([
-      { checked: false, children: [{ type: 'paragraph', text: 'todo' }], nested: null },
-      { checked: true, children: [{ type: 'paragraph', text: 'done' }], nested: null },
+      { checked: false, children: [{ type: 'paragraph', text: 'todo' }], nestedLists: [] },
+      { checked: true, children: [{ type: 'paragraph', text: 'done' }], nestedLists: [] },
     ]);
     expect(parseSimpleFlatListSource('- a\n  continued')?.items[0]?.children[0]).toEqual({ type: 'paragraph', text: 'a\ncontinued' });
     expect(parseSimpleFlatListSource('- a\n  - nested')).toEqual({
       ordered: false, bullet: '-', delimiter: null, start: 1, spread: false,
       items: [{
         checked: null, children: [{ type: 'paragraph', text: 'a' }],
-        nested: {
+        nestedLists: [{
           ordered: false, bullet: '-', delimiter: null, start: 1, spread: false,
-          items: [{ checked: null, children: [{ type: 'paragraph', text: 'nested' }], nested: null }],
-        },
+          items: [{ checked: null, children: [{ type: 'paragraph', text: 'nested' }], nestedLists: [] }],
+        }],
       }],
     });
     expect(parseSimpleFlatListSource('- a\n  - nested\n    - deep')).toEqual({
       ordered: false, bullet: '-', delimiter: null, start: 1, spread: false,
       items: [{
         checked: null, children: [{ type: 'paragraph', text: 'a' }],
-        nested: {
+        nestedLists: [{
           ordered: false, bullet: '-', delimiter: null, start: 1, spread: false,
           items: [{
             checked: null, children: [{ type: 'paragraph', text: 'nested' }],
-            nested: {
+            nestedLists: [{
               ordered: false, bullet: '-', delimiter: null, start: 1, spread: false,
-              items: [{ checked: null, children: [{ type: 'paragraph', text: 'deep' }], nested: null }],
-            },
+              items: [{ checked: null, children: [{ type: 'paragraph', text: 'deep' }], nestedLists: [] }],
+            }],
           }],
-        },
+        }],
       }],
     });
     expect(parseSimpleFlatListSource('- **bold**')).not.toBeNull();
     expect(parseSimpleFlatListSource('- [[wiki]]')).not.toBeNull();
+    // Root-level marker mix: single-list helper refuses (Phase 19 splits IR);
+    // multi-list helper owns consecutive sibling lists (quotes / defensive).
     expect(parseSimpleFlatListSource('- a\n* b')).toBeNull();
+    expect(parseSimpleFlatListsSource('- a\n* b')).toEqual([
+      {
+        ordered: false, bullet: '-', delimiter: null, start: 1, spread: false,
+        items: [{ checked: null, children: [{ type: 'paragraph', text: 'a' }], nestedLists: [] }],
+      },
+      {
+        ordered: false, bullet: '*', delimiter: null, start: 1, spread: false,
+        items: [{ checked: null, children: [{ type: 'paragraph', text: 'b' }], nestedLists: [] }],
+      },
+    ]);
+    expect(parseSimpleFlatListsSource('- a\n1. b')).toEqual([
+      {
+        ordered: false, bullet: '-', delimiter: null, start: 1, spread: false,
+        items: [{ checked: null, children: [{ type: 'paragraph', text: 'a' }], nestedLists: [] }],
+      },
+      {
+        ordered: true, bullet: null, delimiter: '.', start: 1, spread: false,
+        items: [{ checked: null, children: [{ type: 'paragraph', text: 'b' }], nestedLists: [] }],
+      },
+    ]);
+    // Nested same-indent marker mix stays one outer list with sibling nests.
+    expect(parseSimpleFlatListSource('- parent\n  - nest a\n  * nest b')).toEqual({
+      ordered: false, bullet: '-', delimiter: null, start: 1, spread: false,
+      items: [{
+        checked: null, children: [{ type: 'paragraph', text: 'parent' }],
+        nestedLists: [
+          {
+            ordered: false, bullet: '-', delimiter: null, start: 1, spread: false,
+            items: [{ checked: null, children: [{ type: 'paragraph', text: 'nest a' }], nestedLists: [] }],
+          },
+          {
+            ordered: false, bullet: '*', delimiter: null, start: 1, spread: false,
+            items: [{ checked: null, children: [{ type: 'paragraph', text: 'nest b' }], nestedLists: [] }],
+          },
+        ],
+      }],
+    });
+    expect(parseSimpleFlatListSource('- parent\n  - nest a\n  1. nest b')).toEqual({
+      ordered: false, bullet: '-', delimiter: null, start: 1, spread: false,
+      items: [{
+        checked: null, children: [{ type: 'paragraph', text: 'parent' }],
+        nestedLists: [
+          {
+            ordered: false, bullet: '-', delimiter: null, start: 1, spread: false,
+            items: [{ checked: null, children: [{ type: 'paragraph', text: 'nest a' }], nestedLists: [] }],
+          },
+          {
+            ordered: true, bullet: null, delimiter: '.', start: 1, spread: false,
+            items: [{ checked: null, children: [{ type: 'paragraph', text: 'nest b' }], nestedLists: [] }],
+          },
+        ],
+      }],
+    });
     expect(parseSimpleFlatListSource('- multi\n\n  para\n- next')).toEqual({
       ordered: false, bullet: '-', delimiter: null, start: 1, spread: true,
       items: [
-        { checked: null, children: [{ type: 'paragraph', text: 'multi' }, { type: 'paragraph', text: 'para' }], nested: null },
-        { checked: null, children: [{ type: 'paragraph', text: 'next' }], nested: null },
+        { checked: null, children: [{ type: 'paragraph', text: 'multi' }, { type: 'paragraph', text: 'para' }], nestedLists: [] },
+        { checked: null, children: [{ type: 'paragraph', text: 'next' }], nestedLists: [] },
       ],
     });
     expect(parseSimpleFlatListSource('- a\n\nlazy')).toBeNull();
@@ -388,7 +450,7 @@ describe('from-engine IR helpers', () => {
           { type: 'paragraph', text: 'a' },
           { type: 'quote', children: [{ type: 'paragraph', text: 'q' }] },
         ],
-        nested: null,
+        nestedLists: [],
       }],
     });
     expect(parseSimpleTableSource('| Left | Right |\n| :--- | ---: |\n| alpha | 1 |\n| beta | 2 |')).toEqual({
@@ -743,7 +805,7 @@ describe('blockFromEngineSpan', () => {
       delimiter: null,
       start: 1,
       spread: false,
-      items: [{ checked: null, children: [{ type: 'paragraph', text: 'foo\nbar' }], nested: null }],
+      items: [{ checked: null, children: [{ type: 'paragraph', text: 'foo\nbar' }], nestedLists: [] }],
     });
 
     const hb = blockFromEngineSpan('bullet-list', '- a  \n  b');
@@ -779,7 +841,9 @@ describe('blockFromEngineSpan', () => {
     expect(markedList?.textContent).toBe('bold');
     expect(markedList?.child(0).child(0).child(0).marks.some((m) => m.type.name === 'strong')).toBe(true);
     expect(blockFromEngineSpan('bullet-list', '- [[wiki]]')?.textContent).toBe('[[wiki]]');
+    // Root-level mix cannot be one PM list node (Phase 19 splits IR).
     expect(blockFromEngineSpan('bullet-list', '- a\n* b')).toBeNull();
+    expect(blockFromEngineSpan('bullet-list', '- a\n1. b')).toBeNull();
 
     const multi = blockFromEngineSpan('bullet-list', '- multi\n\n  para\n- next');
     expect(multi?.type.name).toBe('bullet_list');
@@ -795,8 +859,8 @@ describe('blockFromEngineSpan', () => {
     expect(parseSimpleFlatListSource('- multi\n\n  para\n- next')).toEqual({
       ordered: false, bullet: '-', delimiter: null, start: 1, spread: true,
       items: [
-        { checked: null, children: [{ type: 'paragraph', text: 'multi' }, { type: 'paragraph', text: 'para' }], nested: null },
-        { checked: null, children: [{ type: 'paragraph', text: 'next' }], nested: null },
+        { checked: null, children: [{ type: 'paragraph', text: 'multi' }, { type: 'paragraph', text: 'para' }], nestedLists: [] },
+        { checked: null, children: [{ type: 'paragraph', text: 'next' }], nestedLists: [] },
       ],
     });
     // Soft-wrap inside the second paragraph.
@@ -853,6 +917,53 @@ describe('blockFromEngineSpan', () => {
     expect(multiInQuote?.child(0).child(0).child(1).textContent).toBe('para');
 
     expect(blockFromEngineSpan('bullet-list', '- a  \n  **b**')?.textContent).toBe('ab');
+  });
+
+  it('owns cross-family same-indent sibling marker mixes within one span', () => {
+    // Nested under parent item: sibling nests (Phase 16 keeps one IR span).
+    const nestMix = blockFromEngineSpan('bullet-list', '- parent\n  - nest a\n  * nest b');
+    expect(nestMix?.type.name).toBe('bullet_list');
+    expect(nestMix?.childCount).toBe(1);
+    expect(nestMix?.child(0).childCount).toBe(3); // para + ul + ul
+    expect(nestMix?.child(0).child(0).textContent).toBe('parent');
+    expect(nestMix?.child(0).child(1).type.name).toBe('bullet_list');
+    expect(nestMix?.child(0).child(1).attrs.bullet).toBe('-');
+    expect(nestMix?.child(0).child(1).textContent).toBe('nest a');
+    expect(nestMix?.child(0).child(2).type.name).toBe('bullet_list');
+    expect(nestMix?.child(0).child(2).attrs.bullet).toBe('*');
+    expect(nestMix?.child(0).child(2).textContent).toBe('nest b');
+
+    const nestOrdered = blockFromEngineSpan('bullet-list', '- parent\n  - nest a\n  1. nest b');
+    expect(nestOrdered?.child(0).child(1).type.name).toBe('bullet_list');
+    expect(nestOrdered?.child(0).child(2).type.name).toBe('ordered_list');
+    expect(nestOrdered?.child(0).child(2).textContent).toBe('nest b');
+
+    const delimMix = blockFromEngineSpan('bullet-list', '- parent\n  1. a\n  2) b');
+    expect(delimMix?.child(0).child(1).type.name).toBe('ordered_list');
+    expect(delimMix?.child(0).child(1).attrs.delimiter).toBe('.');
+    expect(delimMix?.child(0).child(2).type.name).toBe('ordered_list');
+    expect(delimMix?.child(0).child(2).attrs.delimiter).toBe(')');
+
+    // Lists-in-quotes: one quote span holds consecutive sibling lists.
+    const qMix = blockFromEngineSpan('quote', '> - a\n> * b');
+    expect(qMix?.type.name).toBe('blockquote');
+    expect(qMix?.childCount).toBe(2);
+    expect(qMix?.child(0).type.name).toBe('bullet_list');
+    expect(qMix?.child(0).attrs.bullet).toBe('-');
+    expect(qMix?.child(0).textContent).toBe('a');
+    expect(qMix?.child(1).type.name).toBe('bullet_list');
+    expect(qMix?.child(1).attrs.bullet).toBe('*');
+    expect(qMix?.child(1).textContent).toBe('b');
+
+    const qCross = blockFromEngineSpan('quote', '> - a\n> 1. b');
+    expect(qCross?.childCount).toBe(2);
+    expect(qCross?.child(0).type.name).toBe('bullet_list');
+    expect(qCross?.child(1).type.name).toBe('ordered_list');
+
+    const qThree = blockFromEngineSpan('quote', '> - a\n> - b\n> * c');
+    expect(qThree?.childCount).toBe(2);
+    expect(qThree?.child(0).childCount).toBe(2); // - a, - b same list
+    expect(qThree?.child(1).attrs.bullet).toBe('*');
   });
 
   it('builds nested lists at any depth including mixed-marker nests', () => {

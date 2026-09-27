@@ -210,7 +210,7 @@ simple flat lists and nested lists (same-family or mixed-marker, any depth; plai
 breaks + multi-paragraph items + structural quote/fence/ATX-heading/HTML/table/hr children; nested children may nest only) + simple GFM tables (alignment row; plain
 or simple-marked cells incl. escaped pipes; consistent or ragged body columns; pipe-optional leading `|`);
 enrich flags mark those done — see `docs/performance/open-path-first-cut.md`.
-Cross-family same-indent sibling mixes and heavy inline (thirty-eight+ /
+Cross-family same-indent sibling mixes owned; heavy inline (thirty-eight+ /
 nested-bracket image alts / footnote-ref callout titles) stay on dialect.
 Nested-bracket wiki (incl. in callout titles) is engine-owned as literal text.
 Matched `***`/`___`, mixed triple closers, same-delimiter stacks, and multi-line inline HTML owned.
@@ -232,7 +232,7 @@ simple GFM tables**, and **simple inline HTML** (single- or multi-line tags / co
 Product default stays micromark.
 
 Next: keep growing `markdown-golden/` (more GFM / vault edges), extend IR→PM
-only where micromark parity is locked (Phase 17 mismatched header/delim are paragraphs at split; residual dialect for thirty-eight+ / footnote-ref callout titles / cross-family same-indent sibling mixes;
+only where micromark parity is locked (Phase 17 mismatched header/delim are paragraphs at split; residual dialect for thirty-eight+ / footnote-ref callout titles; cross-family same-indent sibling mixes owned;
 pipe-optional tables + heavy callout titles owned; mixed triple closers + same-delimiter stacks + multi-line inline HTML owned), then reconsider
 default-on. Hard-breaks, images, empty/meta fences, escapes, table-align,
 ordered-start, inline HTML, simple-flat-lists, simple-nested-lists,
@@ -241,7 +241,7 @@ simple-lazy-continuations-in-quotes, simple-no-marker-lazy-in-quotes,
 simple-lazy-list-continuations, simple-hard-breaks-in-lists, simple-multi-block-list-items, simple-list-item-structural-children, simple-list-item-html-table-hr,
 simple-hard-breaks-in-footnotes, simple-callouts, simple-titled-collapsible-callouts, simple-marked-callout-titles, simple-heavy-callout-titles, simple-marked-phrasing,
 simple-underscore-emphasis, simple-nested-marks, simple-two-level-nested-marks, simple-three-level-nested-marks, simple-four-level-nested-marks, simple-five-level-nested-marks, simple-six-level-nested-marks, simple-seven-level-nested-marks, simple-eight-level-nested-marks, simple-nine-level-nested-marks, simple-ten-level-nested-marks, simple-eleven-level-nested-marks, simple-twelve-level-nested-marks, simple-thirteen-level-nested-marks, simple-fourteen-level-nested-marks, simple-fifteen-level-nested-marks, simple-sixteen-level-nested-marks, simple-seventeen-level-nested-marks, simple-eighteen-level-nested-marks, simple-nineteen-level-nested-marks, simple-twenty-level-nested-marks, simple-twenty-one-level-nested-marks, simple-twenty-two-level-nested-marks, simple-twenty-three-level-nested-marks, simple-twenty-four-level-nested-marks, simple-twenty-five-level-nested-marks, simple-twenty-six-level-nested-marks, simple-twenty-seven-level-nested-marks, simple-twenty-eight-level-nested-marks, simple-twenty-nine-level-nested-marks, simple-thirty-level-nested-marks, simple-thirty-one-level-nested-marks, simple-thirty-two-level-nested-marks, simple-thirty-three-level-nested-marks, simple-thirty-four-level-nested-marks, simple-thirty-five-level-nested-marks, simple-thirty-six-level-nested-marks, simple-thirty-seven-level-nested-marks, simple-triple-delimiter-marks, simple-inline-links, simple-bare-autolinks, simple-angle-autolinks, simple-www-autolinks, simple-email-autolinks / simple-escapes / simple-escapes-in-tables / simple-ragged-tables / simple-pipe-optional-tables / simple-inline-html / simple-inline-math / simple-image-alts / simple-math-html-in-tables, simple-reference-links, simple-wiki-links, simple-gfm-tables,
-simple-footnote-defs, empty-footnote-defs, simple-setext-dash-headings, simple-mixed-marker-nested-lists, simple-table-header-delim-columns, simple-same-indent-list-markers, and cjk-emphasis goldens landed.
+simple-footnote-defs, empty-footnote-defs, simple-setext-dash-headings, simple-mixed-marker-nested-lists, simple-table-header-delim-columns, simple-same-indent-list-markers, simple-cross-family-same-indent-lists, and cjk-emphasis goldens landed.
 Do **not** flip the product default yet.
 
 **Noto `0.0.2-alpha.9`** shipped the adapter (#37) plus `@roobli/md` v0.1.1 quote/

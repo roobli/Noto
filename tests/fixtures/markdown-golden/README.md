@@ -92,6 +92,7 @@ Small public fixtures for comparing the **micromark** product path against
 | `simple-nested-lists.md` | same-family nested bullet/ordered at any depth (plain items; soft-wrap then nest; depth-2+); no marked items |
 | `simple-mixed-marker-nested-lists.md` | mixed-marker nests (bullet under ordered / ordered under bullet / deep mix); closes Phase 16 intentional gap; plain items only |
 | `simple-same-indent-list-markers.md` | same-indent sibling lists with different bullet (`-`/`+`/`*`) or ordered delimiter (`.`/`)`) open a new span (`@roobli/md` ≥ v0.1.16 Phase 19); Phase 16 indented mixed nests stay one span |
+| `simple-cross-family-same-indent-lists.md` | cross-family same-indent sibling marker mixes within one span (nested under a parent item, or consecutive lists inside a quote) split into sibling lists as micromark does; Phase 19 top-level mixes stay separate IR spans |
 | `simple-gfm-tables.md` | simple GFM pipe tables (align row; plain cells; indent; compact); no marked/ragged cells |
 | `simple-ragged-tables.md` | ragged body rows (short / long cell counts) on simple GFM tables owned on the flagged IR→PM path |
 | `simple-pipe-optional-tables.md` | GFM pipe-optional tables (no leading/trailing `|` required when a row still contains `|`; mixed pipes; indent; compact) owned on the flagged IR→PM path; list-steal `- | -` delimiter stays dialect |

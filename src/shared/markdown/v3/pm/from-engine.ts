@@ -16,14 +16,18 @@
  * flat / nested lists** (same-family or mixed-marker nests at every depth;
  * plain or simple-marked items incl. hard breaks, unindented lazy soft-wrap,
  * and multi-paragraph items after a blank + indent; **structural children**
- * inside items — simple quote / fence / ATX heading / HTML / table / hr), and **simple GFM tables** (alignment row; plain or simple-marked
+ * inside items — simple quote / fence / ATX heading / HTML / table / hr;
+ * **cross-family same-indent sibling marker mixes** within one span split into
+ * sibling lists as micromark does), and **simple GFM tables** (alignment row; plain or simple-marked
  * cells incl. escaped pipes; consistent **or ragged** body columns — micromark keeps
  * short/long body rows as-is; **pipe-optional** rows — leading/trailing `|` may be
  * omitted when a row still contains `|`, matching GFM; delimiter rows that would be
  * stolen by a bullet list marker (`- | -` without a leading `|`) stay dialect), the PM node is fully
  * determined by that IR — no micromark / mdast pass. Cross-family same-indent sibling
- * marker mixes within one span and deeper (thirty-eight+) nests still go through
- * `from-mdast.ts` after dialect enrich. Mismatched header/delimiter column counts are paragraphs at
+ * marker mixes within one span (nested under a parent item, or sibling lists inside a
+ * quote — micromark splits each mix into its own list) are engine-owned; deeper
+ * (thirty-eight+) nests still go through `from-mdast.ts` after dialect enrich.
+ * Mismatched header/delimiter column counts are paragraphs at
  * split (`@roobli/md` ≥ v0.1.14); `parseSimpleTableSource` still refuses a forced
  * mismatched table span. **Simple HTML
  * and simple inline math in GFM table cells** are engine-owned. **Simple backslash escapes**
@@ -145,7 +149,7 @@ export function hasHardBreak(markdown: string): boolean {
  * link-definitions; simple footnote-definitions (incl. hard breaks + simple
  * marks); simple quotes (incl. nested, hard breaks, lists-in-quotes, plain /
  * simple-marked / collapsible / plain-titled / simple-marked-title / heavy-title GFM alerts / callouts, lazy nest + no-`>` lazy); simple flat
- * or nested lists (same-family or mixed-marker, any depth, incl. hard breaks + simple marks + multi-paragraph items + structural quote/fence/ATX-heading/HTML/table/hr children);
+ * or nested lists (same-family or mixed-marker, any depth, incl. hard breaks + simple marks + multi-paragraph items + structural quote/fence/ATX-heading/HTML/table/hr children + cross-family same-indent sibling marker mixes);
  * simple GFM tables (plain or simple-marked cells incl. escaped pipes; ragged body rows; pipe-optional leading `|`); paragraph / heading when
  * plain or simple-marked (hard breaks + simple inline links / images +
  * simple reference links / images + simple bare http(s) + angle-bracket
@@ -2666,9 +2670,9 @@ function parseQuoteChildren(
           i += 1;
         }
         if (listRests.length === 0) return null;
-        const list = parseSimpleFlatListSource(listRests.join('\n'));
-        if (!list) return null;
-        children.push({ type: 'list', list });
+        const lists = parseSimpleFlatListsSource(listRests.join('\n'));
+        if (!lists || lists.length === 0) return null;
+        for (const list of lists) children.push({ type: 'list', list });
         continue;
       }
       if (!quoteInnerIsParagraphLine(line.rest)) return null;
@@ -2743,7 +2747,7 @@ export type FlatListDelimiter = '.' | ')';
 
 /**
  * Block children of a list item in document order (paragraphs + owned
- * structural kids). Nested lists stay on `ParsedFlatListItem.nested`.
+ * structural kids). Nested lists stay on `ParsedFlatListItem.nestedLists`.
  */
 export type ParsedListItemChild =
   | { readonly type: 'paragraph'; readonly text: string }
@@ -2771,8 +2775,12 @@ export interface ParsedFlatListItem {
    * or an owned structural child (simple quote / fence / ATX heading / HTML / table / hr).
    */
   readonly children: readonly ParsedListItemChild[];
-  /** Nested list under this item (any depth); null when the item is flat. */
-  readonly nested: ParsedFlatList | null;
+  /**
+   * Nested lists under this item (any depth). Empty when the item is flat.
+   * Same-indent sibling marker / delimiter / orderedness changes open a new
+   * nested list (micromark parity); Phase 16 keeps the outer span one piece.
+   */
+  readonly nestedLists: readonly ParsedFlatList[];
 }
 
 export interface ParsedFlatList {
@@ -2917,7 +2925,10 @@ type DraftListChild =
 type DraftListItem = {
   checked: boolean | null;
   children: DraftListChild[];
+  /** Currently open nested list under this item (being filled). */
   nested: DraftListLevel | null;
+  /** Nested lists closed by a same-indent marker-family split (micromark). */
+  closedNested: DraftListLevel[];
 };
 
 type DraftListLevel = {
@@ -3123,13 +3134,26 @@ function peekTableDelimiter(
  * another paragraph and marks the list loose) and/or owned structural children
  * (simple quote / fence / ATX heading / HTML / table / hr). Same-family and
  * mixed-marker nests are owned (`@roobli/md` ≥ v0.1.13 Phase 16 keeps mixed nests
- * one span). Sibling markers at one level still share orderedness / bullet /
- * delimiter. Loose lists (blank between sibling items or multi-block items) set
- * `spread` on that level. Task checkboxes are allowed. Returns `null` when
- * dialect enrich is still needed (heavy inline / lazy line after a blank /
- * empty-item + blank + structural / setext-shaped tight `---` after a paragraph).
+ * one span). Same-indent sibling marker / delimiter / orderedness changes under a
+ * parent item open another nested list on that item (micromark). Root-level
+ * same-indent mixes return multiple lists via `parseSimpleFlatListsSource`
+ * (quotes); a single-list span still uses this helper (Phase 19 already splits
+ * top-level mixes into separate IR spans). Loose lists set `spread` on that
+ * level. Task checkboxes are allowed. Returns `null` when dialect enrich is
+ * still needed (heavy inline / lazy line after a blank / empty-item + blank +
+ * structural / setext-shaped tight `---` after a paragraph / root-level marker mix).
  */
 export function parseSimpleFlatListSource(md: string): ParsedFlatList | null {
+  const lists = parseSimpleFlatListsSource(md);
+  if (!lists || lists.length !== 1) return null;
+  return lists[0]!;
+}
+
+/**
+ * Like `parseSimpleFlatListSource`, but keeps root-level same-indent marker
+ * mixes as consecutive sibling lists (micromark / lists-in-quotes).
+ */
+export function parseSimpleFlatListsSource(md: string): ParsedFlatList[] | null {
   const trimmed = md.replace(/\r\n/g, '\n').trimEnd();
   if (trimmed.length === 0) return null;
   const lines = trimmed.split('\n');
@@ -3174,15 +3198,20 @@ export function parseSimpleFlatListSource(md: string): ParsedFlatList | null {
           children.push({ type: 'hr' });
         }
       }
-      if (children.length === 0 && !item.nested) return null;
-      let nested: ParsedFlatList | null = null;
+      const nestedLists: ParsedFlatList[] = [];
+      for (const closed of item.closedNested) {
+        const finalized = finalizeLevel(closed);
+        if (!finalized) return null;
+        nestedLists.push(finalized);
+      }
       if (item.nested) {
-        nested = finalizeLevel(item.nested);
+        const nested = finalizeLevel(item.nested);
         if (!nested) return null;
+        nestedLists.push(nested);
       }
       // Allow empty children only when a nested list carries the item (rare).
-      if (children.length === 0 && !nested) return null;
-      items.push({ checked: item.checked, children, nested });
+      if (children.length === 0 && nestedLists.length === 0) return null;
+      items.push({ checked: item.checked, children, nestedLists });
     }
     return {
       ordered: level.ordered,
@@ -3203,7 +3232,68 @@ export function parseSimpleFlatListSource(md: string): ParsedFlatList | null {
       checked,
       children: [{ type: 'paragraph', lines: [text] }],
       nested: null,
+      closedNested: [],
     });
+  };
+
+  /** Root lists completed by a same-indent marker-family split. */
+  const rootLists: ParsedFlatList[] = [];
+
+  /**
+   * Same-indent sibling with a different bullet / delimiter / orderedness:
+   * close the current list and open a new one (micromark). At nest depth this
+   * attaches another nested list under the parent item; at root it starts a
+   * sibling top-level list (quotes keep both).
+   */
+  const splitSameIndentList = (
+    ordered: boolean,
+    bullet: FlatListBullet | null,
+    delimiter: FlatListDelimiter | null,
+    start: number,
+    checked: boolean | null,
+    text: string,
+  ): boolean => {
+    const top = stack[stack.length - 1]!;
+    if (stack.length === 1) {
+      const finalized = finalizeLevel(top);
+      if (!finalized) return false;
+      rootLists.push(finalized);
+      const level: DraftListLevel = {
+        indent: top.indent,
+        ordered,
+        bullet,
+        delimiter,
+        start,
+        spread: false,
+        items: [],
+        pendingBlank: false,
+      };
+      pushItem(level, checked, text);
+      stack[0] = level;
+      return true;
+    }
+    // Nested: close current nest onto parent item, open a new nest sibling.
+    const child = stack.pop()!;
+    const parent = stack[stack.length - 1]!;
+    const parentItem = parent.items[parent.items.length - 1]!;
+    if (parentItem.nested !== child) return false;
+    parentItem.closedNested.push(child);
+    parentItem.nested = null;
+    if (child.pendingBlank) parent.pendingBlank = true;
+    const next: DraftListLevel = {
+      indent: child.indent,
+      ordered,
+      bullet,
+      delimiter,
+      start,
+      spread: false,
+      items: [],
+      pendingBlank: false,
+    };
+    pushItem(next, checked, text);
+    parentItem.nested = next;
+    stack.push(next);
+    return true;
   };
 
   let i = 0;
@@ -3276,23 +3366,49 @@ export function parseSimpleFlatListSource(md: string): ParsedFlatList | null {
       const top = stack[stack.length - 1]!;
 
       if (indent === top.indent) {
-        // Sibling at the current level.
+        // Sibling at the current level (or marker-family split → new list).
         let rest: string;
+        let ordered = top.ordered;
+        let bullet = top.bullet;
+        let delimiter = top.delimiter;
+        let start = top.start;
+        let familyChanged = false;
         if (bulletMatch) {
           const marker = bulletMatch[2] as FlatListBullet;
-          if (top.ordered) return null;
-          if (top.bullet !== null && top.bullet !== marker) return null;
-          top.bullet = marker;
+          if (top.ordered || (top.bullet !== null && top.bullet !== marker)) {
+            familyChanged = true;
+            ordered = false;
+            bullet = marker;
+            delimiter = null;
+            start = 1;
+          } else {
+            top.bullet = marker;
+            bullet = marker;
+          }
           rest = line.slice(bulletMatch[0].length);
         } else {
           const m = orderedMatch!;
           const delim = m[3] as FlatListDelimiter;
-          if (!top.ordered) return null;
-          if (top.delimiter !== null && top.delimiter !== delim) return null;
+          const nextStart = Number(m[2]!);
+          if (!top.ordered || (top.delimiter !== null && top.delimiter !== delim)) {
+            familyChanged = true;
+            ordered = true;
+            bullet = null;
+            delimiter = delim;
+            start = nextStart;
+          }
           rest = line.slice(m[0].length);
         }
         const { checked, text: rawText } = splitTaskPrefix(rest);
         const text = rawText.replace(/^[ \t]+/u, '');
+        if (familyChanged) {
+          if (!splitSameIndentList(ordered, bullet, delimiter, start, checked, text)) {
+            return null;
+          }
+          sawItem = true;
+          i += 1;
+          continue;
+        }
         if (top.pendingBlank && top.items.length > 0) top.spread = true;
         top.pendingBlank = false;
         pushItem(top, checked, text);
@@ -3461,7 +3577,10 @@ export function parseSimpleFlatListSource(md: string): ParsedFlatList | null {
   }
 
   if (stack.length === 0) return null;
-  return finalizeLevel(stack[0]!);
+  const last = finalizeLevel(stack[0]!);
+  if (!last) return null;
+  rootLists.push(last);
+  return rootLists;
 }
 
 export type TableAlign = 'left' | 'right' | 'center' | null;
@@ -3759,7 +3878,7 @@ function pmListItemChildNodes(child: ParsedListItemChild): ProseNode {
 function pmListFromParsed(list: ParsedFlatList): ProseNode {
   const items = list.items.map((item) => {
     const children: ProseNode[] = item.children.map(pmListItemChildNodes);
-    if (item.nested) children.push(pmListFromParsed(item.nested));
+    for (const nested of item.nestedLists) children.push(pmListFromParsed(nested));
     if (children.length === 0) children.push(schema.nodes.paragraph.create());
     return schema.nodes.list_item.create({ checked: item.checked }, children);
   });
