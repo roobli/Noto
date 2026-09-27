@@ -180,6 +180,7 @@ describe('markdown golden gates — fixture inventory', () => {
       'simple-hard-breaks-in-footnotes.md',
       'simple-hard-breaks-in-lists.md',
       'simple-hard-breaks-in-quotes.md',
+      'simple-heavy-callout-titles.md',
       'simple-image-alts.md',
       'simple-inline-html.md',
       'simple-inline-links.md',
