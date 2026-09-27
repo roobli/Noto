@@ -227,7 +227,7 @@ describe('from-engine IR helpers', () => {
     expect(parseSimpleQuoteSource('> - item')).toEqual([
       { type: 'list', list: {
         ordered: false, bullet: '-', delimiter: null, start: 1, spread: false,
-        items: [{ checked: null, paragraphs: ['item'], nested: null }],
+        items: [{ checked: null, children: [{ type: 'paragraph', text: 'item' }], nested: null }],
       } },
     ]);
     expect(parseSimpleQuoteSource('> intro\n> - a\n> - b\n> out')).toEqual([
@@ -235,8 +235,8 @@ describe('from-engine IR helpers', () => {
       { type: 'list', list: {
         ordered: false, bullet: '-', delimiter: null, start: 1, spread: false,
         items: [
-          { checked: null, paragraphs: ['a'], nested: null },
-          { checked: null, paragraphs: ['b'], nested: null },
+          { checked: null, children: [{ type: 'paragraph', text: 'a' }], nested: null },
+          { checked: null, children: [{ type: 'paragraph', text: 'b' }], nested: null },
         ],
       } },
       { type: 'paragraph', text: 'out' },
@@ -245,10 +245,10 @@ describe('from-engine IR helpers', () => {
       { type: 'list', list: {
         ordered: false, bullet: '-', delimiter: null, start: 1, spread: false,
         items: [{
-          checked: null, paragraphs: ['outer'],
+          checked: null, children: [{ type: 'paragraph', text: 'outer' }],
           nested: {
             ordered: false, bullet: '-', delimiter: null, start: 1, spread: false,
-            items: [{ checked: null, paragraphs: ['nested'], nested: null }],
+            items: [{ checked: null, children: [{ type: 'paragraph', text: 'nested' }], nested: null }],
           },
         }],
       } },
@@ -280,7 +280,7 @@ describe('from-engine IR helpers', () => {
           delimiter: null,
           start: 1,
           spread: false,
-          items: [{ checked: null, paragraphs: ['item\nlazy cont'], nested: null }],
+          items: [{ checked: null, children: [{ type: 'paragraph', text: 'item\nlazy cont' }], nested: null }],
         },
       },
     ]);
@@ -306,7 +306,7 @@ describe('from-engine IR helpers', () => {
       { type: 'quote', children: [{ type: 'paragraph', text: 'nest' }] },
       { type: 'list', list: {
         ordered: false, bullet: '-', delimiter: null, start: 1, spread: false,
-        items: [{ checked: null, paragraphs: ['item'], nested: null }],
+        items: [{ checked: null, children: [{ type: 'paragraph', text: 'item' }], nested: null }],
       } },
     ]);
     expect(parseSimpleQuoteSource('> > nest\n> **bold**')).not.toBeNull();
@@ -327,8 +327,8 @@ describe('from-engine IR helpers', () => {
     expect(parseSimpleFlatListSource('- a\n- b')).toEqual({
       ordered: false, bullet: '-', delimiter: null, start: 1, spread: false,
       items: [
-        { checked: null, paragraphs: ['a'], nested: null },
-        { checked: null, paragraphs: ['b'], nested: null },
+        { checked: null, children: [{ type: 'paragraph', text: 'a' }], nested: null },
+        { checked: null, children: [{ type: 'paragraph', text: 'b' }], nested: null },
       ],
     });
     expect(parseSimpleFlatListSource('* star\n* two')?.bullet).toBe('*');
@@ -339,31 +339,31 @@ describe('from-engine IR helpers', () => {
     expect(parseSimpleFlatListSource('1) a\n2) b')?.delimiter).toBe(')');
     expect(parseSimpleFlatListSource('- a\n\n- b')?.spread).toBe(true);
     expect(parseSimpleFlatListSource('- [ ] todo\n- [x] done')?.items).toEqual([
-      { checked: false, paragraphs: ['todo'], nested: null },
-      { checked: true, paragraphs: ['done'], nested: null },
+      { checked: false, children: [{ type: 'paragraph', text: 'todo' }], nested: null },
+      { checked: true, children: [{ type: 'paragraph', text: 'done' }], nested: null },
     ]);
-    expect(parseSimpleFlatListSource('- a\n  continued')?.items[0]?.paragraphs[0]).toBe('a\ncontinued');
+    expect(parseSimpleFlatListSource('- a\n  continued')?.items[0]?.children[0]).toEqual({ type: 'paragraph', text: 'a\ncontinued' });
     expect(parseSimpleFlatListSource('- a\n  - nested')).toEqual({
       ordered: false, bullet: '-', delimiter: null, start: 1, spread: false,
       items: [{
-        checked: null, paragraphs: ['a'],
+        checked: null, children: [{ type: 'paragraph', text: 'a' }],
         nested: {
           ordered: false, bullet: '-', delimiter: null, start: 1, spread: false,
-          items: [{ checked: null, paragraphs: ['nested'], nested: null }],
+          items: [{ checked: null, children: [{ type: 'paragraph', text: 'nested' }], nested: null }],
         },
       }],
     });
     expect(parseSimpleFlatListSource('- a\n  - nested\n    - deep')).toEqual({
       ordered: false, bullet: '-', delimiter: null, start: 1, spread: false,
       items: [{
-        checked: null, paragraphs: ['a'],
+        checked: null, children: [{ type: 'paragraph', text: 'a' }],
         nested: {
           ordered: false, bullet: '-', delimiter: null, start: 1, spread: false,
           items: [{
-            checked: null, paragraphs: ['nested'],
+            checked: null, children: [{ type: 'paragraph', text: 'nested' }],
             nested: {
               ordered: false, bullet: '-', delimiter: null, start: 1, spread: false,
-              items: [{ checked: null, paragraphs: ['deep'], nested: null }],
+              items: [{ checked: null, children: [{ type: 'paragraph', text: 'deep' }], nested: null }],
             },
           }],
         },
@@ -375,12 +375,22 @@ describe('from-engine IR helpers', () => {
     expect(parseSimpleFlatListSource('- multi\n\n  para\n- next')).toEqual({
       ordered: false, bullet: '-', delimiter: null, start: 1, spread: true,
       items: [
-        { checked: null, paragraphs: ['multi', 'para'], nested: null },
-        { checked: null, paragraphs: ['next'], nested: null },
+        { checked: null, children: [{ type: 'paragraph', text: 'multi' }, { type: 'paragraph', text: 'para' }], nested: null },
+        { checked: null, children: [{ type: 'paragraph', text: 'next' }], nested: null },
       ],
     });
     expect(parseSimpleFlatListSource('- a\n\nlazy')).toBeNull();
-    expect(parseSimpleFlatListSource('- a\n\n  > q')).toBeNull();
+    expect(parseSimpleFlatListSource('- a\n\n  > q')).toEqual({
+      ordered: false, bullet: '-', delimiter: null, start: 1, spread: true,
+      items: [{
+        checked: null,
+        children: [
+          { type: 'paragraph', text: 'a' },
+          { type: 'quote', children: [{ type: 'paragraph', text: 'q' }] },
+        ],
+        nested: null,
+      }],
+    });
     expect(parseSimpleTableSource('| Left | Right |\n| :--- | ---: |\n| alpha | 1 |\n| beta | 2 |')).toEqual({
       align: ['left', 'right'],
       rows: [['Left', 'Right'], ['alpha', '1'], ['beta', '2']],
@@ -733,7 +743,7 @@ describe('blockFromEngineSpan', () => {
       delimiter: null,
       start: 1,
       spread: false,
-      items: [{ checked: null, paragraphs: ['foo\nbar'], nested: null }],
+      items: [{ checked: null, children: [{ type: 'paragraph', text: 'foo\nbar' }], nested: null }],
     });
 
     const hb = blockFromEngineSpan('bullet-list', '- a  \n  b');
@@ -785,8 +795,8 @@ describe('blockFromEngineSpan', () => {
     expect(parseSimpleFlatListSource('- multi\n\n  para\n- next')).toEqual({
       ordered: false, bullet: '-', delimiter: null, start: 1, spread: true,
       items: [
-        { checked: null, paragraphs: ['multi', 'para'], nested: null },
-        { checked: null, paragraphs: ['next'], nested: null },
+        { checked: null, children: [{ type: 'paragraph', text: 'multi' }, { type: 'paragraph', text: 'para' }], nested: null },
+        { checked: null, children: [{ type: 'paragraph', text: 'next' }], nested: null },
       ],
     });
     // Soft-wrap inside the second paragraph.
@@ -794,9 +804,27 @@ describe('blockFromEngineSpan', () => {
     expect(multiWrap?.attrs.spread).toBe(true);
     expect(multiWrap?.child(0).childCount).toBe(2);
     expect(multiWrap?.child(0).child(1).textContent).toBe('b\nc');
-    // Simple marks in extra paragraphs are owned; structural / lazy-after-blank stay dialect.
+    // Simple marks in extra paragraphs are owned; quote/fence/heading structural owned;
+    // HTML/table/hr structural + lazy-after-blank stay dialect.
     expect(blockFromEngineSpan('bullet-list', '- a\n\n  **bold**')?.child(0).child(1).textContent).toBe('bold');
-    expect(blockFromEngineSpan('bullet-list', '- a\n\n  > quote')).toBeNull();
+    const withQuote = blockFromEngineSpan('bullet-list', '- a\n\n  > quote');
+    expect(withQuote?.type.name).toBe('bullet_list');
+    expect(withQuote?.attrs.spread).toBe(true);
+    expect(withQuote?.child(0).childCount).toBe(2);
+    expect(withQuote?.child(0).child(0).textContent).toBe('a');
+    expect(withQuote?.child(0).child(1).type.name).toBe('blockquote');
+    expect(withQuote?.child(0).child(1).textContent).toBe('quote');
+    const withFence = blockFromEngineSpan('bullet-list', '- a\n\n  ```\n  code\n  ```');
+    expect(withFence?.child(0).child(1).type.name).toBe('code_block');
+    expect(withFence?.child(0).child(1).textContent).toBe('code');
+    const withHeading = blockFromEngineSpan('bullet-list', '- a\n\n  ## Head');
+    expect(withHeading?.child(0).child(1).type.name).toBe('heading');
+    expect(withHeading?.child(0).child(1).attrs.level).toBe(2);
+    expect(withHeading?.child(0).child(1).textContent).toBe('Head');
+    // Tight quote (no blank) owned; empty+blank+structural stays dialect (micromark).
+    expect(blockFromEngineSpan('bullet-list', '- a\n  > q')?.child(0).child(1).type.name).toBe('blockquote');
+    expect(blockFromEngineSpan('bullet-list', '- \n\n  > q')).toBeNull();
+    expect(blockFromEngineSpan('bullet-list', '- a\n\n  <div>x</div>')).toBeNull();
     expect(blockFromEngineSpan('bullet-list', '- a\n\nlazy')).toBeNull();
     // Multi-para then nested list.
     const multiNest = blockFromEngineSpan('bullet-list', '- a\n\n  b\n  - nest');

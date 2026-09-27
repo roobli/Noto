@@ -180,7 +180,7 @@ split, matching micromark).
 
 Same-indent sibling lists with a different bullet/delimiter split into new spans under `@roobli/md` ≥ v0.1.16 (Phase 19; Phase 16 indented mixed nests unchanged).
 
-Cross-family same-indent sibling marker mixes within one span, structural children inside list items (quote / fence / heading / …), thirty-eight+ nests, and footnote-ref callout titles still need dialect (ragged body rows + pipe-optional GFM tables + simple HTML/math in table cells + simple image alts + simple inline math + multi-paragraph list items are engine-owned; Phase 17 mismatched header/delim are paragraphs, not tables; list-steal `- | -` pipe-less delimiters stay dialect)
+Cross-family same-indent sibling marker mixes within one span, HTML/table/hr children inside list items, thirty-eight+ nests, and footnote-ref callout titles still need dialect (ragged body rows + pipe-optional GFM tables + simple HTML/math in table cells + simple image alts + simple inline math + multi-paragraph list items + structural quote/fence/ATX-heading children inside list items are engine-owned; Phase 17 mismatched header/delim are paragraphs, not tables; list-steal `- | -` pipe-less delimiters stay dialect)
 enrich + `from-mdast` (empty footnote bodies, nests at any depth incl. mixed-marker,
 nested plain quotes, simple lists-in-quotes, hard breaks in quotes, lazy nest
 continuation via fewer `>` **or true no-`>`**, hard breaks inside simple lists /
@@ -192,7 +192,7 @@ Does **not** flip default-on.
 ## API (additions for Cut 5)
 
 - `pm/from-engine.ts` — `blockFromEngineSpan` / `canSkipDialectEnrich` /
-  `engineSemanticKey` / fence+heading+simple-quote (incl. nested plain + lists-in-quotes + hard breaks + lazy nest)+flat-or-nested-list (incl. hard breaks + multi-paragraph items)+simple-table+simple-footnote-def (incl. empty + hard breaks) source parsers
+  `engineSemanticKey` / fence+heading+simple-quote (incl. nested plain + lists-in-quotes + hard breaks + lazy nest)+flat-or-nested-list (incl. hard breaks + multi-paragraph items + structural quote/fence/ATX-heading children)+simple-table+simple-footnote-def (incl. empty + hard breaks) source parsers
 - `createEnrichFlags(length, enrichedExclusiveTo, spans?)` — optional spans
   mark engine-owned remainder as already enriched
 - `enrichSpansInRange` — skips micromark for engine-owned spans; contiguous
@@ -215,12 +215,13 @@ Does **not** flip default-on.
    nested lists (same-family or mixed-marker, any depth, incl. hard breaks + multi-paragraph items), nested plain quotes,
    simple lists-in-quotes, plain / simple-marked GFM alerts / callouts, hard
    breaks in quotes, lazy nest continuation via fewer `>` **and true no-`>`**,
-   and hard breaks in simple footnotes are engine-owned. Structural children
-   inside list items and footnote-ref callout titles stay dialect.
+   and hard breaks in simple footnotes are engine-owned. Structural quote /
+   fence / ATX-heading children inside list items are engine-owned; HTML/table/hr
+   children inside list items and footnote-ref callout titles stay dialect.
 4. Keep growing `tests/fixtures/markdown-golden/` before default-on; GFM inline,
    nested lists, simple-nested-lists (depth-2+), simple-nested-quotes,
    simple-lists-in-quotes, simple-hard-breaks-in-quotes,
-   simple-lazy-continuations-in-quotes, simple-hard-breaks-in-lists, simple-multi-block-list-items,
+   simple-lazy-continuations-in-quotes, simple-hard-breaks-in-lists, simple-multi-block-list-items, simple-list-item-structural-children,
    simple-hard-breaks-in-footnotes, simple-callouts,
    HTML blocks, callout edges, hr/setext, link-defs, simple quotes, simple flat
    lists, simple GFM tables, simple footnote-defs, empty footnote-defs, CJK
