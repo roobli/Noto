@@ -150,7 +150,7 @@ export function hasHardBreak(markdown: string): boolean {
  * link-definitions; simple footnote-definitions (incl. hard breaks + simple
  * marks); simple quotes (incl. nested, hard breaks, lists-in-quotes, plain /
  * simple-marked / collapsible / plain-titled / simple-marked-title / heavy-title GFM alerts / callouts, lazy nest + no-`>` lazy); simple flat
- * or nested lists (same-family or mixed-marker, any depth, incl. hard breaks + simple marks + multi-paragraph items + structural quote/fence/ATX-heading/HTML/table/hr children + setext-shaped tight `---`/`===` after a paragraph + cross-family same-indent sibling marker mixes);
+ * or nested lists (same-family or mixed-marker, any depth, incl. hard breaks + simple marks + multi-paragraph items + lazy soft-wrap after blank + structural quote/fence/ATX-heading/HTML/table/hr children + setext-shaped tight `---`/`===` after a paragraph + cross-family same-indent sibling marker mixes);
  * simple GFM tables (plain or simple-marked cells incl. escaped pipes; ragged body rows; pipe-optional leading `|`); paragraph / heading when
  * plain or simple-marked (hard breaks + simple inline links / images +
  * simple reference links / images + simple bare http(s) + angle-bracket
@@ -3179,11 +3179,14 @@ function peekTableDelimiter(
  * (quotes); a single-list span still uses this helper (Phase 19 already splits
  * top-level mixes into separate IR spans). Loose lists set `spread` on that
  * level. Task checkboxes are allowed. Returns `null` when dialect enrich is
- * still needed (heavy inline / lazy line after a blank / root-level marker
- * mix). Setext-shaped tight `---` / `===` after a paragraph promote that
- * paragraph to a heading (micromark). Empty-item + blank + structural is closed
- * at split (`@roobli/md` ≥ v0.1.17 Phase 20 — outside the list span); the refuse
- * below stays as a safety net.
+ * still needed (heavy inline / under-indented structural nest-exit / root-level
+ * marker mix). Lazy soft-wrap of an open paragraph after a blank (unindented or
+ * under-indented once that paragraph was opened with proper indent) is owned.
+ * A new paragraph after a blank still needs proper indent (safety refuse when a
+ * mis-split feeds bare lazy-after-blank). Setext-shaped tight `---` / `===` after
+ * a paragraph promote that paragraph to a heading (micromark). Empty-item + blank
+ * + structural is closed at split (`@roobli/md` ≥ v0.1.17 Phase 20 — outside the
+ * list span); the refuse below stays as a safety net.
  */
 export function parseSimpleFlatListSource(md: string): ParsedFlatList | null {
   const lists = parseSimpleFlatListsSource(md);
@@ -3537,8 +3540,9 @@ export function parseSimpleFlatListsSource(md: string): ParsedFlatList[] | null 
 
     // Continuation of the current deepest item: soft-wrap, new paragraph after
     // a blank, or an owned structural child (quote / fence / ATX heading / HTML /
-    // table / hr). Lazy after a blank is not in the item (CommonMark) — refuse
-    // so the span stays dialect rather than mis-owning.
+    // table / hr). A brand-new paragraph after a blank needs proper indent
+    // (CommonMark); bare lazy-after-blank without that indent is outside the
+    // list at split — refuse if a mis-split still feeds it here.
     if (!sawItem || stack.length === 0) return null;
     const top = stack[stack.length - 1]!;
     if (top.items.length === 0) return null;
@@ -3546,7 +3550,7 @@ export function parseSimpleFlatListsSource(md: string): ParsedFlatList[] | null 
 
     if (top.pendingBlank) {
       const rest = listContinuationRest(line, top.indent);
-      if (rest === null) return null; // lazy / weird indent after blank → dialect
+      if (rest === null) return null; // new para after blank needs content indent
       const structural = ownedStructuralKind(rest);
       if (structural) {
         // Empty item + blank + structural is outside the list at split
@@ -3584,49 +3588,68 @@ export function parseSimpleFlatListsSource(md: string): ParsedFlatList[] | null 
     }
 
     let rest = listContinuationRest(line, top.indent);
+    // Under-indented / unindented soft-wrap of an *open* paragraph (incl. the
+    // paragraph that started after a blank with proper indent). Do not run
+    // setext / structural ownership on this path — under-indented `---` / ATX /
+    // fences are often re-homed on a parent item (micromark); stay dialect.
+    let lazySoftWrap = false;
     if (rest === null) {
-      // CommonMark lazy continuation (Phase 13 / @roobli/md v0.1.9): unindented
-      // line continues the innermost open item. Partial weird indent → dialect.
-      if (/^[ \t]/.test(line)) return null;
-      rest = line;
-    }
-    // Tight continuous setext underline after a paragraph → heading (micromark).
-    // Spaced `- - -` / `***` / `___` fall through as thematic breaks; empty
-    // placeholder paras (no task box) fall through so `---` alone stays hr.
-    if (isSetextUnderlineRest(rest)) {
-      const promoted = promoteTrailingParagraphToSetext(cur, rest);
-      if (promoted === null) return null;
-      if (promoted) {
-        top.pendingBlank = false;
-        i += 1;
-        continue;
+      const openPara = cur.children[cur.children.length - 1];
+      if (openPara && openPara.type === 'paragraph') {
+        const stripped = line.replace(/^[ \t]+/u, '');
+        if (stripped.length === 0) return null;
+        if (restLooksStructural(stripped) || tryInlineNodesFromSource(stripped) === null) {
+          return null;
+        }
+        rest = stripped;
+        lazySoftWrap = true;
+      } else if (/^[ \t]/.test(line)) {
+        // Partial weird indent after a structural child → dialect.
+        return null;
+      } else {
+        // Fully unindented after structural: may start a new paragraph (existing).
+        rest = line;
       }
     }
-    const structural = ownedStructuralKind(rest);
-    if (structural) {
-      // Tight structural child (no blank). Drop empty marker placeholder.
-      const collected = collectStructuralChild(lines, i, top.indent, rest);
-      if (!collected) return null;
-      dropEmptyPlaceholder(cur);
-      cur.children.push(collected.child);
-      top.pendingBlank = false;
-      i = collected.nextIdx;
-      continue;
-    }
-    // Pipe-optional table header (no leading `|`) as a tight continuation.
-    if (rest.includes('|')) {
-      const tableCollected = tryCollectTableChild(lines, i, top.indent, rest);
-      if (tableCollected) {
+    if (!lazySoftWrap) {
+      // Tight continuous setext underline after a paragraph → heading (micromark).
+      // Spaced `- - -` / `***` / `___` fall through as thematic breaks; empty
+      // placeholder paras (no task box) fall through so `---` alone stays hr.
+      if (isSetextUnderlineRest(rest)) {
+        const promoted = promoteTrailingParagraphToSetext(cur, rest);
+        if (promoted === null) return null;
+        if (promoted) {
+          top.pendingBlank = false;
+          i += 1;
+          continue;
+        }
+      }
+      const structural = ownedStructuralKind(rest);
+      if (structural) {
+        // Tight structural child (no blank). Drop empty marker placeholder.
+        const collected = collectStructuralChild(lines, i, top.indent, rest);
+        if (!collected) return null;
         dropEmptyPlaceholder(cur);
-        cur.children.push(tableCollected.child);
+        cur.children.push(collected.child);
         top.pendingBlank = false;
-        i = tableCollected.nextIdx;
+        i = collected.nextIdx;
         continue;
       }
-      if (peekTableDelimiter(lines, i, top.indent)) return null;
-    }
-    if (restLooksStructural(rest) || tryInlineNodesFromSource(rest) === null) {
-      return null;
+      // Pipe-optional table header (no leading `|`) as a tight continuation.
+      if (rest.includes('|')) {
+        const tableCollected = tryCollectTableChild(lines, i, top.indent, rest);
+        if (tableCollected) {
+          dropEmptyPlaceholder(cur);
+          cur.children.push(tableCollected.child);
+          top.pendingBlank = false;
+          i = tableCollected.nextIdx;
+          continue;
+        }
+        if (peekTableDelimiter(lines, i, top.indent)) return null;
+      }
+      if (restLooksStructural(rest) || tryInlineNodesFromSource(rest) === null) {
+        return null;
+      }
     }
     const last = cur.children[cur.children.length - 1];
     if (last && last.type === 'paragraph') {

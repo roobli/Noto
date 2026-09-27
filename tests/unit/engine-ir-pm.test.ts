@@ -870,7 +870,7 @@ describe('blockFromEngineSpan', () => {
     expect(multiWrap?.child(0).child(1).textContent).toBe('b\nc');
     // Simple marks in extra paragraphs are owned; quote/fence/heading/HTML/table/hr structural owned.
     // Empty+blank+structural closed at split (@roobli/md ≥ v0.1.17); setext tight `---` owned;
-    // lazy-after-blank stay dialect. Combined empty+blank+structural markdown still refuses (safety).
+    // Combined empty+blank+structural markdown still refuses (safety). Bare lazy-after-blank without indented para stays dialect.
     expect(blockFromEngineSpan('bullet-list', '- a\n\n  **bold**')?.child(0).child(1).textContent).toBe('bold');
     const withQuote = blockFromEngineSpan('bullet-list', '- a\n\n  > quote');
     expect(withQuote?.type.name).toBe('bullet_list');
@@ -940,6 +940,26 @@ describe('blockFromEngineSpan', () => {
     // Tight setext `---` is owned above; empty+blank+structural still refuses.
     expect(blockFromEngineSpan('bullet-list', '- \n\n  <div>x</div>')).toBeNull();
     expect(blockFromEngineSpan('bullet-list', '- a\n\nlazy')).toBeNull();
+    // Lazy soft-wrap of a paragraph opened after a blank (unindented / under-indented).
+    const lazyAfter = blockFromEngineSpan('bullet-list', '- multi\n\n  para\nlazy after blank');
+    expect(lazyAfter?.type.name).toBe('bullet_list');
+    expect(lazyAfter?.attrs.spread).toBe(true);
+    expect(lazyAfter?.child(0).childCount).toBe(2);
+    expect(lazyAfter?.child(0).child(0).textContent).toBe('multi');
+    expect(lazyAfter?.child(0).child(1).textContent).toBe('para\nlazy after blank');
+    expect(blockFromEngineSpan('ordered-list', '1. a\n\n   b\nlazy')?.child(0).child(1).textContent).toBe('b\nlazy');
+    expect(blockFromEngineSpan('task-list', '- [ ] a\n\n  b\nlazy')?.child(0).child(1).textContent).toBe('b\nlazy');
+    expect(blockFromEngineSpan('bullet-list', '- a\n\n  **x**\nlazy')?.child(0).child(1).textContent).toBe('x\nlazy');
+    // Nested under-indent continues the nest paragraph (micromark).
+    const nestLazy = blockFromEngineSpan('bullet-list', '- outer\n  - a\n\n    b\n  lazy');
+    expect(nestLazy?.type.name).toBe('bullet_list');
+    expect(nestLazy?.child(0).child(1).type.name).toBe('bullet_list');
+    expect(nestLazy?.child(0).child(1).child(0).childCount).toBe(2);
+    expect(nestLazy?.child(0).child(1).child(0).child(1).textContent).toBe('b\nlazy');
+    expect(blockFromEngineSpan('bullet-list', '- a\n\n  para\n===')?.child(0).child(1).textContent).toBe('para\n===');
+    // Under-indented structural nest-exit stays dialect.
+    expect(blockFromEngineSpan('bullet-list', '- outer\n  - a\n\n    b\n  ---')).toBeNull();
+    expect(blockFromEngineSpan('bullet-list', '- outer\n  - a\n\n    b\n  ## H')).toBeNull();
     // Multi-para then nested list.
     const multiNest = blockFromEngineSpan('bullet-list', '- a\n\n  b\n  - nest');
     expect(multiNest?.attrs.spread).toBe(true);
