@@ -12,10 +12,12 @@
  * edit which would silently merge or split blocks, for example a heading edited
  * into plain text that then absorbs the paragraph beneath it.
  *
- * When `NOTO_MARKDOWN_ENGINE=roobli-md`, block-mode saves (identity, single-
- * block, multi-block insert/delete) route the byte assembly through `@roobli/md`
- * `serializeDocument` (micromark path unchanged when the flag is off). Source
- * mode stays on the Noto serializer.
+ * Product default is `@roobli/md`: block-mode saves (identity, single-block,
+ * multi-block insert/delete) route byte assembly through `@roobli/md`
+ * `serializeDocument`, then a host reparse proof refuses boundary damage
+ * (unterminated fences swallowing neighbours). Set
+ * `NOTO_MARKDOWN_ENGINE=micromark` for the legacy path. Source mode stays on
+ * the Noto serializer.
  */
 
 import { parseSingleBlock } from './blocks';
@@ -539,6 +541,31 @@ function serializeBlocksViaRoobli(
   const reparsed = parseDocument(engineResult.outputBytes);
   if (reparsed.status !== 'parsed') {
     return fail(document, 'REPARSE_MISMATCH', reparsed.message);
+  }
+
+  // Same proof as the micromark windowed check: every unit must survive as
+  // exactly one block with the markdown the transaction asked for. The engine
+  // only validates dirty units in isolation (`parseSingleBlock`), so an
+  // unterminated fence that swallows neighbours would otherwise be accepted.
+  const expected = units.map((unit) => unitMarkdown(unit, document));
+  if (expected.some((markdown) => markdown === null)) {
+    return fail(document, 'REPARSE_MISMATCH', 'An unchanged unit lost the block it referenced.');
+  }
+  if (reparsed.document.blocks.length !== units.length) {
+    return fail(
+      document,
+      'REPARSE_MISMATCH',
+      `Block structure changed on reparse (${units.length} units → ${reparsed.document.blocks.length} blocks).`,
+    );
+  }
+  for (let index = 0; index < units.length; index += 1) {
+    if (toLf(reparsed.document.blocks[index]!.markdown) !== toLf(expected[index]!)) {
+      return fail(
+        document,
+        'REPARSE_MISMATCH',
+        `Block ${index + 1} would not have survived a reparse unchanged.`,
+      );
+    }
   }
 
   return {

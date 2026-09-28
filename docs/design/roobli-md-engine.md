@@ -22,12 +22,13 @@ mdast dump.
 pnpm must allow its `prepare` (tsc) build — see `allowBuilds` in
 `pnpm-workspace.yaml`.
 
-## Feature flag (default off)
+## Feature flag (default on)
 
 | Switch | Effect |
 | ------ | ------ |
-| unset / anything else | micromark path (product default) |
-| `NOTO_MARKDOWN_ENGINE=roobli-md` | route `splitBlocks` / `parseSingleBlock`, flagged `replaceMarkdown`, and block-mode `serializeDocument` (identity / single-block / multi-block insert-delete) through the adapter; `source` mode stays on Noto |
+| unset / anything else | `@roobli/md` path (product default) |
+| `NOTO_MARKDOWN_ENGINE=micromark` | force legacy micromark path |
+| `NOTO_MARKDOWN_ENGINE=roobli-md` | explicit `@roobli/md` (same as default) |
 | `setMarkdownEngineForTests('roobli-md' | 'micromark' | null)` | unit-test override |
 
 Implementation:
@@ -36,16 +37,15 @@ Implementation:
 - `src/shared/markdown/v3/roobli-md-adapter.ts` — thin mapping
 - `src/shared/markdown/v3/blocks.ts` — `splitBlocksMicromark` baseline; `splitBlocks` respects the flag
 
-### How to enable locally
+### Escape hatch (legacy micromark)
 
 ```bash
-NOTO_MARKDOWN_ENGINE=roobli-md pnpm start
-# or for unit tests that should exercise the adapter path:
-NOTO_MARKDOWN_ENGINE=roobli-md pnpm test
+NOTO_MARKDOWN_ENGINE=micromark pnpm start
+NOTO_MARKDOWN_ENGINE=micromark pnpm test
 ```
 
-Product / CI stay on micromark until broader golden gates pass; tight adjacent
-quotes/callouts and native indented-code match micromark (`@roobli/md` v0.1.2+).
+Tight adjacent quotes/callouts and native indented-code match micromark
+(`@roobli/md` v0.1.2+). Intentional leftover dialect: thirty-eight+ nests only.
 
 ## Adapter mapping
 
@@ -65,8 +65,8 @@ snake_case), bare http(s) autolinks, table delimiter widening (vault
 three-dash; content cells stay unpadded), line-prefix offset alignment
 (0–3 leading ASCII spaces → leading/gaps, micromark parity), and
 `sourceEditBetween` / `reparseFromText` host helpers. Noto’s
-`syntax.ts` remains the micromark-default path serializer until the flagged
-backend is default-on.
+`syntax.ts` remains the micromark-path serializer when
+`NOTO_MARKDOWN_ENGINE=micromark`.
 
 ## Parity tests
 
@@ -120,50 +120,48 @@ kept out of the strict directory; silent divergence fails the gate loudly
 # golden gates only
 pnpm exec vitest run tests/unit/markdown-golden-gates.test.ts
 
-# full unit suite (default engine still micromark)
+# full unit suite (product default = @roobli/md)
 pnpm test
 
-# exercise the flagged product path locally (does not change CI default)
-NOTO_MARKDOWN_ENGINE=roobli-md pnpm start
+# force legacy micromark locally
+NOTO_MARKDOWN_ENGINE=micromark pnpm start
 ```
 
 ### What “green gates” mean
 
 Green means every fixture in `markdown-golden/` matches on split boundaries,
 identity serialize, and multi-block insert/delete/multi-dirty serialize under
-both engines. That is necessary but **not** sufficient for default-on:
-open-path / `parseDocument` wire nodes and a broader corpus still block
-flipping the product default. Expand the fixture set (and document any
-intentional diffs) before considering `NOTO_MARKDOWN_ENGINE` default
-`roobli-md`.
+both engines. Product default is now `@roobli/md`; keep expanding the fixture
+set and document any intentional diffs. Escape hatch:
+`NOTO_MARKDOWN_ENGINE=micromark`.
 
 
-## Default-on checklist (do **not** flip yet)
+## Default-on (landed)
 
-**DRAFT FLIP PR:** product default proposed as `@roobli/md` (see `engine-flag.ts`).
-Leave this PR unmerged until Dylan/lykoris review. Intentional leftover after
-flip: thirty-eight+ nests only.
+**Product default is `@roobli/md`** (see `engine-flag.ts`). Escape hatch:
+`NOTO_MARKDOWN_ENGINE=micromark`. Intentional leftover dialect:
+**thirty-eight+ nests only** (`MAX_MARK_NEST`=37). Host serialize still runs a
+reparse proof so unterminated fences that would swallow neighbours are refused
+(`REPARSE_MISMATCH`), matching the micromark windowed check.
 
-Product default historically stayed micromark until **all** of the following were green and
-reviewed:
+Gates that were green before the flip:
 
 | Gate | Status |
 | ---- | ------ |
 | Split / identity / multi-block golden on current `markdown-golden/` | Green (expanded; keep growing) |
 | Broader corpus / vault-shaped edges (GFM inline, nested lists, HTML, callout edges, link-defs, simple quotes, simple flat lists, simple GFM tables, simple footnote-defs, empty footnote-defs, CJK emphasis, hard-breaks, images, empty/meta fences, escapes, table-align, ordered-start, inline HTML, vault-callout-footnote-refs, typora-mixed-owned-edges) in golden | Landed this cycle; more edges welcome |
-| Flagged open-path deferred + viewport enrich + IR→PM leaf/plain(incl. hard-break)/link-def/simple-footnote(incl. empty + hard breaks)/simple-quote(incl. nested + lists-in-quotes + hard breaks)/flat-or-nested-list(any depth, incl. hard breaks + multi-paragraph items + lazy-after-blank + nest-exit)/simple-table(incl. ragged body)/simple inline HTML(incl. multi-line)+math | Landed (still flagged-only) |
+| Flagged open-path deferred + viewport enrich + IR→PM leaf/plain(incl. hard-break)/link-def/simple-footnote(incl. empty + hard breaks)/simple-quote(incl. nested + lists-in-quotes + hard breaks)/flat-or-nested-list(any depth, incl. hard breaks + multi-paragraph items + lazy-after-blank + nest-exit)/simple-table(incl. ragged body)/simple inline HTML(incl. multi-line)+math | Landed (now product default) |
 | Flagged serialize (identity / single / multi) + `reparseFromText` host wiring | Landed |
-| Packaged / e2e open feel on medium under the flag | Not a flip gate alone; measure before flip |
+| Packaged / e2e open feel on medium | Measure on alphas after default-on; not a 0.0.3 gate |
 | Intentional diffs documented in `markdown-golden/README.md` | List-steal pipe-less closed (v0.1.18 + `simple-list-steal-pipe-less-tables.md`); empty list item + blank + structural outside closed (v0.1.17 + `simple-empty-list-item-structural.md`); same-indent list marker/delimiter split closed (v0.1.16 + `simple-same-indent-list-markers.md`); table header/delim columns closed (v0.1.14 + `simple-table-header-delim-columns.md`); mixed-marker nested lists closed (v0.1.13 + `simple-mixed-marker-nested-lists.md`); setext-`---` closed (v0.1.12 + `simple-setext-dash-headings.md`) |
 
-**Prefer not flipping** until golden coverage is obviously broader than the
-current curated set. If flipped tomorrow, still-dialect: **thirty-eight+ nests**
-(intentional `MAX_MARK_NEST`=37 cap only). Footnote-ref callout titles/bodies
-are **engine-owned when doc-wide defs are known** (open enrich / `docFromSpans`
-/ paste multi-block): promote `[^id]` iff a matching def exists, else literal
+**Still-dialect after flip:** **thirty-eight+ nests** (intentional
+`MAX_MARK_NEST`=37 cap only). Footnote-ref callout titles/bodies are
+**engine-owned when doc-wide defs are known** (open enrich / `docFromSpans` /
+paste multi-block): promote `[^id]` iff a matching def exists, else literal
 (micromark parity); single-span IR→PM without known ids still falls through to
-dialect. List-steal pipe-less `- | -` closed at split (v0.1.18). Optional local:
-`NOTO_MARKDOWN_ENGINE=roobli-md`.
+dialect. List-steal pipe-less `- | -` closed at split (v0.1.18). Escape hatch:
+`NOTO_MARKDOWN_ENGINE=micromark`.
 
 ## Bridge docs (engine repo)
 
@@ -174,8 +172,8 @@ dialect. List-steal pipe-less `- | -` closed at split (v0.1.18). Optional local:
 
 ## Status
 
-**Adapter spike landed (default-off).** `@roobli/md` v0.1.18 is the pinned backend; this draft makes it the product default
-(escape hatch: `NOTO_MARKDOWN_ENGINE=micromark`). Quote/callout and
+**Product default is `@roobli/md`.** Pin is `@roobli/md` v0.1.18; escape hatch
+`NOTO_MARKDOWN_ENGINE=micromark`. Quote/callout and
 indented-code split parity are closed; engine serialize dialect (hard-break /
 list-marker / verbatim / bare autolink / table delimiters / Phase 12 CJK
 emphasis), Phase 10 line-prefix offsets, Phase 11 `reparseFromText`, and
@@ -237,12 +235,11 @@ images** (`[text][id]` / `[text][]` / `![alt][id]` / `![alt][]`), **simple bare
 http(s) autolinks**, **simple angle-bracket http(s) autolinks**, **simple www. autolinks**, **simple email autolinks** (bare + angle / mailto), **simple wiki links** (`[[target]]` / `[[target|alias]]` as literal text; decoration
 plugin owns display), and **simple backslash escapes** (ASCII punctuation + trailing-`\` hard breaks), including **escaped pipes in simple GFM table cells**, **ragged body rows on
 simple GFM tables**, and **simple inline HTML** (single- or multi-line tags / comments / PI / declarations / CDATA as `inline_html` atoms), and **simple inline math** (`$…$` / `$$…$$` as `math_inline`), are engine-owned.
-Product default stays micromark.
+Product default is `@roobli/md` (escape hatch: `NOTO_MARKDOWN_ENGINE=micromark`).
 
 Next: keep growing `markdown-golden/` (more GFM / vault edges), extend IR→PM
 only where micromark parity is locked (Phase 17 mismatched header/delim are paragraphs at split; residual dialect for thirty-eight+ nests only (intentional); footnote-ref callout titles/bodies owned with doc-wide defs; list-steal pipe-less closed (v0.1.18); under-indented paragraph nest-exit after blank owned; under-indented structural nest-exit owned; nest-sibling after nest-exit owned; lazy-after-blank owned; setext-shaped tight `---` in list items owned; empty-item + blank + structural closed (v0.1.17); cross-family same-indent sibling mixes owned;
-pipe-optional tables + heavy callout titles owned; mixed triple closers + same-delimiter stacks + multi-line inline HTML owned; vault-callout-footnote-refs + typora-mixed-owned-edges goldens landed), then reconsider
-default-on. **Do not flip yet** — gates are readiness-strong but prefer review of the intentional thirty-eight+ leftover + packaged feel before product default changes. Hard-breaks, images, empty/meta fences, escapes, table-align,
+pipe-optional tables + heavy callout titles owned; mixed triple closers + same-delimiter stacks + multi-line inline HTML owned; vault-callout-footnote-refs + typora-mixed-owned-edges goldens landed). Hard-breaks, images, empty/meta fences, escapes, table-align,
 ordered-start, inline HTML, simple-flat-lists, simple-nested-lists,
 simple-nested-quotes, simple-lists-in-quotes, simple-hard-breaks-in-quotes,
 simple-lazy-continuations-in-quotes, simple-no-marker-lazy-in-quotes,
@@ -250,9 +247,9 @@ simple-lazy-list-continuations, simple-hard-breaks-in-lists, simple-multi-block-
 simple-hard-breaks-in-footnotes, simple-callouts, simple-titled-collapsible-callouts, simple-marked-callout-titles, simple-heavy-callout-titles, simple-marked-phrasing,
 simple-underscore-emphasis, simple-nested-marks, simple-two-level-nested-marks, simple-three-level-nested-marks, simple-four-level-nested-marks, simple-five-level-nested-marks, simple-six-level-nested-marks, simple-seven-level-nested-marks, simple-eight-level-nested-marks, simple-nine-level-nested-marks, simple-ten-level-nested-marks, simple-eleven-level-nested-marks, simple-twelve-level-nested-marks, simple-thirteen-level-nested-marks, simple-fourteen-level-nested-marks, simple-fifteen-level-nested-marks, simple-sixteen-level-nested-marks, simple-seventeen-level-nested-marks, simple-eighteen-level-nested-marks, simple-nineteen-level-nested-marks, simple-twenty-level-nested-marks, simple-twenty-one-level-nested-marks, simple-twenty-two-level-nested-marks, simple-twenty-three-level-nested-marks, simple-twenty-four-level-nested-marks, simple-twenty-five-level-nested-marks, simple-twenty-six-level-nested-marks, simple-twenty-seven-level-nested-marks, simple-twenty-eight-level-nested-marks, simple-twenty-nine-level-nested-marks, simple-thirty-level-nested-marks, simple-thirty-one-level-nested-marks, simple-thirty-two-level-nested-marks, simple-thirty-three-level-nested-marks, simple-thirty-four-level-nested-marks, simple-thirty-five-level-nested-marks, simple-thirty-six-level-nested-marks, simple-thirty-seven-level-nested-marks, simple-triple-delimiter-marks, simple-inline-links, simple-bare-autolinks, simple-angle-autolinks, simple-www-autolinks, simple-email-autolinks / simple-escapes / simple-escapes-in-tables / simple-ragged-tables / simple-pipe-optional-tables / simple-inline-html / simple-inline-math / simple-image-alts / simple-math-html-in-tables, simple-reference-links, simple-wiki-links, simple-gfm-tables,
 simple-footnote-defs, empty-footnote-defs, simple-setext-dash-headings, simple-mixed-marker-nested-lists, simple-table-header-delim-columns, simple-same-indent-list-markers, simple-cross-family-same-indent-lists, simple-empty-list-item-structural, and cjk-emphasis goldens landed.
-This draft flips the product default; do **not** merge without review.
+**Default-on landed** (Dylan/lykoris approved). Residual dialect: thirty-eight+ nests only.
 
 **Noto `0.0.2-alpha.9`** shipped the adapter (#37) plus `@roobli/md` v0.1.1 quote/
 callout parity (#38). Pin is now `@roobli/md` v0.1.18 (Phase 21 list-steal pipe-less on top of Phase 20 empty list item + blank + structural outside / Phase 19 same-indent list marker/delimiter split / Phase 18 `md serve` / Phase 17 table header/delim columns /
-Phase 16 mixed-marker nested lists / Phase 15 setext-`---` / Phase 14 nest/interrupt + adjacent-def / Phase 13 lazy / Phase 12 CJK / Phase 11 / 10 / 9 / 8 / 7 / v0.1.2). Optional:
-`NOTO_MARKDOWN_ENGINE=roobli-md` (micromark remains default).
+Phase 16 mixed-marker nested lists / Phase 15 setext-`---` / Phase 14 nest/interrupt + adjacent-def / Phase 13 lazy / Phase 12 CJK / Phase 11 / 10 / 9 / 8 / 7 / v0.1.2). Escape hatch:
+`NOTO_MARKDOWN_ENGINE=micromark`.
