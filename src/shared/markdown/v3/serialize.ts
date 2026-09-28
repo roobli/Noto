@@ -543,28 +543,35 @@ function serializeBlocksViaRoobli(
     return fail(document, 'REPARSE_MISMATCH', reparsed.message);
   }
 
-  // Same proof as the micromark windowed check: every unit must survive as
-  // exactly one block with the markdown the transaction asked for. The engine
-  // only validates dirty units in isolation (`parseSingleBlock`), so an
-  // unterminated fence that swallows neighbours would otherwise be accepted.
-  const expected = units.map((unit) => unitMarkdown(unit, document));
-  if (expected.some((markdown) => markdown === null)) {
-    return fail(document, 'REPARSE_MISMATCH', 'An unchanged unit lost the block it referenced.');
-  }
-  if (reparsed.document.blocks.length !== units.length) {
-    return fail(
-      document,
-      'REPARSE_MISMATCH',
-      `Block structure changed on reparse (${units.length} units → ${reparsed.document.blocks.length} blocks).`,
-    );
-  }
-  for (let index = 0; index < units.length; index += 1) {
-    if (toLf(reparsed.document.blocks[index]!.markdown) !== toLf(expected[index]!)) {
+  // Same proof as the micromark windowed check, but only when a unit is dirty.
+  // Pure identity / pristine-only deletes skip this (micromark likewise has no
+  // dirty windows to verify). The engine only validates dirty units in
+  // isolation (`parseSingleBlock`), so an unterminated fence that swallows
+  // neighbours would otherwise be accepted.
+  const dirty = units.map((unit) => {
+    if (unit.origin === null) return true;
+    return !isPristine(unit, document.blocks[unit.origin.ordinal]);
+  });
+  if (dirty.some(Boolean)) {
+    const expected = units.map((unit) => unitMarkdown(unit, document));
+    if (expected.some((markdown) => markdown === null)) {
+      return fail(document, 'REPARSE_MISMATCH', 'An unchanged unit lost the block it referenced.');
+    }
+    if (reparsed.document.blocks.length !== units.length) {
       return fail(
         document,
         'REPARSE_MISMATCH',
-        `Block ${index + 1} would not have survived a reparse unchanged.`,
+        `Block structure changed on reparse (${units.length} units → ${reparsed.document.blocks.length} blocks).`,
       );
+    }
+    for (let index = 0; index < units.length; index += 1) {
+      if (toLf(reparsed.document.blocks[index]!.markdown) !== toLf(expected[index]!)) {
+        return fail(
+          document,
+          'REPARSE_MISMATCH',
+          `Block ${index + 1} would not have survived a reparse unchanged.`,
+        );
+      }
     }
   }
 
