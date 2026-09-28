@@ -150,7 +150,7 @@ export function hasHardBreak(markdown: string): boolean {
  * link-definitions; simple footnote-definitions (incl. hard breaks + simple
  * marks); simple quotes (incl. nested, hard breaks, lists-in-quotes, plain /
  * simple-marked / collapsible / plain-titled / simple-marked-title / heavy-title GFM alerts / callouts, lazy nest + no-`>` lazy); simple flat
- * or nested lists (same-family or mixed-marker, any depth, incl. hard breaks + simple marks + multi-paragraph items + lazy soft-wrap after blank + structural quote/fence/ATX-heading/HTML/table/hr children + setext-shaped tight `---`/`===` after a paragraph + cross-family same-indent sibling marker mixes + under-indented structural nest-exit + nest-sibling after nest-exit);
+ * or nested lists (same-family or mixed-marker, any depth, incl. hard breaks + simple marks + multi-paragraph items + lazy soft-wrap after blank + structural quote/fence/ATX-heading/HTML/table/hr children + setext-shaped tight `---`/`===` after a paragraph + cross-family same-indent sibling marker mixes + under-indented structural nest-exit + nest-sibling after nest-exit + under-indented paragraph nest-exit after blank);
  * simple GFM tables (plain or simple-marked cells incl. escaped pipes; ragged body rows; pipe-optional leading `|`); paragraph / heading when
  * plain or simple-marked (hard breaks + simple inline links / images +
  * simple reference links / images + simple bare http(s) + angle-bracket
@@ -2793,8 +2793,8 @@ export interface ParsedFlatListItem {
   readonly nestedLists: readonly ParsedFlatList[];
   /**
    * Interleaved post-nest blocks + nest-sibling lists after under-indented
-   * structural nest-exit (hr / ATX / quote / fence / HTML / table). Omitted
-   * when the item has no post-nest content.
+   * nest-exit (structural hr / ATX / quote / fence / HTML / table, or paragraph
+   * after blank). Omitted when the item has no post-nest content.
    */
   readonly trailingChildren?: readonly ParsedListItemTrail[];
 }
@@ -2852,7 +2852,8 @@ function ownedStructuralKind(
  * ancestor whose content indent claims the line wins. Tables only when
  * `allowTable` (after a blank — tight under-indent `|…|` stays lazy soft-wrap).
  * Non-structural ancestor claims (lazy text / `===`) return null so the caller
- * can soft-wrap the open nest paragraph instead.
+ * can soft-wrap the open nest paragraph (tight) or try paragraph nest-exit
+ * (after blank).
  */
 function findStructuralNestExit(
   stack: readonly DraftListLevel[],
@@ -2870,6 +2871,26 @@ function findStructuralNestExit(
       return null;
     }
     if (kind === 'table' && !allowTable) return null;
+    return { ancestorIdx: s, rest: ancRest };
+  }
+  return null;
+}
+
+/**
+ * Under-indented line that an ancestor can claim as a new paragraph after a
+ * blank (micromark paragraph nest-exit). Walks deepest→shallowest; first
+ * ancestor whose content indent claims the line wins. Structural / pipe-table
+ * claims are not handled here (`findStructuralNestExit`).
+ */
+function findParagraphNestExit(
+  stack: readonly DraftListLevel[],
+  line: string,
+): { ancestorIdx: number; rest: string } | null {
+  for (let s = stack.length - 2; s >= 0; s -= 1) {
+    const ancRest = listContinuationRest(line, stack[s]!.indent);
+    if (ancRest === null) continue;
+    if (ownedStructuralKind(ancRest) !== null) return null;
+    if (ancRest.includes('|')) return null;
     return { ancestorIdx: s, rest: ancRest };
   }
   return null;
@@ -3254,9 +3275,9 @@ function peekTableDelimiter(
  * still needed (heavy inline / root-level marker mix). Lazy soft-wrap of an
  * open paragraph after a blank (unindented or under-indented once that paragraph
  * was opened with proper indent) is owned. Under-indented structural nest-exit
- * (hr / ATX / quote / fence / HTML; table after blank) re-homes onto the parent
- * item; nest-sibling lists after that exit are interleaved in trailing
- * (micromark).
+ * (hr / ATX / quote / fence / HTML; table after blank) and under-indented
+ * paragraph nest-exit after blank re-home onto the parent item; nest-sibling
+ * lists after that exit are interleaved in trailing (micromark).
  * A new paragraph after a blank still needs proper indent (safety refuse when a
  * mis-split feeds bare lazy-after-blank). Setext-shaped tight `---` / `===` after
  * a paragraph promote that paragraph to a heading (micromark). Empty-item + blank
@@ -3539,6 +3560,29 @@ export function parseSimpleFlatListsSource(md: string): ParsedFlatList[] | null 
     return collected.nextIdx;
   };
 
+  /**
+   * Apply under-indented paragraph nest-exit after blank onto an ancestor item.
+   * Returns the next line index, or null → dialect.
+   */
+  const applyParagraphNestExit = (
+    lineIdx: number,
+    exit: { ancestorIdx: number; rest: string },
+  ): number | null => {
+    popNestsTo(exit.ancestorIdx);
+    const anc = stack[exit.ancestorIdx]!;
+    if (anc.items.length === 0) return null;
+    const ancItem = anc.items[anc.items.length - 1]!;
+    if (restLooksStructural(exit.rest) || tryInlineNodesFromSource(exit.rest) === null) {
+      return null;
+    }
+    if (!ancItem.afterNested) dropEmptyPlaceholder(ancItem);
+    ancItem.afterNested = true;
+    appendItemChild(ancItem, { type: 'paragraph', lines: [exit.rest] });
+    anc.spread = true;
+    anc.pendingBlank = false;
+    return lineIdx + 1;
+  };
+
   let i = 0;
   while (i < lines.length) {
     const line = lines[i]!;
@@ -3763,10 +3807,18 @@ export function parseSimpleFlatListsSource(md: string): ParsedFlatList[] | null 
     if (top.pendingBlank) {
       const rest = listContinuationRest(line, top.indent);
       if (rest === null) {
-        // Under-indented after blank: structural nest-exit (incl. table) onto parent.
+        // Under-indented after blank: structural (incl. table) or paragraph
+        // nest-exit onto parent (micromark).
         const exit = findStructuralNestExit(stack, line, true);
-        if (!exit) return null;
-        const nextIdx = applyStructuralNestExit(i, exit, true);
+        if (exit) {
+          const nextIdx = applyStructuralNestExit(i, exit, true);
+          if (nextIdx === null) return null;
+          i = nextIdx;
+          continue;
+        }
+        const paraExit = findParagraphNestExit(stack, line);
+        if (!paraExit) return null;
+        const nextIdx = applyParagraphNestExit(i, paraExit);
         if (nextIdx === null) return null;
         i = nextIdx;
         continue;
