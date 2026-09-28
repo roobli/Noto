@@ -1,19 +1,19 @@
 # Open-path / `parseDocument` — measured cuts
 
-Status: **lazy / deferred wire nodes + viewport-driven enrich + incremental PM patch + kind-aware stand-ins + engine-owned IR→PM (common blocks + simple quotes incl. nested plain + lists-in-quotes + hard breaks in quotes + lazy nest continuation + true no-`>` lazy + simple flat / nested lists (same-family or mixed-marker) any depth incl. hard breaks + unindented lazy soft-wrap + multi-paragraph items + structural quote/fence/ATX-heading/HTML/table/hr children + setext-shaped tight `---`/`===` in list items + empty-item+blank+structural outside at split + list-steal pipe-less closed at split + under-indented nest-exit (structural + paragraph-after-blank) + nest-sibling after nest-exit + simple GFM tables (incl. escaped pipes + ragged body rows + pipe-optional leading `|`) + simple footnote-defs incl. empty + hard breaks + plain/simple-marked/simple-marked-title/heavy-title (incl. nested-bracket wiki) callouts + simple marked phrasing `**`/`*`/`~~`/`` ` `` incl. up to thirty-seven-level nests + matched `***`/`___` triple delimiters + mixed triple closers + same-delimiter stacks + simple inline links/images (incl. simple image alts) + simple reference links/images + simple bare http(s) + angle-bracket http(s) + www. + email autolinks + simple wiki links + setext-`---` headings + multi-line inline HTML)** under the flagged `@roobli/md` path.
-Product default remains micromark. Do **not** flip `NOTO_MARKDOWN_ENGINE`
-default-on from this work.
+Status: **lazy / deferred wire nodes + viewport-driven enrich + incremental PM patch + kind-aware stand-ins + engine-owned IR→PM (common blocks + simple quotes incl. nested plain + lists-in-quotes + hard breaks in quotes + lazy nest continuation + true no-`>` lazy + simple flat / nested lists (same-family or mixed-marker) any depth incl. hard breaks + unindented lazy soft-wrap + multi-paragraph items + structural quote/fence/ATX-heading/HTML/table/hr children + setext-shaped tight `---`/`===` in list items + empty-item+blank+structural outside at split + list-steal pipe-less closed at split + under-indented nest-exit (structural + paragraph-after-blank) + nest-sibling after nest-exit + simple GFM tables (incl. escaped pipes + ragged body rows + pipe-optional leading `|`) + simple footnote-defs incl. empty + hard breaks + plain/simple-marked/simple-marked-title/heavy-title (incl. nested-bracket wiki) callouts + simple marked phrasing `**`/`*`/`~~`/`` ` `` incl. up to thirty-seven-level nests + matched `***`/`___` triple delimiters + mixed triple closers + same-delimiter stacks + simple inline links/images (incl. simple image alts) + simple reference links/images + simple bare http(s) + angle-bracket http(s) + www. + email autolinks + simple wiki links + setext-`---` headings + multi-line inline HTML)** under the `@roobli/md` path (now the product default; escape hatch
+`NOTO_MARKDOWN_ENGINE=micromark`).
 
 ## Evidence (already recorded)
 
 After wire `nodes` and outline-from-wire, `docs/performance/measurements.md`
 concluded there was no further opportunistic micromark slice: one full dialect
-parse dominates open. That is still true on the **default** path.
+parse dominated open on the legacy path.
 
-The flagged `@roobli/md` path changes the picture. Native structural split is
-~100× faster than micromark (`@roobli/md` `bench:ab`), but Noto’s adapter was
-re-attaching mdast with **`parseMarkdown` once per span**. That made flagged
-`parseDocument` *slower* than micromark on the same corpus.
+The `@roobli/md` path (now product default) changes the picture. Native
+structural split is ~100× faster than micromark (`@roobli/md` `bench:ab`), but
+Noto’s adapter was re-attaching mdast with **`parseMarkdown` once per span**.
+That made early flagged `parseDocument` *slower* than micromark on the same
+corpus — the cuts below removed that penalty.
 
 ### Cut 1 — bulk attach (PR #85)
 
@@ -198,11 +198,12 @@ Does **not** flip default-on.
 - `enrichSpansInRange` — skips micromark for engine-owned spans; contiguous
   dialect runs still one parse each
 
-## Default-on readiness (do **not** flip yet)
+## Default-on (landed)
 
-After list-steal pipe-less `- | -` closed at split and doc-aware footnote-ref
-ownership, flagged IR→PM leftovers that would still be **dialect** if
-`NOTO_MARKDOWN_ENGINE` flipped tomorrow:
+Product default is `@roobli/md` (see `engine-flag.ts` and
+`docs/design/roobli-md-engine.md`). Escape hatch: `NOTO_MARKDOWN_ENGINE=micromark`.
+
+IR→PM leftovers that remain **dialect** after the flip:
 
 | Residual | Why still dialect |
 | -------- | ----------------- |
@@ -215,10 +216,10 @@ promote `[^id]` iff a matching def exists, else literal (micromark parity).
 Single-span IR→PM without known ids still falls through to dialect.
 
 List-steal pipe-less `- | -` closed at split (`@roobli/md` ≥ v0.1.18 +
-`simple-list-steal-pipe-less-tables.md`). Golden / open-path gates are otherwise
-green on the curated set (incl. `vault-callout-footnote-refs.md` /
-`typora-mixed-owned-edges.md`). Still prefer packaged open feel + review before
-flipping the product default — do **not** flip in this cut.
+`simple-list-steal-pipe-less-tables.md`). Golden / open-path gates are green on
+the curated set (incl. `vault-callout-footnote-refs.md` /
+`typora-mixed-owned-edges.md`). Packaged open-feel measurement on alphas remains
+welcome; not a blocker for the flip (already landed in #282 / alpha.112).
 
 ## Next residual (not this PR)
 
@@ -241,7 +242,7 @@ flipping the product default — do **not** flip in this cut.
    fence / ATX-heading / HTML / table / hr children inside list items are
    engine-owned; cross-family same-indent sibling marker mixes within one span
    are engine-owned; under-indented structural nest-exit owned; nest-sibling after nest-exit owned; under-indented paragraph nest-exit after blank owned; list-steal pipe-less `- | -` closed at split; footnote-ref callout titles/bodies owned with doc-wide defs.
-4. Keep growing `tests/fixtures/markdown-golden/` before default-on; GFM inline,
+4. Keep growing `tests/fixtures/markdown-golden/` (default-on landed); GFM inline,
    nested lists, simple-nested-lists (depth-2+), simple-nested-quotes,
    simple-lists-in-quotes, simple-hard-breaks-in-quotes,
    simple-lazy-continuations-in-quotes, simple-hard-breaks-in-lists, simple-multi-block-list-items, simple-list-item-structural-children, simple-list-item-html-table-hr, simple-list-item-setext-tight, simple-under-indented-structural-nest-exit, simple-nest-sibling-after-nest-exit, simple-under-indented-paragraph-nest-exit, simple-list-steal-pipe-less-tables,
@@ -252,8 +253,8 @@ flipping the product default — do **not** flip in this cut.
    ordered-start, inline HTML, simple-reference-links landed; intentional engine gaps documented in
    that README; simple-angle-autolinks / simple-www-autolinks / simple-email-autolinks / simple-escapes / simple-escapes-in-tables / simple-ragged-tables / simple-pipe-optional-tables / simple-inline-html / simple-inline-math / simple-image-alts / simple-math-html-in-tables / simple-marked-callout-titles / simple-setext-dash-headings / simple-mixed-marker-nested-lists / simple-table-header-delim-columns / simple-two-level-nested-marks / simple-three-level-nested-marks / simple-four-level-nested-marks / simple-five-level-nested-marks / simple-six-level-nested-marks / simple-seven-level-nested-marks / simple-eight-level-nested-marks / simple-nine-level-nested-marks / simple-ten-level-nested-marks / simple-eleven-level-nested-marks / simple-twelve-level-nested-marks / simple-thirteen-level-nested-marks / simple-fourteen-level-nested-marks / simple-fifteen-level-nested-marks / simple-sixteen-level-nested-marks / simple-seventeen-level-nested-marks / simple-eighteen-level-nested-marks / simple-nineteen-level-nested-marks / simple-twenty-level-nested-marks / simple-twenty-one-level-nested-marks / simple-twenty-two-level-nested-marks / simple-twenty-three-level-nested-marks / simple-twenty-four-level-nested-marks / simple-twenty-five-level-nested-marks / simple-twenty-six-level-nested-marks / simple-twenty-seven-level-nested-marks / simple-twenty-eight-level-nested-marks / simple-twenty-nine-level-nested-marks / simple-thirty-level-nested-marks / simple-thirty-one-level-nested-marks / simple-thirty-two-level-nested-marks / simple-thirty-three-level-nested-marks / simple-thirty-four-level-nested-marks / simple-thirty-five-level-nested-marks / simple-thirty-six-level-nested-marks / simple-thirty-seven-level-nested-marks / simple-triple-delimiter-marks / simple-same-delimiter-stacks / simple-mixed-triple-closers / simple-multiline-inline-html / simple-heavy-callout-titles landed.
 
-Do not defer main’s file-truth structural parse; do not flip the product
-default from this doc.
+Do not defer main’s file-truth structural parse. Product default is already
+`@roobli/md`; this doc records the open-path cuts that made that safe.
 
 ## How to re-measure
 

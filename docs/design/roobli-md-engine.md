@@ -1,9 +1,8 @@
 # `@roobli/md` — parse backend adapter
 
-Noto’s markdown v3 stack (`src/shared/markdown/v3/`) still defaults to micromark.
-The long-term engine that should own that hot path is the public MIT package
-**[@roobli/md](https://github.com/roobli/md)** v0.1.18 (“WYSIWYG-first markdown
-engine for Noto”).
+Noto’s markdown v3 stack (`src/shared/markdown/v3/`) defaults to the public MIT
+package **[@roobli/md](https://github.com/roobli/md)** v0.1.18 (“WYSIWYG-first
+markdown engine for Noto”). Escape hatch: `NOTO_MARKDOWN_ENGINE=micromark`.
 
 ## Why
 
@@ -45,7 +44,7 @@ NOTO_MARKDOWN_ENGINE=micromark pnpm test
 ```
 
 Tight adjacent quotes/callouts and native indented-code match micromark
-(`@roobli/md` v0.1.2+). Intentional leftover dialect: thirty-eight+ nests only.
+(`@roobli/md` v0.1.2+). Intentional leftover dialect: thirty-eight+ nests (cap) and nested-bracket image alts / exotic inline refuses.
 
 ## Adapter mapping
 
@@ -91,14 +90,14 @@ Phase 10 (`v0.1.6`) line-prefix offset alignment; Phase 11 (`v0.1.7`)
 `sourceEditBetween` / `reparseFromText`; Phase 12 (`v0.1.8`) CJK emphasis
 serialize lock-in on the flagged backend.
 
-## Golden gates (option B — before default-on)
+## Golden gates (still expanding after default-on)
 
 Curated A/B fixtures live under `tests/fixtures/markdown-golden/` and are
 wired by `tests/unit/markdown-golden-gates.test.ts` (core set plus GFM inline,
 nested lists, HTML blocks, denser CJK+wiki, callout edges, hr/setext,
-link-definitions, trailing-spaces/soft-break, simple quotes, simple footnote-defs, empty footnote-defs, CJK emphasis, hard-breaks, images, empty/meta fences, escapes, table-align, ordered-start, inline HTML). They compare the
-**micromark** product path against an explicit `roobli-md` override on the same
-sources — they do **not** flip `NOTO_MARKDOWN_ENGINE` for the rest of the suite.
+link-definitions, trailing-spaces/soft-break, simple quotes, simple footnote-defs, empty footnote-defs, CJK emphasis, hard-breaks, images, empty/meta fences, escapes, table-align, ordered-start, inline HTML). They compare the legacy **micromark** path against the product-default
+`roobli-md` path on the same sources (via test override) — they do **not** change
+`NOTO_MARKDOWN_ENGINE` for the rest of the suite.
 
 | Gate | Assertion |
 | ---- | --------- |
@@ -140,7 +139,8 @@ set and document any intentional diffs. Escape hatch:
 
 **Product default is `@roobli/md`** (see `engine-flag.ts`). Escape hatch:
 `NOTO_MARKDOWN_ENGINE=micromark`. Intentional leftover dialect:
-**thirty-eight+ nests only** (`MAX_MARK_NEST`=37). Host serialize still runs a
+**thirty-eight+ nests** (`MAX_MARK_NEST`=37) and **nested-bracket image alts** /
+exotic inline refuses. Host serialize still runs a
 reparse proof so unterminated fences that would swallow neighbours are refused
 (`REPARSE_MISMATCH`), matching the micromark windowed check.
 
@@ -156,7 +156,8 @@ Gates that were green before the flip:
 | Intentional diffs documented in `markdown-golden/README.md` | List-steal pipe-less closed (v0.1.18 + `simple-list-steal-pipe-less-tables.md`); empty list item + blank + structural outside closed (v0.1.17 + `simple-empty-list-item-structural.md`); same-indent list marker/delimiter split closed (v0.1.16 + `simple-same-indent-list-markers.md`); table header/delim columns closed (v0.1.14 + `simple-table-header-delim-columns.md`); mixed-marker nested lists closed (v0.1.13 + `simple-mixed-marker-nested-lists.md`); setext-`---` closed (v0.1.12 + `simple-setext-dash-headings.md`) |
 
 **Still-dialect after flip:** **thirty-eight+ nests** (intentional
-`MAX_MARK_NEST`=37 cap only). Footnote-ref callout titles/bodies are
+`MAX_MARK_NEST`=37 cap) and **nested-bracket image alts** / exotic inline
+refuses. Footnote-ref callout titles/bodies are
 **engine-owned when doc-wide defs are known** (open enrich / `docFromSpans` /
 paste multi-block): promote `[^id]` iff a matching def exists, else literal
 (micromark parity); single-span IR→PM without known ids still falls through to
@@ -238,7 +239,7 @@ simple GFM tables**, and **simple inline HTML** (single- or multi-line tags / co
 Product default is `@roobli/md` (escape hatch: `NOTO_MARKDOWN_ENGINE=micromark`).
 
 Next: keep growing `markdown-golden/` (more GFM / vault edges), extend IR→PM
-only where micromark parity is locked (Phase 17 mismatched header/delim are paragraphs at split; residual dialect for thirty-eight+ nests only (intentional); footnote-ref callout titles/bodies owned with doc-wide defs; list-steal pipe-less closed (v0.1.18); under-indented paragraph nest-exit after blank owned; under-indented structural nest-exit owned; nest-sibling after nest-exit owned; lazy-after-blank owned; setext-shaped tight `---` in list items owned; empty-item + blank + structural closed (v0.1.17); cross-family same-indent sibling mixes owned;
+only where micromark parity is locked (Phase 17 mismatched header/delim are paragraphs at split; residual dialect for thirty-eight+ nests (intentional cap) and nested-bracket image alts; footnote-ref callout titles/bodies owned with doc-wide defs; list-steal pipe-less closed (v0.1.18); under-indented paragraph nest-exit after blank owned; under-indented structural nest-exit owned; nest-sibling after nest-exit owned; lazy-after-blank owned; setext-shaped tight `---` in list items owned; empty-item + blank + structural closed (v0.1.17); cross-family same-indent sibling mixes owned;
 pipe-optional tables + heavy callout titles owned; mixed triple closers + same-delimiter stacks + multi-line inline HTML owned; vault-callout-footnote-refs + typora-mixed-owned-edges goldens landed). Hard-breaks, images, empty/meta fences, escapes, table-align,
 ordered-start, inline HTML, simple-flat-lists, simple-nested-lists,
 simple-nested-quotes, simple-lists-in-quotes, simple-hard-breaks-in-quotes,
@@ -247,7 +248,7 @@ simple-lazy-list-continuations, simple-hard-breaks-in-lists, simple-multi-block-
 simple-hard-breaks-in-footnotes, simple-callouts, simple-titled-collapsible-callouts, simple-marked-callout-titles, simple-heavy-callout-titles, simple-marked-phrasing,
 simple-underscore-emphasis, simple-nested-marks, simple-two-level-nested-marks, simple-three-level-nested-marks, simple-four-level-nested-marks, simple-five-level-nested-marks, simple-six-level-nested-marks, simple-seven-level-nested-marks, simple-eight-level-nested-marks, simple-nine-level-nested-marks, simple-ten-level-nested-marks, simple-eleven-level-nested-marks, simple-twelve-level-nested-marks, simple-thirteen-level-nested-marks, simple-fourteen-level-nested-marks, simple-fifteen-level-nested-marks, simple-sixteen-level-nested-marks, simple-seventeen-level-nested-marks, simple-eighteen-level-nested-marks, simple-nineteen-level-nested-marks, simple-twenty-level-nested-marks, simple-twenty-one-level-nested-marks, simple-twenty-two-level-nested-marks, simple-twenty-three-level-nested-marks, simple-twenty-four-level-nested-marks, simple-twenty-five-level-nested-marks, simple-twenty-six-level-nested-marks, simple-twenty-seven-level-nested-marks, simple-twenty-eight-level-nested-marks, simple-twenty-nine-level-nested-marks, simple-thirty-level-nested-marks, simple-thirty-one-level-nested-marks, simple-thirty-two-level-nested-marks, simple-thirty-three-level-nested-marks, simple-thirty-four-level-nested-marks, simple-thirty-five-level-nested-marks, simple-thirty-six-level-nested-marks, simple-thirty-seven-level-nested-marks, simple-triple-delimiter-marks, simple-inline-links, simple-bare-autolinks, simple-angle-autolinks, simple-www-autolinks, simple-email-autolinks / simple-escapes / simple-escapes-in-tables / simple-ragged-tables / simple-pipe-optional-tables / simple-inline-html / simple-inline-math / simple-image-alts / simple-math-html-in-tables, simple-reference-links, simple-wiki-links, simple-gfm-tables,
 simple-footnote-defs, empty-footnote-defs, simple-setext-dash-headings, simple-mixed-marker-nested-lists, simple-table-header-delim-columns, simple-same-indent-list-markers, simple-cross-family-same-indent-lists, simple-empty-list-item-structural, and cjk-emphasis goldens landed.
-**Default-on landed** (Dylan/lykoris approved). Residual dialect: thirty-eight+ nests only.
+**Default-on landed** (Dylan/lykoris approved). Residual dialect: thirty-eight+ nests (cap) and nested-bracket image alts / exotic inline refuses.
 
 **Noto `0.0.2-alpha.9`** shipped the adapter (#37) plus `@roobli/md` v0.1.1 quote/
 callout parity (#38). Pin is now `@roobli/md` v0.1.18 (Phase 21 list-steal pipe-less on top of Phase 20 empty list item + blank + structural outside / Phase 19 same-indent list marker/delimiter split / Phase 18 `md serve` / Phase 17 table header/delim columns /
