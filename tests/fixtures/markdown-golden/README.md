@@ -102,6 +102,7 @@ Small public fixtures for comparing the **micromark** product path against
 | `simple-gfm-tables.md` | simple GFM pipe tables (align row; plain cells; indent; compact); no marked/ragged cells |
 | `simple-ragged-tables.md` | ragged body rows (short / long cell counts) on simple GFM tables owned on the flagged IR→PM path |
 | `simple-list-steal-pipe-less-tables.md` | micromark list-steal pipe-less `- | -` / indented / `- | ---` → paragraph + list at split (`@roobli/md` ≥ v0.1.18 Phase 21); compact `-|-` + leading-`|` + multi-dash `--- | ---` stay tables |
+| `simple-lazy-empty-containers.md` | lazy only with open paragraph: empty quotes / marker-only empty list items do not absorb unindented lazy; complete link-defs absorb at most one indented title; ordered start ≠ 1 does not interrupt (`@roobli/md` ≥ v0.1.19 Phase 22); footnote lazy (Phase 14) unchanged |
 | `simple-pipe-optional-tables.md` | GFM pipe-optional tables (no leading/trailing `|` required when a row still contains `|`; mixed pipes; indent; compact) owned on the flagged IR→PM path (list-steal closed in `simple-list-steal-pipe-less-tables.md`) |
 | `simple-table-header-delim-columns.md` | GFM table header/delimiter column-count parity (`@roobli/md` ≥ v0.1.14 Phase 17): mismatched counts stay paragraph; matching counts + ragged body stay table; mismatch does not interrupt a preceding paragraph |
 | `simple-math-html-in-tables.md` | simple `$…$` / `$$…$$` and simple inline HTML tags inside GFM table cells owned on the flagged IR→PM path (docs previously claimed dialect — stale) |
@@ -155,6 +156,11 @@ out of this directory so the suite stays loud-fail-only on match):
    `@roobli/md` v0.1.18 (Phase 21). Covered by
    `simple-list-steal-pipe-less-tables.md` (pipe-less `- | -` / indented /
    `- | ---` → paragraph + list; compact `-|-` + leading-`|` stay tables).
+7. ~~**Lazy empty-container / link-def title / ordered start≠1**~~ — **closed**
+   in `@roobli/md` v0.1.19 (Phase 22). Covered by
+   `simple-lazy-empty-containers.md` (empty quotes / marker-only empty list
+   items do not absorb unindented lazy; complete link-defs absorb at most one
+   indented title; ordered start ≠ 1 does not interrupt a paragraph).
 
 Every fixture **in this directory** is expected to match on:
 

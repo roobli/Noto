@@ -1,7 +1,7 @@
 # `@roobli/md` — parse backend adapter
 
 Noto’s markdown v3 stack (`src/shared/markdown/v3/`) defaults to the public MIT
-package **[@roobli/md](https://github.com/roobli/md)** v0.1.18 (“WYSIWYG-first
+package **[@roobli/md](https://github.com/roobli/md)** v0.1.19 (“WYSIWYG-first
 markdown engine for Noto”). Escape hatch: `NOTO_MARKDOWN_ENGINE=micromark`.
 
 ## Why
@@ -15,7 +15,7 @@ mdast dump.
 ## Dependency
 
 ```
-"@roobli/md": "github:roobli/md#v0.1.18"
+"@roobli/md": "github:roobli/md#v0.1.19"
 ```
 
 pnpm must allow its `prepare` (tsc) build — see `allowBuilds` in
@@ -58,7 +58,7 @@ Tight adjacent quotes/callouts and native indented-code match micromark
 `semanticKey` computation, wire `nodes` (mdast). Native engine spans ship
 `node: null`; the adapter attaches mdast via Noto’s `syntax.ts` dialect when a
 ProseMirror-ready node is required. Engine serialize + split dialect (Phase
-7–21 in `@roobli/md` v0.1.18) owns hard-break → two spaces, list marker /
+7–22 in `@roobli/md` v0.1.19) owns hard-break → two spaces, list marker /
 delimiter from `node.data`, verbatim runs (wiki / alert / footnote / TOC /
 snake_case), bare http(s) autolinks, table delimiter widening (vault
 three-dash; content cells stay unpadded), line-prefix offset alignment
@@ -109,7 +109,7 @@ Coverage today: headings, lists (incl. nested any depth, mixed-marker), tables, 
 math/code fences, frontmatter, CJK, alerts/callout edges, footnotes,
 indented-code, tight quotes, GFM strikethrough/autolink, HTML blocks,
 setext+hr, link-definitions, simple quotes, simple flat lists, simple-nested-lists, simple GFM
-tables, simple footnote-defs, empty footnote-defs, CJK emphasis, hard-breaks (incl. in quotes + lazy nest)/images/empty-fence/escapes/table-align/ordered-start/fence-meta/html-inline. Intentional diffs (list-steal pipe-less closed in v0.1.18; empty list item + blank + structural closed in v0.1.17; same-indent list marker/delimiter split closed in v0.1.16; table header/delim columns closed in v0.1.14; mixed-marker nested lists closed in v0.1.13; setext-`---` closed in v0.1.12) are listed in `tests/fixtures/markdown-golden/README.md` and
+tables, simple footnote-defs, empty footnote-defs, CJK emphasis, hard-breaks (incl. in quotes + lazy nest)/images/empty-fence/escapes/table-align/ordered-start/fence-meta/html-inline. Intentional diffs (lazy empty-container / link-def title / ordered start≠1 closed in v0.1.19; list-steal pipe-less closed in v0.1.18; empty list item + blank + structural closed in v0.1.17; same-indent list marker/delimiter split closed in v0.1.16; table header/delim columns closed in v0.1.14; mixed-marker nested lists closed in v0.1.13; setext-`---` closed in v0.1.12) are listed in `tests/fixtures/markdown-golden/README.md` and
 kept out of the strict directory; silent divergence fails the gate loudly
 (`GOLDEN GATE FAIL …`).
 
@@ -153,7 +153,7 @@ Gates that were green before the flip:
 | Flagged open-path deferred + viewport enrich + IR→PM leaf/plain(incl. hard-break)/link-def/simple-footnote(incl. empty + hard breaks)/simple-quote(incl. nested + lists-in-quotes + hard breaks)/flat-or-nested-list(any depth, incl. hard breaks + multi-paragraph items + lazy-after-blank + nest-exit)/simple-table(incl. ragged body)/simple inline HTML(incl. multi-line)+math | Landed (now product default) |
 | Flagged serialize (identity / single / multi) + `reparseFromText` host wiring | Landed |
 | Packaged / e2e open feel on medium | Measure on alphas after default-on; not a 0.0.3 gate |
-| Intentional diffs documented in `markdown-golden/README.md` | List-steal pipe-less closed (v0.1.18 + `simple-list-steal-pipe-less-tables.md`); empty list item + blank + structural outside closed (v0.1.17 + `simple-empty-list-item-structural.md`); same-indent list marker/delimiter split closed (v0.1.16 + `simple-same-indent-list-markers.md`); table header/delim columns closed (v0.1.14 + `simple-table-header-delim-columns.md`); mixed-marker nested lists closed (v0.1.13 + `simple-mixed-marker-nested-lists.md`); setext-`---` closed (v0.1.12 + `simple-setext-dash-headings.md`) |
+| Intentional diffs documented in `markdown-golden/README.md` | Lazy empty-container / link-def title / ordered start≠1 closed (v0.1.19 + `simple-lazy-empty-containers.md`); list-steal pipe-less closed (v0.1.18 + `simple-list-steal-pipe-less-tables.md`); empty list item + blank + structural outside closed (v0.1.17 + `simple-empty-list-item-structural.md`); same-indent list marker/delimiter split closed (v0.1.16 + `simple-same-indent-list-markers.md`); table header/delim columns closed (v0.1.14 + `simple-table-header-delim-columns.md`); mixed-marker nested lists closed (v0.1.13 + `simple-mixed-marker-nested-lists.md`); setext-`---` closed (v0.1.12 + `simple-setext-dash-headings.md`) |
 
 **Still-dialect after flip:** **thirty-eight+ nests** (intentional
 `MAX_MARK_NEST`=37 cap) and **nested-bracket image alts** / exotic inline
@@ -161,7 +161,7 @@ refuses. Footnote-ref callout titles/bodies are
 **engine-owned when doc-wide defs are known** (open enrich / `docFromSpans` /
 paste multi-block): promote `[^id]` iff a matching def exists, else literal
 (micromark parity); single-span IR→PM without known ids still falls through to
-dialect. List-steal pipe-less `- | -` closed at split (v0.1.18). Escape hatch:
+dialect. List-steal pipe-less `- | -` closed at split (v0.1.18). Lazy empty-container / link-def title / ordered start≠1 closed at split (v0.1.19). Escape hatch:
 `NOTO_MARKDOWN_ENGINE=micromark`.
 
 ## Bridge docs (engine repo)
@@ -173,7 +173,7 @@ dialect. List-steal pipe-less `- | -` closed at split (v0.1.18). Escape hatch:
 
 ## Status
 
-**Product default is `@roobli/md`.** Pin is `@roobli/md` v0.1.18; escape hatch
+**Product default is `@roobli/md`.** Pin is `@roobli/md` v0.1.19; escape hatch
 `NOTO_MARKDOWN_ENGINE=micromark`. Quote/callout and
 indented-code split parity are closed; engine serialize dialect (hard-break /
 list-marker / verbatim / bare autolink / table delimiters / Phase 12 CJK
@@ -181,7 +181,7 @@ emphasis), Phase 10 line-prefix offsets, Phase 11 `reparseFromText`, and
 Phase 13 CommonMark lazy continuation (no-`>` quotes / unindented list soft-wrap) and
 Phase 14 nest/interrupt parity (definition lazy; GFM tables interrupt paragraphs;
 list-nested indented blocks; v0.1.11 adjacent defs stay separate spans) and
-Phase 15 setext-`---` vs thematic-break parity (v0.1.12), Phase 16 mixed-marker nested lists (v0.1.13), Phase 17 GFM table header/delimiter column-count parity (v0.1.14), Phase 18 `md serve`, Phase 19 same-indent list marker/delimiter split (v0.1.16), Phase 20 empty list item + blank + structural outside (v0.1.17), and Phase 21 list-steal pipe-less `- | -` (v0.1.18) are available on the flagged path.
+Phase 15 setext-`---` vs thematic-break parity (v0.1.12), Phase 16 mixed-marker nested lists (v0.1.13), Phase 17 GFM table header/delimiter column-count parity (v0.1.14), Phase 18 `md serve`, Phase 19 same-indent list marker/delimiter split (v0.1.16), Phase 20 empty list item + blank + structural outside (v0.1.17), Phase 21 list-steal pipe-less `- | -` (v0.1.18), and Phase 22 lazy empty-container / link-def title / ordered start≠1 (v0.1.19) are available on the flagged path.
 
 **Host wiring (flagged `replaceMarkdown`).** `PriorSplitCache`
 (`src/shared/markdown/v3/prior-split-cache.ts`) seeds a structural split on
@@ -218,10 +218,10 @@ simple flat lists and nested lists (same-family or mixed-marker, any depth; plai
 breaks + multi-paragraph items + structural quote/fence/ATX-heading/HTML/table/hr children; nested children may nest only) + simple GFM tables (alignment row; plain
 or simple-marked cells incl. escaped pipes; consistent or ragged body columns; pipe-optional leading `|`);
 enrich flags mark those done — see `docs/performance/open-path-first-cut.md`.
-Cross-family same-indent sibling mixes owned; under-indented structural nest-exit owned; nest-sibling after nest-exit owned; under-indented paragraph nest-exit after blank owned; empty-item + blank + structural closed at split; list-steal pipe-less closed at split; heavy inline leftovers: thirty-eight+ nests (intentional cap) and nested-bracket image alts stay on dialect; footnote-ref callout titles/bodies owned with doc-wide defs.
+Cross-family same-indent sibling mixes owned; under-indented structural nest-exit owned; nest-sibling after nest-exit owned; under-indented paragraph nest-exit after blank owned; empty-item + blank + structural closed at split; list-steal pipe-less closed at split; lazy empty-container / link-def title / ordered start≠1 closed at split; heavy inline leftovers: thirty-eight+ nests (intentional cap) and nested-bracket image alts stay on dialect; footnote-ref callout titles/bodies owned with doc-wide defs.
 Nested-bracket wiki (incl. in callout titles) is engine-owned as literal text.
 Matched `***`/`___`, mixed triple closers, same-delimiter stacks, and multi-line inline HTML owned.
-Ragged body rows and **pipe-optional** GFM tables (omit leading/trailing `|` when the row still contains `|`) are engine-owned; list-steal `- | -` pipe-less delimiters closed at split (v0.1.18); Phase 17 mismatched header/delim (paragraphs at split) stay dialect only if forced as table kind.
+Ragged body rows and **pipe-optional** GFM tables (omit leading/trailing `|` when the row still contains `|`) are engine-owned; list-steal `- | -` pipe-less delimiters closed at split (v0.1.18); lazy empty-container / link-def title / ordered start≠1 closed at split (v0.1.19); Phase 17 mismatched header/delim (paragraphs at split) stay dialect only if forced as table kind.
 Simple inline math (`$…$` / `$$…$$`) and simple HTML/math in table cells are engine-owned.
 Simple image alts (math / marks / escapes / literal HTML → micromark plain alt string) are engine-owned.
 Empty footnote bodies, nested lists (incl. mixed-marker) at
@@ -239,7 +239,7 @@ simple GFM tables**, and **simple inline HTML** (single- or multi-line tags / co
 Product default is `@roobli/md` (escape hatch: `NOTO_MARKDOWN_ENGINE=micromark`).
 
 Next: keep growing `markdown-golden/` (more GFM / vault edges), extend IR→PM
-only where micromark parity is locked (Phase 17 mismatched header/delim are paragraphs at split; residual dialect for thirty-eight+ nests (intentional cap) and nested-bracket image alts; footnote-ref callout titles/bodies owned with doc-wide defs; list-steal pipe-less closed (v0.1.18); under-indented paragraph nest-exit after blank owned; under-indented structural nest-exit owned; nest-sibling after nest-exit owned; lazy-after-blank owned; setext-shaped tight `---` in list items owned; empty-item + blank + structural closed (v0.1.17); cross-family same-indent sibling mixes owned;
+only where micromark parity is locked (Phase 17 mismatched header/delim are paragraphs at split; residual dialect for thirty-eight+ nests (intentional cap) and nested-bracket image alts; footnote-ref callout titles/bodies owned with doc-wide defs; list-steal pipe-less closed (v0.1.18); lazy empty-container closed (v0.1.19); under-indented paragraph nest-exit after blank owned; under-indented structural nest-exit owned; nest-sibling after nest-exit owned; lazy-after-blank owned; setext-shaped tight `---` in list items owned; empty-item + blank + structural closed (v0.1.17); cross-family same-indent sibling mixes owned;
 pipe-optional tables + heavy callout titles owned; mixed triple closers + same-delimiter stacks + multi-line inline HTML owned; vault-callout-footnote-refs + typora-mixed-owned-edges goldens landed). Hard-breaks, images, empty/meta fences, escapes, table-align,
 ordered-start, inline HTML, simple-flat-lists, simple-nested-lists,
 simple-nested-quotes, simple-lists-in-quotes, simple-hard-breaks-in-quotes,
@@ -247,10 +247,10 @@ simple-lazy-continuations-in-quotes, simple-no-marker-lazy-in-quotes,
 simple-lazy-list-continuations, simple-hard-breaks-in-lists, simple-multi-block-list-items, simple-list-item-structural-children, simple-list-item-html-table-hr, simple-list-item-setext-tight, simple-lazy-after-blank-list-items, simple-under-indented-structural-nest-exit, simple-nest-sibling-after-nest-exit, simple-under-indented-paragraph-nest-exit,
 simple-hard-breaks-in-footnotes, simple-callouts, simple-titled-collapsible-callouts, simple-marked-callout-titles, simple-heavy-callout-titles, simple-marked-phrasing,
 simple-underscore-emphasis, simple-nested-marks, simple-two-level-nested-marks, simple-three-level-nested-marks, simple-four-level-nested-marks, simple-five-level-nested-marks, simple-six-level-nested-marks, simple-seven-level-nested-marks, simple-eight-level-nested-marks, simple-nine-level-nested-marks, simple-ten-level-nested-marks, simple-eleven-level-nested-marks, simple-twelve-level-nested-marks, simple-thirteen-level-nested-marks, simple-fourteen-level-nested-marks, simple-fifteen-level-nested-marks, simple-sixteen-level-nested-marks, simple-seventeen-level-nested-marks, simple-eighteen-level-nested-marks, simple-nineteen-level-nested-marks, simple-twenty-level-nested-marks, simple-twenty-one-level-nested-marks, simple-twenty-two-level-nested-marks, simple-twenty-three-level-nested-marks, simple-twenty-four-level-nested-marks, simple-twenty-five-level-nested-marks, simple-twenty-six-level-nested-marks, simple-twenty-seven-level-nested-marks, simple-twenty-eight-level-nested-marks, simple-twenty-nine-level-nested-marks, simple-thirty-level-nested-marks, simple-thirty-one-level-nested-marks, simple-thirty-two-level-nested-marks, simple-thirty-three-level-nested-marks, simple-thirty-four-level-nested-marks, simple-thirty-five-level-nested-marks, simple-thirty-six-level-nested-marks, simple-thirty-seven-level-nested-marks, simple-triple-delimiter-marks, simple-inline-links, simple-bare-autolinks, simple-angle-autolinks, simple-www-autolinks, simple-email-autolinks / simple-escapes / simple-escapes-in-tables / simple-ragged-tables / simple-pipe-optional-tables / simple-inline-html / simple-inline-math / simple-image-alts / simple-math-html-in-tables, simple-reference-links, simple-wiki-links, simple-gfm-tables,
-simple-footnote-defs, empty-footnote-defs, simple-setext-dash-headings, simple-mixed-marker-nested-lists, simple-table-header-delim-columns, simple-same-indent-list-markers, simple-cross-family-same-indent-lists, simple-empty-list-item-structural, and cjk-emphasis goldens landed.
+simple-footnote-defs, empty-footnote-defs, simple-setext-dash-headings, simple-mixed-marker-nested-lists, simple-table-header-delim-columns, simple-same-indent-list-markers, simple-cross-family-same-indent-lists, simple-empty-list-item-structural, simple-list-steal-pipe-less-tables, simple-lazy-empty-containers, and cjk-emphasis goldens landed.
 **Default-on landed** (Dylan/lykoris approved). Residual dialect: thirty-eight+ nests (cap) and nested-bracket image alts / exotic inline refuses.
 
 **Noto `0.0.2-alpha.9`** shipped the adapter (#37) plus `@roobli/md` v0.1.1 quote/
-callout parity (#38). Pin is now `@roobli/md` v0.1.18 (Phase 21 list-steal pipe-less on top of Phase 20 empty list item + blank + structural outside / Phase 19 same-indent list marker/delimiter split / Phase 18 `md serve` / Phase 17 table header/delim columns /
+callout parity (#38). Pin is now `@roobli/md` v0.1.19 (Phase 22 lazy empty-container / link-def title / ordered start≠1 on top of Phase 21 list-steal pipe-less / Phase 20 empty list item + blank + structural outside / Phase 19 same-indent list marker/delimiter split / Phase 18 `md serve` / Phase 17 table header/delim columns /
 Phase 16 mixed-marker nested lists / Phase 15 setext-`---` / Phase 14 nest/interrupt + adjacent-def / Phase 13 lazy / Phase 12 CJK / Phase 11 / 10 / 9 / 8 / 7 / v0.1.2). Escape hatch:
 `NOTO_MARKDOWN_ENGINE=micromark`.
