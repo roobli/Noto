@@ -13,6 +13,10 @@
 import type { Node as ProseNode } from 'prosemirror-model';
 import type { BlockSpan } from '../../../shared/markdown/v3/blocks';
 import { blockFromSpan } from '../../../shared/markdown/v3/pm/from-mdast';
+import {
+  collectFootnoteDefinitionIds,
+  withKnownFootnoteIds,
+} from '../../../shared/markdown/v3/pm/from-engine';
 
 export interface EnrichPmWindow {
   readonly from: number;
@@ -48,9 +52,10 @@ export function enrichPmPatchForWindow(
   let to = from;
   for (let i = fromIndex; i < toIndex; i += 1) to += doc.child(i).nodeSize;
 
+  const ids = collectFootnoteDefinitionIds(spans);
   return {
     from,
     to,
-    nodes: spans.slice(fromIndex, toIndex).map(blockFromSpan),
+    nodes: withKnownFootnoteIds(ids, () => spans.slice(fromIndex, toIndex).map(blockFromSpan)),
   };
 }

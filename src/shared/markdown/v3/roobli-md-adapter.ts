@@ -48,9 +48,11 @@ import type {
 import { parseMarkdown, topLevelNodes } from './syntax';
 import {
   canSkipDialectEnrich,
+  collectFootnoteDefinitionIds,
   engineSemanticKey,
   parseLinkDefinitionSource,
   parseSimpleQuoteSource,
+  withKnownFootnoteIds,
   type ParsedFlatList,
   type ParsedListItemChild,
   type ParsedQuoteChild,
@@ -233,26 +235,31 @@ export function enrichSpansInRange<T extends AdapterBlockSpan>(
   const to = Math.max(from, Math.min(range.to, spans.length));
   if (from === to || spans.length === 0) return spans.slice() as T[];
 
-  const out = spans.slice() as AdapterBlockSpan[];
-  let i = from;
-  while (i < to) {
-    const span = out[i]!;
-    if (canSkipDialectEnrich(span.kind, span.markdown)) {
-      out[i] = finalizeEngineAdapterSpan(span);
-      i += 1;
-      continue;
+  // Doc-wide footnote defs (may sit outside `range`) so `[^id]` in callout
+  // titles/bodies can be engine-owned with micromark promote/literal parity.
+  const knownFootnoteIds = collectFootnoteDefinitionIds(spans);
+  return withKnownFootnoteIds(knownFootnoteIds, () => {
+    const out = spans.slice() as AdapterBlockSpan[];
+    let i = from;
+    while (i < to) {
+      const span = out[i]!;
+      if (canSkipDialectEnrich(span.kind, span.markdown)) {
+        out[i] = finalizeEngineAdapterSpan(span);
+        i += 1;
+        continue;
+      }
+      let j = i + 1;
+      while (j < to && !canSkipDialectEnrich(out[j]!.kind, out[j]!.markdown)) {
+        j += 1;
+      }
+      const enriched = enrichDialectRun(out.slice(i, j), text);
+      for (let k = 0; k < enriched.length; k += 1) {
+        out[i + k] = enriched[k]!;
+      }
+      i = j;
     }
-    let j = i + 1;
-    while (j < to && !canSkipDialectEnrich(out[j]!.kind, out[j]!.markdown)) {
-      j += 1;
-    }
-    const enriched = enrichDialectRun(out.slice(i, j), text);
-    for (let k = 0; k < enriched.length; k += 1) {
-      out[i + k] = enriched[k]!;
-    }
-    i = j;
-  }
-  return out as T[];
+    return out as T[];
+  });
 }
 
 
@@ -318,10 +325,13 @@ export function createEnrichFlags(
   if (to > 0) flags.fill(1, 0, to);
   if (spans) {
     const n = Math.min(spans.length, flags.length);
-    for (let i = to; i < n; i += 1) {
-      const span = spans[i]!;
-      if (canSkipDialectEnrich(span.kind, span.markdown)) flags[i] = 1;
-    }
+    const knownFootnoteIds = collectFootnoteDefinitionIds(spans);
+    withKnownFootnoteIds(knownFootnoteIds, () => {
+      for (let i = to; i < n; i += 1) {
+        const span = spans[i]!;
+        if (canSkipDialectEnrich(span.kind, span.markdown)) flags[i] = 1;
+      }
+    });
   }
   return flags;
 }
@@ -715,10 +725,12 @@ export function splitBlocksViaRoobli(
 ): AdapterSplitDocument {
   const split = engineParseBlocks(text);
   const mode: SpanEnrichMode = options?.enrich ?? 'bulk';
+  const knownFootnoteIds = collectFootnoteDefinitionIds(split.spans);
   const spans =
-    mode === 'none' ? split.spans.map(enrichSpanNone)
-    : mode === 'per-span' ? split.spans.map(enrichSpan)
-    : enrichSplitBulk(split, text);
+    mode === 'none'
+      ? withKnownFootnoteIds(knownFootnoteIds, () => split.spans.map(enrichSpanNone))
+      : mode === 'per-span' ? split.spans.map(enrichSpan)
+      : enrichSplitBulk(split, text);
   return {
     spans,
     leading: split.leading,

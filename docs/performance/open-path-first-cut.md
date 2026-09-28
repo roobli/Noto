@@ -200,18 +200,25 @@ Does **not** flip default-on.
 
 ## Default-on readiness (do **not** flip yet)
 
-After list-steal pipe-less `- | -` closed at split, flagged IR→PM leftovers that would
-still be **dialect** if `NOTO_MARKDOWN_ENGINE` flipped tomorrow:
+After list-steal pipe-less `- | -` closed at split and doc-aware footnote-ref
+ownership, flagged IR→PM leftovers that would still be **dialect** if
+`NOTO_MARKDOWN_ENGINE` flipped tomorrow:
 
 | Residual | Why still dialect |
 | -------- | ----------------- |
 | Thirty-eight+ nested marks | Intentional `MAX_MARK_NEST` cap (37); leave alone |
-| Footnote-ref callout titles | Need doc-wide def lookup; per-span IR→PM cannot know |
+| Nested-bracket image alts / exotic constructs | Still refuse in the inline scanner |
+
+Footnote-ref callout titles/bodies are **owned** when doc-wide defs are known
+(`withKnownFootnoteIds` via open enrich / `docFromSpans` / multi-block paste):
+promote `[^id]` iff a matching def exists, else literal (micromark parity).
+Single-span IR→PM without known ids still falls through to dialect.
 
 List-steal pipe-less `- | -` closed at split (`@roobli/md` ≥ v0.1.18 +
 `simple-list-steal-pipe-less-tables.md`). Golden / open-path gates are otherwise
-green on the curated set. Still prefer broader corpus + packaged open feel
-before flipping the product default.
+green on the curated set (incl. `vault-callout-footnote-refs.md` /
+`typora-mixed-owned-edges.md`). Still prefer packaged open feel + review before
+flipping the product default — do **not** flip in this cut.
 
 ## Next residual (not this PR)
 
@@ -223,7 +230,7 @@ before flipping the product default.
 2. ~~Kind-aware structural stand-ins (heading/fence/…)~~ — shipped (#90).
 3. Extend IR→PM to more kinds when safe (thirty-eight+ nests,
    marked footnote bodies with heavy
-   inline; heavy callout titles owned (math/HTML/escapes/nests/triples/links/images; nested-bracket wiki titles owned as literal; footnote-ref titles stay dialect — need matching def elsewhere); pipe-optional tables owned; matched `***`/`___` owned; mixed triple closers owned; same-delimiter stacks owned; multi-line inline HTML owned; Phase 17 header/delim column parity owned at split; simple escapes + escaped pipes in simple tables + pipe-optional GFM tables + simple inline HTML + simple inline math + simple HTML/math in table cells + simple image alts owned; collapsible/plain-titled/simple-marked-title/heavy-title callouts owned; simple flat + up to thirty-seven-level
+   inline; heavy callout titles owned (math/HTML/escapes/nests/triples/links/images; nested-bracket wiki titles owned as literal; footnote-ref titles/bodies owned with doc-wide defs); pipe-optional tables owned; matched `***`/`___` owned; mixed triple closers owned; same-delimiter stacks owned; multi-line inline HTML owned; Phase 17 header/delim column parity owned at split; simple escapes + escaped pipes in simple tables + pipe-optional GFM tables + simple inline HTML + simple inline math + simple HTML/math in table cells + simple image alts owned; collapsible/plain-titled/simple-marked-title/heavy-title callouts owned; simple flat + up to thirty-seven-level
    nested `**`/`*`/`__`/`_`/`~~`/`` ` `` marks owned across paras/headings/lists/
    tables/quotes/callouts/footnotes; simple inline links/images + simple reference
    links/images + simple bare + angle-bracket http(s) + www. + email + simple wiki `[[…]]` (literal text) owned; snake_case underscores stay literal). Plain hard-break paragraphs/headings,
@@ -233,7 +240,7 @@ before flipping the product default.
    and hard breaks in simple footnotes are engine-owned. Structural quote /
    fence / ATX-heading / HTML / table / hr children inside list items are
    engine-owned; cross-family same-indent sibling marker mixes within one span
-   are engine-owned; under-indented structural nest-exit owned; nest-sibling after nest-exit owned; under-indented paragraph nest-exit after blank owned; list-steal pipe-less `- | -` closed at split; footnote-ref callout titles stay dialect.
+   are engine-owned; under-indented structural nest-exit owned; nest-sibling after nest-exit owned; under-indented paragraph nest-exit after blank owned; list-steal pipe-less `- | -` closed at split; footnote-ref callout titles/bodies owned with doc-wide defs.
 4. Keep growing `tests/fixtures/markdown-golden/` before default-on; GFM inline,
    nested lists, simple-nested-lists (depth-2+), simple-nested-quotes,
    simple-lists-in-quotes, simple-hard-breaks-in-quotes,

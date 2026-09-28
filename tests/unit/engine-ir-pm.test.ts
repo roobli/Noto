@@ -17,6 +17,7 @@ import { describe, expect, it } from 'vitest';
 import {
   blockFromEngineSpan,
   canSkipDialectEnrich,
+  collectFootnoteDefinitionIds,
   engineSemanticKey,
   needsDialectInline,
   needsDialectInlineInQuote,
@@ -31,8 +32,9 @@ import {
   parseSimpleFlatListSource,
   parseSimpleFlatListsSource,
   parseSimpleTableSource,
+  withKnownFootnoteIds,
 } from '../../src/shared/markdown/v3/pm/from-engine';
-import { blockFromSpan, docFromSpans } from '../../src/shared/markdown/v3/pm/from-mdast';
+import { blockFromSpan, blocksFromSpans, docFromSpans } from '../../src/shared/markdown/v3/pm/from-mdast';
 import {
   splitBlocksViaRoobli,
   enrichSpansInRange,
@@ -3894,8 +3896,8 @@ describe('enrich skip for engine-owned spans', () => {
       expect(block?.type.name).toBe('blockquote');
       expect(block?.textContent).toBe(textContent);
     }
-    // Nested-bracket wiki titles owned as literal; footnote-ref titles stay dialect
-    // (micromark only promotes [^id] when a matching def exists elsewhere).
+    // Nested-bracket wiki titles owned as literal; footnote-ref titles stay
+    // dialect without doc-wide ids (per-span cannot know).
     expect(canSkipDialectEnrich('quote', '> [!NOTE] [[a[[b]]]]\n> body')).toBe(true);
     expect(blockFromEngineSpan('quote', '> [!NOTE] [[a[[b]]]]\n> body')?.textContent).toBe('[!NOTE] [[a[[b]]]]\nbody');
     expect(canSkipDialectEnrich('quote', '> [!TIP]- Fold [[x[y]z]] title\n> body')).toBe(true);
@@ -3904,6 +3906,76 @@ describe('enrich skip for engine-owned spans', () => {
     expect(blockFromEngineSpan('quote', '> [!WARNING] Mix **bold** and [[a[[b]]]] title\n> body')?.textContent).toBe('[!WARNING] Mix bold and [[a[[b]]]] title\nbody');
     expect(canSkipDialectEnrich('quote', '> [!NOTE] note[^1]\n> body')).toBe(false);
     expect(blockFromEngineSpan('quote', '> [!NOTE] note[^1]\n> body')).toBeNull();
+  });
+
+  it('doc-aware footnote-ref callout titles/bodies promote only when def exists', () => {
+    const callout = '> [!NOTE] see[^1]\n> body also[^1]';
+    const missing = '> [!TIP] see[^missing]\n> body';
+    withKnownFootnoteIds(new Set(['1']), () => {
+      expect(canSkipDialectEnrich('quote', callout)).toBe(true);
+      const block = blockFromEngineSpan('quote', callout);
+      expect(block?.type.name).toBe('blockquote');
+      const refs: string[] = [];
+      block!.descendants((node) => {
+        if (node.type.name === 'footnote_reference') {
+          refs.push(`${node.attrs.identifier}:${node.attrs.label}`);
+        }
+      });
+      expect(refs).toEqual(['1:1', '1:1']);
+      expect(canSkipDialectEnrich('quote', missing)).toBe(true);
+      const lit = blockFromEngineSpan('quote', missing);
+      expect(lit?.type.name).toBe('blockquote');
+      let sawRef = false;
+      lit!.descendants((node) => {
+        if (node.type.name === 'footnote_reference') sawRef = true;
+      });
+      expect(sawRef).toBe(false);
+      expect(lit?.textContent).toContain('see[^missing]');
+    });
+    // Case-insensitive id match; label preserves reference casing.
+    withKnownFootnoteIds(new Set(['note']), () => {
+      const cased = blockFromEngineSpan('quote', '> [!NOTE] see[^Note]\n> body');
+      const refs: string[] = [];
+      cased!.descendants((node) => {
+        if (node.type.name === 'footnote_reference') {
+          refs.push(`${node.attrs.identifier}:${node.attrs.label}`);
+        }
+      });
+      expect(refs).toEqual(['note:Note']);
+    });
+    // Empty known set → all footnote-looking runs stay literal.
+    withKnownFootnoteIds(new Set(), () => {
+      expect(canSkipDialectEnrich('quote', callout)).toBe(true);
+      const lit = blockFromEngineSpan('quote', callout);
+      let sawRef = false;
+      lit!.descendants((node) => {
+        if (node.type.name === 'footnote_reference') sawRef = true;
+      });
+      expect(sawRef).toBe(false);
+      expect(lit?.textContent).toContain('see[^1]');
+    });
+  });
+
+  it('collectFootnoteDefinitionIds + docFromSpans own cross-span footnote refs', () => {
+    const md = '> [!NOTE] title[^1]\n> body[^1]\n\nPara[^1] too.\n\n[^1]: def\n';
+    const none = splitBlocksViaRoobli(md, { enrich: 'none' });
+    const ids = collectFootnoteDefinitionIds(none.spans);
+    expect([...ids]).toEqual(['1']);
+    const enriched = enrichSpansInRange(none.spans, md, { from: 0, to: none.spans.length });
+    // Without ambient context, single-span still refuses.
+    expect(canSkipDialectEnrich(enriched[0]!.kind, enriched[0]!.markdown)).toBe(false);
+    withKnownFootnoteIds(ids, () => {
+      expect(canSkipDialectEnrich(enriched[0]!.kind, enriched[0]!.markdown)).toBe(true);
+    });
+    const doc = docFromSpans(enriched as Parameters<typeof docFromSpans>[0]);
+    const refs: string[] = [];
+    doc.descendants((node) => {
+      if (node.type.name === 'footnote_reference') {
+        refs.push(String(node.attrs.identifier));
+      }
+    });
+    expect(refs).toEqual(['1', '1', '1']);
+    expect(blocksFromSpans(enriched as Parameters<typeof blocksFromSpans>[0]).length).toBe(enriched.length);
   });
 
   it('engine-owns simple inline math', () => {

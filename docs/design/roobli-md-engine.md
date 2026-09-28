@@ -146,16 +146,19 @@ reviewed:
 | Gate | Status |
 | ---- | ------ |
 | Split / identity / multi-block golden on current `markdown-golden/` | Green (expanded; keep growing) |
-| Broader corpus / vault-shaped edges (GFM inline, nested lists, HTML, callout edges, link-defs, simple quotes, simple flat lists, simple GFM tables, simple footnote-defs, empty footnote-defs, CJK emphasis, hard-breaks, images, empty/meta fences, escapes, table-align, ordered-start, inline HTML) in golden | Landed this cycle; more edges welcome |
+| Broader corpus / vault-shaped edges (GFM inline, nested lists, HTML, callout edges, link-defs, simple quotes, simple flat lists, simple GFM tables, simple footnote-defs, empty footnote-defs, CJK emphasis, hard-breaks, images, empty/meta fences, escapes, table-align, ordered-start, inline HTML, vault-callout-footnote-refs, typora-mixed-owned-edges) in golden | Landed this cycle; more edges welcome |
 | Flagged open-path deferred + viewport enrich + IR→PM leaf/plain(incl. hard-break)/link-def/simple-footnote(incl. empty + hard breaks)/simple-quote(incl. nested + lists-in-quotes + hard breaks)/flat-or-nested-list(any depth, incl. hard breaks + multi-paragraph items + lazy-after-blank + nest-exit)/simple-table(incl. ragged body)/simple inline HTML(incl. multi-line)+math | Landed (still flagged-only) |
 | Flagged serialize (identity / single / multi) + `reparseFromText` host wiring | Landed |
 | Packaged / e2e open feel on medium under the flag | Not a flip gate alone; measure before flip |
 | Intentional diffs documented in `markdown-golden/README.md` | List-steal pipe-less closed (v0.1.18 + `simple-list-steal-pipe-less-tables.md`); empty list item + blank + structural outside closed (v0.1.17 + `simple-empty-list-item-structural.md`); same-indent list marker/delimiter split closed (v0.1.16 + `simple-same-indent-list-markers.md`); table header/delim columns closed (v0.1.14 + `simple-table-header-delim-columns.md`); mixed-marker nested lists closed (v0.1.13 + `simple-mixed-marker-nested-lists.md`); setext-`---` closed (v0.1.12 + `simple-setext-dash-headings.md`) |
 
 **Prefer not flipping** until golden coverage is obviously broader than the
-current curated set. If flipped tomorrow, still-dialect: thirty-eight+ nests
-(intentional cap), footnote-ref callout titles (need doc-wide defs). List-steal
-pipe-less `- | -` closed at split (v0.1.18). Optional local:
+current curated set. If flipped tomorrow, still-dialect: **thirty-eight+ nests**
+(intentional `MAX_MARK_NEST`=37 cap only). Footnote-ref callout titles/bodies
+are **engine-owned when doc-wide defs are known** (open enrich / `docFromSpans`
+/ paste multi-block): promote `[^id]` iff a matching def exists, else literal
+(micromark parity); single-span IR→PM without known ids still falls through to
+dialect. List-steal pipe-less `- | -` closed at split (v0.1.18). Optional local:
 `NOTO_MARKDOWN_ENGINE=roobli-md`.
 
 ## Bridge docs (engine repo)
@@ -212,8 +215,7 @@ simple flat lists and nested lists (same-family or mixed-marker, any depth; plai
 breaks + multi-paragraph items + structural quote/fence/ATX-heading/HTML/table/hr children; nested children may nest only) + simple GFM tables (alignment row; plain
 or simple-marked cells incl. escaped pipes; consistent or ragged body columns; pipe-optional leading `|`);
 enrich flags mark those done — see `docs/performance/open-path-first-cut.md`.
-Cross-family same-indent sibling mixes owned; under-indented structural nest-exit owned; nest-sibling after nest-exit owned; under-indented paragraph nest-exit after blank owned; empty-item + blank + structural closed at split; list-steal pipe-less closed at split; heavy inline (thirty-eight+ /
-nested-bracket image alts / footnote-ref callout titles) stay on dialect.
+Cross-family same-indent sibling mixes owned; under-indented structural nest-exit owned; nest-sibling after nest-exit owned; under-indented paragraph nest-exit after blank owned; empty-item + blank + structural closed at split; list-steal pipe-less closed at split; heavy inline leftovers: thirty-eight+ nests (intentional cap) and nested-bracket image alts stay on dialect; footnote-ref callout titles/bodies owned with doc-wide defs.
 Nested-bracket wiki (incl. in callout titles) is engine-owned as literal text.
 Matched `***`/`___`, mixed triple closers, same-delimiter stacks, and multi-line inline HTML owned.
 Ragged body rows and **pipe-optional** GFM tables (omit leading/trailing `|` when the row still contains `|`) are engine-owned; list-steal `- | -` pipe-less delimiters closed at split (v0.1.18); Phase 17 mismatched header/delim (paragraphs at split) stay dialect only if forced as table kind.
@@ -234,9 +236,9 @@ simple GFM tables**, and **simple inline HTML** (single- or multi-line tags / co
 Product default stays micromark.
 
 Next: keep growing `markdown-golden/` (more GFM / vault edges), extend IR→PM
-only where micromark parity is locked (Phase 17 mismatched header/delim are paragraphs at split; residual dialect for thirty-eight+ / footnote-ref callout titles; list-steal pipe-less closed (v0.1.18); under-indented paragraph nest-exit after blank owned; under-indented structural nest-exit owned; nest-sibling after nest-exit owned; lazy-after-blank owned; setext-shaped tight `---` in list items owned; empty-item + blank + structural closed (v0.1.17); cross-family same-indent sibling mixes owned;
-pipe-optional tables + heavy callout titles owned; mixed triple closers + same-delimiter stacks + multi-line inline HTML owned), then reconsider
-default-on. Hard-breaks, images, empty/meta fences, escapes, table-align,
+only where micromark parity is locked (Phase 17 mismatched header/delim are paragraphs at split; residual dialect for thirty-eight+ nests only (intentional); footnote-ref callout titles/bodies owned with doc-wide defs; list-steal pipe-less closed (v0.1.18); under-indented paragraph nest-exit after blank owned; under-indented structural nest-exit owned; nest-sibling after nest-exit owned; lazy-after-blank owned; setext-shaped tight `---` in list items owned; empty-item + blank + structural closed (v0.1.17); cross-family same-indent sibling mixes owned;
+pipe-optional tables + heavy callout titles owned; mixed triple closers + same-delimiter stacks + multi-line inline HTML owned; vault-callout-footnote-refs + typora-mixed-owned-edges goldens landed), then reconsider
+default-on. **Do not flip yet** — gates are readiness-strong but prefer review of the intentional thirty-eight+ leftover + packaged feel before product default changes. Hard-breaks, images, empty/meta fences, escapes, table-align,
 ordered-start, inline HTML, simple-flat-lists, simple-nested-lists,
 simple-nested-quotes, simple-lists-in-quotes, simple-hard-breaks-in-quotes,
 simple-lazy-continuations-in-quotes, simple-no-marker-lazy-in-quotes,
