@@ -1,7 +1,9 @@
 # Markdown golden fixtures (A/B gates)
 
-Small public fixtures for comparing the **micromark** product path against
-`NOTO_MARKDOWN_ENGINE=roobli-md` before default-on.
+Small public fixtures for comparing the **product default** `@roobli/md` path
+against the legacy escape hatch `NOTO_MARKDOWN_ENGINE=micromark`. Product
+default is `@roobli/md` (landed #282 / alpha.112); keep both engines green on
+every fixture here.
 
 | File | Covers |
 | ---- | ------ |
@@ -30,6 +32,8 @@ Small public fixtures for comparing the **micromark** product path against
 | `simple-lists-in-quotes.md` | simple bullet/ordered/task lists inside `>` quotes (incl. same-family nest); no callouts, marks, hard breaks, or lazy continuations |
 | `simple-hard-breaks-in-quotes.md` | hard breaks (two trailing spaces) inside simple `>` quotes (incl. nested plain); no callouts, marks, lists-in-quotes with hard breaks, or lazy continuations |
 | `simple-lazy-continuations-in-quotes.md` | CommonMark lazy continuation of nested plain `>` paragraphs via fewer `>` markers (incl. hard-break lazy); no no-`>` lazy, marked lazy, or lazy-into-list |
+| `simple-no-marker-lazy-in-quotes.md` | true no-`>` lazy inside quotes (`@roobli/md` ≥ v0.1.9); CommonMark soft-wrap without a `>` marker |
+| `simple-lazy-list-continuations.md` | unindented CommonMark lazy soft-wrap in lists |
 | `simple-hard-breaks-in-lists.md` | hard breaks (two trailing spaces) inside simple flat / nested list items (incl. task / ordered); no marked items or multi-para |
 | `simple-multi-block-list-items.md` | multi-paragraph list items (blank + indented continuation; ordered/task/nest/soft-wrap in second para); lazy-after-blank owned in `simple-lazy-after-blank-list-items.md` |
 | `simple-empty-list-item-structural.md` | marker-only empty list item + blank + structural opens outside (`@roobli/md` ≥ v0.1.17 Phase 20); mid-list empty siblings stay one span; tight empty nests; nonempty blank nests unchanged |
@@ -162,6 +166,18 @@ out of this directory so the suite stays loud-fail-only on match):
    items do not absorb unindented lazy; complete link-defs absorb at most one
    indented title; ordered start ≠ 1 does not interrupt a paragraph).
 
+**Still intentional (not queued as nest-ladder work):**
+
+8. **Thirty-eight+ nested marks** — IR→PM owns up through thirty-seven levels
+   (`MAX_MARK_NEST` = 37; see `simple-thirty-seven-level-nested-marks.md` and
+   siblings). Deeper nests stay on the dialect enrich path by design; do not
+   climb the ladder further unless product asks.
+9. **Nested-bracket image alts / exotic inline refuses** — a `[` inside an
+   image/link label (and other constructs `tryInlineNodesFromSource` cannot
+   own) still falls through to dialect. Nested-bracket **wiki** is already
+   owned as literal (`[[` emit). Samples stay out of this directory so the
+   suite remains loud-fail-only on match.
+
 Every fixture **in this directory** is expected to match on:
 
 1. split span boundaries (`start` / `end` / `markdown` / `kind`) and gaps
@@ -172,5 +188,3 @@ Every fixture **in this directory** is expected to match on:
 If a future fixture must diverge, document it here and exclude it from the
 strict suite (or assert the documented delta explicitly) — silent drift is not
 allowed.
-- `simple-no-marker-lazy-in-quotes.md` — true no-`>` lazy inside quotes (needs `@roobli/md` ≥ v0.1.9)
-- `simple-lazy-list-continuations.md` — unindented CommonMark lazy soft-wrap in lists
