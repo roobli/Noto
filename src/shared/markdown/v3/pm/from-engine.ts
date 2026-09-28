@@ -22,8 +22,8 @@
  * opens outside the list at split — `@roobli/md` ≥ v0.1.17), and **simple GFM tables** (alignment row; plain or simple-marked
  * cells incl. escaped pipes; consistent **or ragged** body columns — micromark keeps
  * short/long body rows as-is; **pipe-optional** rows — leading/trailing `|` may be
- * omitted when a row still contains `|`, matching GFM; delimiter rows that would be
- * stolen by a bullet list marker (`- | -` without a leading `|`) stay dialect), the PM node is fully
+ * omitted when a row still contains `|`, matching GFM; list-steal pipe-less
+ * `- | -` delimiters are paragraphs + lists at split — `@roobli/md` ≥ v0.1.18), the PM node is fully
  * determined by that IR — no micromark / mdast pass. Cross-family same-indent sibling
  * marker mixes within one span (nested under a parent item, or sibling lists inside a
  * quote — micromark splits each mix into its own list) are engine-owned; deeper
@@ -4026,8 +4026,9 @@ export function parseSimpleTableSource(md: string): ParsedSimpleTable | null {
     normalized.push(content);
   }
 
-  // Micromark steals pipe-less `- | -` as a bullet list (marker + space). Compact
-  // `-|-` / leading-`|` rows are fine; refuse the list-steal shape only.
+  // Micromark list-steal / `@roobli/md` ≥ v0.1.18: pipe-less `- | -` is a list at
+  // split (not a table). Compact `-|-` / leading-`|` rows are fine; refuse a
+  // forced table kind that still feeds the list-steal shape.
   const delimLine = normalized[1]!;
   if (!delimLine.startsWith('|') && /^[-*+]\s/u.test(delimLine)) return null;
 

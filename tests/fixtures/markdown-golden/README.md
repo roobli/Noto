@@ -101,7 +101,8 @@ Small public fixtures for comparing the **micromark** product path against
 | `simple-cross-family-same-indent-lists.md` | cross-family same-indent sibling marker mixes within one span (nested under a parent item, or consecutive lists inside a quote) split into sibling lists as micromark does; Phase 19 top-level mixes stay separate IR spans |
 | `simple-gfm-tables.md` | simple GFM pipe tables (align row; plain cells; indent; compact); no marked/ragged cells |
 | `simple-ragged-tables.md` | ragged body rows (short / long cell counts) on simple GFM tables owned on the flagged IR→PM path |
-| `simple-pipe-optional-tables.md` | GFM pipe-optional tables (no leading/trailing `|` required when a row still contains `|`; mixed pipes; indent; compact) owned on the flagged IR→PM path; list-steal `- | -` delimiter stays dialect |
+| `simple-list-steal-pipe-less-tables.md` | micromark list-steal pipe-less `- | -` / indented / `- | ---` → paragraph + list at split (`@roobli/md` ≥ v0.1.18 Phase 21); compact `-|-` + leading-`|` + multi-dash `--- | ---` stay tables |
+| `simple-pipe-optional-tables.md` | GFM pipe-optional tables (no leading/trailing `|` required when a row still contains `|`; mixed pipes; indent; compact) owned on the flagged IR→PM path (list-steal closed in `simple-list-steal-pipe-less-tables.md`) |
 | `simple-table-header-delim-columns.md` | GFM table header/delimiter column-count parity (`@roobli/md` ≥ v0.1.14 Phase 17): mismatched counts stay paragraph; matching counts + ragged body stay table; mismatch does not interrupt a preceding paragraph |
 | `simple-math-html-in-tables.md` | simple `$…$` / `$$…$$` and simple inline HTML tags inside GFM table cells owned on the flagged IR→PM path (docs previously claimed dialect — stale) |
 | `simple-footnote-defs.md` | simple `[^id]:` footnote definitions (plain body, soft-wrap, cased label) |
@@ -148,6 +149,10 @@ out of this directory so the suite stays loud-fail-only on match):
    `@roobli/md` v0.1.17 (Phase 20). Covered by
    `simple-empty-list-item-structural.md` (marker-only `-`/`1.` + blank +
    quote/heading/fence/hr/table; mid-list empty siblings; tight empty nests).
+6. ~~**List-steal pipe-less `- | -` delimiters**~~ — **closed** in
+   `@roobli/md` v0.1.18 (Phase 21). Covered by
+   `simple-list-steal-pipe-less-tables.md` (pipe-less `- | -` / indented /
+   `- | ---` → paragraph + list; compact `-|-` + leading-`|` stay tables).
 
 Every fixture **in this directory** is expected to match on:
 
