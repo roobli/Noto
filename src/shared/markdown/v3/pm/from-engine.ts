@@ -58,10 +58,11 @@
  * simple-marked / **heavy** same-line titles — math / HTML / escapes / nested
  * marks / triples / links / images / stacks) keep the marker as plain text for
  * the alert decoration plugin; title marks are real PM marks after the marker.
- * Nested-bracket wiki in titles is engine-owned as literal text; footnote
- * refs in titles stay dialect (micromark only promotes `[^id]` when a
- * matching definition exists elsewhere in the document — per-span IR→PM
- * cannot know).
+ * Nested-bracket wiki in titles is engine-owned as literal text. Footnote
+ * refs (`[^id]`) are engine-owned when doc-wide definition ids are known
+ * (`withKnownFootnoteIds` / `knownFootnoteIds`): promote only when a matching
+ * def exists (micromark parity); otherwise literal. Without known ids,
+ * footnote refs stay dialect (per-span IR→PM cannot know).
  *
  * See docs/performance/open-path-first-cut.md and docs/design/roobli-md-engine.md.
  */
@@ -106,7 +107,8 @@ const INLINE_DIALECT_RE = /[*_~`[\]<!$:\\@]|https?:\/\/|www\./iu;
  * destination.
  * Brackets are scanned for simple `[text](url)` / `![alt](url)`, simple
  * `[text][id]` / `[text][]` / `![alt][id]` / `![alt][]`, and simple wiki
- * `[[target]]` / `[[target|alias]]` (footnotes stay dialect). Underscore
+ * `[[target]]` / `[[target|alias]]` (footnotes: dialect without known ids;
+ * doc-aware promote/literal when ids are known). Underscore
  * emphasis is owned (snake_case-safe flanking).
  */
 /** CommonMark / vault hard break: two+ spaces before newline. */
@@ -125,10 +127,10 @@ export function needsDialectInline(markdown: string): boolean {
  * plain titles (`[!NOTE] Title`), **simple-marked titles**, and **heavy titles**
  * (`[!NOTE] $E=mc^2$` / `<span>x</span>` / `\*esc\*` / nested marks / `***` /
  * mixed triples / same-delimiter stacks / links / images — via
- * `tryInlineNodesFromSource`). Nested-bracket wiki titles are literal text;
- * footnote refs in titles stay dialect (need a matching def elsewhere).
- * The alert-plugin decorates from the leading `[!NOTE]` token
- * either way.
+ * `tryInlineNodesFromSource`). Nested-bracket wiki titles are literal text.
+ * Footnote refs in titles/bodies are engine-owned when doc-wide def ids are
+ * known (promote iff matching def; else literal); without known ids, dialect.
+ * The alert-plugin decorates from the leading `[!NOTE]` token either way.
  */
 const ALERT_MARKER_RE = /^\[!(NOTE|TIP|IMPORTANT|WARNING|CAUTION)\]([+-])?[ \t]*([^\n]*)(?:\n|$)/;
 
@@ -229,7 +231,59 @@ function plainRunNodes(
 export interface TryInlineOptions {
   /** Allow a leading GFM alert marker (`[!NOTE]` …) as plain text prefix. */
   readonly quoteAlert?: boolean;
+  /**
+   * Lowercased footnote definition identifiers known in the document.
+   * When set (including empty), `[^id]` promotes to `footnote_reference` iff
+   * `id` is in the set; otherwise the run stays literal text (micromark
+   * parity). When unset, `[^id]` stays dialect — per-span IR→PM cannot know.
+   * Prefer `withKnownFootnoteIds` around multi-span builds so nested scanners
+   * see the same set without threading options through every helper.
+   */
+  readonly knownFootnoteIds?: ReadonlySet<string>;
 }
+
+/** Active doc-wide footnote def ids for the current IR→PM build (sync only). */
+let activeKnownFootnoteIds: ReadonlySet<string> | undefined;
+
+/**
+ * Run `fn` with doc-wide footnote definition ids visible to the inline
+ * scanner. Nested calls restore the previous set. Pass an empty set when the
+ * document has no footnote defs (all `[^id]` stay literal).
+ */
+export function withKnownFootnoteIds<T>(
+  ids: ReadonlySet<string>,
+  fn: () => T,
+): T {
+  const prev = activeKnownFootnoteIds;
+  activeKnownFootnoteIds = ids;
+  try {
+    return fn();
+  } finally {
+    activeKnownFootnoteIds = prev;
+  }
+}
+
+/**
+ * Collect lowercased footnote definition identifiers from structural spans.
+ * Uses the first-line `[^label]:` shape only (no body parse) so deferred
+ * enrich can know defs before dialect attach.
+ */
+export function collectFootnoteDefinitionIds(
+  spans: readonly { readonly kind: string; readonly markdown: string }[],
+): ReadonlySet<string> {
+  const ids = new Set<string>();
+  for (const span of spans) {
+    if (span.kind !== 'footnote-definition') continue;
+    const line = span.markdown.replace(/\r\n/g, '\n').split('\n')[0] ?? '';
+    const m = /^\[(\^[^\]]+)\]:/u.exec(line.trimStart());
+    if (!m) continue;
+    const label = m[1]!.slice(1);
+    if (label.length === 0 || /[\s\]]/u.test(label)) continue;
+    ids.add(label.toLowerCase());
+  }
+  return ids;
+}
+
 
 /**
  * Engine-owned inline IR: plain text, hard breaks, and a simple subset of marks
@@ -260,6 +314,14 @@ export function tryInlineNodesFromSource(
   md: string,
   options: TryInlineOptions = {},
 ): ProseNode[] | null {
+  // Explicit knownFootnoteIds on options installs the doc-wide context for this
+  // call (and nested scanners) without requiring every helper to thread it.
+  if (options.knownFootnoteIds !== undefined && options.knownFootnoteIds !== activeKnownFootnoteIds) {
+    return withKnownFootnoteIds(options.knownFootnoteIds, () => tryInlineNodesFromSource(md, {
+      ...options,
+      knownFootnoteIds: undefined,
+    }));
+  }
   const normalized = md.replace(/\r\n/g, '\n');
   if (options.quoteAlert) {
     const match = ALERT_MARKER_RE.exec(normalized);
@@ -270,6 +332,7 @@ export function tryInlineNodesFromSource(
       // Same-line title may be plain (whole prefix as text) or simple-marked /
       // wiki / autolink / link (split marker+fold / spaces / title / newline).
       // Deep / unparseable nests stay dialect; simple math / HTML / marks owned.
+      // Footnote refs owned when doc-wide def ids are known.
       if (title.length > 0 && INLINE_DIALECT_RE.test(title)) {
         const markerAndFold = `[!${match[1]}]${match[2] ?? ''}`;
         const afterMarker = prefix.slice(markerAndFold.length);
@@ -278,7 +341,7 @@ export function tryInlineNodesFromSource(
         const titleAndNl = afterMarker.slice(spaces.length);
         const hasNl = titleAndNl.endsWith('\n');
         const titleOnly = hasNl ? titleAndNl.slice(0, -1) : titleAndNl;
-        const titleNodes = tryInlineNodesFromSource(titleOnly);
+        const titleNodes = tryInlineNodesFromSource(titleOnly, options);
         if (!titleNodes) return null;
         const nodes: ProseNode[] = [
           ...textNodes(markerAndFold),
@@ -287,13 +350,13 @@ export function tryInlineNodesFromSource(
           ...(hasNl ? textNodes('\n') : []),
         ];
         if (rest.length === 0) return nodes;
-        const restNodes = tryInlineNodesFromSource(rest);
+        const restNodes = tryInlineNodesFromSource(rest, options);
         if (!restNodes) return null;
         return [...nodes, ...restNodes];
       }
       const prefixNodes = prefix.length > 0 ? textNodes(prefix) : [];
       if (rest.length === 0) return prefixNodes;
-      const restNodes = tryInlineNodesFromSource(rest);
+      const restNodes = tryInlineNodesFromSource(rest, options);
       if (!restNodes) return null;
       return [...prefixNodes, ...restNodes];
     }
@@ -2216,13 +2279,46 @@ function parseSimpleAsteriskTildeCode(
     // Simple inline / reference image or link:
     //   `![alt](url)` / `[text](url)` / `[text](url "title")`
     //   `![alt][id]` / `![alt][]` / `[text][id]` / `[text][]`
-    // Footnotes `[^…]` stay dialect. Bare `[…]` / `array[0]` (no `(…)` /
-    // `[id]` / `[]` after) stay literal text. Nested `[` in label → dialect.
+    // Footnotes `[^…]`: dialect without known ids; with known ids, promote
+    // when the def exists else literal (micromark). Bare `[…]` / `array[0]`
+    // (no `(…)` / `[id]` / `[]` after) stay literal. Nested `[` in label → dialect.
     if (input.startsWith('![', i) || input[i] === '[') {
       const isImage = input.startsWith('![', i);
       const openLen = isImage ? 2 : 1;
       const labelStart = i + openLen;
-      if (!isImage && input[labelStart] === '^') return null; // footnote ref
+      if (!isImage && input[labelStart] === '^') {
+        const known = activeKnownFootnoteIds;
+        if (known === undefined) return null; // no doc context → dialect
+        // Valid GFM footnote label: non-empty, no whitespace / `]` / newline.
+        let fnEnd = -1;
+        for (let k = labelStart + 1; k < len; k += 1) {
+          const ch = input[k]!;
+          if (ch === '\n' || ch === '\r' || ch === ' ' || ch === '\t') break;
+          if (ch === '[') break;
+          if (ch === ']') {
+            fnEnd = k;
+            break;
+          }
+        }
+        if (fnEnd > labelStart + 1) {
+          const label = input.slice(labelStart + 1, fnEnd);
+          const id = label.toLowerCase();
+          if (known.has(id)) {
+            // Atom without parent marks (from-mdast parity).
+            nodes.push(schema.nodes.footnote_reference.create({
+              identifier: id,
+              label,
+            }));
+            i = fnEnd + 1;
+            continue;
+          }
+          // No matching def — literal text (micromark parity).
+          emitPlain(i, fnEnd + 1);
+          i = fnEnd + 1;
+          continue;
+        }
+        // Invalid footnote shape (`[^]` / `[^a b]`) — fall through to ordinary `[`.
+      }
       // Find label closer; nested `[` inside label → dialect.
       // Backslash escapes (e.g. `\\]`) do not close the label (CommonMark).
       let labelEnd = -1;
@@ -2722,7 +2818,8 @@ function parseQuoteChildren(
  * lists (any reasonable depth; lazy into list items). Returns a child tree
  * matching CommonMark / mdast shape for the owned subset, or `null` when the
  * span still needs dialect enrich (nested marks / nested / heavy inline,
- * multi-para lists, pathological depth, footnote-ref titles).
+ * multi-para lists, pathological depth; footnote-ref titles owned when
+ * doc-wide def ids are known).
  * Plain / collapsible / plain-titled / simple-marked-title / heavy-title GFM
  * alerts (`> [!NOTE]`, `> [!NOTE]-`, `> [!NOTE] $E=mc^2$` / `<span>x</span>` /
  * nested marks / triples / links …) and simple-marked bodies are accepted.
@@ -4002,7 +4099,7 @@ function alignmentOfDelimiterCell(cell: string): TableAlign | undefined {
  * than the header — kept as-is, matching micromark/mdast); **pipe-optional**
  * rows (leading/trailing `|` may be omitted when the row still contains `|`,
  * matching GFM; 0–3 space indent); no blank lines inside the span. Nested /
- * heavy inline (cell newlines / exotic math / footnote refs) fall through to
+ * heavy inline (cell newlines / exotic math; footnote refs owned when doc-wide ids known) fall through to
  * dialect. Delimiter≠header returns null (Phase 17 split keeps those as
  * paragraphs; this refuse is a safety net). Pipe-less delimiter rows that
  * micromark treats as a bullet list (`- | -` — marker + space, no leading `|`)

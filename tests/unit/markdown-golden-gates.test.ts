@@ -255,6 +255,8 @@ describe('markdown golden gates — fixture inventory', () => {
       'tables.md',
       'tight-quotes.md',
       'trailing-spaces.md',
+      'typora-mixed-owned-edges.md',
+      'vault-callout-footnote-refs.md',
       'wiki.md',
     ]);
   });

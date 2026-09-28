@@ -12,7 +12,11 @@ import type { PhrasingContent, RootContent } from 'mdast';
 import { notoSchema } from './schema';
 import { renderMarkdown } from '../syntax';
 import type { BlockSpan } from '../blocks';
-import { blockFromEngineSpan } from './from-engine';
+import {
+  blockFromEngineSpan,
+  collectFootnoteDefinitionIds,
+  withKnownFootnoteIds,
+} from './from-engine';
 
 const schema = notoSchema;
 
@@ -239,7 +243,7 @@ function listHintsFromSource(markdown: string): Pick<BlockHints, 'bullet' | 'del
 }
 
 export function blockFromSpan(span: BlockSpan): ProseNode {
-  // Engine-owned IR → PM for leaf / plain+simple-marked paragraph+heading / link-def / simple footnote-def (incl. hard breaks + simple marks) / simple quote (incl. nested plain + lists-in-quotes + hard breaks + simple-marked callouts) / flat or nested list (same-family or mixed-marker, any depth, incl. hard breaks + simple marks + multi-paragraph items) / simple table with plain or simple-marked cells / simple inline links+images / simple reference links+images / simple bare http(s) + angle-bracket http(s) + www. + email autolinks / simple wiki links / simple inline HTML + math (skip mdast).
+  // Engine-owned IR → PM for leaf / plain+simple-marked paragraph+heading / link-def / simple footnote-def (incl. hard breaks + simple marks) / simple quote (incl. nested plain + lists-in-quotes + hard breaks + simple-marked callouts) / flat or nested list (same-family or mixed-marker, any depth, incl. hard breaks + simple marks + multi-paragraph items) / simple table with plain or simple-marked cells / simple inline links+images / simple reference links+images / simple bare http(s) + angle-bracket http(s) + www. + email autolinks / simple wiki links / simple inline HTML + math (skip mdast). Doc-aware footnote refs when `withKnownFootnoteIds` is active.
   const fromEngine = blockFromEngineSpan(span.kind, span.markdown);
   if (fromEngine) return fromEngine;
   const listStyle = span.kind === 'bullet-list' || span.kind === 'ordered-list' || span.kind === 'task-list'
@@ -248,9 +252,18 @@ export function blockFromSpan(span: BlockSpan): ProseNode {
   return blockFromMdast(span.node, { fenced: span.kind !== 'indented-code', ...listStyle });
 }
 
+/**
+ * Map spans to PM blocks with doc-wide footnote def ids so `[^id]` promotes
+ * only when a matching definition exists (micromark parity).
+ */
+export function blocksFromSpans(spans: readonly BlockSpan[]): ProseNode[] {
+  const ids = collectFootnoteDefinitionIds(spans);
+  return withKnownFootnoteIds(ids, () => spans.map(blockFromSpan));
+}
+
 /** Convert a whole document, preserving each block's source derived style. */
 export function docFromSpans(spans: readonly BlockSpan[]): ProseNode {
-  const content = spans.map(blockFromSpan);
+  const content = blocksFromSpans(spans);
   return schema.nodes.doc.create(null, content.length > 0 ? content : [schema.nodes.paragraph.create()]);
 }
 

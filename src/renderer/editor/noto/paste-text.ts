@@ -15,7 +15,7 @@
 
 import { Fragment, Slice, type ResolvedPos } from 'prosemirror-model';
 import { splitBlocks } from '../../../shared/markdown/v3/blocks';
-import { blockFromSpan } from '../../../shared/markdown/v3/pm/from-mdast';
+import { blocksFromSpans } from '../../../shared/markdown/v3/pm/from-mdast';
 import { notoSchema } from '../../../shared/markdown/v3/pm/schema';
 
 const toLf = (text: string): string => text.replace(/\r\n?/g, '\n');
@@ -27,7 +27,7 @@ export function sliceFromText(text: string, $context: ResolvedPos): Slice {
       ? Slice.empty
       : new Slice(Fragment.from(notoSchema.text(normalised)), 0, 0);
   }
-  const nodes = splitBlocks(normalised).spans.map(blockFromSpan);
+  const nodes = blocksFromSpans(splitBlocks(normalised).spans);
   if (nodes.length === 0) return Slice.empty;
   const paragraph = notoSchema.nodes.paragraph;
   if (nodes.length === 1 && nodes[0].type === paragraph && !normalised.includes('\n')) {

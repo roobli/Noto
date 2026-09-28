@@ -28,7 +28,11 @@ import { gapCursor } from 'prosemirror-gapcursor';
 import { columnResizing, tableEditing } from 'prosemirror-tables';
 import type { Node as ProseNode } from 'prosemirror-model';
 import { notoSchema } from '../../../shared/markdown/v3/pm/schema';
-import { blockFromSpan, docFromSpans } from '../../../shared/markdown/v3/pm/from-mdast';
+import { blockFromSpan, blocksFromSpans, docFromSpans } from '../../../shared/markdown/v3/pm/from-mdast';
+import {
+  collectFootnoteDefinitionIds,
+  withKnownFootnoteIds,
+} from '../../../shared/markdown/v3/pm/from-engine';
 import { blockToMarkdown } from '../../../shared/markdown/v3/pm/to-mdast';
 import { blockSpansFromWire, parseSingleBlock, splitBlocks, type BlockSpan } from '../../../shared/markdown/v3/blocks';
 import { isRoobliMdEngine } from '../../../shared/markdown/v3/engine-flag';
@@ -934,7 +938,7 @@ export class NotoEditor implements NotoEditorPort {
   appendMarkdown(markdown: string): boolean {
     const view = this.view;
     if (!view || this.readOnly) return false;
-    const blocks = splitBlocks(toLf(markdown)).spans.map(blockFromSpan);
+    const blocks = blocksFromSpans(splitBlocks(toLf(markdown)).spans);
     if (blocks.length === 0) return false;
     const at = view.state.doc.content.size;
     const tr = view.state.tr.insert(at, blocks);
@@ -1040,7 +1044,10 @@ export class NotoEditor implements NotoEditorPort {
       to -= view.state.doc.child(view.state.doc.childCount - 1 - index).nodeSize;
     }
 
-    const replacement = spans.slice(prefix, next.length - suffix).map(blockFromSpan);
+    const replacement = withKnownFootnoteIds(
+      collectFootnoteDefinitionIds(spans),
+      () => spans.slice(prefix, next.length - suffix).map(blockFromSpan),
+    );
     const transaction = view.state.tr.replaceWith(from, to, replacement);
     this.replaceInFlight = true;
     try {
