@@ -140,7 +140,11 @@ intentional diffs) before considering `NOTO_MARKDOWN_ENGINE` default
 
 ## Default-on checklist (do **not** flip yet)
 
-Product default stays micromark until **all** of the following are green and
+**DRAFT FLIP PR:** product default proposed as `@roobli/md` (see `engine-flag.ts`).
+Leave this PR unmerged until Dylan/lykoris review. Intentional leftover after
+flip: thirty-eight+ nests only.
+
+Product default historically stayed micromark until **all** of the following were green and
 reviewed:
 
 | Gate | Status |
@@ -170,8 +174,8 @@ dialect. List-steal pipe-less `- | -` closed at split (v0.1.18). Optional local:
 
 ## Status
 
-**Adapter spike landed (default-off).** `@roobli/md` v0.1.18 is the pinned
-flagged backend; micromark remains the product default. Quote/callout and
+**Adapter spike landed (default-off).** `@roobli/md` v0.1.18 is the pinned backend; this draft makes it the product default
+(escape hatch: `NOTO_MARKDOWN_ENGINE=micromark`). Quote/callout and
 indented-code split parity are closed; engine serialize dialect (hard-break /
 list-marker / verbatim / bare autolink / table delimiters / Phase 12 CJK
 emphasis), Phase 10 line-prefix offsets, Phase 11 `reparseFromText`, and
@@ -246,7 +250,7 @@ simple-lazy-list-continuations, simple-hard-breaks-in-lists, simple-multi-block-
 simple-hard-breaks-in-footnotes, simple-callouts, simple-titled-collapsible-callouts, simple-marked-callout-titles, simple-heavy-callout-titles, simple-marked-phrasing,
 simple-underscore-emphasis, simple-nested-marks, simple-two-level-nested-marks, simple-three-level-nested-marks, simple-four-level-nested-marks, simple-five-level-nested-marks, simple-six-level-nested-marks, simple-seven-level-nested-marks, simple-eight-level-nested-marks, simple-nine-level-nested-marks, simple-ten-level-nested-marks, simple-eleven-level-nested-marks, simple-twelve-level-nested-marks, simple-thirteen-level-nested-marks, simple-fourteen-level-nested-marks, simple-fifteen-level-nested-marks, simple-sixteen-level-nested-marks, simple-seventeen-level-nested-marks, simple-eighteen-level-nested-marks, simple-nineteen-level-nested-marks, simple-twenty-level-nested-marks, simple-twenty-one-level-nested-marks, simple-twenty-two-level-nested-marks, simple-twenty-three-level-nested-marks, simple-twenty-four-level-nested-marks, simple-twenty-five-level-nested-marks, simple-twenty-six-level-nested-marks, simple-twenty-seven-level-nested-marks, simple-twenty-eight-level-nested-marks, simple-twenty-nine-level-nested-marks, simple-thirty-level-nested-marks, simple-thirty-one-level-nested-marks, simple-thirty-two-level-nested-marks, simple-thirty-three-level-nested-marks, simple-thirty-four-level-nested-marks, simple-thirty-five-level-nested-marks, simple-thirty-six-level-nested-marks, simple-thirty-seven-level-nested-marks, simple-triple-delimiter-marks, simple-inline-links, simple-bare-autolinks, simple-angle-autolinks, simple-www-autolinks, simple-email-autolinks / simple-escapes / simple-escapes-in-tables / simple-ragged-tables / simple-pipe-optional-tables / simple-inline-html / simple-inline-math / simple-image-alts / simple-math-html-in-tables, simple-reference-links, simple-wiki-links, simple-gfm-tables,
 simple-footnote-defs, empty-footnote-defs, simple-setext-dash-headings, simple-mixed-marker-nested-lists, simple-table-header-delim-columns, simple-same-indent-list-markers, simple-cross-family-same-indent-lists, simple-empty-list-item-structural, and cjk-emphasis goldens landed.
-Do **not** flip the product default yet.
+This draft flips the product default; do **not** merge without review.
 
 **Noto `0.0.2-alpha.9`** shipped the adapter (#37) plus `@roobli/md` v0.1.1 quote/
 callout parity (#38). Pin is now `@roobli/md` v0.1.18 (Phase 21 list-steal pipe-less on top of Phase 20 empty list item + blank + structural outside / Phase 19 same-indent list marker/delimiter split / Phase 18 `md serve` / Phase 17 table header/delim columns /
