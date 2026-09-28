@@ -497,7 +497,8 @@ describe('from-engine IR helpers', () => {
     });
     // Escaped pipe in header collapses width → delimiter mismatch → dialect.
     expect(parseSimpleTableSource('| a \\| b |\n| - | - |')).toBeNull();
-    // Pipe-optional GFM rows (no leading `|`) owned; list-steal `- | -` stays dialect.
+    // Pipe-optional GFM rows (no leading `|`) owned; list-steal closed at split
+    // (`@roobli/md` ≥ v0.1.18) — refuse if a forced table kind still feeds it.
     expect(parseSimpleTableSource('a | b\n--- | ---\n1 | 2')).toEqual({
       align: [null, null],
       rows: [['a', 'b'], ['1', '2']],
@@ -527,7 +528,7 @@ describe('from-engine IR helpers', () => {
       align: [null, null],
       rows: [['a', 'b'], ['1', '2']],
     });
-    // Micromark list-steal: pipe-less `- | -` → paragraph; refuse IR→PM.
+    // List-steal closed at split; refuse forced table kind (safety).
     expect(parseSimpleTableSource('a | b\n- | -\n1 | 2')).toBeNull();
   });
 });
@@ -1238,7 +1239,7 @@ describe('blockFromEngineSpan', () => {
     expect(blockFromEngineSpan('footnote-definition', '[^m]: a  \n  **b**')?.textContent).toBe('ab');
   });
 
-  it('builds simple GFM tables incl. simple-marked + ragged + pipe-optional; refuses heavy / delimiter≠header / list-steal', () => {
+  it('builds simple GFM tables incl. simple-marked + ragged + pipe-optional; refuses heavy / delimiter≠header / list-steal mis-split', () => {
     const t = blockFromEngineSpan('table', '| Left | Right |\n| :--- | ---: |\n| alpha | 1 |\n| beta | 2 |');
     expect(t?.type.name).toBe('table');
     expect(t?.childCount).toBe(3);
@@ -1323,7 +1324,7 @@ describe('blockFromEngineSpan', () => {
     const compact = blockFromEngineSpan('table', 'a|b\n---|---\n1|2');
     expect(compact?.type.name).toBe('table');
     expect(compact?.textContent).toBe('ab12');
-    // List-steal delimiter stays dialect (micromark → paragraph).
+    // List-steal closed at split; refuse forced table kind (safety).
     expect(blockFromEngineSpan('table', 'a | b\n- | -\n1 | 2')).toBeNull();
     expect(canSkipDialectEnrich('table', 'a | b\n--- | ---\n1 | 2')).toBe(true);
     expect(canSkipDialectEnrich('table', 'a | b\n- | -\n1 | 2')).toBe(false);

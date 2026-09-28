@@ -9,8 +9,8 @@ importers:
   .:
     dependencies:
       '@roobli/md':
-        specifier: github:roobli/md#v0.1.17
-        version: https://codeload.github.com/roobli/md/tar.gz/27c5465e6ace303dbe0267ae5e02dba1d27f0b5a(@types/mdast@4.0.4)(micromark-util-types@2.0.2)(micromark@4.0.2(supports-color@8.1.1))(supports-color@8.1.1)
+        specifier: github:roobli/md#v0.1.18
+        version: https://codeload.github.com/roobli/md/tar.gz/7924b1a6cb075fac4b30ad88c6d36ff519a49949(@types/mdast@4.0.4)(micromark-util-types@2.0.2)(micromark@4.0.2(supports-color@8.1.1))(supports-color@8.1.1)
       electron-updater:
         specifier: 6.8.9
         version: 6.8.9(supports-color@8.1.1)
@@ -618,9 +618,9 @@ packages:
   '@rolldown/pluginutils@1.0.1':
     resolution: {integrity: sha512-2j9bGt5Jh8hj+vPtgzPtl72j0yRxHAyumoo6TNfAjsLB04UtpSvPbPcDcBMxz7n+9CYB0c1GxQFxYRg2jimqGw==}
 
-  '@roobli/md@https://codeload.github.com/roobli/md/tar.gz/27c5465e6ace303dbe0267ae5e02dba1d27f0b5a':
-    resolution: {gitHosted: true, integrity: sha512-OmYe8/HSU4auAry1C5IbEPWP3KWM51+RVGluAWOCm7bSosEIN3IQCvcDJzntZD32yCpskZ56aQPHKdT8V0jeHA==, tarball: https://codeload.github.com/roobli/md/tar.gz/27c5465e6ace303dbe0267ae5e02dba1d27f0b5a}
-    version: 0.1.17
+  '@roobli/md@https://codeload.github.com/roobli/md/tar.gz/7924b1a6cb075fac4b30ad88c6d36ff519a49949':
+    resolution: {gitHosted: true, integrity: sha512-GkNyviCSrln8Fi3uZVxJTKfgwtOd1wOfikMGaDQ4O6duXHXK320/PZMz8Qt/H08OWRcB1yJ6uihUyM9ATXvBCw==, tarball: https://codeload.github.com/roobli/md/tar.gz/7924b1a6cb075fac4b30ad88c6d36ff519a49949}
+    version: 0.1.18
     engines: {node: '>=22.12.0'}
     hasBin: true
 
@@ -4100,7 +4100,7 @@ snapshots:
 
   '@rolldown/pluginutils@1.0.1': {}
 
-  '@roobli/md@https://codeload.github.com/roobli/md/tar.gz/27c5465e6ace303dbe0267ae5e02dba1d27f0b5a(@types/mdast@4.0.4)(micromark-util-types@2.0.2)(micromark@4.0.2(supports-color@8.1.1))(supports-color@8.1.1)':
+  '@roobli/md@https://codeload.github.com/roobli/md/tar.gz/7924b1a6cb075fac4b30ad88c6d36ff519a49949(@types/mdast@4.0.4)(micromark-util-types@2.0.2)(micromark@4.0.2(supports-color@8.1.1))(supports-color@8.1.1)':
     dependencies:
       mdast-util-frontmatter: 2.0.1(supports-color@8.1.1)
       mdast-util-gfm: 3.1.0(supports-color@8.1.1)

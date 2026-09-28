@@ -193,6 +193,7 @@ describe('markdown golden gates — fixture inventory', () => {
       'simple-list-item-html-table-hr.md',
       'simple-list-item-setext-tight.md',
       'simple-list-item-structural-children.md',
+      'simple-list-steal-pipe-less-tables.md',
       'simple-lists-in-quotes.md',
       'simple-marked-callout-titles.md',
       'simple-marked-phrasing.md',
