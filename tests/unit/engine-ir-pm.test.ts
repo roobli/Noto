@@ -1011,6 +1011,40 @@ describe('blockFromEngineSpan', () => {
     expect(dbl?.child(0).child(3).textContent).toBe('b');
     expect(dbl?.child(0).child(4).type.name).toBe('heading');
     expect(dbl?.child(0).child(5).textContent).toBe('c');
+    // Under-indented paragraph nest-exit after blank re-homes onto the parent item.
+    const paraExit = blockFromEngineSpan('bullet-list', '- outer\n  - a\n\n    b\n\n  para');
+    expect(paraExit?.type.name).toBe('bullet_list');
+    expect(paraExit?.attrs.spread).toBe(true);
+    expect(paraExit?.child(0).childCount).toBe(3); // para + nest + para
+    expect(paraExit?.child(0).child(0).textContent).toBe('outer');
+    expect(paraExit?.child(0).child(1).type.name).toBe('bullet_list');
+    expect(paraExit?.child(0).child(1).child(0).child(1).textContent).toBe('b');
+    expect(paraExit?.child(0).child(2).type.name).toBe('paragraph');
+    expect(paraExit?.child(0).child(2).textContent).toBe('para');
+    // Tight under-indent without blank stays lazy soft-wrap (not nest-exit).
+    expect(blockFromEngineSpan('bullet-list', '- outer\n  - a\n\n    b\n  lazy')?.child(0).child(1).child(0).child(1).textContent).toBe('b\nlazy');
+    // Empty outer + paragraph nest-exit.
+    const emptyOuter = blockFromEngineSpan('bullet-list', '-\n  - a\n\n    b\n\n  para');
+    expect(emptyOuter?.child(0).childCount).toBe(2); // nest + para
+    expect(emptyOuter?.child(0).child(0).type.name).toBe('bullet_list');
+    expect(emptyOuter?.child(0).child(1).textContent).toBe('para');
+    // Mid ancestor paragraph nest-exit.
+    const midPara = blockFromEngineSpan('bullet-list', '- o\n  - m\n    - a\n\n      b\n\n    para');
+    expect(midPara?.child(0).child(1).child(0).childCount).toBe(3); // m + nest + para
+    expect(midPara?.child(0).child(1).child(0).child(2).textContent).toBe('para');
+    expect(blockFromEngineSpan('ordered-list', '1. outer\n   1. a\n\n      b\n\n   para')?.child(0).child(2).textContent).toBe('para');
+    expect(blockFromEngineSpan('task-list', '- [ ] outer\n  - a\n\n    b\n\n  para')?.child(0).child(2).textContent).toBe('para');
+    expect(blockFromEngineSpan('bullet-list', '- outer\n  - a\n\n    b\n\n  **x**')?.child(0).child(2).textContent).toBe('x');
+    expect(blockFromEngineSpan('bullet-list', '- outer\n  - a\n\n    b\n\n  ===')?.child(0).child(2).textContent).toBe('===');
+    // Paragraph nest-exit then nest sibling / second trailing para.
+    const paraSib = blockFromEngineSpan('bullet-list', '- outer\n  - a\n\n    b\n\n  para\n  - c');
+    expect(paraSib?.child(0).childCount).toBe(4); // para + nest + para + nest
+    expect(paraSib?.child(0).child(2).textContent).toBe('para');
+    expect(paraSib?.child(0).child(3).textContent).toBe('c');
+    const twoPara = blockFromEngineSpan('bullet-list', '- outer\n  - a\n\n    b\n\n  para\n\n  more');
+    expect(twoPara?.child(0).childCount).toBe(4);
+    expect(twoPara?.child(0).child(2).textContent).toBe('para');
+    expect(twoPara?.child(0).child(3).textContent).toBe('more');
     // Multi-para then nested list.
     const multiNest = blockFromEngineSpan('bullet-list', '- a\n\n  b\n  - nest');
     expect(multiNest?.attrs.spread).toBe(true);
