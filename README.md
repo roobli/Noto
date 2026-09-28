@@ -252,10 +252,11 @@ access, so a plugin's file reads are not running inside the window. The preload
 bridge exposes four narrow, versioned APIs and validates every message on both
 sides.
 
-The Markdown pipeline is `micromark` and `mdast` with GFM, math and frontmatter
-extensions, mapped onto a ProseMirror schema that keeps each block's original
-source alongside its rendered form. That mapping is what makes both byte-exact
-saving and per-block source mode possible from one representation.
+The Markdown pipeline defaults to `@roobli/md` (escape hatch:
+`NOTO_MARKDOWN_ENGINE=micromark`) with GFM, math and frontmatter, mapped onto a
+ProseMirror schema that keeps each block's original source alongside its
+rendered form. That mapping is what makes both byte-exact saving and per-block
+source mode possible from one representation.
 
 Further reading lives in `docs/`: the performance measurements, the Linux
 verification record, and a review of what the release build asks the operating
