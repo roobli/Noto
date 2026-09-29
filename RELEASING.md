@@ -49,10 +49,11 @@ off; whoever cuts the tag does not decide it.
       zip beside the Apple silicon one.
 - [ ] macOS builds are signed with a Developer ID, notarized, stapled, and
       launch from quarantine on a clean machine with no warning.
-- [ ] Open, keystroke and save are re-measured on packaged builds with the
-      current engine, and the README's table is replaced. The benchmark
-      workflow gives Noto's numbers on every tag; the comparison with Typora
-      needs a Mac that has Typora installed.
+- [x] Open, keystroke and save are measured on a packaged build with the
+      current engine, by the benchmark workflow on every tag, and the README
+      shows them (29 September 2026).
+- [ ] The comparison with Typora is repeated with the current engine, on a
+      Mac that has Typora installed.
 
 Windows signing and the rest of the roadmap's *Now* horizon may follow in the
 release after.

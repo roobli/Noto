@@ -180,38 +180,50 @@ copy rather than an overwrite.
 
 ## Performance
 
-These numbers were measured before `@roobli/md` became the default engine in
-`v0.0.2-alpha.112`, and have not yet been re-measured on a packaged build since.
-They describe the previous parser and are kept until the new ones replace them.
+Measured by the [benchmark workflow](.github/workflows/bench.yml) on a packaged
+build of `main` at `acb3d66`, 29 September 2026, on a GitHub-hosted `macos-14`
+runner, a virtual Apple silicon Mac. It opens four generated documents through
+the workspace, the way the menu or the file tree does, types in the middle of
+each and saves. Open and save are timed by the harness driving the app, a
+keystroke inside the page, from the edit to the next frame. Median of five
+runs; [the run](https://github.com/roobli/Noto/actions/runs/36566313564).
 
-Measured against Typora on the same machine, opening the same four generated
-documents, with a clock inside each application rather than a stopwatch
-outside it. Full method, corpus and failed approaches are in
+| document |     bytes | blocks |      open | keystroke |     save |
+| -------- | --------: | -----: | --------: | --------: | -------: |
+| small    |    66,061 |    338 |    224 ms |   14.2 ms |   150 ms |
+| medium   |   524,952 |  2,742 |    604 ms |   11.5 ms |   261 ms |
+| large    | 2,097,661 | 10,982 |  1,733 ms |   24.5 ms |   734 ms |
+| huge     | 8,389,427 | 43,970 | 10,026 ms |   85.7 ms | 3,146 ms |
+
+Up to half a megabyte a note opens in under a second and a keystroke stays
+inside one 60 Hz frame. At 2 MB opening takes under two seconds, a keystroke
+about a frame and a half, and a save under one. At 8 MB opening takes ten
+seconds and a keystroke about five frames, which is the part still to improve.
+
+These are runs on a shared virtual machine, and two runs of one build have
+differed by up to 41%, so compare them only with other runs of the workflow.
+Every tag gets the same run, so a release's numbers are in its run summary.
+Method, corpus, profiles and the history of each fix are in
 [`docs/performance/measurements.md`](docs/performance/measurements.md).
 
+### Against Typora, 31 August 2026
+
+Measured on a desk Mac with a clock inside each application, and with the
+parser Noto used before `@roobli/md` became the default in
+`v0.0.2-alpha.112`. It has not been repeated with the current engine, which
+needs a Mac with Typora installed.
+
 | document |     bytes | Noto      | Typora       |
-| -------- | --------- | --------- | ------------ |
+| -------- | --------: | --------- | ------------ |
 | small    |    66,061 | 268 ms    | 282 ms       |
 | medium   |   524,952 | 903 ms    | 343 ms       |
 | large    | 2,097,661 | 4,017 ms  | never loaded |
 | huge     | 8,389,427 | 22,467 ms | never loaded |
 
-This is a split result. At 66 KB the two are level. At 525 KB Typora is 2.6
-times faster, which is a real gap and not a rounding difference. At 2 MB and
-above Typora does not load the document at all: its editor still reports an
+At 66 KB the two were level. At 525 KB Typora was 2.6 times faster. At 2 MB and
+above Typora did not load the document at all: its editor still reported an
 empty document after three minutes, which was checked three separate ways
-before being written down. So Noto opens files Typora will not open, and Typora
-opens mid-sized files faster than Noto does.
-
-Profiling says where Noto's time goes, and corrects the obvious guess. Opening
-currently parses the document twice, once in the main process to establish the
-block records and once in the renderer to build the editor document. Building
-the ProseMirror document from the parsed nodes is free, 4 ms for 2,742 blocks,
-so there is no win hiding in the editor's node construction. The entire cost is
-the Markdown parse itself. Removing the duplicate would take roughly 330 ms off
-the 903 ms and land near 570 ms, still behind Typora's 343 ms, so closing that
-gap needs the parse to leave the critical path or get cheaper per byte rather
-than merely to happen once.
+before being written down.
 
 ## Plugins
 
