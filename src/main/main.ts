@@ -1,4 +1,4 @@
-import { randomUUID } from 'node:crypto';
+import { createHash, randomUUID } from 'node:crypto';
 import { isTrustedRendererSender } from './ipc/trusted-renderer';
 import { ipcMain } from 'electron';
 import { isWorkspaceDirtyEventV1, isWorkspaceTextReplyV1 } from '../shared/workspace/v1/validate';
@@ -49,6 +49,12 @@ import { registerWorkspaceHandlers } from './workspace/register-workspace-handle
 import { registerAssetHandlers } from './workspace/register-asset-handlers';
 import { AppUpdater } from './updates/app-updater';
 import { registerUpdateHandlers } from './updates/register-update-handlers';
+import { useSha256 } from '../shared/sha256';
+
+// The shared Markdown layer hashes in plain JavaScript so that it runs in any
+// host. This process has Node's native hash, which gives the same digests three
+// to four times faster, and a large save hashes the whole file several times.
+useSha256((value) => createHash('sha256').update(value).digest('hex'));
 
 registerNotoScheme();
 

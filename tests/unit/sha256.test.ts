@@ -1,6 +1,6 @@
 import { createHash, randomBytes } from 'node:crypto';
 import { describe, expect, it } from 'vitest';
-import { sha256 } from '../../src/shared/sha256';
+import { portableSha256 as sha256, sha256 as activeSha256, useSha256 } from '../../src/shared/sha256';
 
 const reference = (value: Uint8Array | string) => createHash('sha256').update(value).digest('hex');
 
@@ -46,5 +46,20 @@ describe('portable sha256', () => {
     const backing = randomBytes(256);
     const view = backing.subarray(17, 150);
     expect(sha256(view)).toBe(reference(view));
+  });
+
+  it('delegates to an installed implementation, which changes speed and not results', () => {
+    const seen: (Uint8Array | string)[] = [];
+    useSha256((value) => {
+      seen.push(value);
+      return reference(value);
+    });
+    try {
+      expect(activeSha256('abc')).toBe(sha256('abc'));
+      expect(seen).toEqual(['abc']);
+    } finally {
+      useSha256(sha256);
+    }
+    expect(activeSha256('abc')).toBe(reference('abc'));
   });
 });

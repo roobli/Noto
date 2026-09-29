@@ -1,17 +1,22 @@
 /**
- * SHA-256 in plain JavaScript, synchronous, for code that must run anywhere.
+ * SHA-256 for the shared layer, synchronous, in any JavaScript host.
  *
  * The Markdown pipeline hashes every block, gap and output it produces, and it
- * does so synchronously in the middle of a parse or a save. `node:crypto` ties
- * that pipeline to the main process; Web Crypto is available everywhere but
- * only as a promise. This is FIPS 180-4 over UTF-8, the same digest
+ * does so synchronously in the middle of a parse or a save. Web Crypto is
+ * available everywhere but only as a promise, so the default here is FIPS
+ * 180-4 in plain JavaScript over UTF-8: the same digest
  * `createHash('sha256').update(value).digest('hex')` returns for the same
  * input, including the U+FFFD that both write for a lone surrogate.
  *
- * Measured against `node:crypto` under Node 22: about twice the time for many
- * block-sized inputs and three to four times for one 8 MB string, which is
- * tens of milliseconds on the largest benchmark document.
+ * A host with a native hash installs it with `useSha256`, and the desktop main
+ * process does. Plain JavaScript is three to four times slower than
+ * `node:crypto` per byte, and the pipeline hashes more than it looks: opening
+ * the 8 MB benchmark document hashes 25 million characters and saving it 33
+ * million, which costs 300 to 450 ms more each way without the native hash.
+ * Which one runs never changes a result, only how long it takes.
  */
+
+export type Sha256 = (value: Uint8Array | string) => string;
 
 const K = new Int32Array([
   0x428a2f98, 0x71374491, 0xb5c0fbcf, 0xe9b5dba5, 0x3956c25b, 0x59f111f1, 0x923f82a4, 0xab1c5ed5,
@@ -116,8 +121,8 @@ function digest(bytes: Uint8Array, length: number): string {
   return hex;
 }
 
-/** Lowercase hex SHA-256 of `value`; a string is hashed as UTF-8. */
-export function sha256(value: Uint8Array | string): string {
+/** Lowercase hex SHA-256 of `value` in plain JavaScript; a string is hashed as UTF-8. */
+export function portableSha256(value: Uint8Array | string): string {
   if (typeof value !== 'string') return digest(value, value.length);
   // A UTF-16 code unit is at most three UTF-8 bytes.
   if (value.length * 3 <= SCRATCH_BYTES) {
@@ -126,4 +131,19 @@ export function sha256(value: Uint8Array | string): string {
   }
   const bytes = encoder.encode(value);
   return digest(bytes, bytes.length);
+}
+
+let active: Sha256 = portableSha256;
+
+/** Lowercase hex SHA-256 of `value`; a string is hashed as UTF-8. */
+export function sha256(value: Uint8Array | string): string {
+  return active(value);
+}
+
+/**
+ * Install a faster implementation with identical digests, such as Node's
+ * `createHash`. Called once by a host at startup, before anything is parsed.
+ */
+export function useSha256(implementation: Sha256): void {
+  active = implementation;
 }
