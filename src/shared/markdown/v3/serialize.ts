@@ -422,7 +422,8 @@ function buildNextDocument(input: {
     // give since its bytes are identical.
     const kind = reparsed?.kind ?? original?.kind ?? 'paragraph';
     const semanticKey = reparsed?.semanticKey ?? original?.semanticKey ?? '';
-    const id = `noto-block-v3:${ordinal}:${sha256(markdown).slice(0, 16)}` as NotoBlockId;
+    const digest = sha256(markdown);
+    const id = `noto-block-v3:${ordinal}:${digest.slice(0, 16)}` as NotoBlockId;
     return {
       version: NOTO_MARKDOWN_VERSION,
       id,
@@ -430,7 +431,7 @@ function buildNextDocument(input: {
       start: input.unitStart[ordinal],
       end: input.unitEnd[ordinal],
       markdown,
-      sha256: sha256(markdown),
+      sha256: digest,
       semanticKey,
       origin: { blockId: id, ordinal, kind, semanticKey },
     };
@@ -477,12 +478,21 @@ function hashPreservedRanges(
   document: NotoDocument,
   ranges: readonly EnginePreservedRange[],
 ): NotoPreservedRange[] {
+  // One lookup table per save. Searching the block list for every range made
+  // a save quadratic in the number of blocks: about a billion comparisons for
+  // the 44,000 blocks of the 8 MB benchmark document. The first block with a
+  // given span wins, as it did with the search.
+  const blockBySpan = new Map<string, NotoBlock>();
+  for (const block of document.blocks) {
+    const span = `${block.start}:${block.end}`;
+    if (!blockBySpan.has(span)) blockBySpan.set(span, block);
+  }
   return ranges.map((range) => {
     let digest: string;
     if (range.role === 'bom') {
       digest = sha256(UTF8_BOM);
     } else if (range.role === 'block') {
-      const block = document.blocks.find((b) => b.start === range.start && b.end === range.end);
+      const block = blockBySpan.get(`${range.start}:${range.end}`);
       digest = block?.sha256 ?? sha256(document.text.slice(range.start, range.end));
     } else {
       digest = sha256(document.text.slice(range.start, range.end));

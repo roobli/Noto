@@ -123,7 +123,8 @@ export function parseDocument(bytes: Uint8Array): NotoParseResult {
 
   const blocks: NotoBlock[] = split.spans.map((span, ordinal) => {
     const markdown = toLf(span.markdown);
-    const id = `noto-block-v3:${ordinal}:${sha256(markdown).slice(0, 16)}` as NotoBlockId;
+    const digest = sha256(markdown);
+    const id = `noto-block-v3:${ordinal}:${digest.slice(0, 16)}` as NotoBlockId;
     return {
       version: NOTO_MARKDOWN_VERSION,
       id,
@@ -131,7 +132,7 @@ export function parseDocument(bytes: Uint8Array): NotoParseResult {
       start: span.start,
       end: span.end,
       markdown,
-      sha256: sha256(markdown),
+      sha256: digest,
       semanticKey: span.semanticKey,
       origin: { blockId: id, ordinal, kind: span.kind, semanticKey: span.semanticKey },
     };
