@@ -28,23 +28,29 @@ async function sha512File(filePath) {
   return digest.digest('base64');
 }
 
-function yamlBlock({ version: ver, fileName, sha512, size, releaseDate }) {
+function yamlBlock({ version: ver, files, releaseDate }) {
+  // `path` and `sha512` at the top level are the legacy single-file fields;
+  // electron-updater reads `files` and uses them only as a fallback.
+  const [first] = files;
   return [
     `version: ${ver}`,
     'files:',
-    `  - url: ${fileName}`,
-    `    sha512: ${sha512}`,
-    `    size: ${size}`,
-    `path: ${fileName}`,
-    `sha512: ${sha512}`,
+    ...files.flatMap((file) => [
+      `  - url: ${file.fileName}`,
+      `    sha512: ${file.sha512}`,
+      `    size: ${file.size}`,
+    ]),
+    `path: ${first.fileName}`,
+    `sha512: ${first.sha512}`,
     `releaseDate: '${releaseDate}'`,
     '',
   ].join('\n');
 }
 
 const releaseDate = new Date().toISOString();
-const entries = await readdir(uploadDir);
+const entries = (await readdir(uploadDir)).sort();
 const written = [];
+const macZips = [];
 
 for (const name of entries) {
   const lower = name.toLowerCase();
@@ -53,26 +59,30 @@ for (const name of entries) {
   if (!info.isFile()) continue;
 
   if (lower.endsWith('.zip') && (lower.includes('macos') || lower.includes('darwin') || lower.includes('mac'))) {
-    const sha512 = await sha512File(full);
-    // electron-updater picks by arch from the file list when several ymls exist;
-    // one latest-mac.yml per zip keeps multi-arch releases honest.
-    const suffix = lower.includes('arm64') ? 'latest-mac-arm64.yml'
-      : lower.includes('x64') ? 'latest-mac-x64.yml'
-        : 'latest-mac.yml';
-    // Always also write/overwrite latest-mac.yml for the host arch CI runner.
-    const body = yamlBlock({ version, fileName: name, sha512, size: info.size, releaseDate });
-    const targets = new Set([suffix, 'latest-mac.yml']);
-    for (const target of targets) {
-      await writeFile(path.join(uploadDir, target), body, 'utf8');
-      written.push(target);
-    }
+    macZips.push({ fileName: name, sha512: await sha512File(full), size: info.size, arm64: lower.includes('arm64') });
   }
 
   if (lower.endsWith('.exe') && lower.includes('setup')) {
     const sha512 = await sha512File(full);
-    const body = yamlBlock({ version, fileName: name, sha512, size: info.size, releaseDate });
+    const body = yamlBlock({ version, files: [{ fileName: name, sha512, size: info.size }], releaseDate });
     await writeFile(path.join(uploadDir, 'latest.yml'), body, 'utf8');
     written.push('latest.yml');
+  }
+}
+
+if (macZips.length > 0) {
+  // One feed lists every macOS zip. electron-updater picks the arm64 file on
+  // Apple silicon and a file without "arm64" in its name elsewhere, so an
+  // Intel Mac is never handed the Apple silicon build. Intel comes first so
+  // the legacy top-level fields describe the build any Mac can run.
+  macZips.sort((a, b) => Number(a.arm64) - Number(b.arm64));
+  await writeFile(path.join(uploadDir, 'latest-mac.yml'), yamlBlock({ version, files: macZips, releaseDate }), 'utf8');
+  written.push('latest-mac.yml');
+  // Per-architecture feeds, kept for anything that reads them directly.
+  for (const zip of macZips) {
+    const target = zip.arm64 ? 'latest-mac-arm64.yml' : 'latest-mac-x64.yml';
+    await writeFile(path.join(uploadDir, target), yamlBlock({ version, files: [zip], releaseDate }), 'utf8');
+    written.push(target);
   }
 }
 

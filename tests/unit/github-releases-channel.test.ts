@@ -116,4 +116,23 @@ describe('update channels against GitHub Releases', () => {
     expect(preferredAssetUrl(summary, 'darwin', 'arm64')).toBe('https://example.test/arm64');
     expect(preferredAssetUrl(summary, 'darwin', 'x64')).toBe('https://example.test/x64');
   });
+
+  it('never hands an Intel Mac the Apple silicon zip', () => {
+    const armOnly = {
+      tag: 'v0.0.2-alpha.113',
+      version: '0.0.2-alpha.113',
+      prerelease: true,
+      htmlUrl: 'https://example.test/release',
+      publishedAt: '',
+      assets: [
+        {
+          name: 'Noto-0.0.2-alpha.113-macos-arm64.zip',
+          browser_download_url: 'https://example.test/arm64',
+          size: 1,
+        },
+      ],
+    } as const;
+    expect(preferredAssetUrl(armOnly, 'darwin', 'x64')).toBeNull();
+    expect(preferredAssetUrl(armOnly, 'darwin', 'arm64')).toBe('https://example.test/arm64');
+  });
 });
