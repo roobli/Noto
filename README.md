@@ -1,5 +1,7 @@
 # Noto
 
+**Edit the page. Keep the file.**
+
 Noto is a Markdown editor that edits the rendered document and keeps the file
 byte for byte. You type into headings, tables, task lists, math and fenced code
 directly; there is no separate preview pane and no read-only source island that
@@ -20,6 +22,9 @@ React and ProseMirror.
 ![Noto editing a Chinese note](docs/images/noto-light-zh.png)
 
 </details>
+
+Downloads, guides and the project's direction live at
+[roobli.github.io/Noto.docs](https://roobli.github.io/Noto.docs/).
 
 ## Project status
 
