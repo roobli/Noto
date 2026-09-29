@@ -1,12 +1,12 @@
 /**
  * Turns raw file bytes into an accepted Noto document.
  *
- * Runs in the main process only, because it hashes with `node:crypto`. The
- * renderer receives the resulting document over IPC and never parses file bytes
- * itself.
+ * The desktop app runs this in the main process, and the renderer receives the
+ * resulting document over IPC and never parses file bytes itself. Nothing here
+ * depends on Node, so a host without a main process can run it too.
  */
 
-import { createHash } from 'node:crypto';
+import { sha256 } from '../../sha256';
 import { splitBlocksMicromark } from './blocks';
 import { isRoobliMdEngine } from './engine-flag';
 import { toLf } from './line-endings';
@@ -27,9 +27,7 @@ import {
 
 const UTF8_BOM = Uint8Array.from([0xef, 0xbb, 0xbf]);
 
-export function sha256(value: Uint8Array | string): string {
-  return createHash('sha256').update(value).digest('hex');
-}
+export { sha256 };
 
 export { fromLf, toLf } from './line-endings';
 

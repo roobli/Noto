@@ -2,8 +2,7 @@
  * Line ending conversion.
  *
  * Its own module because both the main process parser and the sandboxed
- * renderer need it, and the renderer must not reach anything that imports
- * `node:crypto`.
+ * renderer need it, and the renderer should not pull in the parser to get it.
  *
  * The convention: editors, plugins and every in-memory representation use LF.
  * The original ending is restored only when bytes are written back to disk.

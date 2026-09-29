@@ -1,0 +1,149 @@
+/**
+ * SHA-256 for the shared layer, synchronous, in any JavaScript host.
+ *
+ * The Markdown pipeline hashes every block, gap and output it produces, and it
+ * does so synchronously in the middle of a parse or a save. Web Crypto is
+ * available everywhere but only as a promise, so the default here is FIPS
+ * 180-4 in plain JavaScript over UTF-8: the same digest
+ * `createHash('sha256').update(value).digest('hex')` returns for the same
+ * input, including the U+FFFD that both write for a lone surrogate.
+ *
+ * A host with a native hash installs it with `useSha256`, and the desktop main
+ * process does. Plain JavaScript is three to four times slower than
+ * `node:crypto` per byte, and the pipeline hashes more than it looks: opening
+ * the 8 MB benchmark document hashes 25 million characters and saving it 33
+ * million, which costs 300 to 450 ms more each way without the native hash.
+ * Which one runs never changes a result, only how long it takes.
+ */
+
+export type Sha256 = (value: Uint8Array | string) => string;
+
+const K = new Int32Array([
+  0x428a2f98, 0x71374491, 0xb5c0fbcf, 0xe9b5dba5, 0x3956c25b, 0x59f111f1, 0x923f82a4, 0xab1c5ed5,
+  0xd807aa98, 0x12835b01, 0x243185be, 0x550c7dc3, 0x72be5d74, 0x80deb1fe, 0x9bdc06a7, 0xc19bf174,
+  0xe49b69c1, 0xefbe4786, 0x0fc19dc6, 0x240ca1cc, 0x2de92c6f, 0x4a7484aa, 0x5cb0a9dc, 0x76f988da,
+  0x983e5152, 0xa831c66d, 0xb00327c8, 0xbf597fc7, 0xc6e00bf3, 0xd5a79147, 0x06ca6351, 0x14292967,
+  0x27b70a85, 0x2e1b2138, 0x4d2c6dfc, 0x53380d13, 0x650a7354, 0x766a0abb, 0x81c2c92e, 0x92722c85,
+  0xa2bfe8a1, 0xa81a664b, 0xc24b8b70, 0xc76c51a3, 0xd192e819, 0xd6990624, 0xf40e3585, 0x106aa070,
+  0x19a4c116, 0x1e376c08, 0x2748774c, 0x34b0bcb5, 0x391c0cb3, 0x4ed8aa4a, 0x5b9cca4f, 0x682e6ff3,
+  0x748f82ee, 0x78a5636f, 0x84c87814, 0x8cc70208, 0x90befffa, 0xa4506ceb, 0xbef9a3f7, 0xc67178f2,
+]);
+
+const INITIAL = new Int32Array([
+  0x6a09e667, 0xbb67ae85, 0x3c6ef372, 0xa54ff53a, 0x510e527f, 0x9b05688c, 0x1f83d9ab, 0x5be0cd19,
+]);
+
+const HEX = Array.from({ length: 256 }, (_, byte) => byte.toString(16).padStart(2, '0'));
+
+// Working state, reused across calls. Hashing is synchronous and never
+// re-entered, so one set per realm is enough.
+const words = new Int32Array(64);
+const state = new Int32Array(8);
+const tail = new Uint8Array(128);
+const encoder = new TextEncoder();
+
+// Strings up to this many UTF-8 bytes are encoded into a kept buffer, which
+// removes an allocation per block. Longer ones get a buffer of their own so a
+// single large document is not held for the life of the process.
+const SCRATCH_BYTES = 64 * 1024;
+const scratch = new Uint8Array(SCRATCH_BYTES);
+
+function compress(bytes: Uint8Array, offset: number): void {
+  for (let i = 0; i < 16; i += 1) {
+    const at = offset + (i << 2);
+    words[i] = (bytes[at]! << 24) | (bytes[at + 1]! << 16) | (bytes[at + 2]! << 8) | bytes[at + 3]!;
+  }
+  for (let i = 16; i < 64; i += 1) {
+    const x = words[i - 15]!;
+    const y = words[i - 2]!;
+    const s0 = ((x >>> 7) | (x << 25)) ^ ((x >>> 18) | (x << 14)) ^ (x >>> 3);
+    const s1 = ((y >>> 17) | (y << 15)) ^ ((y >>> 19) | (y << 13)) ^ (y >>> 10);
+    words[i] = (words[i - 16]! + s0 + words[i - 7]! + s1) | 0;
+  }
+  let a = state[0]!;
+  let b = state[1]!;
+  let c = state[2]!;
+  let d = state[3]!;
+  let e = state[4]!;
+  let f = state[5]!;
+  let g = state[6]!;
+  let h = state[7]!;
+  for (let i = 0; i < 64; i += 1) {
+    const s1 = ((e >>> 6) | (e << 26)) ^ ((e >>> 11) | (e << 21)) ^ ((e >>> 25) | (e << 7));
+    const t1 = (h + s1 + ((e & f) ^ (~e & g)) + K[i]! + words[i]!) | 0;
+    const s0 = ((a >>> 2) | (a << 30)) ^ ((a >>> 13) | (a << 19)) ^ ((a >>> 22) | (a << 10));
+    const t2 = (s0 + ((a & b) ^ (a & c) ^ (b & c))) | 0;
+    h = g;
+    g = f;
+    f = e;
+    e = (d + t1) | 0;
+    d = c;
+    c = b;
+    b = a;
+    a = (t1 + t2) | 0;
+  }
+  state[0] = (state[0]! + a) | 0;
+  state[1] = (state[1]! + b) | 0;
+  state[2] = (state[2]! + c) | 0;
+  state[3] = (state[3]! + d) | 0;
+  state[4] = (state[4]! + e) | 0;
+  state[5] = (state[5]! + f) | 0;
+  state[6] = (state[6]! + g) | 0;
+  state[7] = (state[7]! + h) | 0;
+}
+
+function digest(bytes: Uint8Array, length: number): string {
+  state.set(INITIAL);
+  const whole = length >>> 6;
+  for (let block = 0; block < whole; block += 1) compress(bytes, block << 6);
+
+  // Padding: the remaining bytes, a single 1 bit, zeros, then the message
+  // length in bits as a 64-bit big-endian integer, in one or two blocks.
+  const rest = length & 63;
+  tail.fill(0);
+  tail.set(bytes.subarray(whole << 6, length));
+  tail[rest] = 0x80;
+  const end = rest < 56 ? 64 : 128;
+  const high = Math.floor(length / 0x20000000);
+  const low = (length << 3) >>> 0;
+  for (let i = 0; i < 4; i += 1) {
+    tail[end - 8 + i] = (high >>> (24 - 8 * i)) & 0xff;
+    tail[end - 4 + i] = (low >>> (24 - 8 * i)) & 0xff;
+  }
+  compress(tail, 0);
+  if (end === 128) compress(tail, 64);
+
+  let hex = '';
+  for (let i = 0; i < 8; i += 1) {
+    const word = state[i]!;
+    hex += HEX[(word >>> 24) & 0xff]! + HEX[(word >>> 16) & 0xff]! + HEX[(word >>> 8) & 0xff]! + HEX[word & 0xff]!;
+  }
+  return hex;
+}
+
+/** Lowercase hex SHA-256 of `value` in plain JavaScript; a string is hashed as UTF-8. */
+export function portableSha256(value: Uint8Array | string): string {
+  if (typeof value !== 'string') return digest(value, value.length);
+  // A UTF-16 code unit is at most three UTF-8 bytes.
+  if (value.length * 3 <= SCRATCH_BYTES) {
+    const { written } = encoder.encodeInto(value, scratch);
+    return digest(scratch, written);
+  }
+  const bytes = encoder.encode(value);
+  return digest(bytes, bytes.length);
+}
+
+let active: Sha256 = portableSha256;
+
+/** Lowercase hex SHA-256 of `value`; a string is hashed as UTF-8. */
+export function sha256(value: Uint8Array | string): string {
+  return active(value);
+}
+
+/**
+ * Install a faster implementation with identical digests, such as Node's
+ * `createHash`. Called once by a host at startup, before anything is parsed.
+ */
+export function useSha256(implementation: Sha256): void {
+  active = implementation;
+}

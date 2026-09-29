@@ -194,8 +194,7 @@ export function parseSingleBlock(markdown: string): BlockSpan | null {
  * Rebuild `BlockSpan`s from a wire document that still carries mdast nodes.
  *
  * Returns null when `nodes` is absent (incremental save replies), so callers
- * can fall back to `parseDocumentSpans` / the Worker. Kept here rather than in
- * `document.ts` so the renderer can use it without pulling in `node:crypto`.
+ * can fall back to `parseDocumentSpans` / the Worker.
  */
 export function blockSpansFromWire(document: NotoDocumentWire): readonly BlockSpan[] | null {
   const { nodes } = document;
