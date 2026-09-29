@@ -36,6 +36,19 @@ flatter any editor by omitting exactly the expensive constructs.
 | large  | 2048 KiB | 10982  |
 | huge   | 8193 KiB | 43970  |
 
+## Results in CI, 29 September 2026
+
+`main` at `acb3d66`, after the save and spell checking fixes below, packaged,
+on the benchmark workflow's `macos-14` runner, median of five runs
+([run](https://github.com/roobli/Noto/actions/runs/36566313564)):
+
+| document | open      | keystroke | save     |
+| -------- | --------- | --------- | -------- |
+| small    | 224 ms    | 14.2 ms   | 150 ms   |
+| medium   | 604 ms    | 11.5 ms   | 261 ms   |
+| large    | 1,733 ms  | 24.5 ms   | 734 ms   |
+| huge     | 10,026 ms | 85.7 ms   | 3,146 ms |
+
 ## Results
 
 Median of the run count shown, measured through the packaged app, with the
