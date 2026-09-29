@@ -47,9 +47,8 @@ numbers are below.
 ## Download
 
 Builds for macOS, Windows and Linux are on the
-[releases page](https://github.com/roobli/Noto/releases). Take the installer
-for your system where there is one, or the archive, which needs no installing:
-unpack it and run what is inside.
+[releases page](https://github.com/roobli/Noto/releases). Each release carries
+one download per platform, listed below as of `v0.0.2-alpha.113`.
 
 **First open:** until we ship Apple notarization and a Windows code-signing
 certificate, each OS warns once on a fresh download. That is expected — not a
@@ -67,12 +66,16 @@ Packaged builds can check GitHub Releases from **Settings → Updates**. Stable
 (default) follows formal releases only; Testing includes alphas. See
 `docs/architecture/updates.md`.
 
-| Platform | Installer | Archive |
-| --- | --- | --- |
-| macOS, Apple silicon or Intel | | `Noto-<version>-macos-<arch>.zip` |
-| Windows, x64 | `NotoSetup-<version>.exe` | `Noto-<version>-windows-<arch>.zip` |
-| Linux, Debian and Ubuntu | `noto_<version>_amd64.deb` | `Noto-<version>-linux-<arch>.tar.gz` |
-| Linux, Fedora and openSUSE | `noto-<version>-1.x86_64.rpm` | `Noto-<version>-linux-<arch>.tar.gz` |
+| Platform | Download |
+| --- | --- |
+| macOS, Apple silicon | `Noto-<version>-macos-arm64.zip`: unzip and move `Noto.app` to Applications |
+| Windows, x64 | `NotoSetup-<version>.exe` |
+| Linux, Debian and Ubuntu, x64 | `noto_<version>_amd64.deb` |
+| Linux, Fedora and openSUSE, x64 | `noto-<version>-1.x86_64.rpm` |
+
+Intel Macs are not supported by current releases: the macOS build is Apple
+silicon only, and Rosetta runs Intel apps on Apple silicon, not the other way
+round.
 
 ## Getting started
 
@@ -171,6 +174,10 @@ no longer matches what was accepted, the save is refused and you are offered a
 copy rather than an overwrite.
 
 ## Performance
+
+These numbers were measured before `@roobli/md` became the default engine in
+`v0.0.2-alpha.112`, and have not yet been re-measured on a packaged build since.
+They describe the previous parser and are kept until the new ones replace them.
 
 Measured against Typora on the same machine, opening the same four generated
 documents, with a clock inside each application rather than a stopwatch

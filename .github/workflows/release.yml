@@ -64,8 +64,10 @@ jobs:
       fail-fast: false
       matrix:
         # macos-14 = Apple silicon. macos-13 (Intel) runners are scarce and
-        # leave Release jobs queued for hours; ship arm64 only until we have a
-        # reliable Intel runner (Rosetta covers most Intel Macs for now).
+        # leave Release jobs queued for hours, so only arm64 ships. That leaves
+        # Intel Macs without a build: Rosetta runs Intel code on Apple silicon,
+        # not the other way round. A universal or cross-built x64 package is
+        # the open question (decision D8 on the docs site).
         os: [macos-14, windows-latest, ubuntu-latest]
     steps:
       - uses: actions/checkout@v4
