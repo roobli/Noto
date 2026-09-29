@@ -27,7 +27,16 @@ assertPackagingRuntime();
 process.env.NTO_PACKAGE_VARIANT = variant;
 
 const { api } = require('@electron-forge/core');
-const results = await api.make({ dir: root, interactive: false });
+
+// macOS ships one zip per architecture. An Apple silicon runner packages the
+// Intel build as well: nothing in the app is native code, so packaging for x64
+// is a matter of fetching the x64 Electron binary, and Rosetta cannot run an
+// arm64 app on an Intel Mac. Other platforms build for the host only.
+const architectures = process.platform === 'darwin' ? ['arm64', 'x64'] : [undefined];
+const results = [];
+for (const arch of architectures) {
+  results.push(...await api.make({ dir: root, interactive: false, ...(arch ? { arch } : {}) }));
+}
 
 for (const result of results) {
   for (const artifact of result.artifacts) {

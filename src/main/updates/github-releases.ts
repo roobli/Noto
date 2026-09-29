@@ -134,7 +134,9 @@ export function preferredAssetUrl(
     return pick(
       (name) => name.includes('macos') && name.endsWith('.zip') && (arm ? name.includes('arm64') : name.includes('x64')),
       (name) => name.includes('darwin') && name.endsWith('.zip') && (arm ? name.includes('arm64') : name.includes('x64')),
-      (name) => name.endsWith('.zip') && name.includes('mac'),
+      // Apple silicon can run an Intel build under Rosetta; an Intel Mac cannot
+      // run an arm64 one, so it gets the release page rather than a dead zip.
+      (name) => name.endsWith('.zip') && name.includes('mac') && (arm || !name.includes('arm64')),
     );
   }
   if (platform === 'win32') {

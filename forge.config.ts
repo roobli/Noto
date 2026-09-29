@@ -25,13 +25,25 @@ const e2eFuseVariant = packageVariant === 'e2e';
  * notarization still needs the Apple identity and notarize env vars.
  */
 const appleIdentity = process.env.NOTO_APPLE_SIGNING_IDENTITY;
-const appleNotarize = process.env.APPLE_ID && process.env.APPLE_PASSWORD && process.env.APPLE_TEAM_ID
+/*
+ * Notarization prefers an App Store Connect API key: it is scoped to the team,
+ * revocable, and never prompts for a person's two-factor code. `APPLE_API_KEY`
+ * is the path to the `.p8` file; the release workflow writes it from a secret.
+ * An Apple ID with an app-specific password still works as a fallback.
+ */
+const appleNotarize = process.env.APPLE_API_KEY && process.env.APPLE_API_KEY_ID && process.env.APPLE_API_ISSUER
   ? {
-      appleId: process.env.APPLE_ID,
-      appleIdPassword: process.env.APPLE_PASSWORD,
-      teamId: process.env.APPLE_TEAM_ID,
+      appleApiKey: process.env.APPLE_API_KEY,
+      appleApiKeyId: process.env.APPLE_API_KEY_ID,
+      appleApiIssuer: process.env.APPLE_API_ISSUER,
     }
-  : undefined;
+  : process.env.APPLE_ID && process.env.APPLE_PASSWORD && process.env.APPLE_TEAM_ID
+    ? {
+        appleId: process.env.APPLE_ID,
+        appleIdPassword: process.env.APPLE_PASSWORD,
+        teamId: process.env.APPLE_TEAM_ID,
+      }
+    : undefined;
 
 const config: ForgeConfig = {
   packagerConfig: {
