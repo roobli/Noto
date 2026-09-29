@@ -33,28 +33,28 @@ const HUB_GRAPH = JSON.stringify({
   notes: [
     {
       relPath: 'A000/vpn/mihomo.md', title: 'mihomo',
-      explicitLinks: ['Z900_MOCs/代理与隧道.md', 'A000/vpn/other.md'],
+      explicitLinks: ['Z_hubs/网络索引.md', 'A_topics/net/other.md'],
       candidates: [
-        { relPath: 'Z900_MOCs/代理与隧道.md', title: '代理与隧道', score: 50 },
-        { relPath: 'A000/vpn/other.md', title: 'other', score: 10 },
+        { relPath: 'Z_hubs/网络索引.md', title: '网络索引', score: 50 },
+        { relPath: 'A_topics/net/other.md', title: 'other', score: 10 },
       ],
     },
     {
       relPath: 'A000/linux/tmux.md', title: 'tmux index',
-      explicitLinks: ['Z900_MOCs/代理与隧道'],
+      explicitLinks: ['Z_hubs/网络索引'],
       related: [{ relPath: 'A000/vpn/mihomo.md', title: 'mihomo', score: 5 }],
     },
     {
-      relPath: 'A000/vpn/other.md', title: 'other',
+      relPath: 'A_topics/net/other.md', title: 'other',
       explicitLinks: [],
       candidates: [
-        { relPath: 'Z900_MOCs/代理与隧道.md', title: '代理与隧道', score: 80 },
+        { relPath: 'Z_hubs/网络索引.md', title: '网络索引', score: 80 },
         { relPath: 'A000/linux/tmux.md', title: 'tmux', score: 20 },
       ],
     },
     {
-      relPath: 'P000_Public/首页.md', title: 'Public home',
-      explicitLinks: ['P000_Public/news.md'],
+      relPath: 'P_public/首页.md', title: 'Public home',
+      explicitLinks: ['P_public/news.md'],
     },
   ],
 });
@@ -86,19 +86,19 @@ describe("the vault's graph", () => {
 
 describe('MOC hubs absent from graph.notes', () => {
   const graph = () => parseGraph(HUB_GRAPH)!;
-  const hub = 'Z900_MOCs/代理与隧道.md';
+  const hub = 'Z_hubs/网络索引.md';
 
   it('builds path aliases without treating every same-basename path as the hub', () => {
-    const aliases = hubEdgeAliases(hub, '代理与隧道');
+    const aliases = hubEdgeAliases(hub, '网络索引');
     expect(aliases.paths.has(hub)).toBe(true);
-    expect(aliases.paths.has('Z900_MOCs/代理与隧道')).toBe(true);
-    expect(aliases.names.has('代理与隧道')).toBe(true);
+    expect(aliases.paths.has('Z_hubs/网络索引')).toBe(true);
+    expect(aliases.names.has('网络索引')).toBe(true);
     // A different folder's 首页 must not be an exact path alias of this hub.
-    expect(aliases.paths.has('P000_Public/首页.md')).toBe(false);
+    expect(aliases.paths.has('P_public/首页.md')).toBe(false);
   });
 
   it('derives Linked from by scanning other notes’ explicitLinks to the hub path', () => {
-    const derived = deriveLinksFor(graph(), hub, '代理与隧道');
+    const derived = deriveLinksFor(graph(), hub, '网络索引');
     expect(derived.links).toEqual([]);
     expect(derived.backlinks.map((item) => item.relativePath)).toEqual([
       'A000/linux/tmux.md',
@@ -110,18 +110,18 @@ describe('MOC hubs absent from graph.notes', () => {
   it('derives Related from inverse related/candidate edges, omitting backlinks', () => {
     const derived = deriveLinksFor(graph(), hub);
     // mihomo already backlinks; other.md only scores the hub as related.
-    expect(derived.related.map((item) => item.relativePath)).toEqual(['A000/vpn/other.md']);
+    expect(derived.related.map((item) => item.relativePath)).toEqual(['A_topics/net/other.md']);
     expect(derived.related[0].title).toBe('other');
   });
 
   it('does not invent neighbours when no edge points at the hub', () => {
-    const derived = deriveLinksFor(graph(), 'Z900_MOCs/missing-hub.md', 'missing-hub');
+    const derived = deriveLinksFor(graph(), 'Z_hubs/missing-hub.md', 'missing-hub');
     expect(derived).toEqual({ backlinks: [], links: [], related: [] });
   });
 
   it('does not treat a same-basename note in another folder as a backlink target', () => {
-    // P000_Public/首页.md links to news — opening a fictional Z900 首页 must stay empty.
-    const derived = deriveLinksFor(graph(), 'Z900_MOCs/首页.md', '首页');
+    // P_public/首页.md links to news — opening a fictional Z_hubs 首页 must stay empty.
+    const derived = deriveLinksFor(graph(), 'Z_hubs/首页.md', '首页');
     expect(derived.backlinks).toEqual([]);
     expect(derived.related).toEqual([]);
   });
@@ -131,7 +131,7 @@ describe('MOC hubs absent from graph.notes', () => {
     expect(known.known).toBe(true);
     expect(known.links.links).toHaveLength(2);
 
-    const hubResult = linksForNote(graph(), hub, '代理与隧道');
+    const hubResult = linksForNote(graph(), hub, '网络索引');
     expect(hubResult.known).toBe(false);
     expect(hubResult.links.backlinks).toHaveLength(2);
     expect(hubResult.links.links).toEqual([]);

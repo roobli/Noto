@@ -10,14 +10,14 @@ test('a wiki link is resolved against the folder the note lives in', async () =>
   const vault = path.join(workspace, 'vault');
   // The shape the author's vault has: an index in a folder, linking to the
   // index of a folder beside it.
-  await mkdir(path.join(vault, 'works', 'vpn网络搭建规划'), { recursive: true });
+  await mkdir(path.join(vault, 'works', 'lab网络规划'), { recursive: true });
   await mkdir(path.join(vault, 'elsewhere'), { recursive: true });
   await writeFile(
     path.join(vault, 'works', '00_索引.md'),
-    '# 索引\n\n- [[vpn网络搭建规划/00_索引|vpn网络搭建规划]]（20 篇）\n- [[elsewhere/00_索引|elsewhere]]\n',
+    '# 索引\n\n- [[lab网络规划/00_索引|lab网络规划]]（20 篇）\n- [[elsewhere/00_索引|elsewhere]]\n',
     'utf8',
   );
-  await writeFile(path.join(vault, 'works', 'vpn网络搭建规划', '00_索引.md'), '# vpn\n\nThe vpn index.\n', 'utf8');
+  await writeFile(path.join(vault, 'works', 'lab网络规划', '00_索引.md'), '# vpn\n\nThe vpn index.\n', 'utf8');
   await writeFile(path.join(vault, 'elsewhere', '00_索引.md'), '# elsewhere\n\nThe other index.\n', 'utf8');
   const app = await electron.launch({
     executablePath: packagedExecutable(),
@@ -30,11 +30,11 @@ test('a wiki link is resolved against the folder the note lives in', async () =>
     await page.getByTestId('tree-directory').filter({ hasText: 'works' }).click();
     await page.getByTestId('tree-file').filter({ hasText: '00_索引' }).first().click();
     const editor = page.locator('.canvas-slot:not([hidden]) .ProseMirror');
-    await expect(editor).toContainText('vpn网络搭建规划');
+    await expect(editor).toContainText('lab网络规划');
 
     // A path relative to this note's own folder, which is neither a path from
     // the vault root nor a bare name.
-    await editor.locator('.noto-wiki-link, a').filter({ hasText: 'vpn网络搭建规划' }).first()
+    await editor.locator('.noto-wiki-link, a').filter({ hasText: 'lab网络规划' }).first()
       .click({ modifiers: [process.platform === 'darwin' ? 'Meta' : 'Control'] });
     await expect(page.locator('.canvas-slot:not([hidden]) .ProseMirror')).toContainText('The vpn index.', { timeout: 15_000 });
     await expect(page.getByTestId('file-truth-alert')).toHaveCount(0);

@@ -7,8 +7,8 @@ describe('the path shown beside a quick open result', () => {
   });
 
   it('keeps the end, which is what tells two results apart', () => {
-    expect(pathContext('E000_Works/Openjobs-ai/数据部门/需求与任务管理/archived/one.md'))
-      .toBe('…/需求与任务管理/archived');
+    expect(pathContext('E_works/acme/数据组/需求管理/archived/one.md'))
+      .toBe('…/需求管理/archived');
   });
 
   it('shows a short path whole', () => {

@@ -3,8 +3,8 @@ import { PLAIN_FLAGS, patternFor } from '../../src/shared/search/pattern';
 
 describe('the search pattern', () => {
   it('takes a query as the text it is, brackets and all', () => {
-    const pattern = patternFor('A400_Data (旧)', PLAIN_FLAGS)!;
-    expect('see A400_Data (旧) here'.match(pattern)).toEqual(['A400_Data (旧)']);
+    const pattern = patternFor('Data_Archive (旧)', PLAIN_FLAGS)!;
+    expect('see Data_Archive (旧) here'.match(pattern)).toEqual(['Data_Archive (旧)']);
   });
 
   it('ignores case until asked not to', () => {

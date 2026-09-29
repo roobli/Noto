@@ -5,7 +5,7 @@ import { packagedExecutable, placeCaret } from './packaged-app';
 
 const resultRoot = path.join(process.cwd(), 'test-results', 'parity');
 
-const LONG_NAME = '2026_09_01_一个长得放不进任何侧边栏的文件名_platform加注册ref参数与is-deleted-openjobs过滤.md';
+const LONG_NAME = '2026_09_01_一个长得放不进任何侧边栏的文件名_platform加注册ref参数与is-deleted-records过滤.md';
 
 /**
  * A vault shaped like the author's: a note with a fence, an alert and a

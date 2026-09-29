@@ -4,7 +4,7 @@
  * The author's own vault pipeline resolves a target against the folder the
  * note lives in first, then against the vault's root, and only then falls
  * back to matching the file's name anywhere. This had only the last two, so
- * `[[vpn网络搭建规划/00_索引]]` written in `E000_Works/Openjobs-ai/00_索引.md`
+ * `[[lab网络规划/00_索引]]` written in `E_works/acme/00_索引.md`
  * matched nothing: it is neither a path from the root nor a bare name, and
  * the folder it is relative to was never consulted.
  *

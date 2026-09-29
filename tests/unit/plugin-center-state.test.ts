@@ -95,7 +95,7 @@ describe('plugin center state presenters', () => {
       lifecycle: 'crashed',
       activeGeneration: null,
       capability: {
-        grant: { id: 'grant', generation: 4, root: '/Users/cdcd/Documents', state: 'revoked' },
+        grant: { id: 'grant', generation: 4, root: '/Users/me/Documents', state: 'revoked' },
         request: {
           requestId: 'timed-out-before-crash',
           generation: 4,
@@ -124,16 +124,16 @@ describe('plugin center state presenters', () => {
   });
 
   it.each<[PluginCapabilityRequestState, string, string]>([
-    ['pending', 'Access granted to /Users/cdcd/Documents', 'Cancel read'],
-    ['cancelling', 'Access granted to /Users/cdcd/Documents', 'Cancel read'],
-    ['completed', 'Access granted to /Users/cdcd/Documents', 'Read again'],
+    ['pending', 'Access granted to /Users/me/Documents', 'Cancel read'],
+    ['cancelling', 'Access granted to /Users/me/Documents', 'Cancel read'],
+    ['completed', 'Access granted to /Users/me/Documents', 'Read again'],
     ['cancelled', 'Read cancelled, no file read', 'Read again'],
     ['timed-out', 'Timed out, access remains blocked', 'Restart service'],
     ['failed', 'Service stopped, editor remains usable', 'Restart service'],
   ])('maps filesystem request terminal %s without exposing transport terms', (state, status, action) => {
     expect(presentFilesystemPlugin(snapshot({
       capability: {
-        grant: { id: 'grant', generation: 4, root: '/Users/cdcd/Documents', state: 'active' },
+        grant: { id: 'grant', generation: 4, root: '/Users/me/Documents', state: 'active' },
         request: { requestId: 'request', generation: 4, action: 'read-granted', state, detail: 'internal detail' },
         restartRequired: false,
       },
@@ -141,13 +141,13 @@ describe('plugin center state presenters', () => {
   });
 
   it.each<[PluginCapabilityGrantState, string]>([
-    ['active', 'Access granted to /Users/cdcd/Documents'],
+    ['active', 'Access granted to /Users/me/Documents'],
     ['revoking', 'Access not granted'],
     ['revoked', 'Access not granted'],
   ])('maps filesystem grant state %s to scoped access truth', (state, status) => {
     expect(presentFilesystemPlugin(snapshot({
       capability: {
-        grant: { id: 'grant', generation: 4, root: '/Users/cdcd/Documents', state },
+        grant: { id: 'grant', generation: 4, root: '/Users/me/Documents', state },
         request: null,
         restartRequired: false,
       },
@@ -157,7 +157,7 @@ describe('plugin center state presenters', () => {
   it('uses an active grant for reading and keeps cleanup above disabled intent', () => {
     expect(presentFilesystemPlugin(snapshot({
       capability: {
-        grant: { id: 'grant', generation: 4, root: '/Users/cdcd/Documents', state: 'active' },
+        grant: { id: 'grant', generation: 4, root: '/Users/me/Documents', state: 'active' },
         request: null,
         restartRequired: false,
       },

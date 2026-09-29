@@ -31,8 +31,16 @@
  */
 import path from 'node:path';
 import { writeFile, readFile } from 'node:fs/promises';
-import { fileURLToPath } from 'node:url';
-import { TyporaRemoteControlClient } from '/Users/cdcd/.claude/skills/typora-remote/scripts/typora-remote-client.mjs';
+import { fileURLToPath, pathToFileURL } from 'node:url';
+
+// The Typora remote-control client is not part of this repository. Point
+// TYPORA_REMOTE_CLIENT at a local copy of `typora-remote-client.mjs`.
+const clientPath = process.env.TYPORA_REMOTE_CLIENT;
+if (!clientPath) {
+  console.error('Set TYPORA_REMOTE_CLIENT to the path of typora-remote-client.mjs.');
+  process.exit(2);
+}
+const { TyporaRemoteControlClient } = await import(pathToFileURL(path.resolve(clientPath)).href);
 
 const here = path.dirname(fileURLToPath(import.meta.url));
 const corpusRoot = path.resolve(here, '../../out/bench/corpus');

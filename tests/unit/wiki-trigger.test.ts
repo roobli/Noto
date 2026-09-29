@@ -27,7 +27,7 @@ describe('the link a chosen note becomes', () => {
   });
 
   it('carries the title when it differs, as this vault writes them', () => {
-    expect(wikiLinkText('供应商/00_索引', '供应商'))
-      .toBe('[[供应商/00_索引|供应商]]');
+    expect(wikiLinkText('合作方/00_索引', '合作方'))
+      .toBe('[[合作方/00_索引|合作方]]');
   });
 });

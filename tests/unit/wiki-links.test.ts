@@ -42,7 +42,7 @@ describe('finding wiki links', () => {
   });
 
   it('handles CJK targets and paths', () => {
-    expect(targets('[[E000_Works/数据部门/00_索引]]')).toEqual(['E000_Works/数据部门/00_索引']);
+    expect(targets('[[E_works/数据组/00_索引]]')).toEqual(['E_works/数据组/00_索引']);
   });
 
   it('ignores an empty target', () => {

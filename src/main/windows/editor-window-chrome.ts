@@ -7,7 +7,7 @@ export const EDITOR_TITLEBAR_HEIGHT_PX = 32 as const;
 /**
  * Paper / ink for the native Window Controls Overlay.
  *
- * Kept as literals (same bytes as `_roob-tokens.scss`) so main can paint the
+ * Kept as literals (same bytes as `_tokens.scss`) so main can paint the
  * caption-button strip without reading the renderer stylesheet. Traffic-light
  * avoidance is macOS-only; on Windows and Linux these colours are what make
  * the overlay read as part of the same title bar rather than a second chrome.
