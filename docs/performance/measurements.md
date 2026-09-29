@@ -517,10 +517,12 @@ Re-measured on this Linux box after wire `nodes` landed
 | renderer: fromWire + doc      |   1 ms |    5 ms |   18 ms |
 | ipc: clone wire+nodes         |   4 ms |   33 ms |  190 ms |
 
-On the **default micromark** path the dual-parse and outline reparses are gone;
-what remains is one full dialect pass proportional to the file.
+On the legacy micromark escape hatch the dual-parse and outline reparses are
+gone; what remains is one full dialect pass proportional to the file. Product
+default is `@roobli/md` (see sections below and
+`docs/performance/open-path-first-cut.md`).
 
-### Flagged `@roobli/md` open — first cut (2026-09-15)
+### `@roobli/md` open — first cut (2026-09-15; then still opt-in)
 
 The native structural scanner is ~100× faster than micromark, but the adapter
 used to attach mdast with **N× `parseMarkdown` per span**, so flagged
@@ -541,9 +543,10 @@ Linux probe medians (5 runs after warm, same corpus files):
 Medium: bulk ~190 ms faster than per-span (~22%). Large: ~620 ms (~17%).
 Re-run: `PROFILE_OPEN=1 pnpm vitest run tests/unit/open-profile.test.ts`.
 
-Product default stays micromark.
+Product default at the time of this cut was still micromark; default-on landed
+later (#282 / alpha.112).
 
-### Flagged `@roobli/md` open — lazy wire nodes (2026-09-15)
+### `@roobli/md` open — lazy wire nodes (2026-09-15; then still opt-in)
 
 Flagged `parseDocument` now ships `enrich: 'none'` (`nodesEnrichment:
 'deferred'`). The renderer enriches `OPEN_LAZY_INITIAL_SPANS` (80) with one
@@ -563,7 +566,7 @@ Linux medians (5 runs, 2026-09-15):
 
 Medium main open **14 ms** vs prior bulk **699 ms**; first-paint enrich **26 ms**.
 
-### Flagged `@roobli/md` open — viewport enrich (2026-09-15)
+### `@roobli/md` open — viewport enrich (2026-09-15; then still opt-in)
 
 | phase | small | medium | large |
 | ----- | ----- | ------ | ----- |
@@ -578,10 +581,10 @@ Medium scroll/idle tick **~58 ms** vs full remainder **704 ms** (~12×). Large
 Next residual: keep growing markdown-golden (default-on landed); thirty-eight+ nests still dialect (intentional cap); footnote-ref callout titles/bodies owned with doc-wide defs (lazy empty-container closed at split; list-steal pipe-less closed at split; under-indented paragraph nest-exit after blank owned; nest-sibling after nest-exit owned; under-indented structural nest-exit owned; lazy-after-blank owned; empty-item + blank + structural closed at split; setext-shaped tight `---` in list items owned; cross-family same-indent sibling mixes owned) (multi-paragraph list items + structural quote/fence/ATX-heading/HTML/table/hr children owned) (math / HTML / heavy callout titles incl. nested-bracket wiki / pipe-optional tables owned) (no-`>` lazy + list lazy + simple marked phrasing + flat underscore + one-level nested marks + simple inline links/images + simple reference links/images + simple bare http(s) + angle-bracket http(s) + www. + email autolinks + simple-marked callout titles + simple wiki `[[…]]` owned with `@roobli/md` ≥ v0.1.9); Nested plain quotes, simple lists-in-quotes, plain-body GFM alerts /
 callouts, hard breaks in quotes, lazy nest continuation via fewer `>`, hard
 breaks in simple lists / footnotes, and same-family nested lists (any depth) are
-engine-owned (flagged). Kind-aware stand-ins (#90), IR→PM common blocks (+ link-definition +
+engine-owned (product `@roobli/md` path). Kind-aware stand-ins (#90), IR→PM common blocks (+ link-definition +
 simple footnote-def incl. empty + hard breaks + simple quote + simple flat /
 nested list incl. hard breaks + multi-paragraph items + simple GFM table + simple wiki), and incremental PM patch per
-enrich tick shipped (flagged). Plain paragraph IR→PM trims trailing spaces
+enrich tick shipped (product `@roobli/md` path). Plain paragraph IR→PM trims trailing spaces
 (wiki-trigger save flake). Golden set expanded with GFM/callout/HTML/nested-list/
 trailing-spaces/simple-quote/simple-flat-list/simple-gfm-table edges plus
 hard-breaks (incl. in quotes / lists / footnotes), images, empty/meta fences,
