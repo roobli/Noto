@@ -23,6 +23,12 @@ How releases are made, and what each channel receives, is in
   prerelease, and every existing release has been re-flagged.
 - An Intel Mac with no Intel build to update to is sent to the release page
   instead of being handed the Apple silicon zip, which it cannot run.
+- **A long note no longer freezes when you stop typing.** Each time typing
+  paused, the spell checker went through the whole note in one go, and the
+  window ignored every click until it finished: about 37 seconds, twice, in
+  the 8 MB benchmark document. In a note of a few thousand paragraphs or more,
+  spelling is now checked in the paragraphs around the caret; shorter notes are
+  checked whole, as before.
 - **Saving a long note is faster.** Part of every save took time in
   proportion to the square of the number of blocks in the note, and now grows
   only with the number. On the 8 MB benchmark document, 44,000 blocks, that

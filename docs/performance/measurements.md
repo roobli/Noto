@@ -339,6 +339,37 @@ unit object per block across the process boundary, and building the eight
 megabyte output string. Each needed measuring before it was worth changing; the
 mistake to avoid is optimising the cheap one twice.
 
+## Spell checking froze long notes, 2026-09-29
+
+The first benchmark runs after the save fix below failed on `huge`: after
+typing, the click on Save went unanswered for 30 seconds. Reproduced with the
+development build on Linux under Xvfb, 3 runs out of 3: the main process
+answered within 6 ms throughout, while the renderer ran two tasks of 33 to 37
+seconds each, back to back, about 70 seconds with the window frozen.
+
+A JavaScript profile put 73 of those seconds in `(program)`, native code. A
+Chromium trace named it: both tasks were
+`ColdModeSpellCheckRequester::RequestFullChecking`, fired from an idle
+callback. When typing pauses, Chromium checks the spelling of the whole
+editable element in one idle task, and its cost grows much faster than the
+note:
+
+| document | blocks | longest task after typing, before | after |
+| -------- | ------ | --------------------------------- | ----- |
+| medium   | 2,742  | under 200 ms                      | under 200 ms |
+| large    | 10,982 | 650 ms, twice                     | 92 ms |
+| huge     | 43,970 | 37,612 ms, twice                  | 637 ms |
+
+That whole-element check runs only when the editable root has spelling
+enabled; the checking done while typing follows the element at the caret. So
+in a note long enough for viewport stubbing, 3,000 top-level blocks, the root
+now says `spellcheck="false"` and the five top-level blocks around the
+selection say `"true"` (`spell-check-scope.ts`). Shorter notes are unchanged.
+
+What remains after typing on `huge` is the word count: `reportCount` counts
+the whole document on a timer after each change, about 630 ms. That is the
+next long task to take apart.
+
 ## Save made linear in the number of blocks, 2026-09-29
 
 A save on the `@roobli/md` path looked up each preserved block by searching the
