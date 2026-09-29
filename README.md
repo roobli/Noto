@@ -10,12 +10,14 @@ whatever whitespace it happened to have.
 It runs on macOS, Windows and Linux, and it is built with TypeScript, Electron,
 React and ProseMirror.
 
-![Noto editing a document, with the file rail open](docs/images/noto-light.png)
+![Noto editing a note with a callout, a table, inline math, a fenced block and a task list, with the file rail open](docs/images/noto-light.png)
 
 <details>
-<summary>The same window in the dark theme</summary>
+<summary>The same window in the dark theme, and a Chinese note</summary>
 
 ![Noto in the dark theme](docs/images/noto-dark.png)
+
+![Noto editing a Chinese note](docs/images/noto-light-zh.png)
 
 </details>
 
