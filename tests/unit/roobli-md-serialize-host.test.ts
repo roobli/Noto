@@ -3,7 +3,7 @@
  *
  * Product default is `@roobli/md`. These tests force both engines and compare
  * outputBytes (and preserved evidence) against the micromark serializer on
- * synthetic fixtures — no RooB private content. Covers identity, single-block,
+ * synthetic fixtures — no private content. Covers identity, single-block,
  * multi-dirty, insert, and delete.
  */
 

@@ -2,17 +2,17 @@
 
 A standing task: bring Noto's editing experience and interface as close to the
 author's Typora as they can be got, working from the author's own vault
-(`~/roobli/Nut/RooB`, 7,066 notes) and the author's theme
-(`~/roobli/lr00rl/Typora_Claude-Like_Theme/claude-like.css`). Runs until
+(7,066 notes) and the author's own Typora theme. Runs until
 19:00 PDT. No questions: a decision that needs making goes to a subagent.
 
 ## The instrument
 
-Typora is driven live through the remote control plugin
-(`~/roobli/lr00rl/typora-plugin-lite`), sidecar on `127.0.0.1:5619`:
+Typora is driven live through a remote-control plugin installed in Typora
+(not part of this repository), sidecar on `127.0.0.1:5619`, from its own
+command-line client:
 
-    node ~/.claude/skills/typora-remote/scripts/typora-remote-cli.mjs info
-    node ~/.claude/skills/typora-remote/scripts/typora-remote-cli.mjs call typora.eval '{"code":"..."}'
+    node typora-remote-cli.mjs info
+    node typora-remote-cli.mjs call typora.eval '{"code":"..."}'
 
 `typora.eval` runs JS in Typora's renderer, so any computed style, box or
 scroll position can be measured rather than guessed. Noto is measured the

@@ -7,18 +7,18 @@ const resultRoot = path.join(process.cwd(), 'test-results', 'index-block');
 
 const INDEX = [
   '---', 'moc: true', '---', '',
-  '# Openjobs-ai 索引', '',
+  '# Acme 索引', '',
   '<!-- note-assistant:index:start -->', '',
   '## 目录索引', '',
-  '自动生成，勿手改；由 `node .tools/vault.mjs index` 维护。', '',
+  '自动生成，勿手改；由索引脚本维护。', '',
   '### 子目录', '',
-  '- 供应商（2 篇）',
-  '  - [[供应商/unlock联系方式统筹|unlock 联系方式统筹]]',
-  '  - [[供应商/20260823-25_又出问题了|20260823 25 又出问题了]]',
-  '- [[事故复盘/00_索引|事故复盘]]（3 篇）', '',
+  '- 合作方（2 篇）',
+  '  - [[合作方/联系人整理|联系人 整理]]',
+  '  - [[合作方/20260101-02_周记|20260101 02 周记]]',
+  '- [[回顾/00_索引|回顾]]（3 篇）', '',
   '### 日志', '',
-  '- [[现在的搜索|现在的搜索]]',
-  '- [[git_工作流程管理|git 工作流程管理]]', '',
+  '- [[搜索笔记|搜索笔记]]',
+  '- [[git_使用笔记|git 使用笔记]]', '',
   '<!-- note-assistant:index:end -->', '',
   'A paragraph after the generated block.', '',
 ].join('\n');
@@ -28,12 +28,12 @@ async function launch(name: string): Promise<{ app: ElectronApplication; page: P
   await rm(workspace, { recursive: true, force: true });
   await mkdir(path.join(workspace, 'user-data'), { recursive: true });
   const vault = path.join(workspace, 'vault');
-  await mkdir(path.join(vault, '供应商'), { recursive: true });
-  await mkdir(path.join(vault, '事故复盘'), { recursive: true });
+  await mkdir(path.join(vault, '合作方'), { recursive: true });
+  await mkdir(path.join(vault, '回顾'), { recursive: true });
   await writeFile(path.join(vault, '00_索引.md'), INDEX, 'utf8');
-  await writeFile(path.join(vault, '现在的搜索.md'), '# 现在的搜索\n\nThe search note.\n', 'utf8');
-  await writeFile(path.join(vault, 'git_工作流程管理.md'), '# git\n', 'utf8');
-  await writeFile(path.join(vault, '事故复盘', '00_索引.md'), '# 事故复盘\n', 'utf8');
+  await writeFile(path.join(vault, '搜索笔记.md'), '# 搜索笔记\n\nThe search note.\n', 'utf8');
+  await writeFile(path.join(vault, 'git_使用笔记.md'), '# git\n', 'utf8');
+  await writeFile(path.join(vault, '回顾', '00_索引.md'), '# 回顾\n', 'utf8');
   const app = await electron.launch({
     executablePath: packagedExecutable(),
     args: [`--user-data-dir=${path.join(workspace, 'user-data')}`, vault],
@@ -57,7 +57,7 @@ test.describe('a generated index', () => {
       await expect(index.locator('.noto-index-count')).toHaveText('5 条');
       await expect(index.locator('.noto-index-section')).toHaveText(['子目录', '日志']);
       await expect(index.locator('.noto-index-item')).toHaveCount(5);
-      await expect(index.locator('.noto-index-label')).toHaveText('供应商（2 篇）');
+      await expect(index.locator('.noto-index-label')).toHaveText('合作方（2 篇）');
 
       // The region's own markdown is hidden, markers included, and the note
       // around it is untouched.
@@ -69,13 +69,13 @@ test.describe('a generated index', () => {
       const drawn = await page.locator('.ProseMirror').evaluate((node) => (node as HTMLElement).innerText);
       expect(drawn).not.toContain('note-assistant:index:start');
       expect(drawn).not.toContain('[[');
-      await expect(page.locator('.ProseMirror h1')).toHaveText('Openjobs-ai 索引');
+      await expect(page.locator('.ProseMirror h1')).toHaveText('Acme 索引');
       await expect(page.locator('.ProseMirror')).toContainText('A paragraph after the generated block.');
 
       // A line shows the title first and the path after it, in small type.
       const first = index.locator('.noto-index-item').first();
-      await expect(first.locator('.noto-index-item-title')).toHaveText('unlock 联系方式统筹');
-      await expect(first.locator('.noto-index-item-path')).toHaveText('供应商/unlock联系方式统筹');
+      await expect(first.locator('.noto-index-item-title')).toHaveText('联系人 整理');
+      await expect(first.locator('.noto-index-item-path')).toHaveText('合作方/联系人整理');
       // A count after a link is kept as its note rather than read as a path.
       await expect(index.locator('.noto-index-item').nth(2).locator('.noto-index-item-path')).toHaveText('（3 篇）');
     } finally {
@@ -86,7 +86,7 @@ test.describe('a generated index', () => {
   test('opens the note a line points at', async () => {
     const { app, page } = await launch('follow');
     try {
-      await page.locator('.ProseMirror .noto-index-item').filter({ hasText: '现在的搜索' }).click();
+      await page.locator('.ProseMirror .noto-index-item').filter({ hasText: '搜索笔记' }).click();
       await expect(page.locator('.canvas-slot:not([hidden]) .ProseMirror')).toContainText('The search note.', { timeout: 15_000 });
     } finally {
       await app.close();

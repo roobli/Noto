@@ -70,7 +70,7 @@ three-dash; content cells stay unpadded), line-prefix offset alignment
 ## Parity tests
 
 `tests/unit/roobli-md-adapter.test.ts` plus synthetic fixtures under
-`tests/fixtures/roobli-md-parity/` (no RooB private content):
+`tests/fixtures/roobli-md-parity/` (no private content):
 
 1. **Structural parity** — `start` / `end` / `markdown` / gaps vs micromark on
    synthetic samples and the g002 subset that already matches.
@@ -248,7 +248,7 @@ simple-lazy-list-continuations, simple-hard-breaks-in-lists, simple-multi-block-
 simple-hard-breaks-in-footnotes, simple-callouts, simple-titled-collapsible-callouts, simple-marked-callout-titles, simple-heavy-callout-titles, simple-marked-phrasing,
 simple-underscore-emphasis, simple-nested-marks, simple-two-level-nested-marks, simple-three-level-nested-marks, simple-four-level-nested-marks, simple-five-level-nested-marks, simple-six-level-nested-marks, simple-seven-level-nested-marks, simple-eight-level-nested-marks, simple-nine-level-nested-marks, simple-ten-level-nested-marks, simple-eleven-level-nested-marks, simple-twelve-level-nested-marks, simple-thirteen-level-nested-marks, simple-fourteen-level-nested-marks, simple-fifteen-level-nested-marks, simple-sixteen-level-nested-marks, simple-seventeen-level-nested-marks, simple-eighteen-level-nested-marks, simple-nineteen-level-nested-marks, simple-twenty-level-nested-marks, simple-twenty-one-level-nested-marks, simple-twenty-two-level-nested-marks, simple-twenty-three-level-nested-marks, simple-twenty-four-level-nested-marks, simple-twenty-five-level-nested-marks, simple-twenty-six-level-nested-marks, simple-twenty-seven-level-nested-marks, simple-twenty-eight-level-nested-marks, simple-twenty-nine-level-nested-marks, simple-thirty-level-nested-marks, simple-thirty-one-level-nested-marks, simple-thirty-two-level-nested-marks, simple-thirty-three-level-nested-marks, simple-thirty-four-level-nested-marks, simple-thirty-five-level-nested-marks, simple-thirty-six-level-nested-marks, simple-thirty-seven-level-nested-marks, simple-triple-delimiter-marks, simple-inline-links, simple-bare-autolinks, simple-angle-autolinks, simple-www-autolinks, simple-email-autolinks / simple-escapes / simple-escapes-in-tables / simple-ragged-tables / simple-pipe-optional-tables / simple-inline-html / simple-inline-math / simple-image-alts / simple-math-html-in-tables, simple-reference-links, simple-wiki-links, simple-gfm-tables,
 simple-footnote-defs, empty-footnote-defs, simple-setext-dash-headings, simple-mixed-marker-nested-lists, simple-table-header-delim-columns, simple-same-indent-list-markers, simple-cross-family-same-indent-lists, simple-empty-list-item-structural, simple-list-steal-pipe-less-tables, simple-lazy-empty-containers, and cjk-emphasis goldens landed.
-**Default-on landed** (Dylan/lykoris approved). Residual dialect: thirty-eight+ nests (cap) and nested-bracket image alts / exotic inline refuses.
+**Default-on landed** (approved in #282). Residual dialect: thirty-eight+ nests (cap) and nested-bracket image alts / exotic inline refuses.
 
 **Noto `0.0.2-alpha.9`** shipped the adapter (#37) plus `@roobli/md` v0.1.1 quote/
 callout parity (#38). Pin is now `@roobli/md` v0.1.19 (Phase 22 lazy empty-container / link-def title / ordered start≠1 on top of Phase 21 list-steal pipe-less / Phase 20 empty list item + blank + structural outside / Phase 19 same-indent list marker/delimiter split / Phase 18 `md serve` / Phase 17 table header/delim columns /

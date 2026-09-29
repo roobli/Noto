@@ -10,9 +10,9 @@
  * every line of a hand-wrapped paragraph on the first keystroke.
  *
  * Usage:
- *   node scripts/edit-sweep.mjs [count] [kind] [folder]
+ *   node scripts/edit-sweep.mjs [count] [kind] <folder>
  *   kind is one of p, h, li, td, code, quote; the default is p.
- *   folder defaults to the author's vault and must hold Markdown.
+ *   folder is required and must hold Markdown.
  *
  * The folder is never touched. Each note is copied to a scratch directory
  * first and the copy is what gets edited.
@@ -35,7 +35,11 @@ const require_ = createRequire(path.join(process.cwd(), 'package.json'));
 const { _electron: electron } = require_('@playwright/test');
 const OUT = process.env.SWEEP_OUT ?? path.join(process.cwd(), 'test-results', 'edit-sweep');
 mkdirSync(OUT, { recursive: true });
-const ROOT = process.argv[4] ?? '/Users/cdcd/roobli/Nut/RooB';
+const ROOT = process.argv[4];
+if (!ROOT) {
+  console.error('Pass the folder to sweep as the fourth argument.');
+  process.exit(2);
+}
 const LIMIT = Number(process.argv[2] ?? 40);
 const WORK = path.join(OUT, 'edit-work');
 

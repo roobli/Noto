@@ -6,7 +6,7 @@ import { packagedExecutable } from './packaged-app';
 const resultRoot = path.join(process.cwd(), 'test-results', 'export');
 
 const NOTE = [
-  '# 平台增长复盘',
+  '# 季度复盘',
   '',
   'A paragraph with **bold** and `code` in it.',
   '',
@@ -120,7 +120,7 @@ test.describe('export', () => {
       // Standalone: the styles travel with it.
       expect(html).toContain('<style>');
       // And the document itself came through, table and all.
-      expect(html).toContain('平台增长复盘');
+      expect(html).toContain('季度复盘');
       expect(html).toContain('<table');
       expect(html).toContain('日活跃');
       // The picture travels inside the file too. Its address in the note is
@@ -172,7 +172,7 @@ test.describe('export', () => {
       await written(destination).not.toBeNull();
       const html = await readFile(destination, 'utf8');
       expect(html).not.toContain('<style>');
-      expect(html).toContain('平台增长复盘');
+      expect(html).toContain('季度复盘');
     } finally {
       await app.close();
     }

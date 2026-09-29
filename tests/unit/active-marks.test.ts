@@ -39,14 +39,14 @@ describe('revealing inline markdown', () => {
   it('reveals only the code span the caret is in, not its neighbours', () => {
     const state = paragraph([
       ['use ', []],
-      ['A400', [inlineCode.create()]],
+      ['X400', [inlineCode.create()]],
       [' or ', []],
-      ['A405', [inlineCode.create()]],
+      ['X405', [inlineCode.create()]],
       [' today', []],
     ]);
     // Positions: 1 starts the paragraph's content.
     const inFirst = 1 + 'use '.length + 1;
-    const inSecond = 1 + 'use A400 or '.length + 1;
+    const inSecond = 1 + 'use X400 or '.length + 1;
     expect(revealedAt(state, inFirst)).toEqual(['`', '`']);
     expect(revealedAt(state, inSecond)).toEqual(['`', '`']);
     // One span at a time, never both, which is the whole point.

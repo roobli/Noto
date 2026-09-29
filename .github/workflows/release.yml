@@ -27,15 +27,47 @@ concurrency:
   cancel-in-progress: false
 
 jobs:
+  # The release a tag belongs to, with its channel decided by the tag rather
+  # than by whoever made it. A version with a prerelease component
+  # (`0.0.2-alpha.113`) is a prerelease and never Latest; a plain version is a
+  # full release. Stable in the app follows exactly that flag, so getting it
+  # wrong once put Stable on an alpha. Latest across all releases is kept by
+  # release-integrity.yml, so re-running an old tag here cannot take it.
+  release:
+    name: Release for the tag
+    runs-on: ubuntu-latest
+    steps:
+      - name: Create or correct the release
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          GH_REPO: ${{ github.repository }}
+          TAG: ${{ github.event.inputs.tag || github.ref_name }}
+        shell: bash
+        run: |
+          case "$TAG" in
+            *-*) flags=(--prerelease --latest=false) ;;
+            *)   flags=(--prerelease=false) ;;
+          esac
+          if gh release view "$TAG" >/dev/null 2>&1; then
+            gh release edit "$TAG" "${flags[@]}"
+            echo "corrected $TAG: ${flags[*]}"
+          else
+            gh release create "$TAG" --verify-tag --title "$TAG" --generate-notes "${flags[@]}"
+            echo "created $TAG: ${flags[*]}"
+          fi
+
   installers:
     name: Installers (${{ matrix.os }})
+    needs: release
     runs-on: ${{ matrix.os }}
     strategy:
       fail-fast: false
       matrix:
         # macos-14 = Apple silicon. macos-13 (Intel) runners are scarce and
-        # leave Release jobs queued for hours; ship arm64 only until we have a
-        # reliable Intel runner (Rosetta covers most Intel Macs for now).
+        # leave Release jobs queued for hours, so only arm64 ships. That leaves
+        # Intel Macs without a build: Rosetta runs Intel code on Apple silicon,
+        # not the other way round. A universal or cross-built x64 package is
+        # the open question (decision D8 on the docs site).
         os: [macos-14, windows-latest, ubuntu-latest]
     steps:
       - uses: actions/checkout@v4

@@ -1,7 +1,7 @@
 /**
  * Feel acceptance for focused-block + span-level wiki source.
  *
- * A MOC / DailyNews-style list of `[[path|title]]` rows must not show every
+ * A hub-style index list of `[[path|title]]` rows must not show every
  * pair of brackets while the caret is in one item. Only the focused textblock
  * may reveal, and within that block only the wiki match under the caret.
  */

@@ -20,25 +20,25 @@ const docOf = (markdown: string) => notoSchema.nodes.doc.create(
 );
 
 const INDEX = [
-  '# Openjobs-ai 索引',
+  '# Acme 索引',
   '',
   '<!-- note-assistant:index:start -->',
   '',
   '## 目录索引',
   '',
-  '自动生成，勿手改；由 `node .tools/vault.mjs index` 维护。',
+  '自动生成，勿手改；由索引脚本维护。',
   '',
   '### 子目录',
   '',
-  '- 存储数据格式优化对比（4 篇）',
-  '  - [[存储数据格式优化对比/编译型语言pod部署CICD|编译型语言pod部署CICD]]',
-  '  - [[存储数据格式优化对比/vortex_parquet|vortex parquet]]',
-  '- [[供应商/00_索引|供应商]]（2 篇）',
+  '- 格式对比（4 篇）',
+  '  - [[格式对比/构建与部署|构建与部署]]',
+  '  - [[格式对比/columnar_formats|columnar formats]]',
+  '- [[合作方/00_索引|合作方]]（2 篇）',
   '',
   '### 日志',
   '',
-  '- [[现在的搜索|现在的搜索]]',
-  '- [[git_工作流程管理|git 工作流程管理]]',
+  '- [[搜索笔记|搜索笔记]]',
+  '- [[git_使用笔记|git 使用笔记]]',
   '',
   '<!-- note-assistant:index:end -->',
   '',
@@ -69,7 +69,7 @@ describe('findIndexRegions', () => {
       '',
       'Related Notes:',
       '',
-      '- [[../A000_Theoretical_Knowledge/A404_Linux/00_Linux总览|Linux 总览]] - hub',
+      '- [[../A_topics/systems/00_系统总览|系统总览]] - hub',
       '- [[同目录笔记|另一篇]] - explicit link',
       '',
       '<!-- note-assistant:end -->',
@@ -103,17 +103,17 @@ describe('parseIndexBlock', () => {
   it('reads a wiki link into a title and a target, and keeps what followed it', () => {
     const items = region().sections[0].items;
     expect(items[1]).toEqual({
-      target: '存储数据格式优化对比/编译型语言pod部署CICD',
-      title: '编译型语言pod部署CICD',
+      target: '格式对比/构建与部署',
+      title: '构建与部署',
       trailing: '',
       depth: 1,
     });
-    expect(items[3]).toEqual({ target: '供应商/00_索引', title: '供应商', trailing: '（2 篇）', depth: 0 });
+    expect(items[3]).toEqual({ target: '合作方/00_索引', title: '合作方', trailing: '（2 篇）', depth: 0 });
   });
 
   it('keeps a label with no link, with its children under it', () => {
     const items = region().sections[0].items;
-    expect(items[0]).toEqual({ target: null, title: '存储数据格式优化对比（4 篇）', trailing: '', depth: 0 });
+    expect(items[0]).toEqual({ target: null, title: '格式对比（4 篇）', trailing: '', depth: 0 });
     expect(items[1].depth).toBe(1);
     expect(items[2].depth).toBe(1);
   });
@@ -138,8 +138,8 @@ describe('parseRelatedBlock', () => {
     '',
     'Related Notes:',
     '',
-    '- [[../A404_Linux/tcp调优|TCP 调优]] - same theme',
-    '- [[代理与隧道|代理与隧道]] - explicit link',
+    '- [[../systems/缓存调优|缓存调优]] - same theme',
+    '- [[网络索引|网络索引]] - explicit link',
     '',
     '<!-- note-assistant:end -->',
     '',
@@ -150,8 +150,8 @@ describe('parseRelatedBlock', () => {
     expect(block.title).toBe('Note Assistant');
     expect(block.tags).toEqual(['vpn', 'tunnel']);
     expect(block.items).toEqual([
-      { target: '../A404_Linux/tcp调优', title: 'TCP 调优', reason: 'same theme' },
-      { target: '代理与隧道', title: '代理与隧道', reason: 'explicit link' },
+      { target: '../systems/缓存调优', title: '缓存调优', reason: 'same theme' },
+      { target: '网络索引', title: '网络索引', reason: 'explicit link' },
     ]);
   });
 

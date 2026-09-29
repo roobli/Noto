@@ -100,7 +100,7 @@ function markerOf(node: ProseNode): { kind: 'start' | 'end'; family: AssistantFa
  *
  * The link is the first `[[...]]` in the item's own paragraph; whatever
  * follows it is the trailing note. An item with no link is a label, the way
- * `- 供应商（2 篇）` heads the notes under it. Nested lists are walked so a
+ * `- 合作方（2 篇）` heads the notes under it. Nested lists are walked so a
  * label keeps its children under it, which a flat parse would have lost.
  */
 function collectItems(list: ProseNode, depth: number, into: IndexItem[]): void {

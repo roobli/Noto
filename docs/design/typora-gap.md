@@ -1,7 +1,7 @@
 # Where Noto stands against Typora
 
 Measured against the Typora on this machine, its stylesheets on disk, the
-author's own theme (`Typora_Claude-Like_Theme`), and the author's vault: 7,066
+author's own theme, and the author's vault: 7,066
 notes, 82.5 MB of markdown, 343 image files, six levels deep. Every assessment
 names its evidence, and where a number appears it was measured rather than
 estimated: from the running Typora through its remote control, from the
@@ -19,8 +19,8 @@ what a large document costs and where the cost is.
 of them. A local `![](./pic.png)` failed with `net::ERR_UNEXPECTED`; a remote
 one was refused by the renderer's content security policy, which was
 `img-src 'self' data: blob:` with `connect-src 'none'`. Most of the vault's
-images are remote: 5,516 are `https:` and 7 are `http:`, 2,482 of them on a
-Huawei OBS bucket and 2,871 on `nihaixiahope.com`. 204 are paths relative to
+images are remote: 5,516 are `https:` and 7 are `http:`, almost all of them on
+two third-party image hosts. 204 are paths relative to
 the note, and most of those climb to a sibling assets folder
 (`../.gitbook/assets/...`); 136 are percent-encoded; 5 are absolute.
 
@@ -110,7 +110,7 @@ box and a paragraph's first glyph share one left edge.
 ## 6. Inline code was bare. Closed.
 
 The theme gives inline code a border, a fill, a small radius and `0.9em`. Noto
-set a monospace face at 14px and nothing else, so `A400_Languages` sat in a
+set a monospace face at 14px and nothing else, so `snake_case_names` sat in a
 sentence with no edge. Small, but it is in nearly every paragraph of this
 vault. Inline code now has the theme's hairline, fill, radius and its own warm
 ink, at 0.9em of the prose so it follows the size setting; a fence has the
@@ -1430,7 +1430,7 @@ remaining plugins after that, in the order the author names them;
 
 ## 70. Wiki-link brackets lit up a whole list. Closed.
 
-A note that is mostly `[[path|title]]` rows (DailyNews indexes, MOC hubs) showed
+A note that is mostly `[[path|title]]` rows (daily indexes, hub notes) showed
 every pair of brackets and every muted path at once. The brackets are real
 characters, so they used to stay dimmed rather than hidden; the top-level
 `.noto-active-block` then kept them lit for every sibling in the list while the
@@ -1459,7 +1459,6 @@ named on gap 70. What remains named rather
 than queued: a live diagrams.net editor inside `drawio` (large product work, not
 a habit slice), and the open-path distance to Typora after the dual-parse removal
 (`docs/performance/measurements.md`) — main `parseDocument` dominates, but
-PROFILE shows no clear first cut yet. RooB MOC hub graph data is closed on both
-sides: Noto's rail (#14 + MOC graph-rail) and note-assistant lightweight hub
-rows (recorded in `roob-vault-stress.md` / #34); rebuild local `graph.json` to
-pick up.
+PROFILE shows no clear first cut yet. Hub-note graph data is closed on both
+sides: Noto's rail (#14 + MOC graph-rail) and the index tool's lightweight hub
+rows (#34); rebuild the local `graph.json` to pick up.

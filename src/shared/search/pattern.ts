@@ -22,7 +22,7 @@ const escape = (text: string): string => text.replace(/[.*+?^${}()|[\]\\]/g, '\\
  * The expression for a query, or null when there is nothing to look for or
  * the query is a regular expression that does not parse.
  *
- * A literal query is escaped, so someone searching for `A400_Data (旧)` finds
+ * A literal query is escaped, so someone searching for `Data_Archive (旧)` finds
  * that text and not a group. Whole word wraps the body in word boundaries,
  * which in a Chinese sentence means very little, since there are no spaces
  * to bound; it is offered because Typora offers it and a Latin query in the

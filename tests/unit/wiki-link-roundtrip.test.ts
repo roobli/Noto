@@ -31,7 +31,7 @@ describe('wiki links through the serializer', () => {
   });
 
   it('keeps CJK targets and paths intact', () => {
-    const source = '[[E000_Works/数据部门/00_索引]] 的说明';
+    const source = '[[E_works/数据组/00_索引]] 的说明';
     expect(roundTrip(source)).toBe(source);
   });
 

@@ -50,10 +50,10 @@ describe('choosing between a name and a path', () => {
 
   it('lets the path win once the query names one', () => {
     const options = { pathQuery: true, frecencyBoost: 0 };
-    const inFolder = scoreCandidate(keys('other.md', 'openjobs/data/other.md'), 'openjobs/data', options);
+    const inFolder = scoreCandidate(keys('other.md', 'acme/data/other.md'), 'acme/data', options);
     expect(inFolder).toBeGreaterThan(NO_MATCH);
-    expect(isPathQuery('openjobs/data')).toBe(true);
-    expect(isPathQuery('openjobs')).toBe(false);
+    expect(isPathQuery('acme/data')).toBe(true);
+    expect(isPathQuery('acme')).toBe(false);
   });
 
   it('lets history lift a comparable match without overturning a better one', () => {

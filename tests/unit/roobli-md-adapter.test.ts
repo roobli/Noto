@@ -2,7 +2,7 @@
  * Parity and adapter coverage for `@roobli/md` (pin ≥ v0.1.19).
  *
  * Product default is `@roobli/md`. These tests compare structural spans against
- * the micromark baseline on synthetic fixtures (no RooB private content), and
+ * the micromark baseline on synthetic fixtures (no private content), and
  * assert default / explicit routing through the adapter.
  */
 
