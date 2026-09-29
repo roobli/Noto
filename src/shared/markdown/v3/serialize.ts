@@ -422,7 +422,8 @@ function buildNextDocument(input: {
     // give since its bytes are identical.
     const kind = reparsed?.kind ?? original?.kind ?? 'paragraph';
     const semanticKey = reparsed?.semanticKey ?? original?.semanticKey ?? '';
-    const id = `noto-block-v3:${ordinal}:${sha256(markdown).slice(0, 16)}` as NotoBlockId;
+    const digest = sha256(markdown);
+    const id = `noto-block-v3:${ordinal}:${digest.slice(0, 16)}` as NotoBlockId;
     return {
       version: NOTO_MARKDOWN_VERSION,
       id,
@@ -430,7 +431,7 @@ function buildNextDocument(input: {
       start: input.unitStart[ordinal],
       end: input.unitEnd[ordinal],
       markdown,
-      sha256: sha256(markdown),
+      sha256: digest,
       semanticKey,
       origin: { blockId: id, ordinal, kind, semanticKey },
     };
