@@ -23,11 +23,11 @@ How releases are made, and what each channel receives, is in
   prerelease, and every existing release has been re-flagged.
 - An Intel Mac with no Intel build to update to is sent to the release page
   instead of being handed the Apple silicon zip, which it cannot run.
-- **Saving a long note is several times faster.** Part of every save took
-  time in proportion to the square of the number of blocks in the note; it is
-  now in proportion to the number. On the 8 MB benchmark document, 44,000
-  blocks, assembling the file after a one-paragraph edit went from over five
-  seconds to under one.
+- **Saving a long note is faster.** Part of every save took time in
+  proportion to the square of the number of blocks in the note, and now grows
+  only with the number. On the 8 MB benchmark document, 44,000 blocks, that
+  part fell from over five seconds to under one, and a whole save in the
+  packaged app from between 3.2 and 4.5 seconds to 2.6.
 
 ### Changed
 - The README and the docs site lead with what Noto is for: *Edit the page.

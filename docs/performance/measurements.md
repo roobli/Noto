@@ -363,9 +363,16 @@ the Linux agent box, before and after:
 | large    | 83 → 71 ms         | 289 → 271 ms     |
 | huge     | 4,600 → 379 ms     | 5,289 → 797 ms   |
 
-Most of what remains in a one-block save of `huge` is a full `parseDocument`
-of the output, which the `@roobli/md` path runs to prove the edited blocks
-survive a reparse. The micromark path checks only a window around each edit.
+In the packaged app, measured end to end by the benchmark workflow on
+`macos-14`, a one-block save of `huge` took 4,517 and 3,198 ms in two runs
+before, and 2,613 ms after. The serialize step is a smaller share of a whole
+save than the profile alone suggests: the rest is the renderer's capture, the
+structured clone across the process boundary, the journaled write and the
+reply, and that is where the next save work has to measure.
+
+Within serialize, most of what remains for `huge` is a full `parseDocument` of
+the output, which the `@roobli/md` path runs to prove the edited blocks survive
+a reparse. The micromark path checks only a window around each edit.
 
 ## Save path phases, measured 2026-09-11
 
