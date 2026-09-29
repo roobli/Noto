@@ -1,0 +1,93 @@
+# Open, keystroke and save, measured on a packaged build.
+#
+# Principle 5 on the docs site: speed is measured, not claimed. This runs the
+# same harness as scripts/bench/run-noto.mjs against the deterministic
+# corpus from scripts/bench/corpus.mjs, on a packaged app, and publishes the
+# medians as the run's summary and as an artifact. It runs for every tag the
+# release workflow builds, and on request, so the numbers in the README can
+# always say which build and which machine they came from. It listens for the
+# tag rather than for the release: the release is created with GITHUB_TOKEN,
+# and events made with that token start no workflows.
+#
+# The machine is a GitHub-hosted macos-14 runner: a virtual Apple silicon Mac,
+# slower and noisier than a desk machine. Compare runs with runs, not with
+# numbers measured elsewhere.
+name: Benchmark
+
+on:
+  push:
+    tags: ['v*']
+  workflow_dispatch:
+    inputs:
+      runs:
+        description: Runs per document (the median is reported)
+        required: false
+        default: '3'
+
+permissions:
+  contents: read
+
+concurrency:
+  group: bench-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  bench:
+    name: Packaged open, type and save (macos-14)
+    runs-on: macos-14
+    timeout-minutes: 60
+    steps:
+      - uses: actions/checkout@v4
+      - uses: pnpm/action-setup@v4
+        with:
+          version: 11.18.0
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22.19.0
+          cache: pnpm
+          cache-dependency-path: pnpm-lock.yaml
+      - run: pnpm install --frozen-lockfile
+
+      # The copy of electron pnpm installs has no `scripts` field, so its
+      # postinstall never runs and the binary is never fetched.
+      - name: Ensure the Electron binary
+        run: node node_modules/electron/install.js
+
+      - name: Package the app
+        run: pnpm package:e2e
+
+      - name: Generate the corpus
+        run: node scripts/bench/corpus.mjs
+
+      - name: Measure
+        env:
+          BENCH_RUNS: ${{ github.event.inputs.runs || '3' }}
+        run: node scripts/bench/run-noto.mjs
+
+      - name: Summarize
+        shell: bash
+        run: |
+          node --input-type=module -e '
+            import { readFileSync, appendFileSync } from "node:fs";
+            const report = JSON.parse(readFileSync("out/bench/noto.json", "utf8"));
+            const version = JSON.parse(readFileSync("package.json", "utf8")).version;
+            const lines = [
+              `## Noto ${version} (${process.env.GITHUB_SHA.slice(0, 7)}), packaged, ${process.env.RUNNER_OS} ${process.env.RUNNER_ARCH}`,
+              "",
+              `Measured ${report.measuredAt}; median of ${report.results[0]?.runs ?? "?"} runs per document.`,
+              "",
+              "| document | bytes | blocks | open | keystroke | save |",
+              "| --- | ---: | ---: | ---: | ---: | ---: |",
+              ...report.results.map((r) =>
+                `| ${r.name} | ${r.bytes.toLocaleString("en-US")} | ${r.blocks.toLocaleString("en-US")} | ${r.openMs.toLocaleString("en-US")} ms | ${r.typeMs} ms | ${r.saveMs.toLocaleString("en-US")} ms |`),
+              "",
+            ];
+            appendFileSync(process.env.GITHUB_STEP_SUMMARY, lines.join("\n"));
+            console.log(lines.join("\n"));
+          '
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: bench-${{ github.sha }}
+          path: out/bench/noto.json
+          retention-days: 90

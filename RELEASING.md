@@ -26,7 +26,8 @@ particular none exists only to raise the nesting cap.
    sets that flag by hand. It then builds and attaches the installers and the
    update metadata on every platform: on macOS one zip for Apple silicon and
    one for Intel, both listed in a single `latest-mac.yml` so each Mac's
-   updater takes its own.
+   updater takes its own. The benchmark workflow runs on the same tag and
+   reports open, keystroke and save for the packaged build.
 5. Edit the release body: the changelog entry, then the first-open blurb from
    [docs/install.md](docs/install.md#blurb-for-github-releases), which stays
    until builds are notarized and signed.
@@ -49,7 +50,9 @@ off; whoever cuts the tag does not decide it.
 - [ ] macOS builds are signed with a Developer ID, notarized, stapled, and
       launch from quarantine on a clean machine with no warning.
 - [ ] Open, keystroke and save are re-measured on packaged builds with the
-      current engine, and the README's table is replaced.
+      current engine, and the README's table is replaced. The benchmark
+      workflow gives Noto's numbers on every tag; the comparison with Typora
+      needs a Mac that has Typora installed.
 
 Windows signing and the rest of the roadmap's *Now* horizon may follow in the
 release after.
