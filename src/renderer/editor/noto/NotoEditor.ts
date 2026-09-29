@@ -95,6 +95,7 @@ import { wikiLinkPlugin } from './wiki-link-plugin';
 import { followLinkPlugin, linkEditorPlugin } from './link-plugin';
 import { countWords, type DocumentCount } from './word-count';
 import { sliceToMarkdown } from './clipboard';
+import { rootSpellCheck, SPELL_CHECK_RESCAN, spellCheckScopeKey, spellCheckScopePlugin } from './spell-check-scope';
 
 /** How long after the last keystroke the document is counted. */
 const COUNT_DELAY_MS = 400;
@@ -156,6 +157,8 @@ export class NotoEditor implements NotoEditorPort {
   private substitutions = { quotes: false, dashes: false, ellipsis: false };
   private typewriter = false;
   private autoPair = true;
+  /** The setting; which blocks it reaches depends on the note's length. */
+  private spellCheck = true;
   /** Append ` ✅ YYYY-MM-DD` when a task is checked. */
   private todoCheckTime = true;
 
@@ -216,6 +219,7 @@ export class NotoEditor implements NotoEditorPort {
     this.document = document;
     this.options = options;
     this.host = host;
+    this.spellCheck = options.spellCheck ?? true;
     this.substitutions = {
       quotes: options.smartQuotes === true,
       dashes: options.smartDashes === true,
@@ -229,7 +233,9 @@ export class NotoEditor implements NotoEditorPort {
     this.view = new EditorView(host, {
       state: EditorState.create({ doc, plugins: this.plugins(document) }),
       dispatchTransaction: (transaction) => this.apply(transaction),
-      attributes: { spellcheck: String(this.options.spellCheck ?? true) },
+      // A function of the state: a long note checks only the blocks around the
+      // selection (see spell-check-scope.ts), and a note can grow into one.
+      attributes: (state) => ({ spellcheck: rootSpellCheck(this.spellCheck, state) }),
       // The one place read-only is enforced for typing. The node views that
       // take pointer input have to refuse separately, because a node view's
       // own handlers never see this.
@@ -327,6 +333,7 @@ export class NotoEditor implements NotoEditorPort {
       activeNodePlugin(),
       viewportLayoutPlugin(),
       viewportStubPlugin(),
+      spellCheckScopePlugin(() => this.spellCheck),
       taskClickPlugin(this.taskStampOptions()),
 
       wikiLinkPlugin({ onFollow: (target) => this.options.onFollowWikiLink?.(target) }),
@@ -838,8 +845,9 @@ export class NotoEditor implements NotoEditorPort {
    *
    * Rebuilding the editor would apply them too, and would also throw away the
    * user's undo history and cursor, so a preference change must never cost
-   * them that. Spell checking is a view property, and smart typography is read
-   * by the input rules on each keystroke, so both take effect at once.
+   * them that. Spell checking is recomputed by a transaction that changes
+   * nothing in the document, and smart typography is read by the input rules on
+   * each keystroke, so both take effect at once.
    */
   applySettings(settings: {
     spellCheck?: boolean;
@@ -893,8 +901,10 @@ export class NotoEditor implements NotoEditorPort {
       this.imageContext = { ...this.imageContext, remote: settings.remoteImages };
       this.refreshImages();
     }
-    if (settings.spellCheck === undefined) return;
-    view.setProps({ attributes: { spellcheck: String(settings.spellCheck) } });
+    if (settings.spellCheck === undefined || settings.spellCheck === this.spellCheck) return;
+    this.spellCheck = settings.spellCheck;
+    // Recomputes both the root attribute and the scoped blocks.
+    view.dispatch(view.state.tr.setMeta(spellCheckScopeKey, SPELL_CHECK_RESCAN).setMeta('addToHistory', false));
   }
 
   /**

@@ -882,6 +882,7 @@ export function Settings({
               <>
                 <Switch
                   label="Check spelling"
+                  hint="In a note of thousands of paragraphs, only the ones around the caret, so the whole note is never checked in one go."
                   checked={settings.spellCheck}
                   onChange={(value) => onChange({ spellCheck: value })}
                   testId="setting-spell-check"
