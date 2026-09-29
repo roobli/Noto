@@ -32,6 +32,29 @@ describe('update channels against GitHub Releases', () => {
     expect(found).toBeNull();
   });
 
+  it('Stable ignores an alpha that GitHub flags as a full release', async () => {
+    const fetchImpl = vi.fn(async () => ({
+      ok: true,
+      json: async () => [
+        release({ tag_name: 'v0.0.2-alpha.109', prerelease: false }),
+        release({ tag_name: 'v0.0.1', prerelease: false }),
+      ],
+    })) as unknown as typeof fetch;
+
+    expect(await latestReleaseForChannel('stable', '0.0.1', fetchImpl)).toBeNull();
+  });
+
+  it('reports a version with a prerelease component as a prerelease', async () => {
+    const fetchImpl = vi.fn(async () => ({
+      ok: true,
+      json: async () => [release({ tag_name: 'v0.0.2-alpha.109', prerelease: false })],
+    })) as unknown as typeof fetch;
+
+    const found = await latestReleaseForChannel('testing', '0.0.1', fetchImpl);
+    expect(found?.version).toBe('0.0.2-alpha.109');
+    expect(found?.prerelease).toBe(true);
+  });
+
   it('Stable offers a newer formal release', async () => {
     const fetchImpl = vi.fn(async () => ({
       ok: true,

@@ -16,6 +16,13 @@ Day-to-day users stay on Stable. Alphas are never offered until Testing is
 chosen in **Settings → Updates**. An alpha build itself will not see newer
 alphas while Stable is selected — that is intentional.
 
+What makes a release a prerelease is its version, not only the flag on
+GitHub. A tag with a prerelease component (`v0.0.2-alpha.113`) is a
+prerelease even if GitHub says otherwise, so Stable can never be handed an
+alpha by a release made by hand with the wrong box ticked. That happened:
+dozens of alphas once went out flagged as full releases, and Stable resolved
+to `v0.0.2-alpha.109` until this rule and the integrity workflow below landed.
+
 ## Behaviour
 
 - **Check on launch** (off by default): quiet. When nothing is new, nothing is
@@ -38,7 +45,13 @@ Unpackaged (dev) builds can check the channel; they do not replace themselves.
 
 ## How a release feeds the updater
 
-`.github/workflows/release.yml` attaches, per platform build:
+`.github/workflows/release.yml` first creates the release for the tag, or
+corrects it if it already exists, with the prerelease flag taken from the tag.
+`.github/workflows/release-integrity.yml` walks every release whenever one is
+published or edited, flags each by its tag, and marks the highest full release
+as Latest, which is what GitHub's "latest release" and `electron-updater` read.
+
+The release workflow then attaches, per platform build:
 
 1. The usual installers (`*.zip`, `NotoSetup.exe`, `*.deb`, `*.rpm`).
 2. Squirrel feed files (`RELEASES`, `*.nupkg`) on Windows.

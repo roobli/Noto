@@ -3,6 +3,11 @@
  *
  * Stable skips every prerelease. Testing takes the newest non-draft release,
  * prerelease or not, so an explicit tester still receives a later stable cut.
+ *
+ * A release is a prerelease when GitHub flags it as one or when its version
+ * carries a prerelease component (`0.0.2-alpha.113`). The version is the
+ * authority: releases are created by hand, and dozens of alphas once went out
+ * flagged as full releases, which put Stable on an alpha.
  */
 
 import semver from 'semver';
@@ -59,7 +64,7 @@ function parseRelease(raw: RawRelease): GithubReleaseSummary | null {
   return {
     tag: raw.tag_name,
     version,
-    prerelease: raw.prerelease === true,
+    prerelease: raw.prerelease === true || semver.prerelease(version) !== null,
     htmlUrl: raw.html_url,
     publishedAt: typeof raw.published_at === 'string' ? raw.published_at : '',
     assets,
@@ -77,7 +82,9 @@ export async function latestReleaseForChannel(
   currentVersion: string,
   fetchImpl: typeof fetch = fetch,
 ): Promise<GithubReleaseSummary | null> {
-  const url = `https://api.github.com/repos/${UPDATE_GITHUB.owner}/${UPDATE_GITHUB.repo}/releases?per_page=40`;
+  // The largest page GitHub serves, so a run of alphas cannot push the newest
+  // formal release out of view.
+  const url = `https://api.github.com/repos/${UPDATE_GITHUB.owner}/${UPDATE_GITHUB.repo}/releases?per_page=100`;
   const response = await fetchImpl(url, {
     headers: {
       Accept: 'application/vnd.github+json',

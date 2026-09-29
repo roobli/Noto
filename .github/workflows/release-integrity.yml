@@ -1,0 +1,66 @@
+# Keeps every release's channel honest.
+#
+# Stable in the app offers only full releases, and a full release is one
+# whose version has no prerelease component. Releases were made by hand for a
+# long time, and dozens of alphas went out flagged as full releases, which put
+# Stable on an alpha. This walks every release, flags each one by its tag, and
+# marks the highest full release as Latest, which is what GitHub's "latest
+# release" and electron-updater read.
+#
+# It runs when it changes on main (which repairs the existing releases once),
+# whenever a release is published or edited by hand, and on request. Edits made
+# with GITHUB_TOKEN do not trigger workflows, so it cannot loop on itself.
+name: Release integrity
+
+on:
+  push:
+    branches: [main]
+    paths: ['.github/workflows/release-integrity.yml']
+  release:
+    types: [published, edited]
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+concurrency:
+  group: release-integrity
+  cancel-in-progress: false
+
+jobs:
+  flags:
+    name: Flag releases by their tags
+    runs-on: ubuntu-latest
+    steps:
+      - name: Correct prerelease flags and Latest
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          GH_REPO: ${{ github.repository }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          summary="${GITHUB_STEP_SUMMARY:-/dev/stdout}"
+          echo "| Release | Was prerelease | Now |" >> "$summary"
+          echo "| --- | --- | --- |" >> "$summary"
+          fixed=0
+          gh api --paginate "repos/$GH_REPO/releases?per_page=100" \
+            --jq '.[] | select(.draft | not) | [.tag_name, (.prerelease | tostring)] | @tsv' > releases.tsv
+          while IFS=$'\t' read -r tag was; do
+            case "$tag" in *-*) want=true ;; *) want=false ;; esac
+            if [ "$was" != "$want" ]; then
+              if [ "$want" = true ]; then
+                gh release edit "$tag" --prerelease --latest=false
+              else
+                gh release edit "$tag" --prerelease=false
+              fi
+              echo "| \`$tag\` | $was | $want |" >> "$summary"
+              fixed=$((fixed + 1))
+            fi
+          done < releases.tsv
+          echo "" >> "$summary"
+          echo "Corrected $fixed of $(wc -l < releases.tsv) releases." >> "$summary"
+          latest=$(cut -f1 releases.tsv | grep -v -- '-' | sort -V | tail -n 1 || true)
+          if [ -n "$latest" ]; then
+            gh release edit "$latest" --latest
+            echo "Latest is \`$latest\`." >> "$summary"
+          fi
