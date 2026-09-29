@@ -181,7 +181,7 @@ out of this directory so the suite stays loud-fail-only on match):
 Every fixture **in this directory** is expected to match on:
 
 1. split span boundaries (`start` / `end` / `markdown` / `kind`) and gaps
-2. identity `serializeDocument` `outputBytes` (flagged path from Noto #82)
+2. identity `serializeDocument` `outputBytes` (`@roobli/md` path from Noto #82)
 3. multi-block serialize `outputBytes` — multi-dirty (first+last), insert after
    first block, and delete of the middle block when the fixture has ≥3 blocks
 

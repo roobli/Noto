@@ -1,12 +1,13 @@
 /**
- * Option B — A/B golden gates for micromark vs `NOTO_MARKDOWN_ENGINE=roobli-md`.
+ * Option B — A/B golden gates for product-default `@roobli/md` vs the
+ * `NOTO_MARKDOWN_ENGINE=micromark` escape hatch.
  *
- * These fixtures are the loud fail surface before default-on. Product default
- * stays micromark; this suite forces both engines explicitly and compares:
+ * Product default is `@roobli/md` (#282 / alpha.112). This suite forces both
+ * engines explicitly and compares:
  *
  * 1. parse/split span boundaries (kind + start/end + markdown + gaps)
- * 2. identity serialize `outputBytes` (Noto #82 flagged path)
- * 3. multi-block insert / delete / multi-dirty serialize (flagged path extension)
+ * 2. identity serialize `outputBytes` (Noto #82 `@roobli/md` path)
+ * 3. multi-block insert / delete / multi-dirty serialize
  *
  * Fixtures live under `tests/fixtures/markdown-golden/`. Intentional diffs must
  * be documented in that directory's README — silent divergence fails the gate.

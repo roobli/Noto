@@ -1,9 +1,9 @@
 /**
- * Parity and adapter coverage for `@roobli/md` v0.1.7.
+ * Parity and adapter coverage for `@roobli/md` (pin ≥ v0.1.19).
  *
- * Default product path stays micromark. These tests force the adapter and
- * compare structural spans against the micromark baseline on synthetic
- * fixtures (no RooB private content).
+ * Product default is `@roobli/md`. These tests compare structural spans against
+ * the micromark baseline on synthetic fixtures (no RooB private content), and
+ * assert default / explicit routing through the adapter.
  */
 
 import { readFileSync, readdirSync } from 'node:fs';
@@ -23,7 +23,7 @@ import {
 import { splitBlocksMicromark, parseSingleBlock, splitBlocks } from '../../src/shared/markdown/v3/blocks';
 import { parseDocument, sha256 } from '../../src/shared/markdown/v3/document';
 import { identityTransaction, serializeDocument } from '../../src/shared/markdown/v3/serialize';
-import { setMarkdownEngineForTests } from '../../src/shared/markdown/v3/engine-flag';
+import { getMarkdownEngine, setMarkdownEngineForTests } from '../../src/shared/markdown/v3/engine-flag';
 import { parseDocument as engineParseDocument } from '@roobli/md';
 
 const fixturesDir = path.join(process.cwd(), 'tests/fixtures/roobli-md-parity');
@@ -108,15 +108,16 @@ describe('@roobli/md adapter — structural parity', () => {
 });
 
 describe('@roobli/md adapter — flag routing', () => {
-  it('defaults to micromark', () => {
+  it('defaults to roobli-md and matches micromark on simple headings', () => {
     setMarkdownEngineForTests(null);
+    expect(getMarkdownEngine()).toBe('roobli-md');
     const text = '# A\n\nB\n';
     expect(splitBlocks(text).spans.map((s) => s.markdown)).toEqual(
       splitBlocksMicromark(text).spans.map((s) => s.markdown),
     );
   });
 
-  it('routes splitBlocks through the adapter when flagged', () => {
+  it('routes splitBlocks through the adapter when explicit roobli-md', () => {
     setMarkdownEngineForTests('roobli-md');
     const text = '# A\n\nB\n';
     const viaFlag = splitBlocks(text);
@@ -182,7 +183,7 @@ describe('@roobli/md adapter — indented-code (v0.1.2)', () => {
     }
   });
 
-  it('routes indented-code through the adapter when flagged', () => {
+  it('routes indented-code through the adapter when explicit roobli-md', () => {
     setMarkdownEngineForTests('roobli-md');
     const text = 'Para\n\n    code();\n';
     const viaFlag = splitBlocks(text);

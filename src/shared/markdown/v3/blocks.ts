@@ -10,9 +10,9 @@
  * No Node builtins here. The renderer imports this module to build its
  * ProseMirror document.
  *
- * Optional backend: when `NOTO_MARKDOWN_ENGINE=roobli-md` (or the test
- * override) is set, splitting routes through `@roobli/md` via
- * `roobli-md-adapter.ts`. Default remains micromark.
+ * Product default is `@roobli/md` via `roobli-md-adapter.ts`. Set
+ * `NOTO_MARKDOWN_ENGINE=micromark` (or the test override) to force the
+ * legacy micromark path.
  */
 
 import type { List, RootContent } from 'mdast';

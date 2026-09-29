@@ -88,7 +88,7 @@ Native **indented-code** spans (exact offsets, internal blanks kept) shipped in
 autolink; Phase 9 (`v0.1.5`) table delimiter widening (vault three-dash);
 Phase 10 (`v0.1.6`) line-prefix offset alignment; Phase 11 (`v0.1.7`)
 `sourceEditBetween` / `reparseFromText`; Phase 12 (`v0.1.8`) CJK emphasis
-serialize lock-in on the flagged backend.
+serialize lock-in on the `@roobli/md` backend.
 
 ## Golden gates (still expanding after default-on)
 
@@ -102,7 +102,7 @@ link-definitions, trailing-spaces/soft-break, simple quotes, simple footnote-def
 | Gate | Assertion |
 | ---- | --------- |
 | Split boundaries | `kind` / `start` / `end` / `markdown` + leading/gaps/trailing equal |
-| Identity serialize (#82) | flagged `serializeDocument` `outputBytes` equal micromark identity |
+| Identity serialize (#82) | `@roobli/md` `serializeDocument` `outputBytes` equal micromark identity |
 | Multi-block serialize | multi-dirty / insert / delete `outputBytes` equal micromark on each fixture |
 
 Coverage today: headings, lists (incl. nested any depth, mixed-marker), tables, wiki,
@@ -181,29 +181,29 @@ emphasis), Phase 10 line-prefix offsets, Phase 11 `reparseFromText`, and
 Phase 13 CommonMark lazy continuation (no-`>` quotes / unindented list soft-wrap) and
 Phase 14 nest/interrupt parity (definition lazy; GFM tables interrupt paragraphs;
 list-nested indented blocks; v0.1.11 adjacent defs stay separate spans) and
-Phase 15 setext-`---` vs thematic-break parity (v0.1.12), Phase 16 mixed-marker nested lists (v0.1.13), Phase 17 GFM table header/delimiter column-count parity (v0.1.14), Phase 18 `md serve`, Phase 19 same-indent list marker/delimiter split (v0.1.16), Phase 20 empty list item + blank + structural outside (v0.1.17), Phase 21 list-steal pipe-less `- | -` (v0.1.18), and Phase 22 lazy empty-container / link-def title / ordered start≠1 (v0.1.19) are available on the flagged path.
+Phase 15 setext-`---` vs thematic-break parity (v0.1.12), Phase 16 mixed-marker nested lists (v0.1.13), Phase 17 GFM table header/delimiter column-count parity (v0.1.14), Phase 18 `md serve`, Phase 19 same-indent list marker/delimiter split (v0.1.16), Phase 20 empty list item + blank + structural outside (v0.1.17), Phase 21 list-steal pipe-less `- | -` (v0.1.18), and Phase 22 lazy empty-container / link-def title / ordered start≠1 (v0.1.19) ship on the product `@roobli/md` path.
 
-**Host wiring (flagged `replaceMarkdown`).** `PriorSplitCache`
+**Host wiring (`replaceMarkdown`).** `PriorSplitCache`
 (`src/shared/markdown/v3/prior-split-cache.ts`) seeds a structural split on
-open / reload from the resolved spans (no extra parse). When
-`NOTO_MARKDOWN_ENGINE=roobli-md`, `NotoEditor.replaceMarkdown` calls
-`spansForReplace` → `reparseFromTextViaRoobli` with `neighborSlack: 1`.
-WYSIWYG typing / paste invalidates the cache (`apply` skips invalidation while
-`replaceInFlight`); the next replace falls back to a full split and reseeds.
-Micromark path unchanged when the flag is off. Unit coverage:
-`tests/unit/prior-split-cache.test.ts`.
+open / reload from the resolved spans (no extra parse). On the product
+`@roobli/md` path (also when `NOTO_MARKDOWN_ENGINE=roobli-md` is explicit),
+`NotoEditor.replaceMarkdown` calls `spansForReplace` → `reparseFromTextViaRoobli`
+with `neighborSlack: 1`. WYSIWYG typing / paste invalidates the cache (`apply`
+skips invalidation while `replaceInFlight`); the next replace falls back to a
+full split and reseeds. Escape hatch `NOTO_MARKDOWN_ENGINE=micromark` keeps the
+legacy path. Unit coverage: `tests/unit/prior-split-cache.test.ts`.
 
-**Host wiring (flagged block-mode serialize).** When the same flag is on,
+**Host wiring (block-mode serialize).** On the product `@roobli/md` path,
 `serializeDocument` routes all block-mode saves — identity, single-block, and
 multi-block insert/delete — through `@roobli/md` `serializeDocument` (via
 `toEngineDocument` / `toSerializeUnits`). Noto still validates forged origins,
 re-attaches `sha256` on preserved ranges, and keeps branded `documentId` /
 revision ids. `source` mode stays on the Noto serializer (host escape hatch).
-Micromark path unchanged when the flag is off. Unit coverage:
+`NOTO_MARKDOWN_ENGINE=micromark` keeps the legacy path. Unit coverage:
 `tests/unit/roobli-md-serialize-host.test.ts`.
 
-**Open-path cuts (flagged).** `splitBlocksViaRoobli` defaults to bulk mdast
-attach for paste / non-open. Flagged `parseDocument` uses `enrich: 'none'`
+**Open-path cuts.** `splitBlocksViaRoobli` defaults to bulk mdast
+attach for paste / non-open. Product `parseDocument` uses `enrich: 'none'`
 (`nodesEnrichment: 'deferred'`); the renderer calls `enrichSpansInRange` for a
 first-paint window then viewport / idle `enrichNextDeferredInRange` with
 incremental PM patch. **Engine-owned IR → PM** (`pm/from-engine.ts`) skips
