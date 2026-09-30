@@ -215,6 +215,75 @@ export type NotoTransaction =
       readonly sourceBytes: Uint8Array;
     };
 
+/**
+ * Units a save leaves as they were: the accepted document's blocks `keep` to
+ * `keep + count - 1`, in order.
+ *
+ * Only on the way to main. An untouched block is named by its ordinal, and
+ * main holds the document, so describing tens of thousands of them one origin
+ * at a time made every request scale with the note rather than with the edit.
+ * Main expands the runs against its own copy of the revision before anything
+ * reads the transaction (`expandUnits`).
+ */
+export interface NotoKeptRun {
+  readonly keep: number;
+  readonly count: number;
+}
+
+/** A transaction as it crosses to main: kept runs where nothing changed. */
+export type NotoTransactionWire =
+  | (Omit<Extract<NotoTransaction, { mode: 'blocks' }>, 'units'> & {
+      readonly units: readonly (NotoUnit | NotoKeptRun)[];
+    })
+  | Extract<NotoTransaction, { mode: 'source' }>;
+
+/** Replace `text[start, end)` of the base revision with `text`. */
+export interface NotoTextSplice {
+  readonly start: number;
+  readonly end: number;
+  readonly text: string;
+}
+
+/**
+ * Blocks `keep` to `keep + count - 1` of the base revision, unchanged, now at
+ * the next ordinals in order. `firstBlockId` is the base id of the first one,
+ * so a patch applied to the wrong base is caught rather than misapplied.
+ */
+export interface NotoKeptBlocks {
+  readonly keep: number;
+  readonly count: number;
+  readonly firstBlockId: NotoBlockId;
+}
+
+/** A block that is new in this revision, with its final origin and span. */
+export interface NotoPatchedBlock {
+  readonly origin: NotoBlockOrigin;
+  readonly start: number;
+  readonly end: number;
+}
+
+/**
+ * The next revision of a document, as a change to the revision it was saved
+ * from (`revision-patch.ts`).
+ *
+ * A save reply used to carry the whole next revision: the text and an origin
+ * and a span for every block. On an 8 MB note that was 15 MB of structure per
+ * save, copied between processes and validated by hashing the whole text
+ * again, for an edit of one paragraph. Both sides already hold the base
+ * revision, and a revision id is the hash of its content, so equal ids mean
+ * equal bytes: a patch against it is all the renderer needs.
+ */
+export interface NotoRevisionPatch {
+  readonly version: typeof NOTO_MARKDOWN_VERSION;
+  readonly baseRevisionId: NotoRevisionId;
+  readonly revisionId: NotoRevisionId;
+  readonly envelope: NotoEnvelope;
+  /** In base-text order, not overlapping. */
+  readonly splices: readonly NotoTextSplice[];
+  /** The next revision's blocks, in order. */
+  readonly blocks: readonly (NotoKeptBlocks | NotoPatchedBlock)[];
+}
+
 /** Evidence that a byte range survived a save untouched. */
 export interface NotoPreservedRange {
   readonly role: 'bom' | 'block' | 'gap' | 'leading' | 'trailing';

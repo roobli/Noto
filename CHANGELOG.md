@@ -44,7 +44,10 @@ How releases are made, and what each channel receives, is in
   proportion to the square of the number of blocks in the note, and now grows
   only with the number. On the 8 MB benchmark document, 44,000 blocks, that
   part fell from over five seconds to under one, and a whole save in the
-  packaged app from between 3.2 and 4.5 seconds to 2.6.
+  packaged app from between 3.2 and 4.5 seconds to 2.6. A save also no longer
+  parses the file twice, and only what changed now travels between the app's
+  processes, in both directions; the same save in a packaged build on Linux
+  now takes under a second.
 
 ### Changed
 - The README and the docs site lead with what Noto is for: *Edit the page.

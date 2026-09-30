@@ -4,7 +4,8 @@ import { DocumentWatcher } from './document-watcher';
 import type { StructuredLogger } from '../../logger';
 import { parseDocument, toWire } from '../../../shared/markdown/v3/document';
 import { serializeDocument } from '../../../shared/markdown/v3/serialize';
-import type { NotoDocument, NotoDocumentWire } from '../../../shared/markdown/v3/contracts';
+import { expandTransaction, revisionPatch } from '../../../shared/markdown/v3/revision-patch';
+import type { NotoDocument, NotoDocumentWire, NotoRevisionId } from '../../../shared/markdown/v3/contracts';
 import type {
   FileFingerprintV1,
   FileTruthDiagnosticsV1,
@@ -14,6 +15,8 @@ import type {
   FileTruthOpenReplyV1,
   FileTruthRecoveryRecordV1,
   FileTruthSaveOutcomeV1,
+  FileTruthSaveReplyV1,
+  FileTruthSavedV1,
   FileTruthStageV1,
   FileTruthExternalChangeKindV1,
   FileTruthReloadOutcomeV1,
@@ -588,6 +591,43 @@ export class FileTruthStoreV1 {
 
   close(): void { this.watcher.close(); this.onExternalChange = null; }
 
+  /**
+   * A save as the renderer receives it: a saved revision as a patch against the
+   * revision the save was captured from, instead of the whole revision.
+   *
+   * Only a save that started from this store's accepted revision and ended on
+   * the one it now holds is sent as a patch; anything else goes as it is. The
+   * store's own outcome, which diagnostics reports, stays whole.
+   */
+  async saveForRenderer(candidate: FileTruthEditCandidateV1): Promise<FileTruthSaveReplyV1> {
+    const base = this.document;
+    const outcome = await this.save(candidate);
+    const next = this.document;
+    if (!base || !next || base.revisionId !== candidate.transaction.revisionId) return outcome;
+    const patched = (saved: FileTruthSavedV1) => {
+      const { document, ...rest } = saved;
+      return document.revisionId === next.revisionId ? { ...rest, documentPatch: revisionPatch(base, next) } : null;
+    };
+    if (outcome.status === 'saved') return patched(outcome) ?? outcome;
+    if (outcome.status === 'cleanup-failed' && outcome.primary.status === 'saved') {
+      const primary = patched(outcome.primary);
+      return primary ? { ...outcome, primary } : outcome;
+    }
+    return outcome;
+  }
+
+  /**
+   * The accepted revision whole, for a renderer whose patch did not apply.
+   * Refused when the store has moved past `revisionId`, since the renderer
+   * would then adopt a revision it did not save.
+   */
+  currentDocument(revisionId: NotoRevisionId): NotoDocumentWire {
+    if (!this.document || this.document.revisionId !== revisionId) {
+      throw new Error('STALE_REVISION: the document has changed since that save');
+    }
+    return saveReplyWire(this.document);
+  }
+
   private saveToken() {
     if (!this.document || !this.acceptedFingerprint) throw new Error('FILE_NOT_OPEN');
     return { version: 1 as const, documentRevisionId: this.document.revisionId, editorRevision: this.editorRevision, fingerprint: this.acceptedFingerprint };
@@ -597,7 +637,11 @@ export class FileTruthStoreV1 {
     | { failure: string }
     | { outputBytes: Uint8Array; outputSha256: string; document: NotoDocument } {
     if (!this.document) return { failure: 'The accepted document is unavailable.' };
-    const result = serializeDocument(this.document, candidate.transaction);
+    // Untouched blocks arrive as runs of ordinals into this revision; the
+    // caller has already checked the candidate is for this revision.
+    const transaction = expandTransaction(candidate.transaction, this.document);
+    if (!transaction) return { failure: 'The save named blocks this document does not have.' };
+    const result = serializeDocument(this.document, transaction);
     if (result.status !== 'serialized') return { failure: result.message };
     return { outputBytes: result.outputBytes, outputSha256: result.outputSha256, document: result.document };
   }

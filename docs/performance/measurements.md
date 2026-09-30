@@ -352,6 +352,42 @@ unit object per block across the process boundary, and building the eight
 megabyte output string. Each needed measuring before it was worth changing; the
 mistake to avoid is optimising the cheap one twice.
 
+## Only what changed crosses between processes, 2026-09-30
+
+With both parses gone, most of what was left of a save of `huge` was moving the
+document between the renderer and main, and checking it on arrival. Timed in the
+development build on Linux, one paragraph edited, the request carried an origin
+for each of the 43,970 blocks (6.3 MB), and the reply the whole next revision
+(15 MB): its text and an origin and a span for every block. Encoding, decoding
+and validating those came to about 600 ms, 370 ms of it the renderer hashing the
+whole text again to confirm the reply described it.
+
+Both processes already hold the revision the save starts from, and a revision id
+is the hash of its content, so equal ids mean equal bytes. The request now names
+untouched blocks as runs of ordinals, which main expands against its own copy of
+that revision, and the reply names the blocks that only moved as runs and carries
+the text and blocks that are new (`src/shared/markdown/v3/revision-patch.ts`).
+One edited paragraph in `huge` is now three request entries and one splice of a
+few words. The renderer rebuilds the revision from its base; a run names the id
+of its first block and a moved block's id is derived from its old one, so a
+patch that does not fit is refused and the renderer asks for the revision whole
+(`document` channel). The byte length is checked against the splices; the full
+hash is not recomputed, because main already verified what it wrote by reading
+it back, and the renderer's copy of the base has the same hash by construction.
+
+Packaged e2e build on Linux, click to Saved as the harness times it, which
+includes about 300 ms of Playwright waiting for the button to be stable:
+
+| document | before | after |
+| --- | ---: | ---: |
+| `huge`, 8 MB | 1,535–1,674 ms | 756–1,003 ms |
+| `large`, 2 MB | | 229–255 ms |
+
+`tests/unit/revision-patch.test.ts` holds the rebuilt revision to the whole one
+over six hundred generated saves across LF, CRLF and BOM, and checks that a
+patch refuses a base it does not fit; `tests/unit/file-truth-save-patch.test.ts`
+does the same through the store, the validators and the renderer's side.
+
 ## The engine stops parsing its own output, 2026-09-30
 
 With the second parse gone from Noto, the largest single phase of a save was

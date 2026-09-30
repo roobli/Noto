@@ -57,6 +57,8 @@ import type {
   FileTruthDiagnosticsV1,
   FileTruthOpenReplyV1,
   FileTruthSaveOutcomeV1,
+  FileTruthSaveReplyV1,
+  FileTruthDocumentRequestV1,
   FileTruthSaveCopyRequestV1,
   FileTruthSaveRequestV1,
   FileTruthExternalChangeEventV1,
@@ -65,6 +67,7 @@ import type {
   NotoFileTruthApiV1,
 } from '../shared/file-truth/v1/contracts';
 import { FILE_TRUTH_CHANNELS } from '../shared/file-truth/v1/contracts';
+import type { NotoDocumentWire } from '../shared/markdown/v3/contracts';
 import {
   isDiagnosticsRequest,
   isDiagnosticsResult,
@@ -95,6 +98,9 @@ import {
   isFileTruthSaveCopyRequestV1,
   isFileTruthSaveRequestV1,
   isFileTruthSaveResultV1,
+  isFileTruthSaveReplyResultV1,
+  isFileTruthDocumentRequestV1,
+  isFileTruthDocumentResultV1,
 } from '../shared/file-truth/v1/validate';
 import type {
   NotoWorkspaceApiV1,
@@ -293,8 +299,8 @@ const fileTruthApi: NotoFileTruthApiV1 = Object.freeze({
     ? invokeFileTruth<FileTruthOpenReplyV1>(FILE_TRUTH_CHANNELS.open, request, request.requestId, isFileTruthOpenResultV1)
     : Promise.resolve(rejectedFileTruth<FileTruthOpenReplyV1>('invalid', 'Invalid file-truth open request')),
   save: (request: FileTruthSaveRequestV1) => isFileTruthSaveRequestV1(request)
-    ? invokeFileTruth<FileTruthSaveOutcomeV1>(FILE_TRUTH_CHANNELS.save, request, request.requestId, isFileTruthSaveResultV1)
-    : Promise.resolve(rejectedFileTruth<FileTruthSaveOutcomeV1>('invalid', 'Invalid file-truth save request')),
+    ? invokeFileTruth<FileTruthSaveReplyV1>(FILE_TRUTH_CHANNELS.save, request, request.requestId, isFileTruthSaveReplyResultV1)
+    : Promise.resolve(rejectedFileTruth<FileTruthSaveReplyV1>('invalid', 'Invalid file-truth save request')),
   saveCopy: (request: FileTruthSaveCopyRequestV1) => isFileTruthSaveCopyRequestV1(request)
     ? invokeFileTruth<FileTruthSaveOutcomeV1>(FILE_TRUTH_CHANNELS.saveCopy, request, request.requestId, isFileTruthSaveResultV1)
     : Promise.resolve(rejectedFileTruth<FileTruthSaveOutcomeV1>('invalid', 'Invalid file-truth save-copy request')),
@@ -307,6 +313,9 @@ const fileTruthApi: NotoFileTruthApiV1 = Object.freeze({
   reload: (request: FileTruthReloadRequestV1) => isFileTruthReloadRequestV1(request)
     ? invokeFileTruth<FileTruthReloadOutcomeV1>(FILE_TRUTH_CHANNELS.reload, request, request.requestId, isFileTruthReloadResultV1)
     : Promise.resolve(rejectedFileTruth<FileTruthReloadOutcomeV1>('invalid', 'Invalid file-truth reload request')),
+  document: (request: FileTruthDocumentRequestV1) => isFileTruthDocumentRequestV1(request)
+    ? invokeFileTruth<NotoDocumentWire>(FILE_TRUTH_CHANNELS.document, request, request.requestId, isFileTruthDocumentResultV1)
+    : Promise.resolve(rejectedFileTruth<NotoDocumentWire>('invalid', 'Invalid file-truth document request')),
   onExternalChange: (listener: (event: FileTruthExternalChangeEventV1) => void) =>
     subscribe(FILE_TRUTH_CHANNELS.externalChange, isFileTruthExternalChangeEventV1, listener),
 });

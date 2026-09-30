@@ -1,6 +1,7 @@
 import { ipcMain, type BrowserWindow } from 'electron';
 import type {
   FileTruthBootstrapReplyV1,
+  FileTruthDocumentRequestV1,
   FileTruthRequestV1,
   FileTruthResultV1,
   FileTruthSaveCopyRequestV1,
@@ -16,6 +17,7 @@ function currentPlatform(): NotoPlatform {
   return 'linux';
 }
 import {
+  isFileTruthDocumentRequestV1,
   isFileTruthRequestV1,
   isFileTruthSaveCopyRequestV1,
   isFileTruthSaveRequestV1,
@@ -85,8 +87,10 @@ export function registerFileTruthHandlers(deps: {
     if (!current) throw new Error('NO_DOCUMENT_OPEN: open a document first');
     return activeStore().open(current);
   });
-  register<FileTruthSaveRequestV1, Awaited<ReturnType<FileTruthStoreV1['save']>>>(FILE_TRUTH_CHANNELS.save, isFileTruthSaveRequestV1,
-    (request) => storeForSave(request.candidate.transaction.documentId).save(request.candidate));
+  // A saved revision goes back as a patch against the one the save started
+  // from (`revision-patch.ts`); the renderer holds that one already.
+  register<FileTruthSaveRequestV1, Awaited<ReturnType<FileTruthStoreV1['saveForRenderer']>>>(FILE_TRUTH_CHANNELS.save, isFileTruthSaveRequestV1,
+    (request) => storeForSave(request.candidate.transaction.documentId).saveForRenderer(request.candidate));
   register<FileTruthSaveCopyRequestV1, Awaited<ReturnType<FileTruthStoreV1['saveCopy']>>>(FILE_TRUTH_CHANNELS.saveCopy, isFileTruthSaveCopyRequestV1,
     (request) => storeForSave(request.candidate.transaction.documentId)
       .saveCopy(request.candidate, request.destinationPath));
@@ -98,4 +102,8 @@ export function registerFileTruthHandlers(deps: {
   // opened itself and the renderer never names a file.
   register<FileTruthReloadRequestV1, Awaited<ReturnType<FileTruthStoreV1['reload']>>>(FILE_TRUTH_CHANNELS.reload, isFileTruthReloadRequestV1,
     (request) => storeForSave(request.documentId).reload());
+  // The whole accepted revision, for a renderer that could not apply a save's
+  // patch. Only the revision it asks for: never one it did not save.
+  register<FileTruthDocumentRequestV1, ReturnType<FileTruthStoreV1['currentDocument']>>(FILE_TRUTH_CHANNELS.document, isFileTruthDocumentRequestV1,
+    (request) => storeForSave(request.documentId).currentDocument(request.revisionId));
 }

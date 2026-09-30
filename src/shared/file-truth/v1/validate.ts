@@ -14,8 +14,11 @@ import type {
   FileTruthExternalChangeEventV1,
   FileTruthReloadRequestV1,
   FileTruthReloadOutcomeV1,
+  FileTruthDocumentRequestV1,
+  FileTruthSaveReplyV1,
 } from './contracts';
-import type { NotoDocumentWire } from '../../markdown/v3/contracts';
+import type { NotoDocumentWire, NotoRevisionPatch } from '../../markdown/v3/contracts';
+import { MAX_TRANSACTION_UNITS } from '../../markdown/v3/revision-patch';
 
 const requestId = /^[A-Za-z0-9._:-]{1,96}$/;
 const hash = /^[a-f0-9]{64}$/;
@@ -165,6 +168,13 @@ function isOrigin(value: unknown): boolean {
     && typeof value.semanticKey === 'string' && value.semanticKey.length <= 2_000_000;
 }
 
+/** Untouched blocks `keep` to `keep + count - 1`, sent as a run (`NotoKeptRun`). */
+function isKeptRun(value: unknown): value is { keep: number; count: number } {
+  return record(value) && exact(value, ['keep', 'count'])
+    && Number.isSafeInteger(value.keep) && Number(value.keep) >= 0
+    && Number.isSafeInteger(value.count) && Number(value.count) >= 1;
+}
+
 /** What the save is asked to make the file's endings and last byte. */
 function isTargetEnvelope(value: unknown): boolean {
   return record(value) && exact(value, ['lineEnding', 'hasFinalNewline'])
@@ -178,14 +188,16 @@ function isTransaction(value: unknown): boolean {
     || !value.revisionId.startsWith('noto-rev-v3:')) return false;
   if (value.mode === 'blocks') return exact(value, ['version', 'mode', 'documentId', 'revisionId', 'units', 'envelope'])
     && isTargetEnvelope(value.envelope)
-    && Array.isArray(value.units) && value.units.length <= 100_000
-    && value.units.every((unit) => record(unit) && exact(unit, ['origin', 'markdown'])
+    && Array.isArray(value.units) && value.units.length <= MAX_TRANSACTION_UNITS
+    && value.units.every((unit) => isKeptRun(unit) || (record(unit) && exact(unit, ['origin', 'markdown'])
       && (unit.origin === null || isOrigin(unit.origin))
       // Null means the block is unchanged, so it carries no text. A unit with
       // no origin has nothing to be unchanged from and must carry its markdown.
       && (unit.markdown === null
         ? unit.origin !== null
-        : typeof unit.markdown === 'string' && unit.markdown.length <= 2_000_000))
+        : typeof unit.markdown === 'string' && unit.markdown.length <= 2_000_000)))
+    // Runs expand to one unit per block; the expanded count has the same limit.
+    && value.units.reduce((total, unit) => total + (isKeptRun(unit) ? unit.count : 1), 0) <= MAX_TRANSACTION_UNITS
     && value.units.reduce((total, unit) => total + (record(unit) && typeof unit.markdown === 'string' ? unit.markdown.length : 0), 0)
       <= 64 * 1024 * 1024;
   return value.mode === 'source' && exact(value, ['version', 'mode', 'documentId', 'revisionId', 'expectedSourceSha256', 'sourceBytes'])
@@ -239,6 +251,48 @@ function isWireMdastNode(value: unknown): boolean {
   // know each entry is a plain object with a type string, so a forged payload
   // cannot smuggle functions or exotic hosts across IPC.
   return record(value) && typeof value.type === 'string' && value.type.length > 0 && value.type.length <= 64;
+}
+
+function isEnvelope(value: unknown): boolean {
+  return record(value)
+    && exact(value, ['version', 'byteLength', 'bom', 'lineEnding', 'hasFinalNewline', 'sourceSha256'])
+    && value.version === 3
+    && Number.isSafeInteger(value.byteLength) && Number(value.byteLength) >= 0
+    && ['utf8', 'none'].includes(String(value.bom))
+    && ['lf', 'crlf', 'mixed'].includes(String(value.lineEnding))
+    && typeof value.hasFinalNewline === 'boolean'
+    && typeof value.sourceSha256 === 'string' && hash.test(value.sourceSha256);
+}
+
+const offset = (value: unknown) => Number.isSafeInteger(value) && Number(value) >= 0;
+
+/**
+ * The shape of a saved revision sent as a patch. Whether it fits the base is
+ * for `applyRevisionPatch` to decide, since only the renderer holds the base.
+ */
+export function isRevisionPatch(value: unknown): value is NotoRevisionPatch {
+  if (!record(value) || !exact(value, ['version', 'baseRevisionId', 'revisionId', 'envelope', 'splices', 'blocks'])
+    || value.version !== 3
+    || typeof value.baseRevisionId !== 'string' || !value.baseRevisionId.startsWith('noto-rev-v3:')
+    || typeof value.revisionId !== 'string' || !isEnvelope(value.envelope)
+    // Identity is derived from content: the revision is named by its hash.
+    || value.revisionId !== `noto-rev-v3:${(value.envelope as { sourceSha256: string }).sourceSha256}`
+    || !Array.isArray(value.splices) || !Array.isArray(value.blocks)
+    || value.blocks.length > MAX_TRANSACTION_UNITS) return false;
+  let end = 0;
+  let inserted = 0;
+  for (const splice of value.splices) {
+    if (!record(splice) || !exact(splice, ['start', 'end', 'text']) || !offset(splice.start) || !offset(splice.end)
+      || Number(splice.start) < end || Number(splice.end) < Number(splice.start) || typeof splice.text !== 'string') return false;
+    end = Number(splice.end);
+    inserted += splice.text.length;
+  }
+  if (inserted > 64 * 1024 * 1024) return false;
+  return value.blocks.every((block) => record(block) && (exact(block, ['keep', 'count', 'firstBlockId'])
+    ? offset(block.keep) && Number.isSafeInteger(block.count) && Number(block.count) >= 1
+      && typeof block.firstBlockId === 'string' && block.firstBlockId.startsWith('noto-block-v3:')
+    : exact(block, ['origin', 'start', 'end']) && isOrigin(block.origin)
+      && offset(block.start) && offset(block.end) && Number(block.end) >= Number(block.start)));
 }
 
 export function isNotoDocumentWire(value: unknown): value is NotoDocumentWire {
@@ -357,6 +411,45 @@ export function isFileTruthSaveOutcomeV1(value: unknown): value is FileTruthSave
     && (value.recovery === null ? value.recoveryRecordId === null : value.recoveryRecordId === value.recovery.attemptId);
 }
 
+/** A saved outcome whose revision came as a patch: the same checks, on the patch. */
+function isSavedPatch(value: unknown): boolean {
+  if (!record(value) || value.status !== 'saved' || !isRevisionPatch(value.documentPatch)) return false;
+  const base = ['version', 'status', 'attemptId', 'safeStage', 'dirtyPreserved', 'message'];
+  const patch = value.documentPatch;
+  return exact(value, [...base, 'accepted', 'saveToken', 'outputSha256', 'replacedOriginal', 'documentPatch'])
+    && value.version === 1 && typeof value.attemptId === 'string' && value.attemptId.length > 0 && value.attemptId.length <= 128
+    && stages.has(String(value.safeStage)) && value.dirtyPreserved === false
+    && typeof value.message === 'string' && value.message.length > 0 && value.message.length <= 4096
+    && isAcceptedIdentity(value.accepted) && isSaveToken(value.saveToken)
+    && sameFingerprint(value.accepted.fingerprint, value.saveToken.fingerprint)
+    && typeof value.outputSha256 === 'string' && hash.test(value.outputSha256)
+    && value.outputSha256 === value.accepted.fingerprint.contentSha256 && value.replacedOriginal === true
+    && patch.revisionId === value.saveToken.documentRevisionId
+    && patch.envelope.sourceSha256 === value.outputSha256
+    && patch.envelope.byteLength === value.saveToken.fingerprint.byteLength;
+}
+
+/**
+ * What the save channel may answer: any save outcome, or a saved one (alone or
+ * inside a cleanup failure) whose revision is a patch.
+ */
+export function isFileTruthSaveReplyV1(value: unknown): value is FileTruthSaveReplyV1 {
+  if (isFileTruthSaveOutcomeV1(value) || isSavedPatch(value)) return true;
+  return record(value) && value.status === 'cleanup-failed' && isCleanupAround(value) && isSavedPatch(value.primary);
+}
+
+/** A cleanup failure's own fields, the same checks `isFileTruthSaveOutcomeV1` makes. */
+function isCleanupAround(value: Record<string, unknown>): boolean {
+  const base = ['version', 'status', 'attemptId', 'safeStage', 'dirtyPreserved', 'message'];
+  const residues = Array.isArray(value.residuePaths) && value.residuePaths.every((item) => typeof item === 'string');
+  return exact(value, [...base, 'primary', 'recovery', 'recoveryRecordId', 'residuePaths'])
+    && value.version === 1 && typeof value.attemptId === 'string' && value.attemptId.length > 0 && value.attemptId.length <= 128
+    && stages.has(String(value.safeStage)) && value.dirtyPreserved === true
+    && typeof value.message === 'string' && value.message.length > 0 && value.message.length <= 4096
+    && residues && isRecovery(value.recovery)
+    && (value.recoveryRecordId === null || typeof value.recoveryRecordId === 'string');
+}
+
 export const isFileTruthBootstrapResultV1 = (value: unknown, id: string): value is FileTruthResultV1<FileTruthBootstrapReplyV1> =>
   isResult(value, id, (candidate): candidate is FileTruthBootstrapReplyV1 => record(candidate)
     && exact(candidate, ['version', 'enabled', 'platform']) && candidate.version === 1
@@ -384,6 +477,19 @@ export const isFileTruthOpenResultV1 = (value: unknown, id: string): value is Fi
 
 export const isFileTruthSaveResultV1 = (value: unknown, id: string): value is FileTruthResultV1<FileTruthSaveOutcomeV1> =>
   isResult(value, id, isFileTruthSaveOutcomeV1);
+
+export const isFileTruthSaveReplyResultV1 = (value: unknown, id: string): value is FileTruthResultV1<FileTruthSaveReplyV1> =>
+  isResult(value, id, isFileTruthSaveReplyV1);
+
+export function isFileTruthDocumentRequestV1(value: unknown): value is FileTruthDocumentRequestV1 {
+  return record(value) && exact(value, ['version', 'requestId', 'documentId', 'revisionId'])
+    && value.version === 1 && typeof value.requestId === 'string' && requestId.test(value.requestId)
+    && isDocumentId(value.documentId)
+    && typeof value.revisionId === 'string' && value.revisionId.startsWith('noto-rev-v3:');
+}
+
+export const isFileTruthDocumentResultV1 = (value: unknown, id: string): value is FileTruthResultV1<NotoDocumentWire> =>
+  isResult(value, id, isNotoDocumentWire);
 
 export const isFileTruthDiagnosticsResultV1 = (value: unknown, id: string): value is FileTruthResultV1<FileTruthDiagnosticsV1> =>
   isResult(value, id, (candidate): candidate is FileTruthDiagnosticsV1 => record(candidate)
