@@ -27,7 +27,7 @@ particular none exists only to raise the nesting cap.
    update metadata on every platform: on macOS one zip for Apple silicon and
    one for Intel, both listed in a single `latest-mac.yml` so each Mac's
    updater takes its own. The benchmark workflow runs on the same tag and
-   reports open, keystroke and save for the packaged build.
+   reports open, keystroke, post-type idle lag and save for the packaged build.
 5. Edit the release body: the changelog entry, then the first-open blurb from
    [docs/install.md](docs/install.md#blurb-for-github-releases), which stays
    until builds are notarized and signed.

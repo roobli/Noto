@@ -10,6 +10,12 @@ How releases are made, and what each channel receives, is in
 ## [Unreleased]
 
 ### Added
+- **The packaged benchmark records post-type idle lag.** After a typing burst
+  it measures the longest main-thread stall until the renderer goes quiet, so a
+  freeze like the Chromium ColdModeSpellCheckRequester case (tens of seconds on
+  the 8 MB document with every keystroke still under a frame) cannot land
+  without a number next to it. Reported for every corpus size in CI beside
+  open, keystroke and save; skip locally with `BENCH_IDLE_LAG=0`.
 - A unit test that times a one-block save at *n* and at *4n* paragraphs and
   fails if the larger one takes more than ten times as long, so an accidental
   return of the quadratic save lookup cannot land quietly.

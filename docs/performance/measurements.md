@@ -7,6 +7,8 @@ Recorded on macOS 26.5, Apple silicon, from the packaged app in
 node scripts/bench/corpus.mjs          # build the corpus
 BENCH_RUNS=3 node scripts/bench/run-noto.mjs   # opens through the workspace,
                                               # not a command line flag
+# Reports open, keystroke, idle-lag (longest main-thread stall after typing
+# stops) and save. Skip idle-lag with BENCH_IDLE_LAG=0.
 ```
 
 The same harness runs in CI through
@@ -539,6 +541,45 @@ The open-path costs that remain are the preload hashing the text again to
 validate the wire document (~0.4 s on `huge`; the contracts still require it,
 see the tamper tests in `file-truth-v1-contracts.test.ts`), and building and
 laying out the view.
+
+## Post-type idle lag, 2026-09-30
+
+Keystroke time alone cannot catch a freeze that starts *after* typing stops.
+When the caret pauses, Chromium and Noto both schedule deferred work from idle
+callbacks (spell check of the editable root, the status-bar word count). Those
+tasks can block the renderer for tens of seconds on a large note while every
+keystroke itself stayed inside a frame — the ColdModeSpellCheckRequester freeze
+on `huge` was 37 seconds twice, and the packaged benchmark failed because the
+Save click never landed (#295).
+
+`scripts/bench/run-noto.mjs` now reports **idle-lag** per document: after a
+short typing burst it polls with `setTimeout(0)` until the main thread has been
+quiet for half a second (and at least ~900 ms so the deferred work has had time
+to start), and records the longest gap between consecutive timer firings. Long
+Tasks API entries are folded in when the runtime exposes them. The settle wait
+is about a second when healthy; the observe cap is 60 seconds so a regression
+of the old class is still reported rather than hung on forever.
+
+The number is in the JSON artifact as `idleLagMs` and in the benchmark
+workflow summary beside open, keystroke and save. Prefer comparing CI runs with
+CI runs, as with the other columns. Skip the probe locally with
+`BENCH_IDLE_LAG=0`.
+
+Smoke on the Linux agent box with the packaged e2e binary (one run each; the
+binary on that machine predates the spell-check scope fix, so `large` still
+shows the pre-fix stall the metric is meant to catch):
+
+| document | idle-lag |
+| -------- | -------: |
+| small    | 214 ms   |
+| medium   | 215 ms   |
+| large    | 755 ms   |
+
+That `large` figure sits next to the 650 ms "before" column in the spell-check
+section above. After the spell-check and word-count fixes, `huge`'s longest
+post-type task on Linux was in the low hundreds of milliseconds; a CI run of
+this harness on current `main` is the dated baseline to put beside open /
+keystroke / save.
 
 ## Save made linear in the number of blocks, 2026-09-29
 
