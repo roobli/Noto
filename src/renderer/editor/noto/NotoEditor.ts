@@ -93,7 +93,7 @@ import {
 import { syntaxHighlightPlugin } from './highlight';
 import { wikiLinkPlugin } from './wiki-link-plugin';
 import { followLinkPlugin, linkEditorPlugin } from './link-plugin';
-import { countWords, type DocumentCount } from './word-count';
+import { countDocumentWords, type DocumentCount } from './word-count';
 import { sliceToMarkdown } from './clipboard';
 import { rootSpellCheck, SPELL_CHECK_RESCAN, spellCheckScopeKey, spellCheckScopePlugin } from './spell-check-scope';
 
@@ -378,6 +378,14 @@ export class NotoEditor implements NotoEditorPort {
   }
 
   private countTimer: ReturnType<typeof setTimeout> | null = null;
+  /**
+   * Per top-level block word counts, keyed by the ProseMirror node.
+   *
+   * An edit leaves every untouched block as the same object, so a recount after
+   * typing only measures the blocks that changed. WeakMap drops counts for
+   * nodes the document no longer holds.
+   */
+  private readonly blockCounts = new WeakMap<ProseNode, DocumentCount>();
   private deferredEnrich: DeferredViewportEnrichController | null = null;
 
   /**
@@ -584,10 +592,11 @@ export class NotoEditor implements NotoEditorPort {
   /**
    * Count the document once typing has stopped.
    *
-   * Never on the keystroke. A megabyte of prose takes about 37 milliseconds to
-   * count, which is nothing to wait for after a pause and far too much to pay
-   * for a letter. The timer restarts on every change, so a burst of typing
-   * costs one count.
+   * Never on the keystroke. Counting a long note in full used to take hundreds
+   * of milliseconds after every pause; the count is now per top-level block and
+   * reused for blocks the edit left alone, so a one-paragraph change costs
+   * about that paragraph. The timer still restarts on every change, so a burst
+   * of typing costs one recount.
    */
   private scheduleCount(): void {
     if (!this.options.onCountChanged) return;
@@ -601,10 +610,7 @@ export class NotoEditor implements NotoEditorPort {
   private reportCount(): void {
     const view = this.view;
     if (!view || !this.options.onCountChanged) return;
-    this.options.onCountChanged(countWords(
-      view.state.doc.textBetween(0, view.state.doc.content.size, '\n', '\n'),
-      view.state.doc.childCount,
-    ));
+    this.options.onCountChanged(countDocumentWords(view.state.doc, this.blockCounts));
   }
 
   /** Told only when it changes: this runs on every transaction, typing included. */
