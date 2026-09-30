@@ -10,6 +10,9 @@ How releases are made, and what each channel receives, is in
 ## [Unreleased]
 
 ### Added
+- A unit test that times a one-block save at *n* and at *4n* paragraphs and
+  fails if the larger one takes more than ten times as long, so an accidental
+  return of the quadratic save lookup cannot land quietly.
 - **Intel Macs are supported again.** Each release carries an Intel zip beside
   the Apple silicon one, and the update feed lists both, so each Mac's updater
   takes the build it can run.
