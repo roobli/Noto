@@ -352,6 +352,29 @@ unit object per block across the process boundary, and building the eight
 megabyte output string. Each needed measuring before it was worth changing; the
 mistake to avoid is optimising the cheap one twice.
 
+## Opening a long note was quadratic in its blocks, 2026-09-30
+
+A CPU profile of the renderer while `huge` opened spent 3.4 seconds in one
+stack: every stubbable top-level block, as its view was built, asked for its
+own index with `topLevelIndexAt(doc, getPos())`, which resolved the position
+twice. ProseMirror's `resolve` finds the child at a position by walking the
+document's children from the first, so each call cost time in proportion to
+how far down the note the block sits, and building the view of 43,970 blocks
+cost the square of that. A document never changes, so its child offsets are
+now computed once per document and searched (`viewport-stub.ts`); a test holds
+the answer to `resolve`'s at every position of a mixed document.
+
+Packaged e2e build on Linux, from `openPath` to the file state reading Opened:
+
+| document | before | after |
+| --- | ---: | ---: |
+| `huge`, 8 MB | 8,884–9,361 ms | 5,286–5,633 ms |
+
+What is left of opening `huge`: about 1.7 s before the renderer has the
+document (read, parse and hash in main, then 0.4 s of the preload hashing the
+text again to validate it), the word count at about 0.4 s, and building and
+laying out the view.
+
 ## Only what changed crosses between processes, 2026-09-30
 
 With both parses gone, most of what was left of a save of `huge` was moving the

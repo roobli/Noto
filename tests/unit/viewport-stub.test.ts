@@ -143,6 +143,27 @@ describe('top-level positions', () => {
     expect(isTopLevelPos(doc, 1)).toBe(false);
     expect(topLevelIndexAt(doc, 1)).toBeNull();
   });
+
+  it('answers exactly what resolving the position says, at every position', () => {
+    const doc = docFor('# Title\n\nA paragraph.\n\n---\n\n- one\n- two\n\n```\ncode\n```\n\n> quote\n\nEnd.\n');
+    for (let pos = -1; pos <= doc.content.size + 1; pos += 1) {
+      const inside = pos >= 0 && pos <= doc.content.size;
+      const expected = inside && doc.resolve(pos).depth === 0 ? doc.resolve(pos).index() : null;
+      expect(topLevelIndexAt(doc, pos), `pos ${pos}`).toBe(expected);
+      expect(isTopLevelPos(doc, pos), `pos ${pos}`).toBe(expected !== null);
+    }
+  });
+
+  it('stays fast for every block of a long note', () => {
+    // Each stubbable block asks for its index as the view is built. Resolving
+    // each position walked the children from the first: quadratic.
+    const doc = docFor(`${Array.from({ length: 40_000 }, (_, index) => `P${index}.`).join('\n\n')}\n`);
+    const started = performance.now();
+    let found = 0;
+    doc.forEach((_child, offset) => { if (topLevelIndexAt(doc, offset) !== null) found += 1; });
+    expect(found).toBe(40_000);
+    expect(performance.now() - started).toBeLessThan(500);
+  });
 });
 
 describe('height estimates', () => {

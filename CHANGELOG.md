@@ -40,6 +40,11 @@ How releases are made, and what each channel receives, is in
   the 8 MB benchmark document. In a note of a few thousand paragraphs or more,
   spelling is now checked in the paragraphs around the caret; shorter notes are
   checked whole, as before.
+- **A long note opens faster.** Building the view of a note took time in
+  proportion to the square of its number of blocks, because every block looked
+  up its own position by walking the note from the top. The 8 MB benchmark
+  document now opens in a packaged build on Linux in about 5.5 seconds instead
+  of 9.
 - **Saving a long note is faster.** Part of every save took time in
   proportion to the square of the number of blocks in the note, and now grows
   only with the number. On the 8 MB benchmark document, 44,000 blocks, that
