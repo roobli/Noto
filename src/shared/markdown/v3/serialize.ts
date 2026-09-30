@@ -42,6 +42,7 @@ import {
   type NotoRevisionId,
   type NotoPreservedRange,
   type NotoSerializeFailure,
+  type NotoSerializeSuccess,
   type NotoSerializeFailureCode,
   type NotoSerializeResult,
   type NotoTransaction,
@@ -397,8 +398,10 @@ function buildNextDocument(input: {
   leading: string;
   trailing: string;
   reparsedBlocks: ReadonlyMap<number, ReparsedBlock>;
+  /** The output's digest when the caller already has it. */
+  outputSha256?: string;
 }): NotoDocument {
-  const sourceSha256 = sha256(input.outputBytes);
+  const sourceSha256 = input.outputSha256 ?? sha256(input.outputBytes);
 
   const blocks: NotoBlock[] = input.units.map((unit, ordinal) => {
     const reparsed = input.reparsedBlocks.get(ordinal);
@@ -474,6 +477,27 @@ const ENGINE_FAIL_CODES: ReadonlySet<string> = new Set([
   'MULTI_BLOCK_UNIT',
 ]);
 
+/**
+ * A result whose `preserved` evidence is hashed on first read.
+ *
+ * The evidence names every byte range a save copied untouched and its digest:
+ * one entry per block and per gap, 88,000 of them on the 8 MB benchmark
+ * document, about a tenth of a second to build. The store writes the file from
+ * `outputBytes` and never reads the evidence, so building it on every save paid
+ * for something only a caller that asks should pay for. The ranges are the same
+ * whenever they are read, because the document they describe does not change.
+ */
+function withLazyPreserved(
+  result: Omit<NotoSerializeSuccess, 'preserved'>,
+  compute: () => NotoPreservedRange[],
+): NotoSerializeSuccess {
+  let cached: NotoPreservedRange[] | null = null;
+  return Object.defineProperty({ ...result }, 'preserved', {
+    enumerable: true,
+    get: () => (cached ??= compute()),
+  }) as NotoSerializeSuccess;
+}
+
 function hashPreservedRanges(
   document: NotoDocument,
   ranges: readonly EnginePreservedRange[],
@@ -507,6 +531,95 @@ function hashPreservedRanges(
 }
 
 /**
+ * The next revision of a `@roobli/md` save, without parsing the file again.
+ *
+ * The engine already assembled the output and knows where every unit landed:
+ * its next document carries each block's offsets, the gaps and the leading and
+ * trailing text. Parsing the output again only rediscovered those facts, and on
+ * the 8 MB benchmark document it was most of a save. What a reparse proved, that
+ * the bytes read back as exactly the intended blocks, is proved locally instead,
+ * with the same windows the micromark path uses (`incremental.ts`): each place
+ * where a boundary could have moved, reparsed with one neighbour either side.
+ *
+ * Those places are the changed and inserted units, and the seams a deletion
+ * leaves: two surviving blocks that were not neighbours before, and the ends of
+ * the file when blocks were removed there.
+ *
+ * Returns null, and the caller falls back to the full reparse, when the
+ * engine's document does not have one block per unit or when any window does
+ * not read back as intended. The full reparse then accepts or refuses the save
+ * exactly as it always has, so this changes what a save costs and never what it
+ * decides.
+ */
+function nextRevisionFromEngine(
+  document: NotoDocument,
+  units: readonly NotoUnit[],
+  engineResult: Extract<ReturnType<typeof serializeViaRoobli>, { status: 'serialized' }>,
+  outputSha256: string,
+): NotoDocument | null {
+  const next = engineResult.document;
+  if (next.blocks.length !== units.length || next.gaps.length !== Math.max(0, units.length - 1)) return null;
+
+  const effective = units.map((unit) => unitMarkdown(unit, document));
+  if (effective.some((markdown) => markdown === null)) return null;
+
+  const lastOrdinal = document.blocks.length - 1;
+  const verify = units.map((unit, index) => {
+    if (unit.origin === null) return true;
+    if (!isPristine(unit, document.blocks[unit.origin.ordinal])) return true;
+    const before = index === 0 ? -1 : units[index - 1].origin?.ordinal ?? Number.NaN;
+    if (before !== unit.origin.ordinal - 1) return true;
+    return index === units.length - 1 && unit.origin.ordinal !== lastOrdinal;
+  });
+
+  const text = engineResult.text;
+  const unitStart = next.blocks.map((block) => block.start);
+  const unitEnd = next.blocks.map((block) => block.end);
+  const reparsedBlocks = new Map<number, ReparsedBlock>();
+  for (const window of verificationWindows(verify)) {
+    const sliceStart = window.from === 0 ? 0 : unitStart[window.from];
+    const sliceEnd = window.to === units.length - 1 ? text.length : unitEnd[window.to];
+    const check = checkWindow(
+      text.slice(sliceStart, sliceEnd),
+      window,
+      effective.slice(window.from, window.to + 1) as string[],
+    );
+    if (!check.ok || !check.blocks) return null;
+    // The window proves boundaries and bytes. What kind a block is comes from
+    // the block itself: an unchanged one keeps what it was, and a changed one
+    // is read on its own, as the engine already did to accept it. A window's
+    // own reading is not used for that, because a slice that starts at a
+    // thematic break reads as the start of a document, and @roobli/md then
+    // reports the lists after it as paragraphs.
+    for (let offset = 0; offset < check.blocks.length; offset += 1) {
+      const index = window.from + offset;
+      const unit = units[index]!;
+      if (unit.origin !== null && isPristine(unit, document.blocks[unit.origin.ordinal])) continue;
+      const single = parseSingleBlock(effective[index]!);
+      if (single === null) return null;
+      reparsedBlocks.set(index, { kind: single.kind, semanticKey: single.semanticKey, markdown: check.blocks[offset]!.markdown });
+    }
+  }
+
+  return buildNextDocument({
+    previous: document,
+    outputText: text,
+    outputBytes: engineResult.outputBytes,
+    bom: document.envelope.bom,
+    lineEnding: next.envelope.lineEnding,
+    units,
+    effective: effective as string[],
+    unitStart,
+    unitEnd,
+    gaps: next.gaps,
+    leading: next.leading,
+    trailing: next.trailing,
+    reparsedBlocks,
+    outputSha256,
+  });
+}
+
+/**
  * Flagged path: block-mode byte assembly via `@roobli/md` (identity, single-
  * block, multi-block insert/delete).
  *
@@ -534,20 +647,33 @@ function serializeBlocksViaRoobli(
     return fail(document, code, engineResult.message);
   }
 
-  const preserved = hashPreservedRanges(document, engineResult.preserved);
+  const preserved = () => hashPreservedRanges(document, engineResult.preserved);
   const outputSha256 = sha256(engineResult.outputBytes);
 
   if (engineResult.text === document.text) {
-    return {
+    return withLazyPreserved({
       status: 'serialized',
       version: NOTO_MARKDOWN_VERSION,
       outputBytes: engineResult.outputBytes,
       outputSha256,
       document,
-      preserved,
-    };
+    }, preserved);
   }
 
+  const incremental = nextRevisionFromEngine(document, units, engineResult, outputSha256);
+  if (incremental) {
+    return withLazyPreserved({
+      status: 'serialized',
+      version: NOTO_MARKDOWN_VERSION,
+      outputBytes: engineResult.outputBytes,
+      outputSha256,
+      document: incremental,
+    }, preserved);
+  }
+
+  // The local proof did not go through: a window read back differently, or the
+  // engine's document did not line up one block per unit. Parse the whole
+  // output, and let the checks below decide as they always have.
   const reparsed = parseDocument(engineResult.outputBytes);
   if (reparsed.status !== 'parsed') {
     return fail(document, 'REPARSE_MISMATCH', reparsed.message);
@@ -585,14 +711,13 @@ function serializeBlocksViaRoobli(
     }
   }
 
-  return {
+  return withLazyPreserved({
     status: 'serialized',
     version: NOTO_MARKDOWN_VERSION,
     outputBytes: engineResult.outputBytes,
     outputSha256,
     document: { ...reparsed.document, documentId: document.documentId },
-    preserved,
-  };
+  }, preserved);
 }
 
 /**

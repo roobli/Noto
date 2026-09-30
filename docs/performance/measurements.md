@@ -352,6 +352,42 @@ unit object per block across the process boundary, and building the eight
 megabyte output string. Each needed measuring before it was worth changing; the
 mistake to avoid is optimising the cheap one twice.
 
+## Where a save of `huge` goes, and the first cut, 2026-09-30
+
+After the two fixes below, a save of `huge` in the packaged benchmark still took
+about three seconds. Timed phase by phase in the development build on Linux,
+from the click to the file state reading Saved, one paragraph edited:
+
+| phase | before | after |
+| ----- | ------ | ----- |
+| click to the save request leaving the renderer | 334–357 ms | 282–353 ms |
+| request to main (43,970 units) | 189–334 ms | 173–276 ms |
+| serialize | 966–1,049 ms | 411–484 ms |
+| file work: fingerprints, payload, temp, rename, readback | ~350 ms | ~200 ms |
+| reply to the renderer | 869–948 ms | 543–608 ms |
+| renderer: take the saved document, repaint | 150–230 ms | 150 ms |
+| **click to Saved** | **3,037–3,052 ms** | **1,774–1,975 ms** |
+
+Two of the costs were a document built twice. The `@roobli/md` engine's own
+serializer parses its output to return the next document, and Noto then parsed
+the same bytes again to prove them, with a hash of every block. The second parse
+is gone: the next revision is built from the engine's offsets, and the proof is
+the local one the micromark path already used (`incremental.ts`), extended to
+the seams a deletion leaves. When any window reads back differently the save
+falls back to the full parse, so only the cost changed and never the decision;
+`tests/unit/serialize-incremental-roobli.test.ts` holds the arithmetic revision
+to a full parse of the same bytes over three hundred generated edits.
+
+The reply carried the parser's node cache, one entry per block, which the
+mounted editor never reads after a save. It no longer does. The `preserved`
+evidence, a digest per block and per gap, is now built only when read; nothing
+in the app reads it.
+
+What is left, in order of size: the reply and the request still copy 44,000
+origin and span objects twice each, once between processes and once across the
+context bridge; the engine's own reparse of its output; and three full reads of
+the file for fingerprints and readback.
+
 ## Spell checking froze long notes, 2026-09-29
 
 The first benchmark runs after the save fix below failed on `huge`: after
