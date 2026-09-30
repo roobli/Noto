@@ -23,6 +23,12 @@ How releases are made, and what each channel receives, is in
   prerelease, and every existing release has been re-flagged.
 - An Intel Mac with no Intel build to update to is sent to the release page
   instead of being handed the Apple silicon zip, which it cannot run.
+- **Leaving Source Mode, taking a change made on disk, or running a text
+  transform shows what the file says.** When the new text opened a code fence,
+  a math block or an HTML comment without closing it, the editor showed it as
+  one short block and kept the old blocks after it, while in the file
+  everything after it is inside the fence. It now shows the fence running to
+  the end, as the file reads. (`@roobli/md` 0.1.20.)
 - **A list in a note that begins with a horizontal rule is a list again.** A
   note whose first line was `---` with nothing below to close it as frontmatter
   had every list in it drawn as a line of text, and editing one could write

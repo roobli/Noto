@@ -352,6 +352,39 @@ unit object per block across the process boundary, and building the eight
 megabyte output string. Each needed measuring before it was worth changing; the
 mistake to avoid is optimising the cheap one twice.
 
+## The engine stops parsing its own output, 2026-09-30
+
+With the second parse gone from Noto, the largest single phase of a save was
+the engine's: `@roobli/md`'s `serializeDocument` parsed its whole output again
+to return the next document, about 105 ms of its 130 to 200 ms on `huge`.
+`@roobli/md` 0.1.20 builds that document from the blocks it moved and reparses
+only around what changed.
+
+A window of the text can stand in for a parse of the whole of it when both of
+its edges are pinned. It opens at the start of an untouched block, where a
+whole parse is between blocks with nothing open, and it must close with the
+untouched block after the change, exactly as that block was. If the change ran
+on into that block, as an unclosed fence does, the window reads on to the end.
+Frontmatter, the one block the scanner decides by looking arbitrarily far
+ahead, is refused by a window that opens the note and stops short of its close.
+The engine's tests hold the result to a whole parse over thousands of generated
+saves and edits.
+
+`huge`, one paragraph edited:
+
+| | 0.1.19 | 0.1.20 |
+| --- | ---: | ---: |
+| `serializeDocument` in the engine | 130–203 ms | 41–77 ms |
+| Noto's serialize, engine included | 186–315 ms | 105–175 ms |
+
+The same pinning fixed a wrong answer. `reparseBlocks`, which Noto uses when it
+replaces the editor's content with new text (leaving Source Mode, taking a
+change made on disk, plugin transforms), appended the old blocks after its
+window without checking that the change had not run into them. An unclosed
+fence was read as one short block with the old paragraphs after it, where the
+file has them inside the fence. `tests/unit/prior-split-cache.test.ts` now
+checks that path against a full split; it fails on 0.1.19.
+
 ## Where a save of `huge` goes, and the first cut, 2026-09-30
 
 After the two fixes below, a save of `huge` in the packaged benchmark still took
