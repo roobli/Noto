@@ -1,4 +1,4 @@
-# Open, keystroke and save, measured on a packaged build.
+# Open, keystroke, post-type idle lag and save, measured on a packaged build.
 #
 # Principle 5 on the docs site: speed is measured, not claimed. This runs the
 # same harness as scripts/bench/run-noto.mjs against the deterministic
@@ -33,7 +33,7 @@ concurrency:
 
 jobs:
   bench:
-    name: Packaged open, type and save (macos-14)
+    name: Packaged open, type, idle-lag and save (macos-14)
     runs-on: macos-14
     timeout-minutes: 60
     steps:
@@ -76,10 +76,10 @@ jobs:
               "",
               `Measured ${report.measuredAt}; median of ${report.results[0]?.runs ?? "?"} runs per document.`,
               "",
-              "| document | bytes | blocks | open | keystroke | save |",
-              "| --- | ---: | ---: | ---: | ---: | ---: |",
+              "| document | bytes | blocks | open | keystroke | idle-lag | save |",
+              "| --- | ---: | ---: | ---: | ---: | ---: | ---: |",
               ...report.results.map((r) =>
-                `| ${r.name} | ${r.bytes.toLocaleString("en-US")} | ${r.blocks.toLocaleString("en-US")} | ${r.openMs.toLocaleString("en-US")} ms | ${r.typeMs} ms | ${r.saveMs.toLocaleString("en-US")} ms |`),
+                `| ${r.name} | ${r.bytes.toLocaleString("en-US")} | ${r.blocks.toLocaleString("en-US")} | ${r.openMs.toLocaleString("en-US")} ms | ${r.typeMs} ms | ${r.idleLagMs != null ? r.idleLagMs.toLocaleString("en-US") + " ms" : "—"} | ${r.saveMs.toLocaleString("en-US")} ms |`),
               "",
             ];
             appendFileSync(process.env.GITHUB_STEP_SUMMARY, lines.join("\n"));
