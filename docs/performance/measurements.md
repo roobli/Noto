@@ -564,6 +564,10 @@ the Linux agent box, before and after:
 | large    | 83 → 71 ms         | 289 → 271 ms     |
 | huge     | 4,600 → 379 ms     | 5,289 → 797 ms   |
 
+`tests/unit/serialize-complexity.test.ts` times a one-block save at 2,000 and
+at 8,000 paragraphs and fails if the larger takes more than ten times as long
+(linear is about four; the quadratic lookup was about sixteen).
+
 In the packaged app, measured end to end by the benchmark workflow on
 `macos-14`, a one-block save of `huge` took 4,517 and 3,198 ms in two runs
 before, and 2,613 ms after. The serialize step is a smaller share of a whole
