@@ -4,7 +4,7 @@ import { DocumentWatcher } from './document-watcher';
 import type { StructuredLogger } from '../../logger';
 import { parseDocument, toWire } from '../../../shared/markdown/v3/document';
 import { serializeDocument } from '../../../shared/markdown/v3/serialize';
-import type { NotoDocument } from '../../../shared/markdown/v3/contracts';
+import type { NotoDocument, NotoDocumentWire } from '../../../shared/markdown/v3/contracts';
 import type {
   FileFingerprintV1,
   FileTruthDiagnosticsV1,
@@ -26,6 +26,20 @@ import {
 } from './node-platform';
 
 const sha256 = (bytes: Uint8Array | string) => createHash('sha256').update(bytes).digest('hex');
+
+/**
+ * The document a save replies with, without the parser's node cache.
+ *
+ * The editor is already mounted when a save lands and only needs the text, the
+ * offsets and the origins to take the saved file as its new baseline. The node
+ * cache is what open ships so the editor can mount without parsing; on a save
+ * of the 8 MB benchmark document it was one entry per block, 43,970 of them,
+ * and copying it to the renderer took most of a second.
+ */
+function saveReplyWire(document: NotoDocument): NotoDocumentWire {
+  const { nodesEnrichment: _unused, ...rest } = document;
+  return toWire({ ...rest, nodes: null });
+}
 const encoder = new TextEncoder();
 const decoder = new TextDecoder('utf-8', { fatal: true });
 function messageOf(error: unknown): string {
@@ -356,7 +370,7 @@ export class FileTruthStoreV1 {
         version: 1, status: 'saved', attemptId, safeStage: stage, dirtyPreserved: false,
         message: 'Saved after fingerprint validation, atomic replacement, directory sync, and readback verification.',
         accepted, saveToken: this.saveToken(), outputSha256: serialized.outputSha256, replacedOriginal: true,
-        document: toWire(serialized.document),
+        document: saveReplyWire(serialized.document),
       };
       this.state = 'saved';
       return await this.cleanupThen(primary, { ...recovery, stage });
