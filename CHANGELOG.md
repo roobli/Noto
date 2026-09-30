@@ -23,6 +23,11 @@ How releases are made, and what each channel receives, is in
   prerelease, and every existing release has been re-flagged.
 - An Intel Mac with no Intel build to update to is sent to the release page
   instead of being handed the Apple silicon zip, which it cannot run.
+- **A list in a note that begins with a horizontal rule is a list again.** A
+  note whose first line was `---` with nothing below to close it as frontmatter
+  had every list in it drawn as a line of text, and editing one could write
+  escape characters into the file. The frontmatter parser now only runs when a
+  note opens with a closed `---` fence.
 - **A long note no longer freezes when you stop typing.** Each time typing
   paused, the spell checker went through the whole note in one go, and the
   window ignored every click until it finished: about 37 seconds, twice, in

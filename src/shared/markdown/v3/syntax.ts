@@ -21,6 +21,8 @@ import type { Nodes, Root, RootContent } from 'mdast';
 
 // YAML only. TOML frontmatter has no mdast node type and no meaningful adoption
 // in the editors Noto has to interoperate with.
+const frontmatterSyntax = frontmatter();
+
 const micromarkExtensions = [
   // One tilde is Typora's subscript, drawn in the editor; only a pair strikes.
   gfm({ singleTilde: false }),
@@ -40,8 +42,31 @@ const micromarkExtensions = [
    */
   cjkFriendlyExtension(),
   math({ singleDollarTextMath: true }),
-  frontmatter(),
+  frontmatterSyntax,
 ];
+
+/**
+ * The same dialect for a document that cannot have frontmatter.
+ *
+ * `micromark-extension-frontmatter` tries its construct at the start of every
+ * document. When a note opens with a `---` that nothing below closes, so a
+ * thematic break rather than a fence, the failed attempt leaves the parser
+ * unable to start a list after it: a rule, a blank line and `- a` came back as a
+ * rule and a paragraph, and the editor drew the list as a line of text. Every
+ * list in such a note was affected, however far down. Plain CommonMark reads it
+ * correctly, and frontmatter can only open on the first line and close on a line
+ * of its own, so the extension is left out when that fence is not there.
+ */
+const micromarkExtensionsWithoutFrontmatter = micromarkExtensions.filter((extension) => extension !== frontmatterSyntax);
+
+const FRONTMATTER_OPEN = /^---[ \t]*(?:\r\n|\r|\n)/;
+const FRONTMATTER_CLOSE = /^---[ \t]*(?:\r\n|\r|\n|$)/m;
+
+/** Whether `text` opens with a `---` fence that a later `---` line closes. */
+export function opensWithFrontmatterFence(text: string): boolean {
+  const open = FRONTMATTER_OPEN.exec(text);
+  return open !== null && FRONTMATTER_CLOSE.test(text.slice(open[0].length));
+}
 
 const mdastExtensions = [
   gfmFromMarkdown(),
@@ -431,7 +456,8 @@ const serializerOptions: ToMarkdownOptions = {
  * U+FEFF as content and it would shift every offset by one.
  */
 export function parseMarkdown(text: string): Root {
-  return fromMarkdown(text, { extensions: micromarkExtensions, mdastExtensions });
+  const extensions = opensWithFrontmatterFence(text) ? micromarkExtensions : micromarkExtensionsWithoutFrontmatter;
+  return fromMarkdown(text, { extensions, mdastExtensions });
 }
 
 /**
