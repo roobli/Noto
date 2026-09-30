@@ -18,8 +18,17 @@
  * punctuation; Typora appears to be counting the punctuation, and a full stop
  * is not a word. The convention here is the one a writer means.
  *
- * Pure, so the rule can be tested against real notes rather than argued about.
+ * A long note is counted per top-level block and the block counts are added
+ * (`composeBlockCounts`). ProseMirror reuses the nodes an edit did not touch,
+ * so a WeakMap from node to count makes a one-paragraph edit recount only that
+ * paragraph. The composition matches `textBetween(0, size, '\n', '\n')` of the
+ * whole document, which is what the status bar used to count in one pass.
+ *
+ * Pure helpers, so the rule can be tested against real notes rather than
+ * argued about.
  */
+
+import type { Node as ProseNode } from 'prosemirror-model';
 
 /** Letters, digits and the marks that live inside a word. */
 const WORD_RUN = /[\p{Letter}\p{Number}\p{Mark}](?:[\p{Letter}\p{Number}\p{Mark}'’_-]*[\p{Letter}\p{Number}\p{Mark}])?/gu;
@@ -59,15 +68,73 @@ export function countWords(text: string, blocks = 0): DocumentCount {
     }
     words += perCharacter + (latin ? 1 : 0);
   }
-  const characters = [...text].length;
+  // One walk for characters, spaces and lines. Spreading the string into an
+  // array of code points (`[...text].length`) allocated millions of strings on
+  // the 8 MB benchmark document for the same answer a code-point iterator gives.
+  let characters = 0;
   let spaces = 0;
   let lines = 0;
   let onLine = false;
   for (const character of text) {
+    characters += 1;
     if (character === '\n') { if (onLine) lines += 1; onLine = false; spaces += 1; continue; }
     if (/\s/u.test(character)) spaces += 1;
     else onLine = true;
   }
   if (onLine) lines += 1;
   return { words, characters, charactersNoSpaces: characters - spaces, lines, blocks };
+}
+
+/**
+ * Add per-block counts the way `textBetween(0, size, '\n', '\n')` joins blocks:
+ * one newline between neighbouring top-level blocks, counted as a character
+ * and a space, never as a line of its own (a blank line between blocks is the
+ * empty block, not the separator).
+ */
+export function composeBlockCounts(counts: readonly DocumentCount[]): DocumentCount {
+  let words = 0;
+  let characters = 0;
+  let charactersNoSpaces = 0;
+  let lines = 0;
+  for (const count of counts) {
+    words += count.words;
+    characters += count.characters;
+    charactersNoSpaces += count.charactersNoSpaces;
+    lines += count.lines;
+  }
+  const separators = Math.max(0, counts.length - 1);
+  return {
+    words,
+    characters: characters + separators,
+    charactersNoSpaces,
+    lines,
+    blocks: counts.length,
+  };
+}
+
+/** The drawn text of one top-level block, joined the same way the whole note is. */
+export function blockDrawnText(node: ProseNode): string {
+  return node.textBetween(0, node.content.size, '\n', '\n');
+}
+
+/**
+ * Count a ProseMirror document, reusing cached per-block counts when the block
+ * node is unchanged (ProseMirror keeps the same object for untouched children).
+ */
+export function countDocumentWords(
+  doc: ProseNode,
+  cache?: WeakMap<ProseNode, DocumentCount>,
+): DocumentCount {
+  const parts: DocumentCount[] = [];
+  doc.forEach((node) => {
+    const cached = cache?.get(node);
+    if (cached) {
+      parts.push(cached);
+      return;
+    }
+    const count = countWords(blockDrawnText(node));
+    cache?.set(node, count);
+    parts.push(count);
+  });
+  return composeBlockCounts(parts);
 }

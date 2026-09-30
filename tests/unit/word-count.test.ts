@@ -1,5 +1,14 @@
 import { describe, expect, it } from 'vitest';
-import { countWords } from '../../src/renderer/editor/noto/word-count';
+import type { Node as ProseNode } from 'prosemirror-model';
+import { splitBlocks } from '../../src/shared/markdown/v3/blocks';
+import { docFromSpans } from '../../src/shared/markdown/v3/pm/from-mdast';
+import {
+  blockDrawnText,
+  composeBlockCounts,
+  countDocumentWords,
+  countWords,
+  type DocumentCount,
+} from '../../src/renderer/editor/noto/word-count';
 
 const words = (text: string) => countWords(text).words;
 
@@ -54,5 +63,74 @@ describe('the rest of the numbers', () => {
     expect(count.lines).toBe(3);
     expect(count.blocks).toBe(2);
     expect(countWords('').lines).toBe(0);
+  });
+});
+
+function docOf(markdown: string): ProseNode {
+  return docFromSpans(splitBlocks(markdown).spans);
+}
+
+function fullCount(doc: ProseNode): DocumentCount {
+  return countWords(doc.textBetween(0, doc.content.size, '\n', '\n'), doc.childCount);
+}
+
+describe('counting a document by its blocks', () => {
+  it.each([
+    ['# Title\n\nHello world.\n\n- a\n- b\n\n```\ncode\nline\n```\n\n自由度测试\n'],
+    ['Only one paragraph.'],
+    ['a\n\nb\n\nc'],
+    ['Para with **bold** and `code`.\n\n> quote\n> more\n\n1. one\n2. two\n'],
+    ['```js\nconst x = 1;\nconst y = 2;\n```\n\nAfter.\n'],
+    ['---\ntitle: hi\n---\n\nBody.\n'],
+    ['![alt](http://example.com/x.png)\n\nText.\n'],
+    ['Line one\\\ncontinues.\n\nNext.\n'],
+  ])('matches a whole-document count for %j', (markdown) => {
+    const doc = docOf(markdown);
+    expect(countDocumentWords(doc)).toEqual(fullCount(doc));
+  });
+
+  it('reuses a cached block count when the node is unchanged', () => {
+    const doc = docOf('One.\n\nTwo.\n\nThree.\n');
+    const cache = new WeakMap<ProseNode, DocumentCount>();
+    const first = countDocumentWords(doc, cache);
+    expect(first).toEqual(fullCount(doc));
+    expect(cache.get(doc.child(0))).toEqual(countWords(blockDrawnText(doc.child(0))));
+
+    let recounted = 0;
+    const probing = {
+      get: (node: ProseNode) => cache.get(node),
+      set: (node: ProseNode, count: DocumentCount) => {
+        recounted += 1;
+        cache.set(node, count);
+        return probing;
+      },
+      has: (node: ProseNode) => cache.has(node),
+      delete: (node: ProseNode) => cache.delete(node),
+    } as WeakMap<ProseNode, DocumentCount>;
+
+    // A second count with a full cache measures no block again.
+    recounted = 0;
+    expect(countDocumentWords(doc, probing)).toEqual(first);
+    expect(recounted).toBe(0);
+
+    // Drop the middle block's entry: only that block is measured again.
+    cache.delete(doc.child(1));
+    recounted = 0;
+    expect(countDocumentWords(doc, probing)).toEqual(first);
+    expect(recounted).toBe(1);
+  });
+
+  it('composeBlockCounts adds the separators textBetween inserts', () => {
+    const parts = [countWords('One'), countWords('Two'), countWords('Three')];
+    expect(composeBlockCounts(parts)).toEqual({
+      words: 3,
+      characters: 3 + 3 + 5 + 2, // texts plus two newlines
+      charactersNoSpaces: 3 + 3 + 5,
+      lines: 3,
+      blocks: 3,
+    });
+    expect(composeBlockCounts([])).toEqual({
+      words: 0, characters: 0, charactersNoSpaces: 0, lines: 0, blocks: 0,
+    });
   });
 });

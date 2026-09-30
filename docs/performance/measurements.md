@@ -372,8 +372,8 @@ Packaged e2e build on Linux, from `openPath` to the file state reading Opened:
 
 What is left of opening `huge`: about 1.7 s before the renderer has the
 document (read, parse and hash in main, then 0.4 s of the preload hashing the
-text again to validate it), the word count at about 0.4 s, and building and
-laying out the view.
+text again to validate it), a first word count deferred off the open (now
+per-block, see below), and building and laying out the view.
 
 ## Only what changed crosses between processes, 2026-09-30
 
@@ -507,9 +507,38 @@ in a note long enough for viewport stubbing, 3,000 top-level blocks, the root
 now says `spellcheck="false"` and the five top-level blocks around the
 selection say `"true"` (`spell-check-scope.ts`). Shorter notes are unchanged.
 
-What remains after typing on `huge` is the word count: `reportCount` counts
-the whole document on a timer after each change, about 630 ms. That is the
-next long task to take apart.
+What remained after typing on `huge` was the word count: about 630 ms. That
+is fixed in the section below.
+
+## Word count after a pause is per changed block, 2026-09-30
+
+`reportCount` walked every character of the note each time typing stopped.
+On a note the size of `huge` that was about 0.4 to 0.6 s, the longest task
+left after spell checking stopped freezing the window. The count is the same
+whether it is taken from the whole drawn text or from each top-level block
+and added (`composeBlockCounts` matches `textBetween` with newline
+separators; `tests/unit/word-count.test.ts` holds both). ProseMirror keeps
+the same node object for every block an edit did not touch, so a WeakMap from
+node to count makes a one-paragraph change recount only that paragraph.
+
+Microbench on the Linux agent box, synthetic paragraphs (so smaller text than
+the 8 MB corpus at the same block count), median of five runs after a warm-up:
+
+| blocks | full `countWords` | cold per-block | one-block edit, cached |
+| ------ | ----------------: | -------------: | ---------------------: |
+| 2,742  | 9.7 ms            | 11.2 ms        | 0.35 ms                |
+| 10,982 | 36.9 ms           | 47.2 ms        | 0.34 ms                |
+| 43,970 | 145 ms            | 196 ms         | 2.7 ms                 |
+
+The first count after open still walks every block once. Every count after an
+edit is then proportional to what changed. Spreading the string into an array
+of code points (`[...text].length`) is gone too: one iterator walk counts
+characters, spaces and lines.
+
+The open-path costs that remain are the preload hashing the text again to
+validate the wire document (~0.4 s on `huge`; the contracts still require it,
+see the tamper tests in `file-truth-v1-contracts.test.ts`), and building and
+laying out the view.
 
 ## Save made linear in the number of blocks, 2026-09-29
 

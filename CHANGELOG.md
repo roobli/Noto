@@ -40,6 +40,12 @@ How releases are made, and what each channel receives, is in
   the 8 MB benchmark document. In a note of a few thousand paragraphs or more,
   spelling is now checked in the paragraphs around the caret; shorter notes are
   checked whole, as before.
+- **Counting the words in a long note no longer walks the whole note after
+  every pause.** The status bar counted every character of the document each
+  time typing stopped, about 0.6 s on the 8 MB benchmark document, which was
+  the longest task left after the spell-check fix. Counts are now kept per
+  top-level block and reused for blocks an edit left alone, so a one-paragraph
+  change costs about that paragraph.
 - **A long note opens faster.** Building the view of a note took time in
   proportion to the square of its number of blocks, because every block looked
   up its own position by walking the note from the top. The 8 MB benchmark
