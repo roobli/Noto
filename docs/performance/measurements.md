@@ -352,6 +352,98 @@ unit object per block across the process boundary, and building the eight
 megabyte output string. Each needed measuring before it was worth changing; the
 mistake to avoid is optimising the cheap one twice.
 
+## Opening a long note was quadratic in its blocks, 2026-09-30
+
+A CPU profile of the renderer while `huge` opened spent 3.4 seconds in one
+stack: every stubbable top-level block, as its view was built, asked for its
+own index with `topLevelIndexAt(doc, getPos())`, which resolved the position
+twice. ProseMirror's `resolve` finds the child at a position by walking the
+document's children from the first, so each call cost time in proportion to
+how far down the note the block sits, and building the view of 43,970 blocks
+cost the square of that. A document never changes, so its child offsets are
+now computed once per document and searched (`viewport-stub.ts`); a test holds
+the answer to `resolve`'s at every position of a mixed document.
+
+Packaged e2e build on Linux, from `openPath` to the file state reading Opened:
+
+| document | before | after |
+| --- | ---: | ---: |
+| `huge`, 8 MB | 8,884–9,361 ms | 5,286–5,633 ms |
+
+What is left of opening `huge`: about 1.7 s before the renderer has the
+document (read, parse and hash in main, then 0.4 s of the preload hashing the
+text again to validate it), the word count at about 0.4 s, and building and
+laying out the view.
+
+## Only what changed crosses between processes, 2026-09-30
+
+With both parses gone, most of what was left of a save of `huge` was moving the
+document between the renderer and main, and checking it on arrival. Timed in the
+development build on Linux, one paragraph edited, the request carried an origin
+for each of the 43,970 blocks (6.3 MB), and the reply the whole next revision
+(15 MB): its text and an origin and a span for every block. Encoding, decoding
+and validating those came to about 600 ms, 370 ms of it the renderer hashing the
+whole text again to confirm the reply described it.
+
+Both processes already hold the revision the save starts from, and a revision id
+is the hash of its content, so equal ids mean equal bytes. The request now names
+untouched blocks as runs of ordinals, which main expands against its own copy of
+that revision, and the reply names the blocks that only moved as runs and carries
+the text and blocks that are new (`src/shared/markdown/v3/revision-patch.ts`).
+One edited paragraph in `huge` is now three request entries and one splice of a
+few words. The renderer rebuilds the revision from its base; a run names the id
+of its first block and a moved block's id is derived from its old one, so a
+patch that does not fit is refused and the renderer asks for the revision whole
+(`document` channel). The byte length is checked against the splices; the full
+hash is not recomputed, because main already verified what it wrote by reading
+it back, and the renderer's copy of the base has the same hash by construction.
+
+Packaged e2e build on Linux, click to Saved as the harness times it, which
+includes about 300 ms of Playwright waiting for the button to be stable:
+
+| document | before | after |
+| --- | ---: | ---: |
+| `huge`, 8 MB | 1,535–1,674 ms | 756–1,003 ms |
+| `large`, 2 MB | | 229–255 ms |
+
+`tests/unit/revision-patch.test.ts` holds the rebuilt revision to the whole one
+over six hundred generated saves across LF, CRLF and BOM, and checks that a
+patch refuses a base it does not fit; `tests/unit/file-truth-save-patch.test.ts`
+does the same through the store, the validators and the renderer's side.
+
+## The engine stops parsing its own output, 2026-09-30
+
+With the second parse gone from Noto, the largest single phase of a save was
+the engine's: `@roobli/md`'s `serializeDocument` parsed its whole output again
+to return the next document, about 105 ms of its 130 to 200 ms on `huge`.
+`@roobli/md` 0.1.20 builds that document from the blocks it moved and reparses
+only around what changed.
+
+A window of the text can stand in for a parse of the whole of it when both of
+its edges are pinned. It opens at the start of an untouched block, where a
+whole parse is between blocks with nothing open, and it must close with the
+untouched block after the change, exactly as that block was. If the change ran
+on into that block, as an unclosed fence does, the window reads on to the end.
+Frontmatter, the one block the scanner decides by looking arbitrarily far
+ahead, is refused by a window that opens the note and stops short of its close.
+The engine's tests hold the result to a whole parse over thousands of generated
+saves and edits.
+
+`huge`, one paragraph edited:
+
+| | 0.1.19 | 0.1.20 |
+| --- | ---: | ---: |
+| `serializeDocument` in the engine | 130–203 ms | 41–77 ms |
+| Noto's serialize, engine included | 186–315 ms | 105–175 ms |
+
+The same pinning fixed a wrong answer. `reparseBlocks`, which Noto uses when it
+replaces the editor's content with new text (leaving Source Mode, taking a
+change made on disk, plugin transforms), appended the old blocks after its
+window without checking that the change had not run into them. An unclosed
+fence was read as one short block with the old paragraphs after it, where the
+file has them inside the fence. `tests/unit/prior-split-cache.test.ts` now
+checks that path against a full split; it fails on 0.1.19.
+
 ## Where a save of `huge` goes, and the first cut, 2026-09-30
 
 After the two fixes below, a save of `huge` in the packaged benchmark still took

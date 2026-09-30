@@ -1,7 +1,9 @@
 import type {
+  NotoDocumentId,
   NotoDocumentWire,
   NotoRevisionId,
-  NotoTransaction,
+  NotoRevisionPatch,
+  NotoTransactionWire,
 } from '../../markdown/v3/contracts';
 
 export const NOTO_FILE_TRUTH_VERSION = 1 as const;
@@ -29,6 +31,8 @@ export const FILE_TRUTH_CHANNELS = {
   /** Push: the file behind an open document changed under it. */
   externalChange: 'noto:file-truth:v1:external-change',
   reload: 'noto:file-truth:v1:reload',
+  /** The whole accepted revision, when a save's patch could not be applied. */
+  document: 'noto:file-truth:v1:document',
 } as const;
 
 export interface FileTruthRequestV1 {
@@ -99,7 +103,8 @@ export interface FileTruthOpenReplyV1 {
 export interface FileTruthEditCandidateV1 {
   readonly version: 3;
   readonly saveToken: FileTruthSaveTokenV1;
-  readonly transaction: NotoTransaction;
+  /** Untouched blocks may travel as kept runs; main expands them. */
+  readonly transaction: NotoTransactionWire;
 }
 
 export interface FileTruthSaveRequestV1 extends FileTruthRequestV1 {
@@ -166,6 +171,16 @@ export interface FileTruthSavedV1 extends OutcomeBaseV1 {
   readonly document: NotoDocumentWire;
 }
 
+/**
+ * A saved outcome as the save channel sends it: the new revision as a patch
+ * against the one the save was captured from (`revision-patch.ts`). The
+ * renderer applies it to its own copy and from then on holds a
+ * `FileTruthSavedV1` like any other.
+ */
+export interface FileTruthSavedPatchV1 extends Omit<FileTruthSavedV1, 'document'> {
+  readonly documentPatch: NotoRevisionPatch;
+}
+
 export interface FileTruthCopySavedV1 extends OutcomeBaseV1 {
   readonly status: 'copy-saved';
   readonly dirtyPreserved: true;
@@ -210,6 +225,20 @@ export interface FileTruthCleanupFailureV1 extends OutcomeBaseV1 {
   readonly recovery: FileTruthRecoveryRecordV1 | null;
   readonly recoveryRecordId: string | null;
   readonly residuePaths: readonly string[];
+}
+
+/** A cleanup failure after a save that succeeded, sent with the save as a patch. */
+export interface FileTruthCleanupFailurePatchV1 extends Omit<FileTruthCleanupFailureV1, 'primary'> {
+  readonly primary: FileTruthSavedPatchV1;
+}
+
+/** What the save channel answers: any outcome, a saved revision possibly as a patch. */
+export type FileTruthSaveReplyV1 = FileTruthSaveOutcomeV1 | FileTruthSavedPatchV1 | FileTruthCleanupFailurePatchV1;
+
+/** Ask for the accepted revision whole. Refused unless it is still `revisionId`. */
+export interface FileTruthDocumentRequestV1 extends FileTruthRequestV1 {
+  readonly documentId: NotoDocumentId;
+  readonly revisionId: NotoRevisionId;
 }
 
 export type FileTruthSaveOutcomeV1 =
@@ -275,11 +304,12 @@ export type FileTruthReloadOutcomeV1 =
 export interface NotoFileTruthApiV1 {
   bootstrap(request: FileTruthRequestV1): Promise<FileTruthResultV1<FileTruthBootstrapReplyV1>>;
   open(request: FileTruthRequestV1): Promise<FileTruthResultV1<FileTruthOpenReplyV1>>;
-  save(request: FileTruthSaveRequestV1): Promise<FileTruthResultV1<FileTruthSaveOutcomeV1>>;
+  save(request: FileTruthSaveRequestV1): Promise<FileTruthResultV1<FileTruthSaveReplyV1>>;
   saveCopy(request: FileTruthSaveCopyRequestV1): Promise<FileTruthResultV1<FileTruthSaveOutcomeV1>>;
   recover(request: FileTruthRecoveryRequestV1): Promise<FileTruthResultV1<FileTruthSaveOutcomeV1>>;
   diagnostics(request: FileTruthRequestV1): Promise<FileTruthResultV1<FileTruthDiagnosticsV1>>;
   reload(request: FileTruthReloadRequestV1): Promise<FileTruthResultV1<FileTruthReloadOutcomeV1>>;
+  document(request: FileTruthDocumentRequestV1): Promise<FileTruthResultV1<NotoDocumentWire>>;
   onExternalChange(listener: (event: FileTruthExternalChangeEventV1) => void): () => void;
 }
 

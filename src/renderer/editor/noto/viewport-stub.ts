@@ -164,15 +164,50 @@ export function selectionRealRange(
   return clampRange(fromIndex - radius, toIndex + radius, last);
 }
 
-/** Whether `pos` is the start position of a direct child of the document. */
-export function isTopLevelPos(doc: ProseNode, pos: number): boolean {
-  return pos >= 0 && pos <= doc.content.size && doc.resolve(pos).depth === 0;
+/**
+ * Where each direct child of a document starts, computed once per document.
+ *
+ * `doc.resolve(pos)` finds the child at `pos` by walking the children from the
+ * first, so it costs time in proportion to how far down the note `pos` is.
+ * Every stubbable block asks for its own index as it is built, which made
+ * building the view of a long note quadratic: on the 8 MB benchmark document,
+ * 43,970 blocks, 3.4 seconds of opening it. A document never changes, so its
+ * child offsets can be kept beside it and searched.
+ */
+const childStarts = new WeakMap<ProseNode, Float64Array>();
+
+function startsOf(doc: ProseNode): Float64Array {
+  let starts = childStarts.get(doc);
+  if (!starts) {
+    const table = new Float64Array(doc.childCount);
+    doc.forEach((_child, offset, index) => { table[index] = offset; });
+    childStarts.set(doc, table);
+    starts = table;
+  }
+  return starts;
 }
 
 /** Top-level child index for a position that points at that child, else null. */
 export function topLevelIndexAt(doc: ProseNode, pos: number): number | null {
-  if (!isTopLevelPos(doc, pos)) return null;
-  return doc.resolve(pos).index();
+  if (!Number.isInteger(pos) || pos < 0 || pos > doc.content.size) return null;
+  // The end of the document is a top-level position too, after the last child.
+  if (pos === doc.content.size) return doc.childCount;
+  const starts = startsOf(doc);
+  let low = 0;
+  let high = starts.length - 1;
+  while (low <= high) {
+    const middle = (low + high) >>> 1;
+    const start = starts[middle]!;
+    if (start === pos) return middle;
+    if (start < pos) low = middle + 1;
+    else high = middle - 1;
+  }
+  return null;
+}
+
+/** Whether `pos` is the start position of a direct child of the document. */
+export function isTopLevelPos(doc: ProseNode, pos: number): boolean {
+  return topLevelIndexAt(doc, pos) !== null;
 }
 
 export function blockGapPx(emPx: number): number {

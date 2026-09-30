@@ -1,7 +1,7 @@
 # `@roobli/md` — parse backend adapter
 
 Noto’s markdown v3 stack (`src/shared/markdown/v3/`) defaults to the public MIT
-package **[@roobli/md](https://github.com/roobli/md)** v0.1.19 (“WYSIWYG-first
+package **[@roobli/md](https://github.com/roobli/md)** v0.1.20 (“WYSIWYG-first
 markdown engine for Noto”). Escape hatch: `NOTO_MARKDOWN_ENGINE=micromark`.
 
 ## Why
@@ -15,8 +15,12 @@ mdast dump.
 ## Dependency
 
 ```
-"@roobli/md": "github:roobli/md#v0.1.19"
+"@roobli/md": "github:roobli/md#2e723e8c79169607b342275f140b71baa75c5854"
 ```
+
+That commit is v0.1.20 (the merge of roobli/md#23). It is pinned by commit
+until the `v0.1.20` tag is pushed, then goes back to `#v0.1.20`; pnpm resolves
+either to the same tarball.
 
 pnpm must allow its `prepare` (tsc) build — see `allowBuilds` in
 `pnpm-workspace.yaml`.
@@ -58,7 +62,8 @@ Tight adjacent quotes/callouts and native indented-code match micromark
 `semanticKey` computation, wire `nodes` (mdast). Native engine spans ship
 `node: null`; the adapter attaches mdast via Noto’s `syntax.ts` dialect when a
 ProseMirror-ready node is required. Engine serialize + split dialect (Phase
-7–22 in `@roobli/md` v0.1.19) owns hard-break → two spaces, list marker /
+7–22 in `@roobli/md`; Phase 23, v0.1.20, pins its reparse windows at both
+edges and serializes without a whole-output parse) owns hard-break → two spaces, list marker /
 delimiter from `node.data`, verbatim runs (wiki / alert / footnote / TOC /
 snake_case), bare http(s) autolinks, table delimiter widening (vault
 three-dash; content cells stay unpadded), line-prefix offset alignment

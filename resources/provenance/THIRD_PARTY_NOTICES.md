@@ -2,7 +2,7 @@
 
 Generated from the installed dependency tree. Do not edit by hand.
 
-- Lockfile SHA-256: `5487c75abf2c0179bf365bef4287d9be46bdd43f6040fbe686a22daeca23dc99`
+- Lockfile SHA-256: `83389565d585dee6607fd329faa944c068e18943a602b8a2cf060768f0d3dc7c`
 - Unique resolved packages: 736
 - Packages with copied license or notice text: 707
 - Packages without a root license or notice file: 29
@@ -81,7 +81,7 @@ Generated from the installed dependency tree. Do not edit by hand.
 | `@playwright/test@1.62.1` | Apache-2.0 | LICENSE, NOTICE | git+https://github.com/microsoft/playwright.git |
 | `@rolldown/binding-linux-x64-gnu@1.2.6` | MIT | none found | git+https://github.com/rolldown/rolldown.git |
 | `@rolldown/pluginutils@1.0.1` | MIT | LICENSE | git+https://github.com/rolldown/plugins.git |
-| `@roobli/md@0.1.19` | MIT | LICENSE | git+https://github.com/roobli/md.git |
+| `@roobli/md@0.1.20` | MIT | LICENSE | git+https://github.com/roobli/md.git |
 | `@sindresorhus/is@4.6.0` | MIT | license | sindresorhus/is |
 | `@standard-schema/spec@1.1.0` | MIT | LICENSE | https://github.com/standard-schema/standard-schema |
 | `@szmarczak/http-timer@4.0.6` | MIT | LICENSE | git+https://github.com/szmarczak/http-timer.git |
@@ -3363,7 +3363,7 @@ OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
 SOFTWARE.
 ```
 
-### @roobli/md@0.1.19
+### @roobli/md@0.1.20
 
 #### LICENSE
 

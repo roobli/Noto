@@ -23,6 +23,12 @@ How releases are made, and what each channel receives, is in
   prerelease, and every existing release has been re-flagged.
 - An Intel Mac with no Intel build to update to is sent to the release page
   instead of being handed the Apple silicon zip, which it cannot run.
+- **Leaving Source Mode, taking a change made on disk, or running a text
+  transform shows what the file says.** When the new text opened a code fence,
+  a math block or an HTML comment without closing it, the editor showed it as
+  one short block and kept the old blocks after it, while in the file
+  everything after it is inside the fence. It now shows the fence running to
+  the end, as the file reads. (`@roobli/md` 0.1.20.)
 - **A list in a note that begins with a horizontal rule is a list again.** A
   note whose first line was `---` with nothing below to close it as frontmatter
   had every list in it drawn as a line of text, and editing one could write
@@ -34,11 +40,19 @@ How releases are made, and what each channel receives, is in
   the 8 MB benchmark document. In a note of a few thousand paragraphs or more,
   spelling is now checked in the paragraphs around the caret; shorter notes are
   checked whole, as before.
+- **A long note opens faster.** Building the view of a note took time in
+  proportion to the square of its number of blocks, because every block looked
+  up its own position by walking the note from the top. The 8 MB benchmark
+  document now opens in a packaged build on Linux in about 5.5 seconds instead
+  of 9.
 - **Saving a long note is faster.** Part of every save took time in
   proportion to the square of the number of blocks in the note, and now grows
   only with the number. On the 8 MB benchmark document, 44,000 blocks, that
   part fell from over five seconds to under one, and a whole save in the
-  packaged app from between 3.2 and 4.5 seconds to 2.6.
+  packaged app from between 3.2 and 4.5 seconds to 2.6. A save also no longer
+  parses the file twice, and only what changed now travels between the app's
+  processes, in both directions; the same save in a packaged build on Linux
+  now takes under a second.
 
 ### Changed
 - The README and the docs site lead with what Noto is for: *Edit the page.

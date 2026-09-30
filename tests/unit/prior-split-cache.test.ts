@@ -110,4 +110,22 @@ describe('PriorSplitCache', () => {
     expect(result.source).toBe('reparse');
     expect(result.spans.map((s) => s.markdown)).toEqual(['# One', 'Two', 'Three']);
   });
+
+  it('follows an edit that runs past its window, as a full split would', () => {
+    // Leaving Source Mode with a fence opened and not yet closed: the fence
+    // takes in everything after it. @roobli/md before 0.1.20 cut it short at
+    // the edge of the reparse window and kept the old blocks after it.
+    const text = Array.from({ length: 12 }, (_, index) => `Paragraph ${index}.`).join('\n\n') + '\n';
+    const next = text.replace('Paragraph 3.', '~~~~\nParagraph 3.');
+    for (const neighborSlack of [0, 1]) {
+      const cache = new PriorSplitCache();
+      cache.seedFromSplit(parseStructuralForTests(text));
+      const result = cache.spansForReplace(next, { neighborSlack });
+      expect(result.source).toBe('reparse');
+      expect(result.spans.map((s) => [s.kind, s.start, s.end])).toEqual(
+        splitBlocks(next).spans.map((s) => [s.kind, s.start, s.end]),
+      );
+      expect(result.spans.at(-1)!.kind).toBe('fenced-code');
+    }
+  });
 });

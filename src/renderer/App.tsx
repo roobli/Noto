@@ -28,6 +28,7 @@ import { QuickOpen, type QuickOpenMode } from './QuickOpen';
 import { searchBoost, type FrecencyStoreV1 } from '../shared/search/v1/frecency';
 import { ConfirmedOpenRecorder } from '../shared/search/v1/confirmed-open';
 import type { NotoDocumentWire } from '../shared/markdown/v3/contracts';
+import { compactTransaction, materializeSaveReply } from './file-truth-save';
 import { outlineFromDocument } from './outline';
 import { PLUGIN_LIFECYCLE_VERSION, type PluginLifecycleSnapshot } from '../shared/plugins/lifecycle';
 import { rendererProofManifest } from '../shared/plugins/proof-manifests';
@@ -1122,8 +1123,12 @@ function NotoWorkspace({ platform }: { platform: NotoPlatform }) {
     // just made it so and the state this closure holds is from before.
     if (!editor || !token || pending || !(editorDirty || editor.isDirty)) return;
     let transaction: ReturnType<NotoEditor['capture']>;
+    let base: NotoDocumentWire;
     try {
       transaction = editor.capture();
+      // The revision the transaction was captured against, which a saved
+      // revision comes back as a patch to.
+      base = editor.acceptedDocument;
     } catch (error) {
       setLocalMessage(actionableFileTruthMessage(error,
         'The editor refused this save. Finish the current word, then save again.'));
@@ -1133,10 +1138,16 @@ function NotoWorkspace({ platform }: { platform: NotoPlatform }) {
     try {
       setPending(true);
       setState('Saving');
-      const result = await window.notoFileTruth.save({
+      const reply = await window.notoFileTruth.save({
         version: 1,
         requestId: rid('ft-save'),
-        candidate: { version: 3, saveToken: token, transaction },
+        candidate: { version: 3, saveToken: token, transaction: compactTransaction(transaction, base) },
+      });
+      const result = await materializeSaveReply(reply, base, async (revisionId) => {
+        const whole = await window.notoFileTruth.document({
+          version: 1, requestId: rid('ft-document'), documentId: base.documentId, revisionId,
+        });
+        return whole.ok ? whole.value : null;
       });
       if (!result.ok) {
         setPending(false);
