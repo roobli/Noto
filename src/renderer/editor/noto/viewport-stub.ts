@@ -667,26 +667,24 @@ function measureRealHeights(view: EditorView, stub: ViewportStubState): boolean 
   if (!stub.enabled) return false;
   const gap = blockGapPx(hostEmPx(view));
   let changed = false;
-  let position = 0;
   for (let index = 0; index < view.state.doc.childCount; index += 1) {
-    if (isIndexReal(stub, index)) {
-      const nodeDom = view.nodeDOM(position);
-      if (nodeDom instanceof HTMLElement && !nodeDom.classList.contains(STUB_CLASS)) {
-        const height = nodeDom.offsetHeight;
-        if (height > 0) {
-          // offsetHeight omits margins; stubs fold the rhythm gap into height.
-          // Never shrink a cached height during remount: a shorter real block
-          // packs more indices into the visible band, which trips hysteresis
-          // and remounts again (scroll-frame cascade). Growth is fine.
-          const next = height + gap;
-          if (next > stub.heights[index] + 0.5) {
-            stub.heights[index] = next;
-            changed = true;
-          }
+    if (!isIndexReal(stub, index)) continue;
+    const desc = topLevelDescAt(view, index);
+    const nodeDom = desc?.nodeDOM;
+    if (nodeDom instanceof HTMLElement && !nodeDom.classList.contains(STUB_CLASS)) {
+      const height = nodeDom.offsetHeight;
+      if (height > 0) {
+        // offsetHeight omits margins; stubs fold the rhythm gap into height.
+        // Never shrink a cached height during remount: a shorter real block
+        // packs more indices into the visible band, which trips hysteresis
+        // and remounts again (scroll-frame cascade). Growth is fine.
+        const next = height + gap;
+        if (next > stub.heights[index] + 0.5) {
+          stub.heights[index] = next;
+          changed = true;
         }
       }
     }
-    position += view.state.doc.child(index).nodeSize;
   }
   return changed;
 }
@@ -747,7 +745,8 @@ function syncShellAttrs(dom: HTMLElement, node: ProseNode): void {
 
 interface MembershipRemountable {
   readonly stubbed: boolean;
-  applyMembership(wantStub: boolean): void;
+  /** `index` avoids getPos→posBeforeChild (O(child index)) during remount. */
+  applyMembership(wantStub: boolean, index?: number): void;
   dom: HTMLElement;
   contentDOM: HTMLElement | null;
 }
@@ -794,8 +793,8 @@ class StubbableBlockView implements NodeView, MembershipRemountable {
     return estimateBlockHeight(this.node, hostEmPx(this.view));
   }
 
-  private mountStub(stub: ViewportStubState | undefined): void {
-    const index = this.resolveIndex(stub);
+  private mountStub(stub: ViewportStubState | undefined, indexHint?: number): void {
+    const index = indexHint ?? this.resolveIndex(stub);
     this.dom = createStubElement(this.node.type.name, this.heightPx(stub, index));
     this.contentDOM = null;
   }
@@ -817,10 +816,10 @@ class StubbableBlockView implements NodeView, MembershipRemountable {
    * In-place stub ↔ real for surgical remounts. Reassigns `dom` / `contentDOM`;
    * the plugin view swaps the ViewDesc pointers and fills content when needed.
    */
-  applyMembership(wantStub: boolean): void {
+  applyMembership(wantStub: boolean, index?: number): void {
     if (wantStub === this.stubbed) return;
     const stub = viewportStubKey.getState(this.view.state);
-    if (wantStub) this.mountStub(stub);
+    if (wantStub) this.mountStub(stub, index);
     else this.mountReal();
     this.stubbed = wantStub;
     this.generation = stub?.generation ?? this.generation;
@@ -871,7 +870,8 @@ interface PmViewDesc {
   dom: Node;
   contentDOM: HTMLElement | null;
   nodeDOM: Node;
-  node: ProseNode;
+  /** Present on NodeViewDesc; absent on widgets / trailing hacks. */
+  node?: ProseNode;
   dirty: number;
   destroy: () => void;
   updateChildren: (view: EditorView, pos: number) => void;
@@ -899,13 +899,28 @@ function collectWindowIndices(windows: MembershipWindows, into: Set<number>): vo
 
 function withDomObserverStopped(view: EditorView, run: () => void): void {
   const observer = (view as unknown as {
-    domObserver?: { stop: () => void; start: () => void };
+    domObserver?: {
+      flush: () => void;
+      observer?: { takeRecords: () => MutationRecord[] } | null;
+      queue: unknown[];
+    };
   }).domObserver;
-  observer?.stop();
+  if (!observer) {
+    run();
+    return;
+  }
+  // disconnect()/observe() on a mount with tens of thousands of children is
+  // O(children) in happy-dom (and still non-trivial in Chromium). Surgical
+  // remounts only need those mutations ignored, not the observer torn down:
+  // suppress flush, discard records, restore.
+  const flush = observer.flush.bind(observer);
+  observer.flush = () => {};
   try {
     run();
   } finally {
-    observer?.start();
+    observer.observer?.takeRecords();
+    observer.queue.length = 0;
+    observer.flush = flush;
   }
 }
 
@@ -916,6 +931,36 @@ function withDomObserverStopped(view: EditorView, run: () => void): void {
  * when becoming real — runs `updateChildren` only on that block's content,
  * never on the document's full child list.
  */
+/**
+ * Top-level ViewDesc for `index`, without `nodeDOM`/`descAt` (those walk from
+ * child 0 and cost O(index) per lookup — tens of ms for a mid-document band on
+ * huge).
+ *
+ * Fast path when `docView.children` lines up with doc children (no top-level
+ * widgets). Otherwise counts NodeViewDescs, skipping zero-size widgets/hacks.
+ */
+function topLevelDescAt(view: EditorView, index: number): PmViewDesc | null {
+  const docView = (view as unknown as { docView?: PmViewDesc }).docView;
+  if (!docView || index < 0) return null;
+  const childCount = view.state.doc.childCount;
+  if (index >= childCount) return null;
+  const { children } = docView;
+  if (children.length === childCount) {
+    return children[index] ?? null;
+  }
+  // Trailing contentEditable hack is a sibling without `.node`.
+  if (children.length === childCount + 1 && !children[children.length - 1]?.node) {
+    return children[index] ?? null;
+  }
+  let seen = 0;
+  for (const child of children) {
+    if (!child.node) continue;
+    if (seen === index) return child;
+    seen += 1;
+  }
+  return null;
+}
+
 export function remountTopLevelIndex(view: EditorView, index: number): void {
   const doc = view.state.doc;
   if (index < 0 || index >= doc.childCount) return;
@@ -925,15 +970,12 @@ export function remountTopLevelIndex(view: EditorView, index: number): void {
   const stub = viewportStubKey.getState(view.state);
   const wantStub = stub ? isIndexStubbed(stub, index, node.type.name) : false;
 
-  const pos = startsOf(doc)[index]!;
-  const dom = view.nodeDOM(pos);
-  if (!dom) return;
-  const desc = (dom as HTMLElement & { pmViewDesc?: PmViewDesc }).pmViewDesc;
+  const desc = topLevelDescAt(view, index);
   if (!desc?.spec || typeof desc.spec.applyMembership !== 'function') return;
   if (desc.spec.stubbed === wantStub) return;
 
   const oldDom = desc.dom;
-  desc.spec.applyMembership(wantStub);
+  desc.spec.applyMembership(wantStub, index);
   const newDom = desc.spec.dom;
   const newContent = desc.spec.contentDOM;
 
@@ -955,6 +997,7 @@ export function remountTopLevelIndex(view: EditorView, index: number): void {
   for (const child of desc.children) child.destroy();
   desc.children = [];
   if (newContent && !node.isLeaf) {
+    const pos = startsOf(doc)[index]!;
     desc.updateChildren(view, pos + 1);
   }
   desc.dirty = 0;
@@ -1113,9 +1156,9 @@ class SpecialisedStubbableView implements NodeView, MembershipRemountable {
     return estimateBlockHeight(this.node, hostEmPx(this.view));
   }
 
-  private mountStub(stub: ViewportStubState | undefined): void {
+  private mountStub(stub: ViewportStubState | undefined, indexHint?: number): void {
     this.inner = null;
-    const index = this.resolveIndex(stub);
+    const index = indexHint ?? this.resolveIndex(stub);
     this.dom = createStubElement(this.node.type.name, this.heightPx(stub, index));
     this.contentDOM = null;
   }
@@ -1134,12 +1177,12 @@ class SpecialisedStubbableView implements NodeView, MembershipRemountable {
     this.contentDOM = (created.contentDOM as HTMLElement | null | undefined) ?? null;
   }
 
-  applyMembership(wantStub: boolean): void {
+  applyMembership(wantStub: boolean, index?: number): void {
     if (wantStub === this.stubbed) return;
     const stub = viewportStubKey.getState(this.view.state);
     if (wantStub) {
       this.inner?.destroy?.();
-      this.mountStub(stub);
+      this.mountStub(stub, index);
     } else {
       this.mountInner();
     }

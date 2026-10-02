@@ -376,3 +376,43 @@ Forced re-realify apply for `code_block`×3 in the mid band: **80 → 0.6 ms**.
 `FenceView` ctor amid huge DOM: **25 → 0.07 ms**. Slide +1 is unchanged (walk
 already cut). HTML/image stay always-real. Packaged macOS re-measure remains
 useful; do not invent Apple-silicon numbers.
+
+
+### Band-enter without observer tear-down, 2026-10-02
+
+After #307, remount-mid on huge still sat near **85 ms** for a ~61-block band,
+and slide +1 near **41 ms** for two remounts. A breakdown showed two separate
+taxes on every membership batch:
+
+1. **`MutationObserver` disconnect / re-observe** — `withDomObserverStopped`
+   tore the observer down around surgical remounts. On a mount with ~44k
+   children that cost ~12–15 ms each way in happy-dom (~24 ms of every slide +1).
+2. **`view.nodeDOM` → `descAt`** — each remount walked `docView.children` from
+   index 0. Mid-document lookups for a 61-block band cost ~15–22 ms; head-band
+   lookups were free. `getPos` → `posBeforeChild` is the same class of walk when
+   leave remounts call it.
+
+This cut keeps surgical enter/leave and specialised stubbing, and changes the
+DOM path only:
+
+1. **Ignore mutations without disconnect** — suppress `flush`, discard
+   `takeRecords` / the observer queue, restore flush. Remounts stay invisible
+   to ProseMirror without O(children) observe.
+2. **Index ViewDesc lookup** — `topLevelDescAt` uses `docView.children[index]`
+   when the child list lines up with the doc (optional trailing hack); otherwise
+   counts NodeViewDescs so top-level widgets still remount correctly. Pass the
+   index into `applyMembership` so stub mount skips `getPos`.
+3. **Deferred measure** uses the same index lookup instead of `nodeDOM`.
+
+Linux agent, happy-dom (`PROFILE_RESIDUAL=1`), same machine before/after
+(post-#307 baseline). Medians of three runs:
+
+| corpus | remount mid before | after | slide +1 before | after |
+| --- | ---: | ---: | ---: | ---: |
+| large (10,982 blocks) | 23 ms | **15 ms** | 9 ms | **0.6 ms** |
+| huge (43,970 blocks) | 85 ms | **28 ms** | 41 ms | **1.1 ms** |
+
+Slide +1 is now essentially the two remounts. Remount mid on huge is mostly
+`replaceChild` + building ~61 real shells (`updateChildren`). HTML/image stay
+always-real. Packaged macOS re-measure remains useful; do not invent
+Apple-silicon numbers.

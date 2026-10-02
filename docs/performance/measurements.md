@@ -346,6 +346,12 @@ bind until interaction. Residual medians of 3: huge remount mid **146 → 85 ms*
 large **37 → 23 ms**; `code_block`×3 applyMembership **80 → 0.6 ms**. See
 `large-documents.md` (lazy fence tools).
 
+Band-enter cut (2026-10-02): discard remount mutations without observer
+disconnect/re-observe; lookup ViewDesc by top-level index. Residual medians of
+3: huge remount mid **85 → 28 ms**, slide +1 **41 → 1.1 ms**; large mid
+**23 → 15 ms**, slide +1 **9 → 0.6 ms**. See `large-documents.md` (band-enter
+section).
+
 ### Re-measurement methodology (macOS packaged build)
 
 `scripts/bench/e2e-executable.mjs` picks darwin-arm64 or linux-x64 under

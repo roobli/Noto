@@ -6,8 +6,8 @@
  * the real window covers them — without breaking contentDOM editing.
  */
 import { afterEach, describe, expect, it } from 'vitest';
-import { EditorState, TextSelection } from 'prosemirror-state';
-import { EditorView } from 'prosemirror-view';
+import { EditorState, Plugin, TextSelection } from 'prosemirror-state';
+import { Decoration, DecorationSet, EditorView } from 'prosemirror-view';
 import { splitBlocks } from '../../src/shared/markdown/v3/blocks';
 import { docFromSpans } from '../../src/shared/markdown/v3/pm/from-mdast';
 import { fenceNodeViews } from '../../src/renderer/editor/noto/fence-view';
@@ -258,6 +258,113 @@ describe('findScroller avoids layout on the ProseMirror mount parent', () => {
       globalThis.getComputedStyle = original;
       view.destroy();
       document.body.replaceChildren();
+    }
+  });
+});
+
+describe('band-enter remount path', () => {
+  it('does not disconnect or re-observe MutationObserver while remounting', () => {
+    const { view } = mount(specialisedMarkdown());
+    setViewport(view, 0, 20);
+    const observer = (view as unknown as {
+      domObserver: { observer: MutationObserver | null };
+    }).domObserver.observer;
+    expect(observer).toBeTruthy();
+
+    const observeCalls: unknown[] = [];
+    const disconnectCalls: unknown[] = [];
+    const origObserve = observer!.observe.bind(observer);
+    const origDisconnect = observer!.disconnect.bind(observer);
+    observer!.observe = ((...args: Parameters<MutationObserver['observe']>) => {
+      observeCalls.push(args);
+      return origObserve(...args);
+    }) as MutationObserver['observe'];
+    observer!.disconnect = (() => {
+      disconnectCalls.push(1);
+      return origDisconnect();
+    }) as MutationObserver['disconnect'];
+
+    try {
+      const fenceIndex = indexOfType(view.state.doc, 'code_block', 1);
+      setViewport(view, fenceIndex - 2, fenceIndex + 5);
+      expect(childAt(view, fenceIndex).classList.contains(STUB_CLASS)).toBe(false);
+      expect(disconnectCalls).toHaveLength(0);
+      expect(observeCalls).toHaveLength(0);
+    } finally {
+      observer!.observe = origObserve;
+      observer!.disconnect = origDisconnect;
+      view.destroy();
+    }
+  });
+
+  it('remounts through a top-level widget sibling without using children[index] alone', () => {
+    // Index-style widgets sit at top-level boundaries and insert WidgetViewDesc
+    // siblings — the fast 1:1 children[index] path must fall back to counting
+    // NodeViewDescs.
+    const widgetPlugin = new Plugin({
+      props: {
+        decorations(state) {
+          // Place a widget after the first top-level block (side 1 → sibling).
+          const first = state.doc.firstChild;
+          if (!first) return DecorationSet.empty;
+          const end = first.nodeSize;
+          return DecorationSet.create(state.doc, [
+            Decoration.widget(end, () => {
+              const el = document.createElement('span');
+              el.className = 'noto-test-top-widget';
+              el.textContent = 'w';
+              return el;
+            }, { side: 1, key: 'noto-test-top-widget' }),
+          ]);
+        },
+      },
+    });
+
+    const markdown = specialisedMarkdown();
+    const doc = docFor(markdown);
+    const scroller = document.createElement('div');
+    scroller.style.overflowY = 'auto';
+    scroller.style.height = '600px';
+    const host = document.createElement('div');
+    host.className = 'noto-editor-host';
+    host.style.fontSize = '16px';
+    const mountPoint = document.createElement('div');
+    host.append(mountPoint);
+    scroller.append(host);
+    document.body.append(scroller);
+    const specialised = {
+      ...mathNodeViews(),
+      ...fenceNodeViews(),
+      ...tableNodeViews(),
+    };
+    const state = EditorState.create({
+      doc,
+      plugins: [viewportStubPlugin(), widgetPlugin],
+    });
+    const view = new EditorView(mountPoint, {
+      state,
+      nodeViews: mergeStubAwareNodeViews(specialised),
+    });
+
+    try {
+      setViewport(view, 0, 20);
+      const fenceIndex = indexOfType(view.state.doc, 'code_block', 1);
+      setViewport(view, fenceIndex - 2, fenceIndex + 5);
+
+      // DOM children are shifted by the widget; locate the fence by class.
+      const fence = view.dom.querySelector('.noto-fence');
+      expect(fence).not.toBeNull();
+      expect(fence!.classList.contains(STUB_CLASS)).toBe(false);
+
+      const docView = (view as unknown as {
+        docView: { children: Array<{ node?: unknown }> };
+      }).docView;
+      expect(docView.children.length).toBeGreaterThan(view.state.doc.childCount);
+
+      setViewport(view, 0, 20);
+      expect(view.dom.querySelector(`[data-stub-type="code_block"]`)).not.toBeNull();
+    } finally {
+      view.destroy();
     }
   });
 });
