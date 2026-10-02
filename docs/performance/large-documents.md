@@ -344,3 +344,35 @@ band). Same-window and slide +1 show the layout tax removed. HTML/image stay
 always-real. Packaged macOS re-measure remains useful; do not invent
 Apple-silicon numbers.
 
+
+### Lazy fence tools (defer datalist), 2026-10-02
+
+After #306, remount-mid on huge still paid ~80 ms inside `applyMembership` for
+the three `code_block`s in the mid band. A ctor breakdown showed bare
+`FenceView` construction was cheap on a tiny document (~0.2 ms) but ~25 ms per
+fence amid the huge stub DOM — almost entirely
+`input.setAttribute('list', datalistId)`. Resolving the shared language
+datalist against tens of thousands of top-level stubs dominated specialised
+enter. Table and math chrome were already cheap (~2 ms / ~0.5 ms for three).
+
+This cut keeps specialised stubbing and surgical remount, and changes fence
+chrome only:
+
+1. **Lazy tools** — language field + copy button mount on first `pointerenter`
+   / `focusin`, matching the existing CSS (tools visible on hover / active-block
+   / focus-within). The remount path builds `pre` + gutter + `code` only.
+2. **Deferred datalist bind** — `list=` attaches on language focus, not at tool
+   mount, so a hover that only reveals Copy does not pay the id-resolution tax.
+
+Linux agent, happy-dom (`PROFILE_RESIDUAL=1`), same machine before/after
+(post-#306 baseline). Medians of three runs:
+
+| corpus | remount mid before | after | slide +1 before | after |
+| --- | ---: | ---: | ---: | ---: |
+| large (10,982 blocks) | 37 ms | **23 ms** | 5 ms | **9 ms** |
+| huge (43,970 blocks) | 146 ms | **85 ms** | 42 ms | **41 ms** |
+
+Forced re-realify apply for `code_block`×3 in the mid band: **80 → 0.6 ms**.
+`FenceView` ctor amid huge DOM: **25 → 0.07 ms**. Slide +1 is unchanged (walk
+already cut). HTML/image stay always-real. Packaged macOS re-measure remains
+useful; do not invent Apple-silicon numbers.

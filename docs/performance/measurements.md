@@ -340,6 +340,12 @@ mount parent; cache the attached scroller. Residual medians of 3: huge remount
 mid **178 → 146 ms**, slide +1 **79 → 42 ms**, same-window **47 → 0.4 ms**.
 See `large-documents.md` (scroller lookup section).
 
+
+Fence-tools cut (2026-10-02): defer language/copy mount and datalist `list=`
+bind until interaction. Residual medians of 3: huge remount mid **146 → 85 ms**,
+large **37 → 23 ms**; `code_block`×3 applyMembership **80 → 0.6 ms**. See
+`large-documents.md` (lazy fence tools).
+
 ### Re-measurement methodology (macOS packaged build)
 
 `scripts/bench/e2e-executable.mjs` picks darwin-arm64 or linux-x64 under
