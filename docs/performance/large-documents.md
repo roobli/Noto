@@ -412,7 +412,46 @@ Linux agent, happy-dom (`PROFILE_RESIDUAL=1`), same machine before/after
 | large (10,982 blocks) | 23 ms | **15 ms** | 9 ms | **0.6 ms** |
 | huge (43,970 blocks) | 85 ms | **28 ms** | 41 ms | **1.1 ms** |
 
-Slide +1 is now essentially the two remounts. Remount mid on huge is mostly
-`replaceChild` + building ~61 real shells (`updateChildren`). HTML/image stay
-always-real. Packaged macOS re-measure remains useful; do not invent
-Apple-silicon numbers.
+Slide +1 is now essentially the two remounts. Remount mid on huge was still
+mostly `replaceChild` + building ~61 real shells (`updateChildren`) — addressed
+in the next section. HTML/image stay always-real. Packaged macOS re-measure
+remains useful; do not invent Apple-silicon numbers.
+
+### In-place default stub remount, 2026-10-02
+
+After #308, remount-mid on huge still sat near **29 ms** for a ~61-block band
+(enter) plus a handful of leave remounts. A phase breakdown showed
+`replaceChild` alone at ~12 ms (swaps against a ~44k-child mount), with shell
+construction and `updateChildren` secondary. `renderSpec` for the band was
+under half a millisecond — the cost was detaching and attaching nodes, not
+building them.
+
+Default stubbable types always used a `div.noto-block-stub` placeholder, so
+every stub→real had to replace that div with a typed `p` / `hN` / `ul` / ….
+This cut keeps surgical enter/leave and specialised stubbing, and changes
+default shells only:
+
+1. **Typed stubs** — `StubbableBlockView` clones a per-tag stub prototype
+   (`p`, `h2`, `ul`, …) via a static tag map (no `toDOM` on open) so the
+   placeholder already matches the real shell tag.
+2. **In-place flip** — stub→real clears stub chrome and restores schema attrs
+   on the same node; real→stub clears children/attrs and paints stub chrome.
+   No `replaceChild` when the tag matches.
+3. **Specialised unchanged** — fences/tables/math still mount a `div` stub and
+   swap to their NodeView root (10 of 64 enter+leave on a mid remount).
+
+Linux agent, happy-dom (`PROFILE_RESIDUAL=1`), same machine before/after
+(post-#308 baseline). Medians of three consecutive runs (quiet window):
+
+| corpus | remount mid before | after | slide +1 before | after |
+| --- | ---: | ---: | ---: | ---: |
+| large (10,982 blocks) | ~25 ms | **~12 ms** | 0.8 ms | **0.5 ms** |
+| huge (43,970 blocks) | 29 ms | **12 ms** | 1.0 ms | **0.7 ms** |
+
+Large wall-clock is noise-dominated on both sides. Instrumented mid remount
+on huge: **same=54 / replaced=10** (all defaults keep the node; specialised
+still swap). Under load, after runs ranged ~10–22 ms (still below the ~29 ms
+before median). HTML/image stay always-real. Residual is specialised
+`replaceChild` + `updateChildren` for the real band. Packaged macOS
+re-measure remains useful; do not invent Apple-silicon numbers.
+

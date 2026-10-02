@@ -10,6 +10,14 @@ How releases are made, and what each channel receives, is in
 ## [Unreleased]
 
 ### Changed
+- **Faster remount by flipping default stubs in place.** Default-rendered
+  top-level stubs (`paragraph`, `heading`, lists, …) now use the same tag as
+  the real shell, so stub↔real membership changes mutate that node instead of
+  `replaceChild` + a fresh shell. Specialised fences/tables/math still swap
+  DOM (10 of 64 enter+leave on a mid remount). Linux happy-dom residual, same
+  machine before/after (median of 3, post-#308 baseline): remount mid huge
+  **29 → 12 ms**; large is noise-dominated both sides. Slide +1 stays ~1 ms.
+  Mid remount keeps **54 / 64** DOM nodes (all defaults).
 - **Faster band-enter remount (ignore mutations + index ViewDesc).** Surgical
   stub↔real no longer disconnects/re-observes the MutationObserver on the
   mount (O(children) on huge) — remount mutations are discarded instead — and

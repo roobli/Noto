@@ -352,6 +352,8 @@ disconnect/re-observe; lookup ViewDesc by top-level index. Residual medians of
 **23 → 15 ms**, slide +1 **9 → 0.6 ms**. See `large-documents.md` (band-enter
 section).
 
+In-place default stub remount (2026-10-02): typed shells for default stubbable types avoid `replaceChild` on stub↔real. Residual medians of 3: huge remount mid **29 → 12 ms**; large noise-dominated. Mid remount same=54 / replaced=10. See `large-documents.md` (in-place default stub remount).
+
 ### Re-measurement methodology (macOS packaged build)
 
 `scripts/bench/e2e-executable.mjs` picks darwin-arm64 or linux-x64 under
