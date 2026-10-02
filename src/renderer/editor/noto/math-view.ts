@@ -69,9 +69,12 @@ class MathView implements NodeView {
     private readonly view: EditorView,
     private readonly getPos: () => number | undefined,
     private readonly displayMode: boolean,
+    /** Reuse a typed stub shell so specialised remount skips replaceChild. */
+    host?: HTMLElement,
   ) {
     const tag = displayMode ? 'div' : 'span';
-    this.dom = globalThis.document.createElement(tag);
+    this.dom = host ?? globalThis.document.createElement(tag);
+    if (host) this.dom.replaceChildren();
     this.dom.className = displayMode ? 'noto-math-block' : 'noto-math-inline';
 
     this.preview = globalThis.document.createElement(tag);
@@ -167,8 +170,14 @@ export function mathEditingPlugin(): Plugin<DecorationSet> {
 
 export function mathNodeViews() {
   return {
-    math_block: (node: ProseNode, view: EditorView, getPos: () => number | undefined) =>
-      new MathView(node, view, getPos, true),
+    math_block: (
+      node: ProseNode,
+      view: EditorView,
+      getPos: () => number | undefined,
+      _decorations?: unknown,
+      _inner?: unknown,
+      host?: HTMLElement,
+    ) => new MathView(node, view, getPos, true, host),
     math_inline: (node: ProseNode, view: EditorView, getPos: () => number | undefined) =>
       new MathView(node, view, getPos, false),
   };

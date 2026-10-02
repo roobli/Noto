@@ -114,9 +114,12 @@ export class TableView implements NodeView {
     node: ProseNode,
     private readonly view: EditorView,
     private readonly getPos: () => number | undefined,
+    /** Reuse a typed stub shell so specialised remount skips replaceChild. */
+    host?: HTMLElement,
   ) {
     this.node = node;
-    this.dom = document.createElement('div');
+    this.dom = host ?? document.createElement('div');
+    if (host) this.dom.replaceChildren();
     this.dom.className = 'noto-table-frame';
 
     this.rails = document.createElement('div');
@@ -426,8 +429,13 @@ export class TableView implements NodeView {
 
 export function tableNodeViews() {
   return {
-    table: (node: ProseNode, view: EditorView, getPos: () => number | undefined) => (
-      new TableView(node, view, getPos)
-    ),
+    table: (
+      node: ProseNode,
+      view: EditorView,
+      getPos: () => number | undefined,
+      _decorations?: unknown,
+      _inner?: unknown,
+      host?: HTMLElement,
+    ) => new TableView(node, view, getPos, host),
   };
 }

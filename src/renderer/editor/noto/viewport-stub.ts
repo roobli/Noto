@@ -11,9 +11,9 @@
  * Default-rendered top-level types (paragraph, heading, lists, …) are stubbed
  * via `StubbableBlockView` on a typed shell (same tag as the real block) so
  * stub↔real flips in place without `replaceChild`. Specialised top-level node
- * views — fences, tables and display math — are wrapped so a stub stands in
- * off-viewport and the real Fence/Table/Math view remounts when the block
- * enters the real window (and the reverse when it leaves). HTML and image
+ * views — fences, tables and display math — use the same idea: a typed stub
+ * shell (`pre` / `div`) that the real Fence/Table/Math view reuses as `host`
+ * on enter, so specialised remounts also skip `replaceChild`. HTML and image
  * blocks stay always-real in this cut; they are rarer on the corpus and their
  * remount surface is wider.
  *
@@ -67,25 +67,6 @@ export const STUB_BLOCK_GAP_EM = 0.74;
 /** Class on a stub placeholder element. */
 export const STUB_CLASS = 'noto-block-stub';
 
-/**
- * Shared prototype for specialised stubs (always `div`). Default stubbable
- * types use typed shells instead — see `createTypedStubElement` — so stub↔real
- * can flip in place without `replaceChild`.
- */
-let stubElementPrototype: HTMLDivElement | null = null;
-
-function createStubElement(typeName: string, heightPx: number): HTMLElement {
-  // Recreate when the document changes (happy-dom test resets); cloneNode from
-  // a foreign document is undefined behaviour.
-  if (!stubElementPrototype || stubElementPrototype.ownerDocument !== document) {
-    stubElementPrototype = document.createElement('div');
-    stubElementPrototype.className = STUB_CLASS;
-  }
-  const dom = stubElementPrototype.cloneNode(false) as HTMLDivElement;
-  dom.dataset.stubType = typeName;
-  dom.style.height = `${heightPx}px`;
-  return dom;
-}
 
 /**
  * Outer tag + attrs for a default-rendered top-level shell (`toDOM` without a
@@ -145,10 +126,14 @@ function stubTagFor(node: ProseNode): string {
       return 'ol';
     case 'horizontal_rule':
       return 'hr';
+    case 'code_block':
+      return 'pre';
     case 'footnote_definition':
     case 'link_definition':
     case 'frontmatter':
     case 'source_block':
+    case 'table':
+    case 'math_block':
       return 'div';
     default:
       return 'div';
@@ -975,8 +960,8 @@ class StubbableBlockView implements NodeView, MembershipRemountable {
   }
 
   /**
-   * Stub ↔ real for surgical remounts. Default types keep the same `dom` node
-   * so the plugin skips `replaceChild`; specialised wrappers still swap.
+   * Stub ↔ real for surgical remounts. Keeps the same `dom` node so the plugin
+   * skips `replaceChild` when the tag matches.
    */
   applyMembership(wantStub: boolean, index?: number): void {
     if (wantStub === this.stubbed) return;
@@ -1150,8 +1135,8 @@ export function remountTopLevelIndex(view: EditorView, index: number): void {
   const newDom = desc.spec.dom;
   const newContent = desc.spec.contentDOM;
 
-  // Default stubbable types reuse the same typed shell (stub ↔ real in place).
-  // Only specialised wrappers (and rare tag mismatches) need replaceChild.
+  // Stubbable types reuse the same typed shell (stub ↔ real in place).
+  // replaceChild only when the NodeView rebuilds under a different root tag.
   if (oldDom !== newDom && oldDom.parentNode) {
     oldDom.parentNode.replaceChild(newDom, oldDom);
     const oldDesc = (oldDom as HTMLElement & { pmViewDesc?: PmViewDesc }).pmViewDesc;
@@ -1234,15 +1219,29 @@ export function stubbableNodeViews(): Record<string, NodeViewConstructor> {
 }
 
 /**
+ * Specialised factories may accept an optional `host` shell (6th argument) so
+ * stub→real remount reuses the typed stub node. Plain `NodeViewConstructor`
+ * callers (ProseMirror, medium notes) omit it.
+ */
+type HostAwareNodeViewConstructor = (
+  node: ProseNode,
+  view: EditorView,
+  getPos: () => number | undefined,
+  decorations: readonly Decoration[],
+  innerDecorations: DecorationSource,
+  host?: HTMLElement,
+) => NodeView;
+
+/**
  * Wrap a specialised NodeView so it participates in viewport stubbing.
  *
- * Off-viewport: a height stub (no inner chrome). Entering the real window
- * returns false from `update` so ProseMirror destroys the stub and constructs
- * the specialised view fresh — Fence/Table/Math remount with their own
- * contentDOM, selection, and focus behaviour intact. Leaving the real window
- * remounts the stub the same way.
+ * Off-viewport: a typed height stub (`pre` for fences, `div` for tables/math).
+ * Entering the real window mounts the specialised view onto that same shell
+ * (`host`), so surgical remount skips `replaceChild`. Leaving paints stub
+ * chrome back onto the shell. Doc-edit safety still returns false from
+ * `update` when membership disagrees.
  */
-export function wrapSpecialisedStubbable(inner: NodeViewConstructor): NodeViewConstructor {
+export function wrapSpecialisedStubbable(inner: HostAwareNodeViewConstructor): NodeViewConstructor {
   return (node, view, getPos, decorations, innerDecorations) => (
     new SpecialisedStubbableView(node, view, getPos, inner, decorations, innerDecorations)
   );
@@ -1264,7 +1263,8 @@ export function mergeStubAwareNodeViews(
   };
   for (const type of SPECIALISED_STUBBABLE_TYPES) {
     const ctor = specialised[type];
-    if (ctor) views[type] = wrapSpecialisedStubbable(ctor);
+    // Factories for specialised stubbable types accept an optional host shell.
+    if (ctor) views[type] = wrapSpecialisedStubbable(ctor as HostAwareNodeViewConstructor);
   }
   return views;
 }
@@ -1275,7 +1275,7 @@ class SpecialisedStubbableView implements NodeView, MembershipRemountable {
   private node: ProseNode;
   private readonly view: EditorView;
   private readonly getPos: () => number | undefined;
-  private readonly createInner: NodeViewConstructor;
+  private readonly createInner: HostAwareNodeViewConstructor;
   private decorations: readonly Decoration[];
   private innerDecorations: DecorationSource;
   private inner: NodeView | null = null;
@@ -1285,7 +1285,7 @@ class SpecialisedStubbableView implements NodeView, MembershipRemountable {
     node: ProseNode,
     view: EditorView,
     getPos: () => number | undefined,
-    createInner: NodeViewConstructor,
+    createInner: HostAwareNodeViewConstructor,
     decorations: readonly Decoration[],
     innerDecorations: DecorationSource,
   ) {
@@ -1325,20 +1325,29 @@ class SpecialisedStubbableView implements NodeView, MembershipRemountable {
   }
 
   private mountStub(stub: ViewportStubState | undefined, indexHint?: number): void {
+    this.inner?.destroy?.();
     this.inner = null;
     const index = indexHint ?? this.resolveIndex(stub);
-    this.dom = createStubElement(this.node.type.name, this.heightPx(stub, index));
+    if (!this.dom) {
+      // Typed shell matching Fence/Table/Math root so remount can reuse it.
+      this.dom = createTypedStubElement(this.node, this.heightPx(stub, index));
+    } else {
+      paintStubChrome(this.dom, this.node.type.name, this.heightPx(stub, index));
+    }
     this.contentDOM = null;
   }
 
   private mountInner(): void {
     this.inner?.destroy?.();
+    const host = this.dom;
+    if (host) clearStubChrome(host);
     const created = this.createInner(
       this.node,
       this.view,
       this.getPos,
       this.decorations,
       this.innerDecorations,
+      host,
     );
     this.inner = created;
     this.dom = created.dom as HTMLElement;
@@ -1348,12 +1357,8 @@ class SpecialisedStubbableView implements NodeView, MembershipRemountable {
   applyMembership(wantStub: boolean, index?: number): void {
     if (wantStub === this.stubbed) return;
     const stub = viewportStubKey.getState(this.view.state);
-    if (wantStub) {
-      this.inner?.destroy?.();
-      this.mountStub(stub, index);
-    } else {
-      this.mountInner();
-    }
+    if (wantStub) this.mountStub(stub, index);
+    else this.mountInner();
     this.stubbed = wantStub;
   }
 

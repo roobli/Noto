@@ -10,14 +10,22 @@ How releases are made, and what each channel receives, is in
 ## [Unreleased]
 
 ### Changed
+- **Faster remount by flipping specialised stubs in place.** Fences, tables and
+  display math now stub on typed shells (`pre` / `div`) and remount the real
+  Fence/Table/Math view onto that same node (`host`), so specialised
+  membership changes skip `replaceChild` too. Linux happy-dom residual, same
+  machine before/after (median of 3, post-#309 baseline): remount mid large
+  **23 → 11 ms**; huge wall-clock is noise-dominated (**22 → 19 ms**) while
+  instrumented mid remount shows **replaceCount 10 → 0** (~3 ms of
+  `replaceChild` removed). Slide +1 stays sub-ms. HTML/image stay always-real
+  (zero always-real blocks on the corpus).
 - **Faster remount by flipping default stubs in place.** Default-rendered
   top-level stubs (`paragraph`, `heading`, lists, …) now use the same tag as
   the real shell, so stub↔real membership changes mutate that node instead of
-  `replaceChild` + a fresh shell. Specialised fences/tables/math still swap
-  DOM (10 of 64 enter+leave on a mid remount). Linux happy-dom residual, same
-  machine before/after (median of 3, post-#308 baseline): remount mid huge
+  `replaceChild` + a fresh shell. Linux happy-dom residual, same machine
+  before/after (median of 3, post-#308 baseline): remount mid huge
   **29 → 12 ms**; large is noise-dominated both sides. Slide +1 stays ~1 ms.
-  Mid remount keeps **54 / 64** DOM nodes (all defaults).
+  Mid remount kept **54 / 64** DOM nodes before specialised in-place followed.
 - **Faster band-enter remount (ignore mutations + index ViewDesc).** Surgical
   stub↔real no longer disconnects/re-observes the MutationObserver on the
   mount (O(children) on huge) — remount mutations are discarded instead — and

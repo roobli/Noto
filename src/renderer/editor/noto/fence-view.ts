@@ -78,8 +78,11 @@ export class FenceView implements NodeView {
     private node: ProseNode,
     private readonly view: EditorView,
     private readonly getPos: () => number | undefined,
+    /** Reuse a typed stub shell so specialised remount skips replaceChild. */
+    host?: HTMLElement,
   ) {
-    this.dom = document.createElement('pre');
+    this.dom = host ?? document.createElement('pre');
+    if (host) this.dom.replaceChildren();
     this.dom.className = 'noto-fence';
 
     this.gutter = document.createElement('div');
@@ -301,7 +304,13 @@ export class FenceView implements NodeView {
 
 export function fenceNodeViews() {
   return {
-    code_block: (node: ProseNode, view: EditorView, getPos: () => number | undefined) =>
-      new FenceView(node, view, getPos),
+    code_block: (
+      node: ProseNode,
+      view: EditorView,
+      getPos: () => number | undefined,
+      _decorations?: unknown,
+      _inner?: unknown,
+      host?: HTMLElement,
+    ) => new FenceView(node, view, getPos, host),
   };
 }

@@ -354,6 +354,8 @@ section).
 
 In-place default stub remount (2026-10-02): typed shells for default stubbable types avoid `replaceChild` on stub↔real. Residual medians of 3: huge remount mid **29 → 12 ms**; large noise-dominated. Mid remount same=54 / replaced=10. See `large-documents.md` (in-place default stub remount).
 
+In-place specialised stub remount (2026-10-02): fences/tables/math reuse typed stub shells as `host`. Residual medians of 3: large remount mid **23 → 11 ms**; huge noise-dominated (**22 → 19 ms**). Instrumented mid remount replaceCount **10 → 0**. See `large-documents.md` (in-place specialised stub remount).
+
 ### Re-measurement methodology (macOS packaged build)
 
 `scripts/bench/e2e-executable.mjs` picks darwin-arm64 or linux-x64 under
