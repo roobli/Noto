@@ -491,3 +491,13 @@ huge: **replaceCount 10 → 0** (replace phase ~3 → 0 ms). Residual is band
 specialised enter). Packaged macOS re-measure remains useful; do not invent
 Apple-silicon numbers.
 
+### Spacer / virtualization (next open cut), 2026-10-02
+
+Remount micro-cuts bottomed out: huge remount mid is ~band `updateChildren`,
+and open is still O(top-level blocks) because every stub is its own DOM node and
+ViewDesc (~44k on `huge`). Cheaper stubs do not remove that cardinality.
+
+Design (no runtime change): [spacer-virtualization.md](./spacer-virtualization.md).
+Sparse `docView` children with multi-block range spacers; phase 1 is the first
+code PR. Prefer that whole cut over half-wired spacers.
+
