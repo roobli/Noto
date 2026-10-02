@@ -335,6 +335,11 @@ large **82 → 49 ms** / **51 → 11 ms**, huge **582 → 182 ms** / **460 → 7
 See `large-documents.md` (surgical membership remount);
 `PROFILE_RESIDUAL=1` residual probe.
 
+Scroller-lookup cut (2026-10-02): skip computed overflow on the ProseMirror
+mount parent; cache the attached scroller. Residual medians of 3: huge remount
+mid **178 → 146 ms**, slide +1 **79 → 42 ms**, same-window **47 → 0.4 ms**.
+See `large-documents.md` (scroller lookup section).
+
 ### Re-measurement methodology (macOS packaged build)
 
 `scripts/bench/e2e-executable.mjs` picks darwin-arm64 or linux-x64 under

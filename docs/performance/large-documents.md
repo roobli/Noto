@@ -309,3 +309,38 @@ Remount mid still pays for building ~61 real blocks; slide +1 is the walk cut.
 HTML/image stay always-real. Packaged macOS re-measure remains useful; do not
 invent Apple-silicon numbers.
 
+
+### Scroller lookup without mount-parent layout, 2026-10-02
+
+After #305, remount-mid still looked like "band build" cost, but a residual
+breakdown showed every viewport meta dispatch on huge paying ~45–70 ms before
+any stub↔real work: `ensureScroll` → `findScroller` → computed `overflowY` on
+the ProseMirror mount's direct parent. That parent wraps every top-level child;
+reading its computed overflow forces layout over the whole list (happy-dom;
+same class of cost in Chromium). Building the ~61-block band was real, but so
+was this tax on every membership update — including no-op same-window
+dispatches (~47 ms on huge).
+
+This cut keeps surgical remounts and membership rules, and changes two local
+pieces:
+
+1. **`findScroller`** — never reads computed overflow on the mount parent
+   (inline only there). Prefers `.canvas-scroll` and inline `overflowY` further
+   up, then computed style for other ancestors.
+2. **`ensureScroll`** — keeps the attached scroller across plugin updates while
+   it still contains the editor; does not re-walk on every transaction.
+
+Linux agent, happy-dom (`PROFILE_RESIDUAL=1`), same machine before/after.
+Medians of three runs:
+
+| corpus | remount mid before | after | slide +1 before | after | same-window before | after |
+| --- | ---: | ---: | ---: | ---: | ---: | ---: |
+| large (10,982 blocks) | 36 ms | **37 ms** | 10 ms | **5 ms** | 5.5 ms | **0.2 ms** |
+| huge (43,970 blocks) | 178 ms | **146 ms** | 79 ms | **42 ms** | 47 ms | **0.4 ms** |
+
+Remount mid on huge still pays for entering the real band (specialised FenceView
+construction dominates applyMembership for the three fences in the mid corpus
+band). Same-window and slide +1 show the layout tax removed. HTML/image stay
+always-real. Packaged macOS re-measure remains useful; do not invent
+Apple-silicon numbers.
+

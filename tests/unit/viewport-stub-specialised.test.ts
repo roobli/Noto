@@ -16,6 +16,7 @@ import { tableNodeViews } from '../../src/renderer/editor/noto/table-view';
 import {
   STUB_CLASS,
   STUB_MIN_TOP_LEVEL_BLOCKS,
+  findScroller,
   mergeStubAwareNodeViews,
   topLevelIndexAt,
   viewportStubKey,
@@ -192,5 +193,71 @@ describe('specialised stub remount', () => {
     expect(childAt(view, fenceIndex).classList.contains('noto-fence')).toBe(true);
 
     view.destroy();
+  });
+});
+
+describe('findScroller avoids layout on the ProseMirror mount parent', () => {
+  it('finds an inline-overflow scroller without computing style on the mount parent', () => {
+    const scroller = document.createElement('div');
+    scroller.style.overflowY = 'auto';
+    const host = document.createElement('div');
+    host.className = 'noto-editor-host';
+    const mountPoint = document.createElement('div');
+    host.append(mountPoint);
+    scroller.append(host);
+    document.body.append(scroller);
+
+    const view = new EditorView(mountPoint, {
+      state: EditorState.create({ doc: docFor('Hello.\n\nWorld.\n') }),
+    });
+
+    const computedOn: Element[] = [];
+    const original = globalThis.getComputedStyle;
+    globalThis.getComputedStyle = ((el: Element, ...rest: unknown[]) => {
+      computedOn.push(el);
+      return (original as typeof getComputedStyle)(el, ...(rest as []));
+    }) as typeof getComputedStyle;
+
+    try {
+      expect(findScroller(view)).toBe(scroller);
+      expect(computedOn).not.toContain(mountPoint);
+      expect(computedOn).not.toContain(view.dom.parentElement);
+    } finally {
+      globalThis.getComputedStyle = original;
+      view.destroy();
+      document.body.replaceChildren();
+    }
+  });
+
+  it('recognises .canvas-scroll without reading computed overflow on the mount parent', () => {
+    const scroller = document.createElement('div');
+    scroller.className = 'canvas-scroll';
+    // Product sets overflow via stylesheet, not inline — class must be enough.
+    const host = document.createElement('div');
+    host.className = 'noto-editor-host';
+    const mountPoint = document.createElement('div');
+    host.append(mountPoint);
+    scroller.append(host);
+    document.body.append(scroller);
+
+    const view = new EditorView(mountPoint, {
+      state: EditorState.create({ doc: docFor('Hello.\n\nWorld.\n') }),
+    });
+
+    const computedOn: Element[] = [];
+    const original = globalThis.getComputedStyle;
+    globalThis.getComputedStyle = ((el: Element, ...rest: unknown[]) => {
+      computedOn.push(el);
+      return (original as typeof getComputedStyle)(el, ...(rest as []));
+    }) as typeof getComputedStyle;
+
+    try {
+      expect(findScroller(view)).toBe(scroller);
+      expect(computedOn).not.toContain(mountPoint);
+    } finally {
+      globalThis.getComputedStyle = original;
+      view.destroy();
+      document.body.replaceChildren();
+    }
   });
 });

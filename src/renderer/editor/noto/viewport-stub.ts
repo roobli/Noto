@@ -481,11 +481,30 @@ function buildState(
   };
 }
 
+/**
+ * Nearest scrollport above the editor.
+ *
+ * Reading *computed* `overflowY` on the ProseMirror mount's direct parent
+ * forces layout over every top-level child (happy-dom: ~50ms on huge after a
+ * remount; Chromium pays the same class of cost). The mount parent never
+ * scrolls in product or tests — skip computed style there. Prefer inline
+ * overflow and the known `.canvas-scroll` host, then computed style further up.
+ */
 export function findScroller(view: EditorView): HTMLElement | null {
-  let element: HTMLElement | null = view.dom.parentElement;
+  const mountParent = view.dom.parentElement;
+  let element: HTMLElement | null = mountParent;
   while (element) {
-    const style = getComputedStyle(element);
-    if (/(auto|scroll)/.test(style.overflowY)) return element;
+    if (element === mountParent) {
+      const inline = element.style.overflowY;
+      if (inline === 'auto' || inline === 'scroll') return element;
+    } else if (element.classList.contains('canvas-scroll')) {
+      return element;
+    } else {
+      const inline = element.style.overflowY;
+      if (inline === 'auto' || inline === 'scroll') return element;
+      const style = getComputedStyle(element);
+      if (/(auto|scroll)/.test(style.overflowY)) return element;
+    }
     element = element.parentElement;
   }
   return null;
@@ -1285,6 +1304,11 @@ export function viewportStubPlugin(): Plugin<ViewportStubState> {
       };
 
       const ensureScroll = () => {
+        // Re-resolve only when the cached scroller is gone. findScroller is
+        // cheap for inline/class hits, but every membership dispatch used to
+        // re-enter it and — before the mount-parent skip — force layout over
+        // the whole top-level child list.
+        if (attached && attached.isConnected && attached.contains(editorView.dom)) return;
         const scroller = findScroller(editorView);
         if (scroller === attached) return;
         attached?.removeEventListener('scroll', onScroll);
