@@ -368,3 +368,80 @@ describe('band-enter remount path', () => {
     }
   });
 });
+
+describe('in-place default stub remount', () => {
+  it('keeps the same DOM node when a paragraph flips stub ↔ real', () => {
+    const { view } = mount(specialisedMarkdown());
+    setViewport(view, 0, 5);
+
+    // Pick a mid-document paragraph that starts stubbed.
+    let target = -1;
+    for (let index = 100; index < view.state.doc.childCount; index += 1) {
+      if (view.state.doc.child(index).type.name === 'paragraph') {
+        target = index;
+        break;
+      }
+    }
+    expect(target).toBeGreaterThan(0);
+
+    const stubEl = childAt(view, target);
+    expect(stubEl.classList.contains(STUB_CLASS)).toBe(true);
+    expect(stubEl.tagName).toBe('P');
+    expect(stubEl.dataset.stubType).toBe('paragraph');
+
+    setViewport(view, target - 2, target + 2);
+    const realEl = childAt(view, target);
+    expect(realEl).toBe(stubEl);
+    expect(realEl.classList.contains(STUB_CLASS)).toBe(false);
+    expect(realEl.tagName).toBe('P');
+    expect(realEl.textContent).toMatch(/Body|Lead|Paragraph|End/);
+
+    setViewport(view, 0, 5);
+    const stubAgain = childAt(view, target);
+    expect(stubAgain).toBe(stubEl);
+    expect(stubAgain.classList.contains(STUB_CLASS)).toBe(true);
+    expect(stubAgain.dataset.stubType).toBe('paragraph');
+
+    view.destroy();
+  });
+
+  it('keeps the same DOM node for headings and lists', () => {
+    const head = Array.from({ length: 20 }, (_, i) => `P ${i}.`).join('\n\n');
+    const body = [
+      '## Heading mid',
+      '- item a',
+      '- item b',
+      '### Another',
+      '1. one',
+      '2. two',
+    ].join('\n\n');
+    const pad = Array.from(
+      { length: STUB_MIN_TOP_LEVEL_BLOCKS },
+      (_, i) => `Pad ${i}.`,
+    ).join('\n\n');
+    const { view } = mount(`${head}\n\n${body}\n\n${pad}\n`);
+    setViewport(view, 0, 5);
+
+    const headingIndex = indexOfType(view.state.doc, 'heading', 0);
+    const listIndex = indexOfType(view.state.doc, 'bullet_list', 0);
+    // Headings/lists sit after the lead paragraphs — push them out of the
+    // selection neighbourhood so they start stubbed.
+    expect(headingIndex).toBeGreaterThan(5);
+
+    const headingStub = childAt(view, headingIndex);
+    const listStub = childAt(view, listIndex);
+    expect(headingStub.tagName).toBe('H2');
+    expect(listStub.tagName).toBe('UL');
+    expect(headingStub.classList.contains(STUB_CLASS)).toBe(true);
+    expect(listStub.classList.contains(STUB_CLASS)).toBe(true);
+
+    setViewport(view, headingIndex - 1, listIndex + 1);
+    expect(childAt(view, headingIndex)).toBe(headingStub);
+    expect(childAt(view, listIndex)).toBe(listStub);
+    expect(headingStub.classList.contains(STUB_CLASS)).toBe(false);
+    expect(listStub.classList.contains(STUB_CLASS)).toBe(false);
+    expect(listStub.querySelectorAll('li').length).toBeGreaterThan(0);
+
+    view.destroy();
+  });
+});

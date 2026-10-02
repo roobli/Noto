@@ -9,11 +9,13 @@
  * stay real content.
  *
  * Default-rendered top-level types (paragraph, heading, lists, …) are stubbed
- * via `StubbableBlockView`. Specialised top-level node views — fences, tables
- * and display math — are wrapped so a stub stands in off-viewport and the real
- * Fence/Table/Math view remounts when the block enters the real window (and
- * the reverse when it leaves). HTML and image blocks stay always-real in this
- * cut; they are rarer on the corpus and their remount surface is wider.
+ * via `StubbableBlockView` on a typed shell (same tag as the real block) so
+ * stub↔real flips in place without `replaceChild`. Specialised top-level node
+ * views — fences, tables and display math — are wrapped so a stub stands in
+ * off-viewport and the real Fence/Table/Math view remounts when the block
+ * enters the real window (and the reverse when it leaves). HTML and image
+ * blocks stay always-real in this cut; they are rarer on the corpus and their
+ * remount surface is wider.
  *
  * Enabled automatically once the document has enough top-level blocks that
  * medium-sized notes stay unaffected. Off below that threshold.
@@ -66,9 +68,9 @@ export const STUB_BLOCK_GAP_EM = 0.74;
 export const STUB_CLASS = 'noto-block-stub';
 
 /**
- * Shared prototype for stub placeholders. `cloneNode(false)` avoids repeating
- * `createElement` + className work once per top-level block on open — that path
- * dominated happy-dom EditorView construction on huge after specialised stubbing.
+ * Shared prototype for specialised stubs (always `div`). Default stubbable
+ * types use typed shells instead — see `createTypedStubElement` — so stub↔real
+ * can flip in place without `replaceChild`.
  */
 let stubElementPrototype: HTMLDivElement | null = null;
 
@@ -83,6 +85,127 @@ function createStubElement(typeName: string, heightPx: number): HTMLElement {
   dom.dataset.stubType = typeName;
   dom.style.height = `${heightPx}px`;
   return dom;
+}
+
+/**
+ * Outer tag + attrs for a default-rendered top-level shell (`toDOM` without a
+ * nested content structure). Default stubbable types all put the content hole
+ * on the outer element or have none (hr / link_definition).
+ */
+interface ShellShape {
+  readonly tag: string;
+  readonly attrs: Record<string, string>;
+  /** True when `toDOM` has a `0` hole on the outer element. */
+  readonly hasHole: boolean;
+  /** Atomic text content (link_definition); null when the hole holds children. */
+  readonly text: string | null;
+}
+
+function shellShapeFor(node: ProseNode): ShellShape {
+  const toDOM = node.type.spec.toDOM;
+  if (!toDOM) return { tag: 'div', attrs: {}, hasHole: true, text: null };
+  const spec = toDOM(node);
+  if (!Array.isArray(spec) || typeof spec[0] !== 'string') {
+    return { tag: 'div', attrs: {}, hasHole: true, text: null };
+  }
+  const attrs: Record<string, string> = {};
+  let hasHole = false;
+  let text: string | null = null;
+  for (let index = 1; index < spec.length; index += 1) {
+    const part = spec[index];
+    if (part === 0) {
+      hasHole = true;
+    } else if (typeof part === 'string') {
+      text = part;
+    } else if (part && typeof part === 'object' && !Array.isArray(part)) {
+      for (const [key, value] of Object.entries(part as Record<string, unknown>)) {
+        if (value == null || value === false) continue;
+        attrs[key] = value === true ? '' : String(value);
+      }
+    }
+  }
+  return { tag: spec[0], attrs, hasHole, text };
+}
+
+/**
+ * Tag for a default stub shell. Kept as a switch (no `toDOM`) so open of huge
+ * stays O(blocks) clone work — `shellShapeFor` is only needed on stub→real.
+ */
+function stubTagFor(node: ProseNode): string {
+  switch (node.type.name) {
+    case 'paragraph':
+      return 'p';
+    case 'heading':
+      return `h${node.attrs.level}`;
+    case 'blockquote':
+      return 'blockquote';
+    case 'bullet_list':
+      return 'ul';
+    case 'ordered_list':
+      return 'ol';
+    case 'horizontal_rule':
+      return 'hr';
+    case 'footnote_definition':
+    case 'link_definition':
+    case 'frontmatter':
+    case 'source_block':
+      return 'div';
+    default:
+      return 'div';
+  }
+}
+
+/** Per-tag stub prototypes — open still clones, remount keeps the same node. */
+const typedStubPrototypes = new Map<string, HTMLElement>();
+
+function createTypedStubElement(node: ProseNode, heightPx: number): HTMLElement {
+  const tag = stubTagFor(node);
+  let proto = typedStubPrototypes.get(tag);
+  if (!proto || proto.ownerDocument !== document) {
+    proto = document.createElement(tag);
+    proto.className = STUB_CLASS;
+    typedStubPrototypes.set(tag, proto);
+  }
+  const dom = proto.cloneNode(false) as HTMLElement;
+  // Real attrs stay off the stub; mountReal applies them when entering the band.
+  dom.dataset.stubType = node.type.name;
+  dom.style.height = `${heightPx}px`;
+  return dom;
+}
+
+function applyShellAttrs(dom: HTMLElement, attrs: Record<string, string>): void {
+  // Drop previous toDOM attrs we may have set, then apply the current shape.
+  // Stub chrome (class / data-stub-type / height) is managed separately.
+  for (const name of Array.from(dom.getAttributeNames())) {
+    if (name === 'class' || name === 'style' || name === 'data-stub-type') continue;
+    dom.removeAttribute(name);
+  }
+  // Reset class to schema classes only (plus STUB_CLASS when stubbed).
+  const stubbed = dom.classList.contains(STUB_CLASS);
+  dom.className = attrs.class ?? '';
+  if (stubbed) dom.classList.add(STUB_CLASS);
+  for (const [key, value] of Object.entries(attrs)) {
+    if (key === 'class') continue;
+    dom.setAttribute(key, value);
+  }
+}
+
+function clearStubChrome(dom: HTMLElement): void {
+  dom.classList.remove(STUB_CLASS);
+  delete dom.dataset.stubType;
+  dom.style.height = '';
+}
+
+function paintStubChrome(dom: HTMLElement, typeName: string, heightPx: number): void {
+  // Drop schema attrs left over from the real shell — stubs are height-only.
+  for (const name of Array.from(dom.getAttributeNames())) {
+    if (name === 'style' || name === 'data-stub-type') continue;
+    dom.removeAttribute(name);
+  }
+  dom.className = STUB_CLASS;
+  dom.dataset.stubType = typeName;
+  dom.style.height = `${heightPx}px`;
+  dom.replaceChildren();
 }
 
 /**
@@ -759,7 +882,6 @@ class StubbableBlockView implements NodeView, MembershipRemountable {
   private readonly getPos: () => number | undefined;
   stubbed: boolean;
   private generation: number;
-
   constructor(node: ProseNode, view: EditorView, getPos: () => number | undefined) {
     this.node = node;
     this.view = view;
@@ -793,28 +915,68 @@ class StubbableBlockView implements NodeView, MembershipRemountable {
     return estimateBlockHeight(this.node, hostEmPx(this.view));
   }
 
+  /**
+   * First paint as a typed height stub. Tag matches the real shell so a later
+   * membership flip can reuse the same DOM node (no `replaceChild`).
+   */
   private mountStub(stub: ViewportStubState | undefined, indexHint?: number): void {
     const index = indexHint ?? this.resolveIndex(stub);
-    this.dom = createStubElement(this.node.type.name, this.heightPx(stub, index));
+    if (!this.dom) {
+      this.dom = createTypedStubElement(this.node, this.heightPx(stub, index));
+    } else {
+      paintStubChrome(this.dom, this.node.type.name, this.heightPx(stub, index));
+    }
     this.contentDOM = null;
   }
 
+  /**
+   * Real shell. On first mount builds via `toDOM`; on stub→real reuses `this.dom`
+   * when the tag still matches (always, unless heading level changes — that
+   * path returns false from `update` and reconstructs).
+   */
   private mountReal(): void {
-    const toDOM = this.node.type.spec.toDOM;
-    if (!toDOM) {
-      this.dom = document.createElement('div');
-      this.contentDOM = this.dom;
+    const shape = shellShapeFor(this.node);
+    if (!this.dom) {
+      const toDOM = this.node.type.spec.toDOM;
+      if (!toDOM) {
+        this.dom = document.createElement('div');
+        this.contentDOM = this.dom;
+        return;
+      }
+      const rendered = DOMSerializer.renderSpec(document, toDOM(this.node));
+      this.dom = rendered.dom as HTMLElement;
+      this.contentDOM = (rendered.contentDOM as HTMLElement | null) ?? null;
+      syncShellAttrs(this.dom, this.node);
       return;
     }
-    const rendered = DOMSerializer.renderSpec(document, toDOM(this.node));
-    this.dom = rendered.dom as HTMLElement;
-    this.contentDOM = (rendered.contentDOM as HTMLElement | null) ?? null;
+
+    // In-place stub → real: same node, strip stub chrome, restore schema attrs.
+    if (this.dom.tagName.toLowerCase() !== shape.tag) {
+      // Tag mismatch (should be rare) — fall back to a fresh shell; caller
+      // replaceChild when `dom` identity changes.
+      const toDOM = this.node.type.spec.toDOM;
+      if (!toDOM) {
+        this.dom = document.createElement('div');
+        this.contentDOM = this.dom;
+        return;
+      }
+      const rendered = DOMSerializer.renderSpec(document, toDOM(this.node));
+      this.dom = rendered.dom as HTMLElement;
+      this.contentDOM = (rendered.contentDOM as HTMLElement | null) ?? null;
+      syncShellAttrs(this.dom, this.node);
+      return;
+    }
+
+    clearStubChrome(this.dom);
+    applyShellAttrs(this.dom, shape.attrs);
+    if (shape.text != null) this.dom.textContent = shape.text;
+    this.contentDOM = shape.hasHole ? this.dom : null;
     syncShellAttrs(this.dom, this.node);
   }
 
   /**
-   * In-place stub ↔ real for surgical remounts. Reassigns `dom` / `contentDOM`;
-   * the plugin view swaps the ViewDesc pointers and fills content when needed.
+   * Stub ↔ real for surgical remounts. Default types keep the same `dom` node
+   * so the plugin skips `replaceChild`; specialised wrappers still swap.
    */
   applyMembership(wantStub: boolean, index?: number): void {
     if (wantStub === this.stubbed) return;
@@ -833,13 +995,16 @@ class StubbableBlockView implements NodeView, MembershipRemountable {
     // membership changes take the surgical path and never reach here.
     if (wantStub !== this.stubbed) return false;
     this.generation = stub?.generation ?? this.generation;
+    if (node.type.name === 'heading' && node.attrs.level !== this.node.attrs.level) return false;
     if (this.stubbed) {
       this.node = node;
       this.dom.style.height = `${this.heightPx(stub)}px`;
       return true;
     }
-    if (node.type.name === 'heading' && node.attrs.level !== this.node.attrs.level) return false;
     this.node = node;
+    const shape = shellShapeFor(node);
+    applyShellAttrs(this.dom, shape.attrs);
+    if (shape.text != null) this.dom.textContent = shape.text;
     syncShellAttrs(this.dom, node);
     return true;
   }
@@ -961,6 +1126,7 @@ function topLevelDescAt(view: EditorView, index: number): PmViewDesc | null {
   return null;
 }
 
+
 export function remountTopLevelIndex(view: EditorView, index: number): void {
   const doc = view.state.doc;
   if (index < 0 || index >= doc.childCount) return;
@@ -974,28 +1140,30 @@ export function remountTopLevelIndex(view: EditorView, index: number): void {
   if (!desc?.spec || typeof desc.spec.applyMembership !== 'function') return;
   if (desc.spec.stubbed === wantStub) return;
 
+  // Drop content descs before DOM surgery. In-place stubbing clears the same
+  // node; destroying first avoids ViewDesc cleanup against a hollow parent.
+  for (const child of desc.children) child.destroy();
+  desc.children = [];
+
   const oldDom = desc.dom;
   desc.spec.applyMembership(wantStub, index);
   const newDom = desc.spec.dom;
   const newContent = desc.spec.contentDOM;
 
+  // Default stubbable types reuse the same typed shell (stub ↔ real in place).
+  // Only specialised wrappers (and rare tag mismatches) need replaceChild.
   if (oldDom !== newDom && oldDom.parentNode) {
     oldDom.parentNode.replaceChild(newDom, oldDom);
-  }
-  // Mirror ViewDesc's own DOM ownership: clear the old node, claim the new one.
-  if (oldDom !== newDom) {
     const oldDesc = (oldDom as HTMLElement & { pmViewDesc?: PmViewDesc }).pmViewDesc;
     if (oldDesc === desc) {
       (oldDom as HTMLElement & { pmViewDesc?: PmViewDesc }).pmViewDesc = undefined;
     }
+    (newDom as HTMLElement & { pmViewDesc?: PmViewDesc }).pmViewDesc = desc;
   }
   desc.dom = newDom;
   desc.nodeDOM = newDom;
   desc.contentDOM = newContent;
-  (newDom as HTMLElement & { pmViewDesc?: PmViewDesc }).pmViewDesc = desc;
 
-  for (const child of desc.children) child.destroy();
-  desc.children = [];
   if (newContent && !node.isLeaf) {
     const pos = startsOf(doc)[index]!;
     desc.updateChildren(view, pos + 1);
