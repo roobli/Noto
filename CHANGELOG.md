@@ -9,6 +9,14 @@ How releases are made, and what each channel receives, is in
 
 ## [Unreleased]
 
+### Changed
+- **Faster stub DOM on long-note open, and cheaper membership-stable decoration updates.**
+  Stub placeholders are cloned from a shared prototype instead of `createElement`
+  per top-level block, and viewport-stub keeps its real-window `DecorationsSet`
+  across transactions that do not change membership (mapping it on doc edits).
+  Linux happy-dom EditorView open after specialised stubbing (#303), same machine
+  before/after: large **631 → 424 ms** (median of 3), huge **5445 → 3476 ms**.
+
 ### Added
 - **Long notes stub off-screen fences, tables and display math.** Once a note
   has enough top-level blocks for viewport stubbing, those specialised blocks

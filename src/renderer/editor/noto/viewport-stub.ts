@@ -62,6 +62,26 @@ export const STUB_BLOCK_GAP_EM = 0.74;
 export const STUB_CLASS = 'noto-block-stub';
 
 /**
+ * Shared prototype for stub placeholders. `cloneNode(false)` avoids repeating
+ * `createElement` + className work once per top-level block on open — that path
+ * dominated happy-dom EditorView construction on huge after specialised stubbing.
+ */
+let stubElementPrototype: HTMLDivElement | null = null;
+
+function createStubElement(typeName: string, heightPx: number): HTMLElement {
+  // Recreate when the document changes (happy-dom test resets); cloneNode from
+  // a foreign document is undefined behaviour.
+  if (!stubElementPrototype || stubElementPrototype.ownerDocument !== document) {
+    stubElementPrototype = document.createElement('div');
+    stubElementPrototype.className = STUB_CLASS;
+  }
+  const dom = stubElementPrototype.cloneNode(false) as HTMLDivElement;
+  dom.dataset.stubType = typeName;
+  dom.style.height = `${heightPx}px`;
+  return dom;
+}
+
+/**
  * Default-rendered top-level types stubbed with `StubbableBlockView` (schema
  * `toDOM`, no specialised chrome).
  */
@@ -126,6 +146,13 @@ export interface ViewportStubState {
   readonly heights: Float64Array;
   /** Bumped when `real` changes so NodeViews can decide to remount. */
   readonly generation: number;
+  /**
+   * Node decorations marking the current real windows. Kept in plugin state
+   * and reused (or mapped) across transactions that do not change membership
+   * — rebuilding via `DecorationsSet.create` on every keystroke is O(doc) and
+   * dominated remount-adjacent updates on huge notes.
+   */
+  readonly decorations: DecorationSet;
 }
 
 interface ViewportMeta {
@@ -144,6 +171,7 @@ function disabledState(childCount = 0): ViewportStubState {
     real: emptyRange(),
     heights: new Float64Array(childCount),
     generation: 0,
+    decorations: DecorationSet.empty,
   };
 }
 
@@ -445,6 +473,8 @@ function buildState(
     real,
     heights,
     generation,
+    // Filled by plugin apply/init — placeholder keeps the type complete.
+    decorations: DecorationSet.empty,
   };
 }
 
@@ -713,30 +743,31 @@ class StubbableBlockView implements NodeView {
     else this.mountReal();
   }
 
-  private computeStubbed(stub: ViewportStubState | undefined): boolean {
-    if (!stub?.enabled) return false;
+  private resolveIndex(stub: ViewportStubState | undefined): number | null {
+    if (!stub?.enabled) return null;
     const pos = this.getPos();
-    if (pos == null) return false;
-    const index = topLevelIndexAt(this.view.state.doc, pos);
-    if (index == null) return false;
+    if (pos == null) return null;
+    return topLevelIndexAt(this.view.state.doc, pos);
+  }
+
+  private computeStubbed(stub: ViewportStubState | undefined): boolean {
+    const index = this.resolveIndex(stub);
+    if (index == null || !stub) return false;
     return isIndexStubbed(stub, index, this.node.type.name);
   }
 
-  private heightPx(stub: ViewportStubState | undefined): number {
-    const pos = this.getPos();
-    const em = hostEmPx(this.view);
-    if (pos == null || !stub) return estimateBlockHeight(this.node, em);
-    const index = topLevelIndexAt(this.view.state.doc, pos);
-    if (index == null) return estimateBlockHeight(this.node, em);
-    const cached = stub.heights[index];
-    return cached > 0 ? cached : estimateBlockHeight(this.node, em);
+  private heightPx(stub: ViewportStubState | undefined, index: number | null = null): number {
+    const resolved = index ?? this.resolveIndex(stub);
+    if (stub && resolved != null) {
+      const cached = stub.heights[resolved];
+      if (cached > 0) return cached;
+    }
+    return estimateBlockHeight(this.node, hostEmPx(this.view));
   }
 
   private mountStub(stub: ViewportStubState | undefined): void {
-    this.dom = document.createElement('div');
-    this.dom.className = STUB_CLASS;
-    this.dom.dataset.stubType = this.node.type.name;
-    this.dom.style.height = `${this.heightPx(stub)}px`;
+    const index = this.resolveIndex(stub);
+    this.dom = createStubElement(this.node.type.name, this.heightPx(stub, index));
     this.contentDOM = null;
   }
 
@@ -900,32 +931,33 @@ class SpecialisedStubbableView implements NodeView {
     else this.mountInner();
   }
 
-  private computeStubbed(stub: ViewportStubState | undefined): boolean {
-    if (!stub?.enabled) return false;
-    if (!SPECIALISED_STUBBABLE.has(this.node.type.name)) return false;
+  private resolveIndex(stub: ViewportStubState | undefined): number | null {
+    if (!stub?.enabled) return null;
+    if (!SPECIALISED_STUBBABLE.has(this.node.type.name)) return null;
     const pos = this.getPos();
-    if (pos == null) return false;
-    const index = topLevelIndexAt(this.view.state.doc, pos);
-    if (index == null) return false;
+    if (pos == null) return null;
+    return topLevelIndexAt(this.view.state.doc, pos);
+  }
+
+  private computeStubbed(stub: ViewportStubState | undefined): boolean {
+    const index = this.resolveIndex(stub);
+    if (index == null || !stub) return false;
     return isIndexStubbed(stub, index, this.node.type.name);
   }
 
-  private heightPx(stub: ViewportStubState | undefined): number {
-    const pos = this.getPos();
-    const em = hostEmPx(this.view);
-    if (pos == null || !stub) return estimateBlockHeight(this.node, em);
-    const index = topLevelIndexAt(this.view.state.doc, pos);
-    if (index == null) return estimateBlockHeight(this.node, em);
-    const cached = stub.heights[index];
-    return cached > 0 ? cached : estimateBlockHeight(this.node, em);
+  private heightPx(stub: ViewportStubState | undefined, index: number | null = null): number {
+    const resolved = index ?? this.resolveIndex(stub);
+    if (stub && resolved != null) {
+      const cached = stub.heights[resolved];
+      if (cached > 0) return cached;
+    }
+    return estimateBlockHeight(this.node, hostEmPx(this.view));
   }
 
   private mountStub(stub: ViewportStubState | undefined): void {
     this.inner = null;
-    this.dom = document.createElement('div');
-    this.dom.className = STUB_CLASS;
-    this.dom.dataset.stubType = this.node.type.name;
-    this.dom.style.height = `${this.heightPx(stub)}px`;
+    const index = this.resolveIndex(stub);
+    this.dom = createStubElement(this.node.type.name, this.heightPx(stub, index));
     this.contentDOM = null;
   }
 
@@ -995,7 +1027,14 @@ export function viewportStubPlugin(): Plugin<ViewportStubState> {
   return new Plugin<ViewportStubState>({
     key: viewportStubKey,
     state: {
-      init: (_config, state) => buildState(state, null, null, STUB_FALLBACK_EM_PX),
+      init: (_config, state) => {
+        const stub = buildState(state, null, null, STUB_FALLBACK_EM_PX);
+        if (!stub.enabled) return stub;
+        return {
+          ...stub,
+          decorations: realWindowDecorations(state.doc, stub),
+        };
+      },
       apply: (transaction, previous, oldState, newState) => {
         const meta = transaction.getMeta(viewportStubKey) as ViewportMeta | undefined;
         if (!stubbingEnabled(newState.doc.childCount)) {
@@ -1015,14 +1054,32 @@ export function viewportStubPlugin(): Plugin<ViewportStubState> {
         const draft: ViewportStubState = { ...previous, heights, enabled: true };
         const viewport = meta?.viewport
           ?? (transaction.docChanged ? null : previous.viewport);
-        return buildState(newState, draft, viewport, STUB_FALLBACK_EM_PX);
+        const next = buildState(newState, draft, viewport, STUB_FALLBACK_EM_PX);
+        const windowsUnchanged = previous.enabled
+          && rangesEqual(previous.viewport, next.viewport)
+          && rangesEqual(previous.selection, next.selection);
+        if (windowsUnchanged && !transaction.docChanged) {
+          // Membership untouched — keep the same DecorationSet identity so
+          // ProseMirror does not re-diff O(doc) node decorations on a keystroke.
+          return { ...next, decorations: previous.decorations };
+        }
+        if (windowsUnchanged && transaction.docChanged) {
+          // Same real windows, doc edited (usually inside a real block): map.
+          return {
+            ...next,
+            decorations: previous.decorations.map(transaction.mapping, newState.doc),
+          };
+        }
+        return {
+          ...next,
+          decorations: realWindowDecorations(newState.doc, next),
+        };
       },
     },
     props: {
       decorations: (editorState) => {
         const stub = viewportStubKey.getState(editorState);
-        if (!stub?.enabled) return DecorationSet.empty;
-        return realWindowDecorations(editorState.doc, stub);
+        return stub?.decorations ?? DecorationSet.empty;
       },
     },
     view: (editorView) => {
