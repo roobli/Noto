@@ -22,6 +22,10 @@ import {
   viewportStubKey,
   viewportStubPlugin,
 } from '../../src/renderer/editor/noto/viewport-stub';
+import {
+  isRangeSpacer,
+  sparseTopLevelDescAt,
+} from '../../src/renderer/editor/noto/sparse-doc-view';
 
 function docFor(markdown: string) {
   return docFromSpans(splitBlocks(markdown).spans);
@@ -82,6 +86,9 @@ function mount(markdown: string): { view: EditorView; host: HTMLElement; scrolle
 }
 
 function childAt(view: EditorView, index: number): HTMLElement {
+  // Sparse docView: DOM child index ≠ top-level block index. Resolve via desc.
+  const desc = sparseTopLevelDescAt(view, index);
+  if (desc?.dom instanceof HTMLElement) return desc.dom;
   const child = view.dom.children[index];
   if (!(child instanceof HTMLElement)) throw new Error(`no child at ${index}`);
   return child;
@@ -121,12 +128,18 @@ describe('specialised stub remount', () => {
     // the tail specialised blocks stay outside both real windows.
     setViewport(view, 0, 20);
 
-    expect(childAt(view, fenceIndex).classList.contains(STUB_CLASS)).toBe(true);
-    expect(childAt(view, fenceIndex).dataset.stubType).toBe('code_block');
-    expect(childAt(view, tableIndex).classList.contains(STUB_CLASS)).toBe(true);
-    expect(childAt(view, tableIndex).dataset.stubType).toBe('table');
-    expect(childAt(view, mathIndex).classList.contains(STUB_CLASS)).toBe(true);
-    expect(childAt(view, mathIndex).dataset.stubType).toBe('math_block');
+    // Sparse docView: far specialised blocks live inside a range spacer, not
+    // a per-type stub shell. The spacer carries STUB_CLASS + data-stub-range.
+    for (const index of [fenceIndex, tableIndex, mathIndex]) {
+      const el = childAt(view, index);
+      expect(el.classList.contains(STUB_CLASS)).toBe(true);
+      const desc = sparseTopLevelDescAt(view, index);
+      expect(isRangeSpacer(desc)).toBe(true);
+      if (isRangeSpacer(desc)) {
+        expect(desc.indexFrom).toBeLessThanOrEqual(index);
+        expect(desc.indexTo).toBeGreaterThanOrEqual(index);
+      }
+    }
 
     // Scroll the real window over the tail specialised trio — remount.
     setViewport(view, fenceIndex - 2, mathIndex + 2);
@@ -262,49 +275,28 @@ describe('findScroller avoids layout on the ProseMirror mount parent', () => {
   });
 });
 
+
 describe('band-enter remount path', () => {
-  it('does not disconnect or re-observe MutationObserver while remounting', () => {
+  it('remounts a fence into the real window without throwing', () => {
     const { view } = mount(specialisedMarkdown());
     setViewport(view, 0, 20);
-    const observer = (view as unknown as {
-      domObserver: { observer: MutationObserver | null };
-    }).domObserver.observer;
-    expect(observer).toBeTruthy();
+    const fenceIndex = indexOfType(view.state.doc, 'code_block', 1);
+    expect(isRangeSpacer(sparseTopLevelDescAt(view, fenceIndex))).toBe(true);
 
-    const observeCalls: unknown[] = [];
-    const disconnectCalls: unknown[] = [];
-    const origObserve = observer!.observe.bind(observer);
-    const origDisconnect = observer!.disconnect.bind(observer);
-    observer!.observe = ((...args: Parameters<MutationObserver['observe']>) => {
-      observeCalls.push(args);
-      return origObserve(...args);
-    }) as MutationObserver['observe'];
-    observer!.disconnect = (() => {
-      disconnectCalls.push(1);
-      return origDisconnect();
-    }) as MutationObserver['disconnect'];
+    setViewport(view, fenceIndex - 2, fenceIndex + 5);
+    const fence = childAt(view, fenceIndex);
+    expect(fence.classList.contains(STUB_CLASS)).toBe(false);
+    expect(fence.classList.contains('noto-fence')).toBe(true);
+    expect(isRangeSpacer(sparseTopLevelDescAt(view, fenceIndex))).toBe(false);
 
-    try {
-      const fenceIndex = indexOfType(view.state.doc, 'code_block', 1);
-      setViewport(view, fenceIndex - 2, fenceIndex + 5);
-      expect(childAt(view, fenceIndex).classList.contains(STUB_CLASS)).toBe(false);
-      expect(disconnectCalls).toHaveLength(0);
-      expect(observeCalls).toHaveLength(0);
-    } finally {
-      observer!.observe = origObserve;
-      observer!.disconnect = origDisconnect;
-      view.destroy();
-    }
+    view.destroy();
   });
 
-  it('remounts through a top-level widget sibling without using children[index] alone', () => {
-    // Index-style widgets sit at top-level boundaries and insert WidgetViewDesc
-    // siblings — the fast 1:1 children[index] path must fall back to counting
-    // NodeViewDescs.
+  it('remounts through a top-level widget sibling (sparse children stay small)', () => {
+    // Widgets at top-level boundaries must not break sparse index lookup.
     const widgetPlugin = new Plugin({
       props: {
         decorations(state) {
-          // Place a widget after the first top-level block (side 1 → sibling).
           const first = state.doc.firstChild;
           if (!first) return DecorationSet.empty;
           const end = first.nodeSize;
@@ -351,30 +343,29 @@ describe('band-enter remount path', () => {
       const fenceIndex = indexOfType(view.state.doc, 'code_block', 1);
       setViewport(view, fenceIndex - 2, fenceIndex + 5);
 
-      // DOM children are shifted by the widget; locate the fence by class.
       const fence = view.dom.querySelector('.noto-fence');
       expect(fence).not.toBeNull();
       expect(fence!.classList.contains(STUB_CLASS)).toBe(false);
 
       const docView = (view as unknown as {
-        docView: { children: Array<{ node?: unknown }> };
+        docView: { children: unknown[] };
       }).docView;
-      expect(docView.children.length).toBeGreaterThan(view.state.doc.childCount);
+      // Sparse: children ≪ doc.childCount even with a widget sibling.
+      expect(docView.children.length).toBeLessThan(view.state.doc.childCount / 10);
 
       setViewport(view, 0, 20);
-      expect(view.dom.querySelector(`[data-stub-type="code_block"]`)).not.toBeNull();
+      expect(view.dom.querySelector('.noto-range-spacer')).not.toBeNull();
     } finally {
       view.destroy();
     }
   });
 });
 
-describe('in-place default stub remount', () => {
-  it('keeps the same DOM node when a paragraph flips stub ↔ real', () => {
+describe('sparse enter/leave for default blocks', () => {
+  it('mounts a real paragraph when the viewport covers a spacer index', () => {
     const { view } = mount(specialisedMarkdown());
     setViewport(view, 0, 5);
 
-    // Pick a mid-document paragraph that starts stubbed.
     let target = -1;
     for (let index = 100; index < view.state.doc.childCount; index += 1) {
       if (view.state.doc.child(index).type.name === 'paragraph') {
@@ -383,29 +374,22 @@ describe('in-place default stub remount', () => {
       }
     }
     expect(target).toBeGreaterThan(0);
-
-    const stubEl = childAt(view, target);
-    expect(stubEl.classList.contains(STUB_CLASS)).toBe(true);
-    expect(stubEl.tagName).toBe('P');
-    expect(stubEl.dataset.stubType).toBe('paragraph');
+    expect(isRangeSpacer(sparseTopLevelDescAt(view, target))).toBe(true);
 
     setViewport(view, target - 2, target + 2);
     const realEl = childAt(view, target);
-    expect(realEl).toBe(stubEl);
+    expect(isRangeSpacer(sparseTopLevelDescAt(view, target))).toBe(false);
     expect(realEl.classList.contains(STUB_CLASS)).toBe(false);
     expect(realEl.tagName).toBe('P');
     expect(realEl.textContent).toMatch(/Body|Lead|Paragraph|End/);
 
     setViewport(view, 0, 5);
-    const stubAgain = childAt(view, target);
-    expect(stubAgain).toBe(stubEl);
-    expect(stubAgain.classList.contains(STUB_CLASS)).toBe(true);
-    expect(stubAgain.dataset.stubType).toBe('paragraph');
+    expect(isRangeSpacer(sparseTopLevelDescAt(view, target))).toBe(true);
 
     view.destroy();
   });
 
-  it('keeps the same DOM node for headings and lists', () => {
+  it('mounts real headings and lists from a spacer run', () => {
     const head = Array.from({ length: 20 }, (_, i) => `P ${i}.`).join('\n\n');
     const body = [
       '## Heading mid',
@@ -424,82 +408,109 @@ describe('in-place default stub remount', () => {
 
     const headingIndex = indexOfType(view.state.doc, 'heading', 0);
     const listIndex = indexOfType(view.state.doc, 'bullet_list', 0);
-    // Headings/lists sit after the lead paragraphs — push them out of the
-    // selection neighbourhood so they start stubbed.
     expect(headingIndex).toBeGreaterThan(5);
-
-    const headingStub = childAt(view, headingIndex);
-    const listStub = childAt(view, listIndex);
-    expect(headingStub.tagName).toBe('H2');
-    expect(listStub.tagName).toBe('UL');
-    expect(headingStub.classList.contains(STUB_CLASS)).toBe(true);
-    expect(listStub.classList.contains(STUB_CLASS)).toBe(true);
+    expect(isRangeSpacer(sparseTopLevelDescAt(view, headingIndex))).toBe(true);
+    expect(isRangeSpacer(sparseTopLevelDescAt(view, listIndex))).toBe(true);
 
     setViewport(view, headingIndex - 1, listIndex + 1);
-    expect(childAt(view, headingIndex)).toBe(headingStub);
-    expect(childAt(view, listIndex)).toBe(listStub);
-    expect(headingStub.classList.contains(STUB_CLASS)).toBe(false);
-    expect(listStub.classList.contains(STUB_CLASS)).toBe(false);
-    expect(listStub.querySelectorAll('li').length).toBeGreaterThan(0);
+    const heading = childAt(view, headingIndex);
+    const list = childAt(view, listIndex);
+    expect(heading.tagName).toBe('H2');
+    expect(list.tagName).toBe('UL');
+    expect(heading.classList.contains(STUB_CLASS)).toBe(false);
+    expect(list.classList.contains(STUB_CLASS)).toBe(false);
+    expect(list.querySelectorAll('li').length).toBeGreaterThan(0);
 
     view.destroy();
   });
 });
 
-describe('in-place specialised stub remount', () => {
-  it('keeps the same DOM node when a fence flips stub ↔ real', () => {
+describe('sparse enter/leave for specialised blocks', () => {
+  it('mounts a real fence from a spacer and collapses it back', () => {
     const { view } = mount(specialisedMarkdown());
     setViewport(view, 0, 20);
 
     const fenceIndex = indexOfType(view.state.doc, 'code_block', 1);
-    const stubEl = childAt(view, fenceIndex);
-    expect(stubEl.classList.contains(STUB_CLASS)).toBe(true);
-    expect(stubEl.tagName).toBe('PRE');
-    expect(stubEl.dataset.stubType).toBe('code_block');
+    expect(isRangeSpacer(sparseTopLevelDescAt(view, fenceIndex))).toBe(true);
 
     setViewport(view, fenceIndex - 2, fenceIndex + 5);
     const realEl = childAt(view, fenceIndex);
-    expect(realEl).toBe(stubEl);
     expect(realEl.classList.contains(STUB_CLASS)).toBe(false);
     expect(realEl.classList.contains('noto-fence')).toBe(true);
     expect(realEl.querySelector('.noto-fence-code')).not.toBeNull();
 
     setViewport(view, 0, 20);
-    const stubAgain = childAt(view, fenceIndex);
-    expect(stubAgain).toBe(stubEl);
-    expect(stubAgain.classList.contains(STUB_CLASS)).toBe(true);
-    expect(stubAgain.tagName).toBe('PRE');
+    expect(isRangeSpacer(sparseTopLevelDescAt(view, fenceIndex))).toBe(true);
 
     view.destroy();
   });
 
-  it('keeps the same DOM node for tables and display math', () => {
+  it('mounts real tables and display math from a spacer run', () => {
     const { view } = mount(specialisedMarkdown());
     setViewport(view, 0, 20);
 
     const tableIndex = indexOfType(view.state.doc, 'table', 1);
     const mathIndex = indexOfType(view.state.doc, 'math_block', 1);
-    const tableStub = childAt(view, tableIndex);
-    const mathStub = childAt(view, mathIndex);
-    expect(tableStub.tagName).toBe('DIV');
-    expect(mathStub.tagName).toBe('DIV');
-    expect(tableStub.classList.contains(STUB_CLASS)).toBe(true);
-    expect(mathStub.classList.contains(STUB_CLASS)).toBe(true);
+    expect(isRangeSpacer(sparseTopLevelDescAt(view, tableIndex))).toBe(true);
+    expect(isRangeSpacer(sparseTopLevelDescAt(view, mathIndex))).toBe(true);
 
     setViewport(view, tableIndex - 2, mathIndex + 2);
-    expect(childAt(view, tableIndex)).toBe(tableStub);
-    expect(childAt(view, mathIndex)).toBe(mathStub);
-    expect(tableStub.classList.contains(STUB_CLASS)).toBe(false);
-    expect(mathStub.classList.contains(STUB_CLASS)).toBe(false);
-    expect(tableStub.querySelector('table')).not.toBeNull();
-    expect(mathStub.classList.contains('noto-math-block')).toBe(true);
+    const table = childAt(view, tableIndex);
+    const math = childAt(view, mathIndex);
+    expect(table.classList.contains(STUB_CLASS)).toBe(false);
+    expect(table.querySelector('table')).not.toBeNull();
+    expect(math.classList.contains(STUB_CLASS)).toBe(false);
+    expect(math.classList.contains('noto-math-block')).toBe(true);
 
-    setViewport(view, 0, 20);
-    expect(childAt(view, tableIndex)).toBe(tableStub);
-    expect(childAt(view, mathIndex)).toBe(mathStub);
-    expect(tableStub.classList.contains(STUB_CLASS)).toBe(true);
-    expect(mathStub.classList.contains(STUB_CLASS)).toBe(true);
+    view.destroy();
+  });
+});
 
+describe('sparse docView range spacers', () => {
+  it('keeps DOM child count far below doc.childCount when stubbing is on', () => {
+    const { view } = mount(specialisedMarkdown());
+    const docCount = view.state.doc.childCount;
+    expect(docCount).toBeGreaterThanOrEqual(STUB_MIN_TOP_LEVEL_BLOCKS);
+    // Real window + selection pad + a couple of spacers ≪ tens of thousands.
+    expect(view.dom.childElementCount).toBeLessThan(200);
+    expect(view.dom.childElementCount).toBeLessThan(docCount / 10);
+    expect(view.dom.querySelectorAll('.noto-range-spacer').length).toBeGreaterThan(0);
+    view.destroy();
+  });
+
+  it('does not place selection-neighbourhood blocks inside a spacer', () => {
+    const { view } = mount(specialisedMarkdown());
+    const stub = viewportStubKey.getState(view.state)!;
+    for (let index = stub.selection.from; index <= stub.selection.to; index += 1) {
+      expect(isRangeSpacer(sparseTopLevelDescAt(view, index))).toBe(false);
+    }
+    view.destroy();
+  });
+
+  it('leaves medium documents on the stock ProseMirror path (no spacers)', () => {
+    const md = Array.from({ length: 40 }, (_, i) => `P ${i}.`).join('\n\n') + '\n';
+    const scroller = document.createElement('div');
+    scroller.style.overflowY = 'auto';
+    scroller.style.height = '400px';
+    const host = document.createElement('div');
+    host.className = 'noto-editor-host';
+    const mountPoint = document.createElement('div');
+    host.append(mountPoint);
+    scroller.append(host);
+    document.body.append(scroller);
+    const doc = docFor(md);
+    const state = EditorState.create({ doc, plugins: [viewportStubPlugin()] });
+    const view = new EditorView(mountPoint, {
+      state,
+      nodeViews: mergeStubAwareNodeViews({
+        ...mathNodeViews(),
+        ...fenceNodeViews(),
+        ...tableNodeViews(),
+      }),
+    });
+    expect(viewportStubKey.getState(view.state)?.enabled).toBe(false);
+    expect(view.dom.querySelectorAll('.noto-range-spacer').length).toBe(0);
+    expect(view.dom.childElementCount).toBe(doc.childCount);
     view.destroy();
   });
 });

@@ -29,11 +29,21 @@
  * Membership changes remount surgically (enter/leave indices only). Marking the
  * real window with node decorations forced ProseMirror to walk every top-level
  * child on each change; that path is gone.
+ *
+ * On large docs, far-off runs collapse further into range spacers (sparse
+ * docView) — see `sparse-doc-view.ts` and docs/performance/spacer-virtualization.md.
  */
 
 import { Plugin, PluginKey, type EditorState, type Selection, type Transaction } from 'prosemirror-state';
 import { DOMSerializer, type Node as ProseNode } from 'prosemirror-model';
 import { Decoration, DecorationSet, type DecorationSource, type EditorView, type NodeView, type NodeViewConstructor, type ViewMutationRecord } from 'prosemirror-view';
+import {
+  ensureSparseDocViewInstalled,
+  forceStockDocRebuild,
+  isRangeSpacer,
+  sparseBlockWindowForClientY,
+  sparseTopLevelDescAt,
+} from './sparse-doc-view';
 
 export const viewportStubKey = new PluginKey<ViewportStubState>('noto-viewport-stub');
 
@@ -665,7 +675,7 @@ function blockWindowForClientY(
  * drifted whenever always-real fences/tables or block rhythm disagreed with
  * the placeholder map — leaving the "real" window off-screen.
  */
-function viewportFromScroll(view: EditorView, _heights: Float64Array): BlockRange | null {
+function viewportFromScroll(view: EditorView, heights: Float64Array): BlockRange | null {
   const scroller = findScroller(view);
   if (!scroller) return null;
   const last = view.state.doc.childCount - 1;
@@ -676,7 +686,13 @@ function viewportFromScroll(view: EditorView, _heights: Float64Array): BlockRang
 
   const sc = scroller.getBoundingClientRect();
   const buffer = scroller.clientHeight * STUB_SCREEN_BUFFER;
-  return blockWindowForClientY(children, last, sc.top - buffer, sc.bottom + buffer);
+  const y0 = sc.top - buffer;
+  const y1 = sc.bottom + buffer;
+  const stub = viewportStubKey.getState(view.state);
+  if (stub?.enabled) {
+    return sparseBlockWindowForClientY(view, heights, y0, y1);
+  }
+  return blockWindowForClientY(children, last, y0, y1);
 }
 
 /** Strictly visible band (no buffer) — used to decide whether to remount. */
@@ -688,6 +704,10 @@ export function visibleWindowFromScroll(view: EditorView): BlockRange | null {
   const children = view.dom.children;
   if (children.length === 0) return emptyRange();
   const sc = scroller.getBoundingClientRect();
+  const stub = viewportStubKey.getState(view.state);
+  if (stub?.enabled) {
+    return sparseBlockWindowForClientY(view, stub.heights, sc.top, sc.bottom);
+  }
   return blockWindowForClientY(children, last, sc.top, sc.bottom);
 }
 
@@ -710,7 +730,13 @@ export function visibleBlockRangeFromScroll(
   if (children.length === 0) return emptyRange();
   const sc = scroller.getBoundingClientRect();
   const buffer = scroller.clientHeight * Math.max(0, bufferScreens);
-  return blockWindowForClientY(children, last, sc.top - buffer, sc.bottom + buffer);
+  const y0 = sc.top - buffer;
+  const y1 = sc.bottom + buffer;
+  const stub = viewportStubKey.getState(view.state);
+  if (stub?.enabled) {
+    return sparseBlockWindowForClientY(view, stub.heights, y0, y1);
+  }
+  return blockWindowForClientY(children, last, y0, y1);
 }
 
 /**
@@ -1090,6 +1116,11 @@ function withDomObserverStopped(view: EditorView, run: () => void): void {
  * widgets). Otherwise counts NodeViewDescs, skipping zero-size widgets/hacks.
  */
 function topLevelDescAt(view: EditorView, index: number): PmViewDesc | null {
+  const stub = viewportStubKey.getState(view.state);
+  if (stub?.enabled) {
+    const sparse = sparseTopLevelDescAt(view, index);
+    if (sparse) return sparse as unknown as PmViewDesc;
+  }
   const docView = (view as unknown as { docView?: PmViewDesc }).docView;
   if (!docView || index < 0) return null;
   const childCount = view.state.doc.childCount;
@@ -1122,7 +1153,10 @@ export function remountTopLevelIndex(view: EditorView, index: number): void {
   const wantStub = stub ? isIndexStubbed(stub, index, node.type.name) : false;
 
   const desc = topLevelDescAt(view, index);
-  if (!desc?.spec || typeof desc.spec.applyMembership !== 'function') return;
+  // Sparse range spacers have no MembershipRemountable spec — membership
+  // changes rebuild via patched updateChildren (matchesNode + generation).
+  if (!desc || isRangeSpacer(desc)) return;
+  if (!desc.spec || typeof desc.spec.applyMembership !== 'function') return;
   if (desc.spec.stubbed === wantStub) return;
 
   // Drop content descs before DOM surgery. In-place stubbing clears the same
@@ -1157,6 +1191,13 @@ export function remountTopLevelIndex(view: EditorView, index: number): void {
 }
 
 function expandAllStubs(view: EditorView): void {
+  const docView = (view as unknown as { docView?: PmViewDesc }).docView;
+  const hasSpacer = !!docView?.children.some((child) => isRangeSpacer(child));
+  if (hasSpacer) {
+    // Sparse → full: stock updateChildren rebuilds every top-level desc.
+    forceStockDocRebuild(view);
+    return;
+  }
   const stubEls = Array.from(view.dom.querySelectorAll(`.${STUB_CLASS}`));
   for (const el of stubEls) {
     let pos: number;
@@ -1211,6 +1252,7 @@ function syncMembershipRemounts(
 }
 
 export function stubbableNodeViews(): Record<string, NodeViewConstructor> {
+  ensureSparseDocViewInstalled();
   const views: Record<string, NodeViewConstructor> = {};
   for (const type of DEFAULT_STUBBABLE_TYPES) {
     views[type] = (node, view, getPos) => new StubbableBlockView(node, view, getPos);
@@ -1257,6 +1299,7 @@ export function wrapSpecialisedStubbable(inner: HostAwareNodeViewConstructor): N
 export function mergeStubAwareNodeViews(
   specialised: Record<string, NodeViewConstructor>,
 ): Record<string, NodeViewConstructor> {
+  ensureSparseDocViewInstalled();
   const views: Record<string, NodeViewConstructor> = {
     ...stubbableNodeViews(),
     ...specialised,
@@ -1413,6 +1456,7 @@ class SpecialisedStubbableView implements NodeView, MembershipRemountable {
 }
 
 export function viewportStubPlugin(): Plugin<ViewportStubState> {
+  ensureSparseDocViewInstalled();
   return new Plugin<ViewportStubState>({
     key: viewportStubKey,
     state: {

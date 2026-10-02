@@ -491,3 +491,19 @@ huge: **replaceCount 10 → 0** (replace phase ~3 → 0 ms). Residual is band
 specialised enter). Packaged macOS re-measure remains useful; do not invent
 Apple-silicon numbers.
 
+### Spacer / virtualization phase 1, 2026-10-02
+
+Remount micro-cuts bottomed out on per-block stubs: open stayed O(top-level
+blocks) (~44k ViewDescs on `huge`). Phase 1 collapses off-window runs into
+range spacers (`sparse-doc-view.ts`) — see
+[spacer-virtualization.md](./spacer-virtualization.md).
+
+Happy-dom EditorView open (Linux agent, `PROFILE_SPARSE_DOC=1`):
+
+| corpus | before (per-block stubs) | after (sparse) | DOM children |
+| --- | ---: | ---: | ---: |
+| large | ~0.7 s | ~16–50 ms | ~4 |
+| huge | ~4.4 s | ~30–35 ms | ~4 |
+
+Phase 2: always-real holes inside spacer runs; packaged height-map drift.
+
