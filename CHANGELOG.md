@@ -10,6 +10,13 @@ How releases are made, and what each channel receives, is in
 ## [Unreleased]
 
 ### Added
+- **Long notes stub off-screen fences, tables and display math.** Once a note
+  has enough top-level blocks for viewport stubbing, those specialised blocks
+  use a height placeholder until they scroll (or the caret) into the real
+  window, then remount their normal editing chrome. HTML and images stay
+  fully real. Linux view-open microbench on the corpus: about 2.1–2.4× faster
+  constructing the editor for large/huge versus always-real specialised views.
+
 - **The packaged benchmark records post-type idle lag.** After a typing burst
   it measures the longest main-thread stall until the renderer goes quiet, so a
   freeze like the Chromium ColdModeSpellCheckRequester case (tens of seconds on

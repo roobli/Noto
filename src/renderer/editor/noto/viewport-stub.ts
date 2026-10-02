@@ -8,10 +8,12 @@
  * trees, while the selection neighbourhood and a window around the viewport
  * stay real content.
  *
- * Only default-rendered top-level types are stubbed in this slice (paragraph,
- * heading, lists, …). Fences, tables, math and HTML blocks keep their existing
- * node views and stay real — they are few relative to paragraphs in a long
- * note, and wrapping them is a larger behavioural risk.
+ * Default-rendered top-level types (paragraph, heading, lists, …) are stubbed
+ * via `StubbableBlockView`. Specialised top-level node views — fences, tables
+ * and display math — are wrapped so a stub stands in off-viewport and the real
+ * Fence/Table/Math view remounts when the block enters the real window (and
+ * the reverse when it leaves). HTML and image blocks stay always-real in this
+ * cut; they are rarer on the corpus and their remount surface is wider.
  *
  * Enabled automatically once the document has enough top-level blocks that
  * medium-sized notes stay unaffected. Off below that threshold.
@@ -25,7 +27,7 @@
 
 import { Plugin, PluginKey, type EditorState, type Selection, type Transaction } from 'prosemirror-state';
 import { DOMSerializer, type Node as ProseNode } from 'prosemirror-model';
-import { Decoration, DecorationSet, type EditorView, type NodeView, type NodeViewConstructor } from 'prosemirror-view';
+import { Decoration, DecorationSet, type DecorationSource, type EditorView, type NodeView, type NodeViewConstructor, type ViewMutationRecord } from 'prosemirror-view';
 
 export const viewportStubKey = new PluginKey<ViewportStubState>('noto-viewport-stub');
 
@@ -37,8 +39,8 @@ export const STUB_MIN_TOP_LEVEL_BLOCKS = 3000;
  *
  * Two was enough for small-step hysteresis, but a 0.75×view step then hit the
  * edge every couple of frames and paid the full remount spike (~75–79ms). Three
- * keeps large-step scrolling inside the buffer more often without stubbing
- * always-real fences/tables (membership rules unchanged).
+ * keeps large-step scrolling inside the buffer more often. Membership still
+ * uses viewport OR selection; specialised fences/tables/math now stub too.
  */
 export const STUB_SCREEN_BUFFER = 3;
 
@@ -59,8 +61,11 @@ export const STUB_BLOCK_GAP_EM = 0.74;
 /** Class on a stub placeholder element. */
 export const STUB_CLASS = 'noto-block-stub';
 
-/** Top-level types this slice knows how to stub. */
-export const STUBBABLE_TYPES = [
+/**
+ * Default-rendered top-level types stubbed with `StubbableBlockView` (schema
+ * `toDOM`, no specialised chrome).
+ */
+export const DEFAULT_STUBBABLE_TYPES = [
   'paragraph',
   'heading',
   'blockquote',
@@ -73,9 +78,29 @@ export const STUBBABLE_TYPES = [
   'source_block',
 ] as const;
 
+/**
+ * Specialised node-view types that participate in stubbing via
+ * `wrapSpecialisedStubbable` — stub off-viewport, remount the real view in the
+ * real window.
+ */
+export const SPECIALISED_STUBBABLE_TYPES = [
+  'code_block',
+  'table',
+  'math_block',
+] as const;
+
+/** Every top-level type this plugin may replace with a height stub. */
+export const STUBBABLE_TYPES = [
+  ...DEFAULT_STUBBABLE_TYPES,
+  ...SPECIALISED_STUBBABLE_TYPES,
+] as const;
+
+export type DefaultStubbableType = (typeof DEFAULT_STUBBABLE_TYPES)[number];
+export type SpecialisedStubbableType = (typeof SPECIALISED_STUBBABLE_TYPES)[number];
 export type StubbableType = (typeof STUBBABLE_TYPES)[number];
 
 const STUBBABLE = new Set<string>(STUBBABLE_TYPES);
+const SPECIALISED_STUBBABLE = new Set<string>(SPECIALISED_STUBBABLE_TYPES);
 
 export interface BlockRange {
   readonly from: number;
@@ -801,10 +826,169 @@ function realWindowDecorations(doc: ProseNode, state: ViewportStubState): Decora
 
 export function stubbableNodeViews(): Record<string, NodeViewConstructor> {
   const views: Record<string, NodeViewConstructor> = {};
-  for (const type of STUBBABLE_TYPES) {
+  for (const type of DEFAULT_STUBBABLE_TYPES) {
     views[type] = (node, view, getPos) => new StubbableBlockView(node, view, getPos);
   }
   return views;
+}
+
+/**
+ * Wrap a specialised NodeView so it participates in viewport stubbing.
+ *
+ * Off-viewport: a height stub (no inner chrome). Entering the real window
+ * returns false from `update` so ProseMirror destroys the stub and constructs
+ * the specialised view fresh — Fence/Table/Math remount with their own
+ * contentDOM, selection, and focus behaviour intact. Leaving the real window
+ * remounts the stub the same way.
+ */
+export function wrapSpecialisedStubbable(inner: NodeViewConstructor): NodeViewConstructor {
+  return (node, view, getPos, decorations, innerDecorations) => (
+    new SpecialisedStubbableView(node, view, getPos, inner, decorations, innerDecorations)
+  );
+}
+
+/**
+ * Merge default stubbable views with specialised constructors.
+ *
+ * Types in `SPECIALISED_STUBBABLE_TYPES` are wrapped so stubbing can stand in
+ * for them; other specialised views (images, HTML, inline math) pass through
+ * unchanged and stay always-real.
+ */
+export function mergeStubAwareNodeViews(
+  specialised: Record<string, NodeViewConstructor>,
+): Record<string, NodeViewConstructor> {
+  const views: Record<string, NodeViewConstructor> = {
+    ...stubbableNodeViews(),
+    ...specialised,
+  };
+  for (const type of SPECIALISED_STUBBABLE_TYPES) {
+    const ctor = specialised[type];
+    if (ctor) views[type] = wrapSpecialisedStubbable(ctor);
+  }
+  return views;
+}
+
+class SpecialisedStubbableView implements NodeView {
+  dom!: HTMLElement;
+  contentDOM!: HTMLElement | null;
+  private node: ProseNode;
+  private readonly view: EditorView;
+  private readonly getPos: () => number | undefined;
+  private readonly createInner: NodeViewConstructor;
+  private readonly decorations: readonly Decoration[];
+  private readonly innerDecorations: DecorationSource;
+  private inner: NodeView | null = null;
+  private stubbed: boolean;
+
+  constructor(
+    node: ProseNode,
+    view: EditorView,
+    getPos: () => number | undefined,
+    createInner: NodeViewConstructor,
+    decorations: readonly Decoration[],
+    innerDecorations: DecorationSource,
+  ) {
+    this.node = node;
+    this.view = view;
+    this.getPos = getPos;
+    this.createInner = createInner;
+    this.decorations = decorations;
+    this.innerDecorations = innerDecorations;
+    const stub = viewportStubKey.getState(view.state);
+    this.stubbed = this.computeStubbed(stub);
+    if (this.stubbed) this.mountStub(stub);
+    else this.mountInner();
+  }
+
+  private computeStubbed(stub: ViewportStubState | undefined): boolean {
+    if (!stub?.enabled) return false;
+    if (!SPECIALISED_STUBBABLE.has(this.node.type.name)) return false;
+    const pos = this.getPos();
+    if (pos == null) return false;
+    const index = topLevelIndexAt(this.view.state.doc, pos);
+    if (index == null) return false;
+    return isIndexStubbed(stub, index, this.node.type.name);
+  }
+
+  private heightPx(stub: ViewportStubState | undefined): number {
+    const pos = this.getPos();
+    const em = hostEmPx(this.view);
+    if (pos == null || !stub) return estimateBlockHeight(this.node, em);
+    const index = topLevelIndexAt(this.view.state.doc, pos);
+    if (index == null) return estimateBlockHeight(this.node, em);
+    const cached = stub.heights[index];
+    return cached > 0 ? cached : estimateBlockHeight(this.node, em);
+  }
+
+  private mountStub(stub: ViewportStubState | undefined): void {
+    this.inner = null;
+    this.dom = document.createElement('div');
+    this.dom.className = STUB_CLASS;
+    this.dom.dataset.stubType = this.node.type.name;
+    this.dom.style.height = `${this.heightPx(stub)}px`;
+    this.contentDOM = null;
+  }
+
+  private mountInner(): void {
+    const created = this.createInner(
+      this.node,
+      this.view,
+      this.getPos,
+      this.decorations,
+      this.innerDecorations,
+    );
+    this.inner = created;
+    this.dom = created.dom as HTMLElement;
+    this.contentDOM = (created.contentDOM as HTMLElement | null | undefined) ?? null;
+  }
+
+  update(
+    node: ProseNode,
+    decorations: readonly Decoration[],
+    innerDecorations: DecorationSource,
+  ): boolean {
+    if (node.type.name !== this.node.type.name) return false;
+    const stub = viewportStubKey.getState(this.view.state);
+    const wantStub = this.computeStubbed(stub);
+    // Stubbed ↔ real transitions remount so the specialised view (or stub)
+    // is constructed fresh with the correct contentDOM.
+    if (wantStub !== this.stubbed) return false;
+    if (this.stubbed) {
+      this.node = node;
+      this.dom.style.height = `${this.heightPx(stub)}px`;
+      return true;
+    }
+    this.node = node;
+    if (this.inner?.update) return this.inner.update(node, decorations, innerDecorations);
+    return true;
+  }
+
+  ignoreMutation(mutation: ViewMutationRecord): boolean {
+    if (this.stubbed) return true;
+    return this.inner?.ignoreMutation?.(mutation) ?? false;
+  }
+
+  stopEvent(event: Event): boolean {
+    if (this.stubbed) return false;
+    return this.inner?.stopEvent?.(event) ?? false;
+  }
+
+  selectNode(): void {
+    this.inner?.selectNode?.();
+  }
+
+  deselectNode(): void {
+    this.inner?.deselectNode?.();
+  }
+
+  setSelection(anchor: number, head: number, root: Document | ShadowRoot): void {
+    this.inner?.setSelection?.(anchor, head, root);
+  }
+
+  destroy(): void {
+    this.inner?.destroy?.();
+    this.inner = null;
+  }
 }
 
 export function viewportStubPlugin(): Plugin<ViewportStubState> {
