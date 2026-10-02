@@ -15,7 +15,9 @@
  * Product default is `@roobli/md`: block-mode saves (identity, single-block,
  * multi-block insert/delete) route byte assembly through `@roobli/md`
  * `serializeDocument`, then a host reparse proof refuses boundary damage
- * (unterminated fences swallowing neighbours). Set
+ * (unterminated fences swallowing neighbours). Identity and single-block edits
+ * with preserved blank-line gaps short-circuit before that assembly: the host
+ * returns `originalBytes` or splices one block into the accepted text. Set
  * `NOTO_MARKDOWN_ENGINE=micromark` for the legacy path. Source mode stays on
  * the Noto serializer.
  */
@@ -264,6 +266,208 @@ function byteIdentityResult(document: NotoDocument): NotoSerializeSuccess {
   }, () => identityPreservedRanges(document));
 }
 
+/**
+ * Index of the sole dirty unit in a same-length, same-order edit, or null.
+ *
+ * Companion to `isByteIdentitySave`: one block changed, every other unit still
+ * a pristine origin at its own ordinal, and the envelope does not convert line
+ * endings or the final newline. That shape is the common "typed one paragraph
+ * then saved" path; today it still walks the engine across every block to
+ * rebuild eight megabytes it already holds.
+ */
+function singleBlockEditIndex(
+  document: NotoDocument,
+  units: readonly NotoUnit[],
+  target: NotoTargetEnvelope,
+): number | null {
+  const lineEnding = target.lineEnding === 'mixed'
+    ? document.envelope.lineEnding
+    : target.lineEnding;
+  if (lineEnding !== document.envelope.lineEnding) return null;
+  if (target.hasFinalNewline !== document.envelope.hasFinalNewline) return null;
+  if (units.length !== document.blocks.length) return null;
+
+  let dirty = -1;
+  for (let index = 0; index < units.length; index += 1) {
+    const unit = units[index]!;
+    const block = document.blocks[index];
+    if (!unit.origin || unit.origin.ordinal !== index || block === undefined) return null;
+    if (isPristine(unit, block)) continue;
+    if (dirty >= 0) return null;
+    dirty = index;
+  }
+  if (dirty < 0) return null;
+
+  // A single-newline gap is only reused when both neighbours are pristine
+  // (`gapBetween`). With one side dirty the serializer rewrites it to a blank
+  // line, which a pure in-block splice would miss. Refuse unless every gap
+  // touching the dirty unit already has a blank line.
+  if (dirty > 0) {
+    const gap = document.gaps[dirty - 1];
+    if (gap === undefined || gap.beforeOrdinal !== dirty - 1) return null;
+    if (!toLf(gap.text).includes('\n\n')) return null;
+  }
+  if (dirty < document.blocks.length - 1) {
+    const gap = document.gaps[dirty];
+    if (gap === undefined || gap.beforeOrdinal !== dirty) return null;
+    if (!toLf(gap.text).includes('\n\n')) return null;
+  }
+  return dirty;
+}
+
+/**
+ * Assemble a one-block edit by splicing the new body into the accepted text.
+ *
+ * Offsets of every untouched block shift by the length delta; gaps, leading
+ * and trailing stay byte-identical. The same windowed reparse proof the full
+ * assembly path uses still runs around the dirty unit.
+ */
+function serializeSingleBlockEdit(
+  document: NotoDocument,
+  units: readonly NotoUnit[],
+  target: NotoTargetEnvelope,
+  dirtyIndex: number,
+): NotoSerializeResult {
+  const block = document.blocks[dirtyIndex]!;
+  const markdown = unitMarkdown(units[dirtyIndex]!, document);
+  if (markdown === null) {
+    return fail(document, 'MULTI_BLOCK_UNIT',
+      'An unchanged unit must reference a block of the open document.');
+  }
+  const single = parseSingleBlock(markdown);
+  if (single === null) {
+    return fail(document, 'MULTI_BLOCK_UNIT',
+      'Each editing unit must be exactly one markdown block.');
+  }
+
+  const lineEnding = target.lineEnding === 'mixed'
+    ? document.envelope.lineEnding
+    : target.lineEnding;
+  const body = fromLf(markdown, lineEnding);
+  const outputText = document.text.slice(0, block.start) + body + document.text.slice(block.end);
+  const outputBytes = encodeOutput(outputText, document.envelope.bom);
+  const delta = body.length - (block.end - block.start);
+
+  const unitStart: number[] = [];
+  const unitEnd: number[] = [];
+  for (let index = 0; index < units.length; index += 1) {
+    const current = document.blocks[index]!;
+    if (index < dirtyIndex) {
+      unitStart.push(current.start);
+      unitEnd.push(current.end);
+    } else if (index === dirtyIndex) {
+      unitStart.push(block.start);
+      unitEnd.push(block.start + body.length);
+    } else {
+      unitStart.push(current.start + delta);
+      unitEnd.push(current.end + delta);
+    }
+  }
+
+  const effective = units.map((unit) => unitMarkdown(unit, document));
+  if (effective.some((text) => text === null)) {
+    return fail(document, 'REPARSE_MISMATCH', 'An unchanged unit lost the block it referenced.');
+  }
+
+  const dirty = units.map((_, index) => index === dirtyIndex);
+  for (const window of verificationWindows(dirty)) {
+    const sliceStart = window.from === 0 ? 0 : unitStart[window.from]!;
+    const sliceEnd = window.to === units.length - 1 ? outputText.length : unitEnd[window.to]!;
+    const check = checkWindow(
+      outputText.slice(sliceStart, sliceEnd),
+      window,
+      effective.slice(window.from, window.to + 1) as string[],
+    );
+    if (!check.ok || !check.blocks) {
+      return fail(document, 'REPARSE_MISMATCH',
+        `Block ${(check.failedAt ?? window.from) + 1} would not have survived a reparse unchanged.`);
+    }
+  }
+
+  // Kind for the dirty block comes from the single-block parse above, matching
+  // the `@roobli/md` host path: a window that opens on a thematic break can
+  // mis-read what follows when sliced on its own. Untouched neighbours stay
+  // out of `reparsedBlocks` so `buildNextDocument` keeps their digests.
+  const reparsedBlocks = new Map<number, ReparsedBlock>([[dirtyIndex, {
+    kind: single.kind,
+    semanticKey: single.semanticKey,
+    markdown,
+  }]]);
+
+  const outputSha256 = sha256(outputBytes);
+  const nextDocument = buildNextDocument({
+    previous: document,
+    outputText,
+    outputBytes,
+    bom: document.envelope.bom,
+    lineEnding,
+    units,
+    effective: effective as string[],
+    unitStart,
+    unitEnd,
+    gaps: document.gaps.map((gap) => gap.text),
+    leading: document.leading,
+    trailing: document.trailing,
+    reparsedBlocks,
+    outputSha256,
+  });
+
+  return withLazyPreserved({
+    status: 'serialized',
+    version: NOTO_MARKDOWN_VERSION,
+    outputBytes,
+    outputSha256,
+    document: nextDocument,
+  }, () => {
+    const preserved: NotoPreservedRange[] = [];
+    if (document.envelope.bom === 'utf8') {
+      preserved.push({ role: 'bom', start: 0, end: 3, sha256: sha256(UTF8_BOM) });
+    }
+    if (document.leading.length > 0) {
+      preserved.push({
+        role: 'leading',
+        start: 0,
+        end: document.leading.length,
+        sha256: sha256(document.leading),
+      });
+    }
+    for (let index = 0; index < document.blocks.length; index += 1) {
+      if (index > 0) {
+        const gap = document.gaps[index - 1];
+        if (gap !== undefined && gap.beforeOrdinal === index - 1) {
+          const previous = document.blocks[index - 1]!;
+          const current = document.blocks[index]!;
+          preserved.push({
+            role: 'gap',
+            start: previous.end,
+            end: current.start,
+            sha256: sha256(gap.text),
+          });
+        }
+      }
+      if (index === dirtyIndex) continue;
+      const kept = document.blocks[index]!;
+      preserved.push({
+        role: 'block',
+        start: kept.start,
+        end: kept.end,
+        sha256: kept.sha256,
+      });
+    }
+    if (document.trailing.length > 0 && document.blocks.length > 0) {
+      const last = document.blocks[document.blocks.length - 1]!;
+      preserved.push({
+        role: 'trailing',
+        start: last.end,
+        end: document.text.length,
+        sha256: sha256(document.trailing),
+      });
+    }
+    return preserved;
+  });
+}
+
+
 function serializeBlocks(
   document: NotoDocument,
   units: readonly NotoUnit[],
@@ -272,6 +476,8 @@ function serializeBlocks(
   const originFailure = validateOrigins(document, units);
   if (originFailure) return originFailure;
   if (isByteIdentitySave(document, units, target)) return byteIdentityResult(document);
+  const singleEdit = singleBlockEditIndex(document, units, target);
+  if (singleEdit !== null) return serializeSingleBlockEdit(document, units, target, singleEdit);
 
   const { bom } = document.envelope;
   /*
@@ -727,6 +933,8 @@ function serializeBlocksViaRoobli(
   const originFailure = validateOrigins(document, units);
   if (originFailure) return originFailure;
   if (isByteIdentitySave(document, units, target)) return byteIdentityResult(document);
+  const singleEdit = singleBlockEditIndex(document, units, target);
+  if (singleEdit !== null) return serializeSingleBlockEdit(document, units, target, singleEdit);
 
   const engineResult = serializeViaRoobli(toEngineDocument(document), {
     units: toSerializeUnits(units),

@@ -1,4 +1,5 @@
 import { it } from 'vitest';
+import { createHash } from 'node:crypto';
 import { readFile, writeFile, mkdir } from 'node:fs/promises';
 import path from 'node:path';
 import { EditorState, TextSelection } from 'prosemirror-state';
@@ -9,12 +10,17 @@ import { toLf } from '../../src/shared/markdown/v3/line-endings';
 import { serializeDocument } from '../../src/shared/markdown/v3/serialize';
 import { captureTransaction, type PristineBlock } from '../../src/renderer/editor/noto/capture';
 import { createOriginPlugin, getBlockOrigins } from '../../src/renderer/editor/noto/origin-plugin';
+import { useSha256 } from '../../src/shared/sha256';
+import { compactTransaction } from '../../src/shared/markdown/v3/revision-patch';
+
+// Match desktop main so serialize timings reflect the native hash path.
+useSha256((value) => createHash('sha256').update(value).digest('hex'));
 
 /**
- * Splits the save path into the three remaining proportional candidates from
- * docs/performance/measurements.md: the renderer capture walk, the structured
- * clone of one unit per block across the process boundary, and building the
- * output string in serializeDocument.
+ * Splits the save path into the remaining proportional candidates from
+ * docs/performance/measurements.md: the renderer capture walk, structured
+ * clone of the expanded units vs the compact wire form (`compactTransaction`),
+ * and serializeDocument (identity and one-block edit).
  *
  * Skipped by default. Run with:
  *
@@ -89,8 +95,13 @@ it.skipIf(!enabled)('profiles the phases of saving a document', { timeout: 600_0
     const cloneMs = timeMs(() => {
       structuredClone(transaction);
     });
-    lines.push(`  structuredClone(units)      ${cloneMs.toFixed(0).padStart(6)} ms`);
-    lines.push(`    units=${transaction.units.length.toLocaleString()}  markdown≠null=${transaction.units.filter((u) => u.markdown !== null).length}`);
+    const compact = compactTransaction(transaction, wire);
+    const compactCloneMs = timeMs(() => {
+      structuredClone(compact);
+    });
+    lines.push(`  structuredClone(full units) ${cloneMs.toFixed(0).padStart(6)} ms`);
+    lines.push(`  structuredClone(compact)    ${compactCloneMs.toFixed(0).padStart(6)} ms`);
+    lines.push(`    units=${transaction.units.length.toLocaleString()}  compactEntries=${compact.mode === 'blocks' ? compact.units.length : '?'}  markdown≠null=${transaction.units.filter((u) => u.markdown !== null).length}`);
 
     // Unchanged identity save: every unit pristine. This is the autosave /
     // undo-back-to-clean path that still rebuilds the whole output string today.
