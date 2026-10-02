@@ -61,11 +61,11 @@ now landed as a measured vertical slice rather than more CSS.
 `viewport-stub.ts` replaces far-off top level blocks with height placeholders
 once a document has at least 3,000 top level blocks (between the medium and
 large corpus sizes). Near-viewport blocks (two screens of buffer) and the
-selection neighbourhood stay real ProseMirror content. Only default-rendered
-types are stubbed in this slice — paragraphs, headings, lists, rules,
-blockquotes, frontmatter, source blocks, footnote and link definitions.
-Fences, tables, math and HTML blocks keep their existing node views and remain
-fully real.
+selection neighbourhood stay real ProseMirror content. The first stubbing slice covered default-rendered types —
+paragraphs, headings, lists, rules, blockquotes, frontmatter, source blocks,
+footnote and link definitions. Fences, tables and display math stayed
+always-real until the specialised wrap cut below; HTML and image blocks are
+still always-real.
 
 The feature is default-on for those large documents and off below the
 threshold, so ordinary notes are unchanged. Host dataset attributes
@@ -207,4 +207,41 @@ mounted. Quick-open wiki-follow e2e flake left alone.
 Remount spikes alone (0.75× steps that change `data-stub-real`) dropped from
 ~75–79ms to ~14–16ms; remaining median is idle-frame variance and occasional
 non-remount layout cost, still above one frame.
+
+
+### Specialised fence/table/math stubbing, 2026-10-01
+
+Always-real fences, tables and display math dominated open on the corpus once
+paragraphs were stubbed: **1,647** specialised top-level blocks on `large`,
+**6,596** on `huge` (549×3 and 2,199×3). They kept their specialised NodeViews
+because `NotoEditor.nodeViews` spread specialised constructors *after*
+`stubbableNodeViews`, so stub membership never reached them.
+
+This cut wraps those three constructors through `wrapSpecialisedStubbable`:
+
+1. Off-viewport → height stub (`div.noto-block-stub`, `data-stub-type`).
+2. Entering the real window → `update` returns false → ProseMirror remounts the
+   real Fence/Table/Math view with a fresh contentDOM.
+3. Leaving the real window → remounts the stub the same way.
+4. Selection neighbourhood still forces specialised blocks under the caret real,
+   so editing/selection/focus do not land on a stub.
+
+HTML and image node views stay always-real (rarer on the corpus; wider remount
+surface). Medium notes (`childCount < 3000`) are unchanged.
+
+#### Microbench (Linux agent, happy-dom EditorView open)
+
+`PROFILE_SPECIALISED_STUB=1 pnpm vitest run tests/unit/open-view-specialised-profile.test.ts`
+writes `out/bench/open-view-specialised.txt`. Same machine, legacy merge
+(specialised always-real) vs wrapped stubbing — view construction only, not the
+macOS packaged open baseline:
+
+| corpus | legacy specialised-always-real | wrapped specialised-stubbing | ratio |
+| --- | --- | --- | --- |
+| large (10,982 blocks) | 1,899 ms | 782 ms | 2.43× |
+| huge (43,970 blocks) | 10,017 ms | 4,715 ms | 2.12× |
+
+Unit remount / edit coverage: `tests/unit/viewport-stub-specialised.test.ts`
+(happy-dom). Packaged macOS re-measure remains useful; do not invent
+Apple-silicon numbers from this table.
 

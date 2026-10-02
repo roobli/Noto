@@ -63,7 +63,7 @@ import { EDITOR_COMMANDS, insertTable, notoKeymap } from './keymap';
 import { sortTasks, toggleTaskStatus, type TaskStampOptions } from './todo-manager';
 import { activeNodePlugin } from './active-node-plugin';
 import { viewportLayoutPlugin } from './viewport-layout';
-import { stubbableNodeViews, stubbingEnabled, viewportStubPlugin } from './viewport-stub';
+import { mergeStubAwareNodeViews, stubbingEnabled, viewportStubPlugin } from './viewport-stub';
 import { taskClickPlugin } from './task-click';
 import { indexBlockPlugin } from './index-block';
 import { imageFromTransfer } from './image-drop';
@@ -295,14 +295,13 @@ export class NotoEditor implements NotoEditorPort {
       ...htmlNodeViews(this.imageViews, () => this.imageContext),
       ...tableNodeViews(),
     };
-    // Only mount stubbable node views on documents that will actually stub.
-    // Medium notes stay on ProseMirror's default path so this layer cannot
-    // regress the size class that already sits inside a frame.
+    // Only mount stub-aware node views on documents that will actually stub.
+    // Medium notes stay on ProseMirror's default / specialised path so this
+    // layer cannot regress the size class that already sits inside a frame.
+    // On large notes, specialised fences/tables/math are wrapped so stubs can
+    // stand in off-viewport and remount when they enter the real window.
     if (!stubbingEnabled(childCount)) return specialised;
-    return {
-      ...stubbableNodeViews(),
-      ...specialised,
-    };
+    return mergeStubAwareNodeViews(specialised);
   }
 
   private plugins(document: NotoDocumentWire): Plugin[] {

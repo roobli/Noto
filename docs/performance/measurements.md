@@ -300,16 +300,29 @@ far-off blocks from the DOM:
   Membership is OR of those two windows — not one contiguous span from caret to
   viewport (that remounted the gap on scroll; see `large-documents.md`).
 - **What is stubbed:** top-level paragraphs, headings, lists, rules,
-  blockquotes, frontmatter, source blocks, footnote and link definitions.
-  Custom node views (fences, tables, math, HTML) are not wrapped in this slice.
-- **How:** stubbable node views mount either a real `toDOM` shell or a
-  `div.noto-block-stub` with an inline height. Leaving / entering the real
-  window remounts the view. Heights start as estimates and are overwritten from
+  blockquotes, frontmatter, source blocks, footnote and link definitions, plus
+  specialised fences (`code_block`), tables and display math (`math_block`)
+  via `wrapSpecialisedStubbable`. HTML and image node views stay always-real.
+- **How:** default stubbable node views mount either a real `toDOM` shell or a
+  `div.noto-block-stub` with an inline height. Specialised types remount between
+  that stub and their Fence/Table/Math NodeView when they enter or leave the
+  real window. Heights start as estimates and are overwritten from
   `offsetHeight` when a block is real.
 - **Observability:** `.noto-editor-host` gets `data-stub-enabled`,
   `data-stub-real` (viewport `from-to`), `data-stub-selection` (selection
   `from-to`) and `data-stub-count` (actually stubbed blocks) while stubbing is
   active.
+
+Linux happy-dom view-open microbench for the specialised wrap (2026-10-01),
+legacy always-real vs wrapped — not the macOS packaged baseline:
+
+| corpus | legacy | wrapped | ratio |
+| ------ | ------ | ------- | ----- |
+| large  | 1,899 ms | 782 ms | 2.43× |
+| huge   | 10,017 ms | 4,715 ms | 2.12× |
+
+See `docs/performance/large-documents.md` (specialised stubbing section) and
+`tests/unit/open-view-specialised-profile.test.ts`.
 
 ### Re-measurement methodology (macOS packaged build)
 

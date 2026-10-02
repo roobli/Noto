@@ -2,9 +2,9 @@
 
 Generated from the installed dependency tree. Do not edit by hand.
 
-- Lockfile SHA-256: `83389565d585dee6607fd329faa944c068e18943a602b8a2cf060768f0d3dc7c`
-- Unique resolved packages: 736
-- Packages with copied license or notice text: 707
+- Lockfile SHA-256: `fa82d3bf331c854b9ac73fafc11c6b3025aa59e24a3e456cb215e4d14096f253`
+- Unique resolved packages: 740
+- Packages with copied license or notice text: 711
 - Packages without a root license or notice file: 29
 
 | Package | Declared license | License files | Repository |
@@ -132,6 +132,7 @@ Generated from the installed dependency tree. Do not edit by hand.
 | `@types/mdast@4.0.4` | MIT | LICENSE | https://github.com/DefinitelyTyped/DefinitelyTyped.git |
 | `@types/ms@2.1.0` | MIT | LICENSE | https://github.com/DefinitelyTyped/DefinitelyTyped.git |
 | `@types/mute-stream@0.0.4` | MIT | LICENSE | https://github.com/DefinitelyTyped/DefinitelyTyped.git |
+| `@types/node@20.19.43` | MIT | LICENSE | https://github.com/DefinitelyTyped/DefinitelyTyped.git |
 | `@types/node@22.20.1` | MIT | LICENSE | https://github.com/DefinitelyTyped/DefinitelyTyped.git |
 | `@types/node@24.13.3` | MIT | LICENSE | https://github.com/DefinitelyTyped/DefinitelyTyped.git |
 | `@types/prismjs@1.26.6` | MIT | LICENSE | https://github.com/DefinitelyTyped/DefinitelyTyped.git |
@@ -141,6 +142,7 @@ Generated from the installed dependency tree. Do not edit by hand.
 | `@types/semver@7.7.1` | MIT | LICENSE | https://github.com/DefinitelyTyped/DefinitelyTyped.git |
 | `@types/trusted-types@2.0.7` | MIT | LICENSE | https://github.com/DefinitelyTyped/DefinitelyTyped.git |
 | `@types/unist@3.0.3` | MIT | LICENSE | https://github.com/DefinitelyTyped/DefinitelyTyped.git |
+| `@types/whatwg-mimetype@3.0.2` | MIT | LICENSE | https://github.com/DefinitelyTyped/DefinitelyTyped.git |
 | `@types/wrap-ansi@3.0.0` | MIT | LICENSE | https://www.github.com/DefinitelyTyped/DefinitelyTyped.git |
 | `@types/yauzl@2.10.3` | MIT | LICENSE | https://github.com/DefinitelyTyped/DefinitelyTyped.git |
 | `@typescript/typescript-linux-x64@7.0.2` | Apache-2.0 | LICENSE, NOTICE.txt | https://github.com/microsoft/TypeScript.git |
@@ -376,6 +378,7 @@ Generated from the installed dependency tree. Do not edit by hand.
 | `got@11.8.6` | MIT | license | sindresorhus/got |
 | `graceful-fs@4.2.11` | ISC | LICENSE | https://github.com/isaacs/node-graceful-fs |
 | `hachure-fill@0.5.2` | MIT | LICENSE | git+https://github.com/pshihn/hachure-fill.git |
+| `happy-dom@20.0.0` | MIT | LICENSE | https://github.com/capricorn86/happy-dom |
 | `has-flag@4.0.0` | MIT | license | sindresorhus/has-flag |
 | `has-property-descriptors@1.0.2` | MIT | LICENSE | git+https://github.com/inspect-js/has-property-descriptors.git |
 | `hasown@2.0.4` | MIT | LICENSE | git+https://github.com/inspect-js/hasOwn.git |
@@ -725,6 +728,7 @@ Generated from the installed dependency tree. Do not edit by hand.
 | `webidl-conversions@3.0.1` | BSD-2-Clause | LICENSE.md | jsdom/webidl-conversions |
 | `webpack-sources@3.5.1` | MIT | LICENSE | git+https://github.com/webpack/webpack-sources.git |
 | `webpack@5.110.0` | MIT | LICENSE | https://github.com/webpack/webpack.git |
+| `whatwg-mimetype@3.0.0` | MIT | LICENSE.txt | jsdom/whatwg-mimetype |
 | `whatwg-url@5.0.0` | MIT | LICENSE.txt | jsdom/whatwg-url |
 | `which@1.3.1` | ISC | LICENSE | git://github.com/isaacs/node-which.git |
 | `which@2.0.2` | ISC | LICENSE | git://github.com/isaacs/node-which.git |
@@ -4779,6 +4783,34 @@ SOFTWARE.
     SOFTWARE
 ```
 
+### @types/node@20.19.43
+
+#### LICENSE
+
+```text
+    MIT License
+
+    Copyright (c) Microsoft Corporation.
+
+    Permission is hereby granted, free of charge, to any person obtaining a copy
+    of this software and associated documentation files (the "Software"), to deal
+    in the Software without restriction, including without limitation the rights
+    to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
+    copies of the Software, and to permit persons to whom the Software is
+    furnished to do so, subject to the following conditions:
+
+    The above copyright notice and this permission notice shall be included in all
+    copies or substantial portions of the Software.
+
+    THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
+    IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
+    FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
+    AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
+    LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
+    OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
+    SOFTWARE
+```
+
 ### @types/node@22.20.1
 
 #### LICENSE
@@ -5004,6 +5036,34 @@ SOFTWARE.
 ```
 
 ### @types/unist@3.0.3
+
+#### LICENSE
+
+```text
+    MIT License
+
+    Copyright (c) Microsoft Corporation.
+
+    Permission is hereby granted, free of charge, to any person obtaining a copy
+    of this software and associated documentation files (the "Software"), to deal
+    in the Software without restriction, including without limitation the rights
+    to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
+    copies of the Software, and to permit persons to whom the Software is
+    furnished to do so, subject to the following conditions:
+
+    The above copyright notice and this permission notice shall be included in all
+    copies or substantial portions of the Software.
+
+    THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
+    IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
+    FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
+    AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
+    LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
+    OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
+    SOFTWARE
+```
+
+### @types/whatwg-mimetype@3.0.2
 
 #### LICENSE
 
@@ -13107,6 +13167,34 @@ IN CONNECTION WITH THE USE OR PERFORMANCE OF THIS SOFTWARE.
 MIT License
 
 Copyright (c) 2023 Preet Shihn
+
+Permission is hereby granted, free of charge, to any person obtaining a copy
+of this software and associated documentation files (the "Software"), to deal
+in the Software without restriction, including without limitation the rights
+to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
+copies of the Software, and to permit persons to whom the Software is
+furnished to do so, subject to the following conditions:
+
+The above copyright notice and this permission notice shall be included in all
+copies or substantial portions of the Software.
+
+THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
+IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
+FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
+AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
+LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
+OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
+SOFTWARE.
+```
+
+### happy-dom@20.0.0
+
+#### LICENSE
+
+```text
+MIT License
+
+Copyright (c) 2019 David Ortner (capricorn86)
 
 Permission is hereby granted, free of charge, to any person obtaining a copy
 of this software and associated documentation files (the "Software"), to deal
@@ -29215,6 +29303,20 @@ IN NO EVENT SHALL THE AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY
 CLAIM, DAMAGES OR OTHER LIABILITY, WHETHER IN AN ACTION OF CONTRACT,
 TORT OR OTHERWISE, ARISING FROM, OUT OF OR IN CONNECTION WITH THE
 SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
+```
+
+### whatwg-mimetype@3.0.0
+
+#### LICENSE.txt
+
+```text
+Copyright © Domenic Denicola <d@domenic.me>
+
+Permission is hereby granted, free of charge, to any person obtaining a copy of this software and associated documentation files (the "Software"), to deal in the Software without restriction, including without limitation the rights to use, copy, modify, merge, publish, distribute, sublicense, and/or sell copies of the Software, and to permit persons to whom the Software is furnished to do so, subject to the following conditions:
+
+The above copyright notice and this permission notice shall be included in all copies or substantial portions of the Software.
+
+THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY, FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM, OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
 ```
 
 ### whatwg-url@5.0.0

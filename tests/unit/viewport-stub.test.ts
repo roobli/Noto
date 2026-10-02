@@ -4,6 +4,8 @@ import { splitBlocks } from '../../src/shared/markdown/v3/blocks';
 import { docFromSpans } from '../../src/shared/markdown/v3/pm/from-mdast';
 import {
   STUB_MIN_TOP_LEVEL_BLOCKS,
+  SPECIALISED_STUBBABLE_TYPES,
+  STUBBABLE_TYPES,
   blockWindowForY,
   countRealIndices,
   cumulativeHeights,
@@ -14,6 +16,7 @@ import {
   isIndexReal,
   isIndexStubbed,
   isTopLevelPos,
+  mergeStubAwareNodeViews,
   selectionRealRange,
   stubbingEnabled,
   topLevelIndexAt,
@@ -22,6 +25,7 @@ import {
   viewportNeedsRemount,
   viewportStubKey,
   viewportStubPlugin,
+  wrapSpecialisedStubbable,
 } from '../../src/renderer/editor/noto/viewport-stub';
 
 function docFor(markdown: string) {
@@ -82,7 +86,10 @@ describe('selection neighbourhood stays real', () => {
     if (stub.selection.from > 0) {
       expect(isIndexStubbed(stub, stub.selection.from - 1, 'paragraph')).toBe(true);
     }
+    // Selection neighbourhood stays real for specialised types too.
     expect(isIndexStubbed(stub, stub.selection.from, 'code_block')).toBe(false);
+    expect(isIndexStubbed(stub, stub.selection.from, 'table')).toBe(false);
+    expect(isIndexStubbed(stub, stub.selection.from, 'math_block')).toBe(false);
   });
 });
 
@@ -243,5 +250,61 @@ describe('slideViewportWindow remount batch', () => {
   it('takes the ideal window on a disjoint jump', () => {
     expect(slideViewportWindow({ from: 10, to: 40 }, { from: 400, to: 460 }, 1000))
       .toEqual({ from: 400, to: 460 });
+  });
+});
+
+
+describe('specialised types participate in stubbing', () => {
+  it('lists fences, tables and display math among stubbable types', () => {
+    expect(STUBBABLE_TYPES).toEqual(expect.arrayContaining([...SPECIALISED_STUBBABLE_TYPES]));
+    expect(SPECIALISED_STUBBABLE_TYPES).toEqual(['code_block', 'table', 'math_block']);
+  });
+
+  it('stubs specialised types outside the real windows', () => {
+    let state = stateFor(manyParagraphs(STUB_MIN_TOP_LEVEL_BLOCKS + 100), 0);
+    state = withViewport(state, { from: 800, to: 860 });
+    const stub = viewportStubKey.getState(state)!;
+    const gap = Math.floor((stub.selection.to + stub.viewport.from) / 2);
+    expect(isIndexStubbed(stub, gap, 'code_block')).toBe(true);
+    expect(isIndexStubbed(stub, gap, 'table')).toBe(true);
+    expect(isIndexStubbed(stub, gap, 'math_block')).toBe(true);
+    // HTML / images stay always-real in this cut.
+    expect(isIndexStubbed(stub, gap, 'html_block')).toBe(false);
+    expect(isIndexStubbed(stub, gap, 'image')).toBe(false);
+  });
+
+  it('keeps specialised types real inside either window', () => {
+    let state = stateFor(manyParagraphs(STUB_MIN_TOP_LEVEL_BLOCKS + 100), 0);
+    state = withViewport(state, { from: 800, to: 860 });
+    const stub = viewportStubKey.getState(state)!;
+    expect(isIndexStubbed(stub, stub.viewport.from, 'code_block')).toBe(false);
+    expect(isIndexStubbed(stub, stub.selection.from, 'table')).toBe(false);
+  });
+});
+
+describe('mergeStubAwareNodeViews', () => {
+  it('wraps specialised constructors and leaves others alone', () => {
+    const calls: string[] = [];
+    const fake = (label: string) => () => {
+      calls.push(label);
+      return { dom: {} as HTMLElement };
+    };
+    const specialised = {
+      code_block: fake('code') as never,
+      table: fake('table') as never,
+      math_block: fake('math') as never,
+      math_inline: fake('inline') as never,
+      html_block: fake('html') as never,
+    };
+    const merged = mergeStubAwareNodeViews(specialised);
+    expect(merged.code_block).not.toBe(specialised.code_block);
+    expect(merged.table).not.toBe(specialised.table);
+    expect(merged.math_block).not.toBe(specialised.math_block);
+    expect(merged.math_inline).toBe(specialised.math_inline);
+    expect(merged.html_block).toBe(specialised.html_block);
+    expect(typeof wrapSpecialisedStubbable).toBe('function');
+    // Default stubbables are present.
+    expect(merged.paragraph).toBeTypeOf('function');
+    expect(merged.heading).toBeTypeOf('function');
   });
 });
