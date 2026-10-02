@@ -10,6 +10,14 @@ How releases are made, and what each channel receives, is in
 ## [Unreleased]
 
 ### Changed
+- **Faster band-enter remount (ignore mutations + index ViewDesc).** Surgical
+  stub↔real no longer disconnects/re-observes the MutationObserver on the
+  mount (O(children) on huge) — remount mutations are discarded instead — and
+  looks up each top-level ViewDesc by child index rather than `nodeDOM`/
+  `descAt` (O(index) per block). Linux happy-dom residual, same machine
+  before/after (median of 3, post-#307 baseline): remount mid huge
+  **85 → 28 ms**, large **23 → 15 ms**; slide +1 huge **41 → 1.1 ms**, large
+  **9 → 0.6 ms**.
 - **Faster specialised fence remount (lazy tools + deferred datalist).** Fence
   language/copy chrome mounts on first hover or focus-in, matching the CSS that
   already hides tools until then; the shared language datalist binds only when
