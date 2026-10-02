@@ -11,9 +11,11 @@
  * of code re-highlights that block alone.
  *
  * When the stubbing scroller is active, token decorations are kept only for
- * fences inside the selection and viewport neighbourhoods. Far-off fences stay
- * mounted (they are not stubbable) but do not keep thousands of mapped spans on
- * the caret's critical path.
+ * fences inside the selection and viewport neighbourhoods. Far-off fences are
+ * stubbed (or collapsed into range spacers) and must not keep mapped spans on
+ * the caret's critical path. Caret moves that do not change those windows are
+ * a no-op; document edits with stable windows map incrementally like the
+ * non-stub path.
  */
 
 import Prism from 'prismjs';
@@ -253,15 +255,20 @@ function buildDecorations(doc: ProseNode): DecorationSet {
 /**
  * Token decorations only for fences that are currently real.
  *
- * Off-screen fences stay in the DOM (they are not stubbable), but keeping
- * every Prism span mapped on each keystroke dominates the caret-in-viewport
- * frame. When stubbing is on, only the selection and viewport neighbourhoods
- * need tokens — the same windows paint deferral already treats as live.
+ * When stubbing is on, only the selection and viewport neighbourhoods need
+ * tokens — the same windows paint deferral already treats as live. Far-off
+ * fences are stubbed or collapsed into range spacers.
  */
 function decorationsForStubWindows(doc: ProseNode, stub: ViewportStubState): Decoration[] {
   const decorations: Decoration[] = [];
+  // Walk only through the end of the later real window — off-window fences are
+  // not decorated, so a mid-document caret must not scan every trailing block.
+  const last = Math.min(
+    doc.childCount - 1,
+    Math.max(stub.viewport.to, stub.selection.to),
+  );
   let position = 0;
-  for (let index = 0; index < doc.childCount; index += 1) {
+  for (let index = 0; index <= last; index += 1) {
     const child = doc.child(index);
     const end = position + child.nodeSize;
     if (child.type.name === 'code_block' && isIndexReal(stub, index)) {
@@ -337,21 +344,30 @@ export function syntaxHighlightPlugin(): Plugin<DecorationSet> {
        * holds thousands of blocks.
        *
        * On stubbed documents the set is only the fences inside the real
-       * windows, so a keystroke maps dozens of token spans rather than tens
-       * of thousands on far-off always-real fences.
+       * windows. Caret moves that leave those windows alone reuse the set;
+       * edits with stable windows map incrementally; membership changes
+       * rebuild.
        */
       apply: (transaction, previous, oldState, newState) => {
         const stub = viewportStubKey.getState(newState);
         if (stub?.enabled) {
-          if (
-            !transaction.docChanged
-            && !transaction.selectionSet
-            && !stubWindowsChanged(
-              viewportStubKey.getState(oldState),
-              stub,
-            )
-          ) {
-            return previous;
+          const windowsChanged = stubWindowsChanged(
+            viewportStubKey.getState(oldState),
+            stub,
+          );
+          // Selection alone does not change which fences are real — that is
+          // `stub.selection`, updated by the stub plugin ahead of this one.
+          // Rebuilding on every caret move re-created the token set (~20 ms on
+          // huge) even when membership was unchanged.
+          if (!transaction.docChanged && !windowsChanged) return previous;
+          if (!windowsChanged) {
+            const range = changedRange(transaction, newState.doc);
+            if (!range) return previous.map(transaction.mapping, newState.doc);
+            const moved = previous.map(transaction.mapping, newState.doc);
+            const stale = moved.find(range.from, range.to);
+            return moved
+              .remove(stale)
+              .add(newState.doc, decorationsIn(newState.doc, range.from, range.to));
           }
           return decorationsForState(newState);
         }

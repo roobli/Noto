@@ -1022,3 +1022,11 @@ enrich tick shipped (product `@roobli/md` path). Plain paragraph IR→PM trims t
 trailing-spaces/simple-quote/simple-flat-list/simple-gfm-table edges plus
 hard-breaks (incl. in quotes / lists / footnotes), images, empty/meta fences,
 escapes, table-align, ordered-start, inline HTML, simple-inline-links, simple-reference-links, and simple-wiki-links.
+
+## Keystroke plugins after sparse, 2026-10-02
+
+Happy-dom huge (43,970 blocks), mid real band, product plugin set: keystroke
+**43 → ~9 ms**, selection-only **22 → ~2.5 ms**, by skipping highlight rebuilds
+on caret moves that do not change stub windows and by reusing origins on
+interior in-block edits. See `large-documents.md` (keystroke after sparse).
+

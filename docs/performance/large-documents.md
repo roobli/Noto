@@ -509,3 +509,41 @@ Phase 2 (2026-10-02): always-real holes confirmed + decoration pass-through
 (`innerDeco` / top-level widgets / real-band node deco). Packaged height-map
 drift still needs macOS.
 
+### Keystroke after sparse: highlight + origin, 2026-10-02
+
+After spacer phase 1–2, happy-dom open and remount were already near their
+architectural floor (~30–55 ms open, ~19 ms remount mid on huge). The remaining
+typing residual was plugin work on every caret move:
+
+1. **Syntax highlight under stubbing** rebuilt the token `DecorationSet` on
+   every `selectionSet`, even when stub viewport/selection windows were
+   unchanged (~20 ms of the selection-only path on huge). Document edits with
+   stable windows also took the full rebuild instead of the incremental
+   map+patch the non-stub path already used.
+2. **Origin mapping** rebuilt 2×`childCount` top-level range objects and
+   remapped every origin on each interior keystroke (~15 ms on huge), even
+   though in-block typing cannot change top-level identity.
+
+This cut keeps stub membership and origin semantics, and changes two local
+pieces:
+
+1. **Highlight** — selection-only with stable stub windows returns the previous
+   set; doc edits with stable windows map incrementally; window changes still
+   rebuild. Stub-window decoration walks stop at the later real window.
+2. **Origin** — interior top-level edits (every step inside one block, child
+   count unchanged) reuse the previous origins array; merge/split/delete still
+   remap.
+
+Linux agent, happy-dom, huge corpus (43,970 blocks), mid real band, plugins as
+in product (`PROFILE_TYPING_RESIDUAL` probe). Before = main at `eb01dfe`; after
+= this cut. Before was one quiet run; after = median of three:
+
+| suite | keystroke before | after | selection-only before | after |
+| --- | ---: | ---: | ---: | ---: |
+| stub+origin+highlight | 43 ms | **~7 ms** | 21 ms | **~0.6 ms** |
+| all (origin+stub+alert+active+marks+highlight) | 43 ms | **~9 ms** | 22 ms | **~2.5 ms** |
+
+Coverage: `tests/unit/highlight-stub-incremental.test.ts`,
+`tests/unit/origin-interior-fast-path.test.ts`. Packaged macOS re-measure
+remains useful; do not invent Apple-silicon numbers.
+
