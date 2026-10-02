@@ -789,9 +789,10 @@ Insert/delete now sit next to the single-block splice (~46 ms on `huge`).
 Two distant dirty blocks still assemble the span between them (~70 ms on
 `huge`); that shape is uncommon for a keystroke save.
 
-Coverage: `tests/unit/multi-block-serialize-splice.test.ts`. Next elephant on
-open remains spacer/virtualization (~2 s stub DOM on `huge`); design in
-[spacer-virtualization.md](./spacer-virtualization.md) (no runtime change yet).
+Coverage: `tests/unit/multi-block-serialize-splice.test.ts`. Open stub-DOM
+elephant addressed by spacer phase 1 (`sparse-doc-view.ts`): happy-dom view open
+on `huge` ~30–35 ms (was ~4.4 s). See
+[spacer-virtualization.md](./spacer-virtualization.md).
 
 ## Three ways of measuring Typora that did not work
 

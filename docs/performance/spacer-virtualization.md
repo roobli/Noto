@@ -1,6 +1,7 @@
 # Spacer / virtualization (open-path elephant)
 
-Status: **design only** (2026-10-02). No product code in this cut.
+Status: **phase 1 landed** (2026-10-02). Sparse `docView` range spacers ship in
+`sparse-doc-view.ts`; this note stays the architecture reference.
 Remount ladder (#303–#310) and save splices (#311–#313) are done. What remains
 of EditorView open on `huge` is building one stub DOM node and one ViewDesc per
 top-level block (~44k). This note is the architecture for collapsing that to
@@ -168,9 +169,20 @@ Doc edits (`docChanged`):
 
 Design + measured residual. No behaviour change.
 
-### Phase 1 — sparse open (first code PR)
+### Phase 1 — sparse open (landed)
 
-Goal: happy-dom EditorView open on `huge` drops by ≥2× with correctness for:
+Happy-dom EditorView open on this Linux agent (post-phase-1, wrapped specialised
+stubbing, `PROFILE_SPARSE_DOC=1`):
+
+| corpus | blocks | view open (sparse) | DOM children |
+| ------ | -----: | -----------------: | -----------: |
+| large  | 10,982 | ~16–50 ms | ~4 (3 real + 1 spacer at caret start) |
+| huge   | 43,970 | ~30–35 ms | ~4 |
+
+Prior per-block stub floor was ~0.7 s / ~4.4 s — about **20–100×** on open for
+the view-construction piece. Goal (≥2×) cleared.
+
+Correctness locked for:
 
 - open at caret start / mid (selection pad);
 - scroll slide + remount mid;
@@ -225,9 +237,7 @@ across spacers, print/export DOM (export already serializes from the doc).
   without geometry rewrite) will desync caret and scroll. Do not land partial
   wiring on `main`.
 
-## Decision for this cut
+## Decision
 
-No code PR that changes runtime behaviour. The first honest implementation is
-phase 1 above — larger than the remount micro-cuts, and wrong if split into
-"spacers without mapping". Next actionable PR is phase 1 with before/after
-happy-dom open numbers and the invariants above going green.
+Phase 1 is the runtime cut. Phase 2 (always-real holes, packaged height drift)
+stays separate — do not fold it into drive-by remount micro-cuts.
