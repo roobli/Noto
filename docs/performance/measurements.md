@@ -324,6 +324,12 @@ legacy always-real vs wrapped — not the macOS packaged baseline:
 See `docs/performance/large-documents.md` (specialised stubbing section) and
 `tests/unit/open-view-specialised-profile.test.ts`.
 
+Follow-up open-floor cut (2026-10-02): stub `cloneNode` prototype + reuse
+membership-stable `DecorationsSet`. Same-machine happy-dom wrapped open
+before/after that cut: large **631 → 424 ms**, huge **5445 → 3476 ms**. Details
+in `large-documents.md` (stub open floor section);
+`PROFILE_RESIDUAL=1` residual probe available.
+
 ### Re-measurement methodology (macOS packaged build)
 
 `scripts/bench/e2e-executable.mjs` picks darwin-arm64 or linux-x64 under

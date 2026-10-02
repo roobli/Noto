@@ -245,3 +245,36 @@ Unit remount / edit coverage: `tests/unit/viewport-stub-specialised.test.ts`
 (happy-dom). Packaged macOS re-measure remains useful; do not invent
 Apple-silicon numbers from this table.
 
+
+### Stub open floor + decoration reuse, 2026-10-02
+
+After specialised stub membership (#303), happy-dom EditorView open still spent
+most of its time building one placeholder DOM node per top-level block, and
+every transaction rebuilt the real-window `DecorationsSet` via
+`DecorationsSet.create` (O(doc) even when membership was unchanged).
+
+This cut keeps membership rules and specialised remount behaviour, and changes
+two local pieces:
+
+1. **Stub element prototype** — `createStubElement` clones a shared
+   `div.noto-block-stub` instead of `createElement` + className per block;
+   height lookups use the cached estimate without a redundant `getComputedStyle`
+   when the cache already has a value.
+2. **Decoration set reuse** — viewport-stub stores the real-window decorations
+   in plugin state; unchanged membership reuses the same set, doc edits with
+   the same windows `map` it, and only membership changes rebuild.
+
+Linux agent, happy-dom view open (`PROFILE_SPECIALISED_STUB=1`), same machine
+before/after (wrapped specialised stubbing). Medians of three after runs; before
+was one run immediately prior on the same box:
+
+| corpus | before (post-#303) | after | ratio |
+| --- | --- | --- | --- |
+| large (10,982 blocks) | 631 ms | **424 ms** | 1.49× |
+| huge (43,970 blocks) | 5,445 ms | **3,476 ms** | 1.57× |
+
+Remount spikes when the window actually moves are largely unchanged — ProseMirror
+still walks every top-level child on decoration membership changes. Residual
+probe: `PROFILE_RESIDUAL=1 pnpm vitest run tests/unit/open-view-residual-profile.test.ts`.
+Packaged macOS re-measure remains useful; do not invent Apple-silicon numbers.
+
