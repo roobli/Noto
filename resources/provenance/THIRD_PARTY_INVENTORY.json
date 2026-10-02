@@ -1,5 +1,5 @@
 {
-  "lockfileSha256": "83389565d585dee6607fd329faa944c068e18943a602b8a2cf060768f0d3dc7c",
+  "lockfileSha256": "fa82d3bf331c854b9ac73fafc11c6b3025aa59e24a3e456cb215e4d14096f253",
   "packages": [
     {
       "name": "@antfu/install-pkg",
@@ -1105,6 +1105,15 @@
     },
     {
       "name": "@types/node",
+      "version": "20.19.43",
+      "license": "MIT",
+      "repository": "https://github.com/DefinitelyTyped/DefinitelyTyped.git",
+      "noticeFiles": [
+        "LICENSE"
+      ]
+    },
+    {
+      "name": "@types/node",
       "version": "22.20.1",
       "license": "MIT",
       "repository": "https://github.com/DefinitelyTyped/DefinitelyTyped.git",
@@ -1178,6 +1187,15 @@
     {
       "name": "@types/unist",
       "version": "3.0.3",
+      "license": "MIT",
+      "repository": "https://github.com/DefinitelyTyped/DefinitelyTyped.git",
+      "noticeFiles": [
+        "LICENSE"
+      ]
+    },
+    {
+      "name": "@types/whatwg-mimetype",
+      "version": "3.0.2",
       "license": "MIT",
       "repository": "https://github.com/DefinitelyTyped/DefinitelyTyped.git",
       "noticeFiles": [
@@ -3280,6 +3298,15 @@
       "version": "0.5.2",
       "license": "MIT",
       "repository": "git+https://github.com/pshihn/hachure-fill.git",
+      "noticeFiles": [
+        "LICENSE"
+      ]
+    },
+    {
+      "name": "happy-dom",
+      "version": "20.0.0",
+      "license": "MIT",
+      "repository": "https://github.com/capricorn86/happy-dom",
       "noticeFiles": [
         "LICENSE"
       ]
@@ -6396,6 +6423,15 @@
       "repository": "https://github.com/webpack/webpack.git",
       "noticeFiles": [
         "LICENSE"
+      ]
+    },
+    {
+      "name": "whatwg-mimetype",
+      "version": "3.0.0",
+      "license": "MIT",
+      "repository": "jsdom/whatwg-mimetype",
+      "noticeFiles": [
+        "LICENSE.txt"
       ]
     },
     {
