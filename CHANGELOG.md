@@ -10,6 +10,14 @@ How releases are made, and what each channel receives, is in
 ## [Unreleased]
 
 ### Changed
+- **Faster stub remount when the viewport moves (scroller lookup).** Finding the
+  scrollport no longer reads computed `overflowY` on the ProseMirror mount
+  parent (that forced layout over every top-level child on each membership
+  dispatch). Inline overflow and `.canvas-scroll` are preferred; the plugin
+  keeps the attached scroller across updates. Linux happy-dom residual, same
+  machine before/after (median of 3): remount mid huge **178 → 146 ms**; slide +1
+  huge **79 → 42 ms**; same-window dispatch huge **47 → 0.4 ms** (large same
+  **5.5 → 0.2 ms**). Remount-mid large stays ~36 ms (noise).
 - **Faster remount spikes when the stub window moves.** Viewport stubbing no
   longer marks the real band with node decorations (that forced ProseMirror to
   walk every top-level child on each membership change). Enter/leave indices
