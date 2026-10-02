@@ -1,7 +1,8 @@
 # Spacer / virtualization (open-path elephant)
 
-Status: **phase 1 landed** (2026-10-02). Sparse `docView` range spacers ship in
-`sparse-doc-view.ts`; this note stays the architecture reference.
+Status: **phase 2 landed** (2026-10-02). Sparse `docView` range spacers ship in
+`sparse-doc-view.ts`; phase 2 feeds decorations through the rebuild. This note
+stays the architecture reference.
 Remount ladder (#303–#310) and save splices (#311–#313) are done. What remains
 of EditorView open on `huge` is building one stub DOM node and one ViewDesc per
 top-level block (~44k). This note is the architecture for collapsing that to
@@ -199,14 +200,34 @@ Scope:
   doc.childCount; remount; caret edit);
 - profile hook asserting DOM child count and open ms.
 
-Out of scope for phase 1: always-real holes, collaborative cursors, drag-drop
-across spacers, print/export DOM (export already serializes from the doc).
+Out of scope for phase 1 (done in phase 2 where noted): always-real holes,
+decoration pass-through. Still out: collaborative cursors, drag-drop across
+spacers, print/export DOM (export already serializes from the doc).
 
-### Phase 2 — holes and drift
+### Phase 2 — holes and decorations (landed)
 
-- Split spacers around always-real HTML/image (and any future always-real).
-- Re-measure height drift on packaged macOS; tighten estimates if spacers
-  expose map error that live-per-block geometry had hidden.
+Phase 1 already punched always-real holes via `mustMountIndividual` /
+`isIndexStubbed` (non-`STUBBABLE` types never join a spacer run). What phase 1
+dropped was `docView.innerDeco`: the sparse rebuild passed `DecorationsSet.empty`,
+so top-level widgets (TOC / index chrome) and node/inner decorations on the
+real band vanished under stubbing.
+
+Phase 2 feeds `docView.innerDeco` through the rebuild:
+
+- Top-level widgets at visible seams (adjacent to a real NodeViewDesc) are
+  placed via captured `WidgetViewDesc`.
+- Widgets strictly inside a spacer run stay omitted until the band enters.
+- Real mounts get proper `outerDeco` + `forChild` inner deco so alert / mark /
+  node chrome on the live window matches stock PM.
+
+Happy-dom on this Linux agent after phase 2 (`PROFILE_SPARSE_DOC` shape):
+
+| corpus | view open | slide remount | top-level widget |
+| ------ | --------: | ------------: | ---------------- |
+| large  | ~30–55 ms | ~5–7 ms | present next to real band |
+| huge   | ~55 ms | ~7–10 ms | present next to real band |
+
+Packaged height-map drift on macOS stays deferred (needs the packaged machine).
 
 ### Phase 3 — only if measured
 
@@ -239,5 +260,5 @@ across spacers, print/export DOM (export already serializes from the doc).
 
 ## Decision
 
-Phase 1 is the runtime cut. Phase 2 (always-real holes, packaged height drift)
-stays separate — do not fold it into drive-by remount micro-cuts.
+Phase 1 was the runtime cut; phase 2 restores decorations. Packaged height
+drift stays separate — do not fold it into drive-by remount micro-cuts.

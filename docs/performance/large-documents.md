@@ -505,5 +505,7 @@ Happy-dom EditorView open (Linux agent, `PROFILE_SPARSE_DOC=1`):
 | large | ~0.7 s | ~16–50 ms | ~4 |
 | huge | ~4.4 s | ~30–35 ms | ~4 |
 
-Phase 2: always-real holes inside spacer runs; packaged height-map drift.
+Phase 2 (2026-10-02): always-real holes confirmed + decoration pass-through
+(`innerDeco` / top-level widgets / real-band node deco). Packaged height-map
+drift still needs macOS.
 
