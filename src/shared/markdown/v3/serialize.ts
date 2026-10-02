@@ -15,9 +15,10 @@
  * Product default is `@roobli/md`: block-mode saves (identity, single-block,
  * multi-block insert/delete) route byte assembly through `@roobli/md`
  * `serializeDocument`, then a host reparse proof refuses boundary damage
- * (unterminated fences swallowing neighbours). Identity and single-block edits
- * with preserved blank-line gaps short-circuit before that assembly: the host
- * returns `originalBytes` or splices one block into the accepted text. Set
+ * (unterminated fences swallowing neighbours). Identity, single-block edits,
+ * and contiguous multi-block insert/delete regions short-circuit before that
+ * assembly: the host returns `originalBytes`, splices one block, or copies
+ * pristine flanks and assembles only the dirty middle. Set
  * `NOTO_MARKDOWN_ENGINE=micromark` for the legacy path. Source mode stays on
  * the Noto serializer.
  */
@@ -468,6 +469,338 @@ function serializeSingleBlockEdit(
 }
 
 
+
+/**
+ * Longest pristine prefix that still begins at ordinal 0.
+ *
+ * Those units occupy an unchanged byte prefix of the accepted file (leading
+ * text included), so a save can copy `document.text.slice(0, end)` instead of
+ * walking them through assembly.
+ */
+function pristinePrefixLen(document: NotoDocument, units: readonly NotoUnit[]): number {
+  if (units.length === 0) return 0;
+  const first = units[0]!;
+  if (!first.origin || first.origin.ordinal !== 0) return 0;
+  if (!isPristine(first, document.blocks[0])) return 0;
+  let length = 1;
+  while (length < units.length) {
+    const unit = units[length]!;
+    const previous = units[length - 1]!.origin!;
+    if (!unit.origin || unit.origin.ordinal !== previous.ordinal + 1) break;
+    if (!isPristine(unit, document.blocks[unit.origin.ordinal])) break;
+    length += 1;
+  }
+  return length;
+}
+
+/**
+ * Longest pristine suffix that still ends at the last accepted ordinal.
+ *
+ * Symmetric to `pristinePrefixLen`: the bytes from the first suffix block
+ * through trailing text are unchanged and can be copied in one slice.
+ */
+function pristineSuffixLen(document: NotoDocument, units: readonly NotoUnit[]): number {
+  const count = units.length;
+  if (count === 0) return 0;
+  const lastOrdinal = document.blocks.length - 1;
+  const last = units[count - 1]!;
+  if (!last.origin || last.origin.ordinal !== lastOrdinal) return 0;
+  if (!isPristine(last, document.blocks[lastOrdinal])) return 0;
+  let length = 1;
+  while (length < count) {
+    const unit = units[count - 1 - length]!;
+    const next = units[count - length]!.origin!;
+    if (!unit.origin || unit.origin.ordinal !== next.ordinal - 1) break;
+    if (!isPristine(unit, document.blocks[unit.origin.ordinal])) break;
+    length += 1;
+  }
+  return length;
+}
+
+/**
+ * Envelope still matches the accepted file (no line-ending / final-newline rewrite).
+ */
+function unconvertedLineEnding(
+  document: NotoDocument,
+  target: NotoTargetEnvelope,
+): NotoDocument['envelope']['lineEnding'] | null {
+  const lineEnding = target.lineEnding === 'mixed'
+    ? document.envelope.lineEnding
+    : target.lineEnding;
+  if (lineEnding !== document.envelope.lineEnding) return null;
+  if (target.hasFinalNewline !== document.envelope.hasFinalNewline) return null;
+  return lineEnding;
+}
+
+/**
+ * Assemble a contiguous insert/delete/edit region by copying pristine flanks.
+ *
+ * After identity and single-block splice doors, the common remaining save shapes
+ * are "insert one paragraph", "delete one block", or a tight cluster of those
+ * in the middle of an otherwise untouched file. Full `@roobli/md` / micromark
+ * assembly still walks every survivor. Here the longest pristine prefix that
+ * starts at ordinal 0 and the longest pristine suffix that ends at the last
+ * ordinal are copied as byte slices; only the unit range between them is
+ * emitted with the same `gapBetween` / `parseSingleBlock` rules as the full
+ * path. Returns null when there is no flank to copy (caller falls through).
+ *
+ * Window proof failure also returns null so cases like deleting the paragraph
+ * between two lists (neighbours merge) reach the engine's full-reparse door,
+ * matching prior save behaviour.
+ */
+function serializeContiguousRegion(
+  document: NotoDocument,
+  units: readonly NotoUnit[],
+  target: NotoTargetEnvelope,
+): NotoSerializeResult | null {
+  const lineEnding = unconvertedLineEnding(document, target);
+  if (lineEnding === null) return null;
+
+  const prefixLen = pristinePrefixLen(document, units);
+  const suffixLen = pristineSuffixLen(document, units);
+  if (prefixLen + suffixLen > units.length) return null;
+  if (prefixLen === 0 && suffixLen === 0) return null;
+  // Whole-document identity is handled earlier; a full pristine cover with a
+  // length mismatch is a pure delete, which this path does handle.
+  if (prefixLen + suffixLen === units.length && units.length === document.blocks.length) {
+    return null;
+  }
+
+  const middleFrom = prefixLen;
+  const middleTo = units.length - suffixLen;
+  const pristine = units.map((unit) =>
+    isPristine(unit, unit.origin ? document.blocks[unit.origin.ordinal] : undefined));
+
+  const parts: string[] = [];
+  const unitStart: number[] = new Array(units.length);
+  const unitEnd: number[] = new Array(units.length);
+  const emittedGaps: string[] = [];
+  let cursor = 0;
+  const emit = (text: string) => {
+    parts.push(text);
+    cursor += text.length;
+  };
+
+  let emittedLeading = '';
+  if (prefixLen > 0) {
+    const lastPrefixOrdinal = units[prefixLen - 1]!.origin!.ordinal;
+    emit(document.text.slice(0, document.blocks[lastPrefixOrdinal]!.end));
+    emittedLeading = document.leading;
+    for (let index = 0; index < prefixLen; index += 1) {
+      const block = document.blocks[units[index]!.origin!.ordinal]!;
+      unitStart[index] = block.start;
+      unitEnd[index] = block.end;
+      if (index > 0) {
+        const gap = document.gaps[units[index - 1]!.origin!.ordinal];
+        emittedGaps.push(gap?.text ?? fromLf('\n\n', lineEnding));
+      }
+    }
+  }
+
+  const emitGapBefore = (index: number) => {
+    const found = gapBetween(
+      document,
+      units[index - 1]!,
+      units[index]!,
+      pristine[index - 1]!,
+      pristine[index]!,
+      lineEnding,
+    );
+    emittedGaps.push(found.text);
+    emit(found.text);
+  };
+
+  for (let index = middleFrom; index < middleTo; index += 1) {
+    if (index > 0) emitGapBefore(index);
+    const unit = units[index]!;
+    if (pristine[index] && unit.origin) {
+      const block = document.blocks[unit.origin.ordinal]!;
+      const source = document.text.slice(block.start, block.end);
+      unitStart[index] = cursor;
+      emit(source);
+      unitEnd[index] = cursor;
+      continue;
+    }
+    const markdown = unitMarkdown(unit, document);
+    if (markdown === null) {
+      return fail(document, 'MULTI_BLOCK_UNIT',
+        'An unchanged unit must reference a block of the open document.');
+    }
+    if (parseSingleBlock(markdown) === null) {
+      return fail(document, 'MULTI_BLOCK_UNIT',
+        'Each editing unit must be exactly one markdown block.');
+    }
+    unitStart[index] = cursor;
+    emit(fromLf(markdown, lineEnding));
+    unitEnd[index] = cursor;
+  }
+
+  let emittedTrailing = '';
+  if (suffixLen > 0) {
+    const suffixFirstIndex = units.length - suffixLen;
+    if (suffixFirstIndex > 0) emitGapBefore(suffixFirstIndex);
+    const firstSuffixOrdinal = units[suffixFirstIndex]!.origin!.ordinal;
+    const suffixOriginStart = document.blocks[firstSuffixOrdinal]!.start;
+    const delta = cursor - suffixOriginStart;
+    emit(document.text.slice(suffixOriginStart));
+    emittedTrailing = document.trailing;
+    for (let offset = 0; offset < suffixLen; offset += 1) {
+      const index = suffixFirstIndex + offset;
+      const block = document.blocks[units[index]!.origin!.ordinal]!;
+      unitStart[index] = block.start + delta;
+      unitEnd[index] = block.end + delta;
+      if (offset > 0) {
+        const gap = document.gaps[units[index - 1]!.origin!.ordinal];
+        emittedGaps.push(gap?.text ?? fromLf('\n\n', lineEnding));
+      }
+    }
+  } else if (target.hasFinalNewline && units.length > 0) {
+    // Last unit is not the accepted final block, so trailing bytes were dropped
+    // with the deleted/replaced suffix. Mirror serializeBlocks: one newline.
+    emittedTrailing = fromLf('\n', lineEnding);
+    emit(emittedTrailing);
+  }
+
+  if (emittedGaps.length !== Math.max(0, units.length - 1)) {
+    // Defensive: gap accounting drifted; refuse rather than ship a bad revision.
+    return null;
+  }
+
+  const outputText = parts.join('');
+  const outputBytes = encodeOutput(outputText, document.envelope.bom);
+
+  const effective = units.map((unit) => unitMarkdown(unit, document));
+  if (effective.some((text) => text === null)) {
+    return fail(document, 'REPARSE_MISMATCH', 'An unchanged unit lost the block it referenced.');
+  }
+
+  const dirty = pristine.map((clean) => !clean);
+  // Pure deletes leave no dirty unit; still verify the seam the hole creates.
+  if (!dirty.some(Boolean) && middleFrom === middleTo && prefixLen > 0 && suffixLen > 0) {
+    dirty[prefixLen - 1] = true;
+    dirty[prefixLen] = true;
+  }
+
+  const reparsedBlocks = new Map<number, ReparsedBlock>();
+  for (const window of verificationWindows(dirty)) {
+    const sliceStart = window.from === 0 ? 0 : unitStart[window.from]!;
+    const sliceEnd = window.to === units.length - 1 ? outputText.length : unitEnd[window.to]!;
+    const check = checkWindow(
+      outputText.slice(sliceStart, sliceEnd),
+      window,
+      effective.slice(window.from, window.to + 1) as string[],
+    );
+    if (!check.ok || !check.blocks) {
+      // Same door as nextRevisionFromEngine: a seam the window cannot prove
+      // (e.g. deleting the paragraph between two lists so they merge) falls
+      // through to the engine, which may accept via full reparse.
+      return null;
+    }
+    for (let offset = 0; offset < check.blocks.length; offset += 1) {
+      const index = window.from + offset;
+      if (pristine[index] || reparsedBlocks.has(index)) continue;
+      const markdown = effective[index]!;
+      const single = parseSingleBlock(markdown);
+      if (single === null) continue;
+      reparsedBlocks.set(index, {
+        kind: single.kind,
+        semanticKey: single.semanticKey,
+        markdown,
+      });
+    }
+  }
+
+  for (let index = middleFrom; index < middleTo; index += 1) {
+    if (pristine[index] || reparsedBlocks.has(index)) continue;
+    const markdown = effective[index]!;
+    const single = parseSingleBlock(markdown);
+    if (single === null) {
+      return fail(document, 'MULTI_BLOCK_UNIT',
+        'Each editing unit must be exactly one markdown block.');
+    }
+    reparsedBlocks.set(index, {
+      kind: single.kind,
+      semanticKey: single.semanticKey,
+      markdown,
+    });
+  }
+
+  const outputSha256 = sha256(outputBytes);
+  const nextDocument = buildNextDocument({
+    previous: document,
+    outputText,
+    outputBytes,
+    bom: document.envelope.bom,
+    lineEnding,
+    units,
+    effective: effective as string[],
+    unitStart,
+    unitEnd,
+    gaps: emittedGaps,
+    leading: emittedLeading,
+    trailing: emittedTrailing,
+    reparsedBlocks,
+    outputSha256,
+  });
+
+  return withLazyPreserved({
+    status: 'serialized',
+    version: NOTO_MARKDOWN_VERSION,
+    outputBytes,
+    outputSha256,
+    document: nextDocument,
+  }, () => {
+    const preserved: NotoPreservedRange[] = [];
+    if (document.envelope.bom === 'utf8') {
+      preserved.push({ role: 'bom', start: 0, end: 3, sha256: sha256(UTF8_BOM) });
+    }
+    if (emittedLeading.length > 0) {
+      preserved.push({
+        role: 'leading',
+        start: 0,
+        end: document.leading.length,
+        sha256: sha256(document.leading),
+      });
+    }
+    for (let index = 0; index < units.length; index += 1) {
+      const unit = units[index]!;
+      if (!unit.origin || !pristine[index]) continue;
+      const block = document.blocks[unit.origin.ordinal]!;
+      if (index > 0) {
+        const prev = units[index - 1]!;
+        if (prev.origin && prev.origin.ordinal + 1 === unit.origin.ordinal) {
+          const gap = document.gaps[prev.origin.ordinal];
+          if (gap !== undefined && gap.beforeOrdinal === prev.origin.ordinal) {
+            const previousBlock = document.blocks[prev.origin.ordinal]!;
+            preserved.push({
+              role: 'gap',
+              start: previousBlock.end,
+              end: block.start,
+              sha256: sha256(gap.text),
+            });
+          }
+        }
+      }
+      preserved.push({
+        role: 'block',
+        start: block.start,
+        end: block.end,
+        sha256: block.sha256,
+      });
+    }
+    if (emittedTrailing.length > 0 && suffixLen > 0 && document.trailing.length > 0) {
+      const last = document.blocks[document.blocks.length - 1]!;
+      preserved.push({
+        role: 'trailing',
+        start: last.end,
+        end: document.text.length,
+        sha256: sha256(document.trailing),
+      });
+    }
+    return preserved;
+  });
+}
+
 function serializeBlocks(
   document: NotoDocument,
   units: readonly NotoUnit[],
@@ -478,6 +811,8 @@ function serializeBlocks(
   if (isByteIdentitySave(document, units, target)) return byteIdentityResult(document);
   const singleEdit = singleBlockEditIndex(document, units, target);
   if (singleEdit !== null) return serializeSingleBlockEdit(document, units, target, singleEdit);
+  const region = serializeContiguousRegion(document, units, target);
+  if (region !== null) return region;
 
   const { bom } = document.envelope;
   /*
@@ -706,21 +1041,36 @@ function buildNextDocument(input: {
     const original = unit.origin ? input.previous.blocks[unit.origin.ordinal] : undefined;
     const markdown = input.effective[ordinal];
 
-    // An unchanged block that also kept its position already knows its hash,
-    // its identity and its kind. Recomputing them would put a hash of every
-    // block back into the cost of every save, which is the scaling this whole
-    // path exists to remove. Only where it sits in the file has changed.
-    if (!reparsed && original && unit.origin?.ordinal === ordinal) {
+    // An unchanged block already knows its hash and kind. Recomputing the
+    // digest would put a hash of every survivor back into insert/delete saves
+    // (every suffix ordinal shifts). Keep the digest; only mint a new block id
+    // when the ordinal itself moved.
+    if (!reparsed && original) {
+      if (unit.origin?.ordinal === ordinal) {
+        return {
+          ...original,
+          start: input.unitStart[ordinal],
+          end: input.unitEnd[ordinal],
+        };
+      }
+      const digest = original.sha256;
+      const id = `noto-block-v3:${ordinal}:${digest.slice(0, 16)}` as NotoBlockId;
       return {
         ...original,
+        id,
         start: input.unitStart[ordinal],
         end: input.unitEnd[ordinal],
+        origin: {
+          blockId: id,
+          ordinal,
+          kind: original.kind,
+          semanticKey: original.semanticKey,
+        },
       };
     }
 
-    // A changed block's kind comes from its reparse; an unchanged one that
-    // moved keeps what it already was, which is the same answer a parse would
-    // give since its bytes are identical.
+    // A changed block's kind comes from its reparse; a brand-new unit has no
+    // original and is hashed here.
     const kind = reparsed?.kind ?? original?.kind ?? 'paragraph';
     const semanticKey = reparsed?.semanticKey ?? original?.semanticKey ?? '';
     const digest = sha256(markdown);
@@ -935,6 +1285,8 @@ function serializeBlocksViaRoobli(
   if (isByteIdentitySave(document, units, target)) return byteIdentityResult(document);
   const singleEdit = singleBlockEditIndex(document, units, target);
   if (singleEdit !== null) return serializeSingleBlockEdit(document, units, target, singleEdit);
+  const region = serializeContiguousRegion(document, units, target);
+  if (region !== null) return region;
 
   const engineResult = serializeViaRoobli(toEngineDocument(document), {
     units: toSerializeUnits(units),

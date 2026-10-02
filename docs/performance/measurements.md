@@ -758,8 +758,39 @@ before/after (after = splice on; before = early returns commented out):
 | huge     | 85 ms                   | **51 ms** | ~0 ms |
 
 Coverage: `tests/unit/single-block-edit-splice.test.ts`. Multi-block inserts /
-deletes and line-ending conversion stay on the engine path. Open's ~2 s on
+deletes were still on the engine path (see next section). Open's ~2 s on
 `huge` remains the spacer/virtualization design, separate from this save cut.
+
+## Contiguous multi-block serialize splice, 2026-10-02
+
+After the single-block splice, a mid-document insert or delete of `huge` still
+paid full `@roobli/md` assembly plus a sha256 of every survivor whose ordinal
+shifted. `serializeBlocks` / `serializeBlocksViaRoobli` now detect a pristine
+byte-stable prefix (from ordinal 0) and suffix (through the last ordinal), copy
+those flanks as `document.text` slices, and assemble only the unit range
+between them with the same `gapBetween` / windowed proof as the full path.
+`buildNextDocument` reuses an unchanged block's digest when only its ordinal
+moved (new block id, same sha256).
+
+Window proof failure returns to the engine (e.g. deleting the paragraph between
+two lists so they merge), matching the prior full-reparse door. Line-ending
+conversion still takes the assembly path.
+
+Linux agent, native `useSha256` (as in desktop main), median of seven, same
+machine before/after (after = region splice + digest reuse; before = both
+commented / ordinal-gated as on main):
+
+| document | insert mid before | after | delete mid before | after |
+| -------- | ----------------: | ----: | ----------------: | ----: |
+| large    | 38 ms | **12 ms** (~3.2×) | 29 ms | **13 ms** (~2.2×) |
+| huge     | 128 ms | **48 ms** (~2.7×) | 120 ms | **46 ms** (~2.6×) |
+
+Insert/delete now sit next to the single-block splice (~46 ms on `huge`).
+Two distant dirty blocks still assemble the span between them (~70 ms on
+`huge`); that shape is uncommon for a keystroke save.
+
+Coverage: `tests/unit/multi-block-serialize-splice.test.ts`. Next elephant on
+open remains spacer/virtualization (~2 s stub DOM on `huge`).
 
 ## Three ways of measuring Typora that did not work
 
