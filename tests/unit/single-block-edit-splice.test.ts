@@ -112,7 +112,7 @@ describe('single-block edit splice', () => {
       const identity = identityTransaction(document);
       if (identity.mode !== 'blocks') throw new Error('expected blocks');
       const transaction: NotoTransaction = {
-        ...oneEdit(document, 1, 'BodyX'),
+        ...(oneEdit(document, 1, 'BodyX') as Extract<NotoTransaction, { mode: 'blocks' }>),
         envelope: { lineEnding: 'crlf', hasFinalNewline: true },
       };
       const result = mustSerialize(document, transaction);
@@ -130,10 +130,9 @@ describe('single-block edit splice', () => {
       units: identity.units.map((unit, index) =>
         index === 1
           ? {
-              origin: {
-                ...unit.origin!,
-                blockId: 'noto-block-v3:1:deadbeefdeadbeef' as const,
-              },
+              origin: unit.origin
+                ? { ...unit.origin, blockId: 'noto-block-v3:1:deadbeefdeadbeef' as typeof unit.origin.blockId }
+                : null,
               markdown: 'BX',
             }
           : { origin: unit.origin, markdown: null },
