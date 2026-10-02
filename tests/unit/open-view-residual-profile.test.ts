@@ -1,8 +1,8 @@
 /**
  * @vitest-environment happy-dom
  *
- * Residual view-open / remount probes after specialised stub membership (#303).
- * Skipped by default. Run:
+ * Residual view-open / remount probes after specialised stubbing and surgical
+ * membership remount. Skipped by default. Run:
  *
  *   PROFILE_RESIDUAL=1 pnpm vitest run tests/unit/open-view-residual-profile.test.ts
  *

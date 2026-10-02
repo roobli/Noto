@@ -309,19 +309,19 @@ describe('mergeStubAwareNodeViews', () => {
   });
 });
 
-describe('decoration set identity', () => {
-  it('reuses the decorations set when membership does not change', () => {
+describe('membership decorations stay empty', () => {
+  it('keeps an empty decorations set across viewport moves', () => {
     let state = stateFor(manyParagraphs(STUB_MIN_TOP_LEVEL_BLOCKS + 50), 10);
     state = withViewport(state, { from: 100, to: 140 });
     const before = viewportStubKey.getState(state)!;
-    expect(before.decorations).toBeTruthy();
-    // Same viewport meta again — no membership change.
-    const again = withViewport(state, { from: 100, to: 140 });
-    const after = viewportStubKey.getState(again)!;
-    expect(after.decorations).toBe(before.decorations);
+    expect(before.decorations.find().length).toBe(0);
+    const moved = withViewport(state, { from: 200, to: 240 });
+    const after = viewportStubKey.getState(moved)!;
+    expect(after.decorations.find().length).toBe(0);
+    expect(after.generation).toBeGreaterThan(before.generation);
   });
 
-  it('maps decorations through a doc edit that keeps the same windows', () => {
+  it('keeps decorations empty across a doc edit that keeps the same windows', () => {
     let state = stateFor(manyParagraphs(STUB_MIN_TOP_LEVEL_BLOCKS + 50), 10);
     state = withViewport(state, { from: 100, to: 140 });
     const before = viewportStubKey.getState(state)!;
@@ -329,18 +329,6 @@ describe('decoration set identity', () => {
     const after = viewportStubKey.getState(edited)!;
     expect(after.viewport).toEqual(before.viewport);
     expect(after.selection).toEqual(before.selection);
-    // Mapped set — not the same object, but still a live DecorationSet for the new doc.
-    expect(after.decorations).not.toBe(before.decorations);
-    expect(after.decorations.find().length).toBe(before.decorations.find().length);
-  });
-
-  it('rebuilds decorations when the viewport window moves', () => {
-    let state = stateFor(manyParagraphs(STUB_MIN_TOP_LEVEL_BLOCKS + 50), 10);
-    state = withViewport(state, { from: 100, to: 140 });
-    const before = viewportStubKey.getState(state)!;
-    const moved = withViewport(state, { from: 200, to: 240 });
-    const after = viewportStubKey.getState(moved)!;
-    expect(after.decorations).not.toBe(before.decorations);
-    expect(after.generation).toBeGreaterThan(before.generation);
+    expect(after.decorations.find().length).toBe(0);
   });
 });

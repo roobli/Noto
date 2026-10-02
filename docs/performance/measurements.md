@@ -327,8 +327,13 @@ See `docs/performance/large-documents.md` (specialised stubbing section) and
 Follow-up open-floor cut (2026-10-02): stub `cloneNode` prototype + reuse
 membership-stable `DecorationsSet`. Same-machine happy-dom wrapped open
 before/after that cut: large **631 → 424 ms**, huge **5445 → 3476 ms**. Details
-in `large-documents.md` (stub open floor section);
-`PROFILE_RESIDUAL=1` residual probe available.
+in `large-documents.md` (stub open floor section).
+
+Remount-spike cut (2026-10-02): drop membership node decorations; surgical
+stub ↔ real on enter/leave only. Happy-dom residual remount mid / slide +1:
+large **82 → 49 ms** / **51 → 11 ms**, huge **582 → 182 ms** / **460 → 76 ms**.
+See `large-documents.md` (surgical membership remount);
+`PROFILE_RESIDUAL=1` residual probe.
 
 ### Re-measurement methodology (macOS packaged build)
 

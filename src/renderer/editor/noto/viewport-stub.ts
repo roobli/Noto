@@ -23,6 +23,10 @@
  * the caret to the viewport. A contiguous span remounts every block between
  * them when the reader scrolls away from the caret, which is exactly the
  * mid/large scroll jank this layer exists to prevent.
+ *
+ * Membership changes remount surgically (enter/leave indices only). Marking the
+ * real window with node decorations forced ProseMirror to walk every top-level
+ * child on each change; that path is gone.
  */
 
 import { Plugin, PluginKey, type EditorState, type Selection, type Transaction } from 'prosemirror-state';
@@ -147,10 +151,9 @@ export interface ViewportStubState {
   /** Bumped when `real` changes so NodeViews can decide to remount. */
   readonly generation: number;
   /**
-   * Node decorations marking the current real windows. Kept in plugin state
-   * and reused (or mapped) across transactions that do not change membership
-   * — rebuilding via `DecorationsSet.create` on every keystroke is O(doc) and
-   * dominated remount-adjacent updates on huge notes.
+   * Always empty. Membership remounts are surgical (see syncMembershipRemounts);
+   * node decorations on the real window forced an O(doc) `updateChildren` walk
+   * on every membership change and dominated remount spikes on huge notes.
    */
   readonly decorations: DecorationSet;
 }
@@ -723,13 +726,20 @@ function syncShellAttrs(dom: HTMLElement, node: ProseNode): void {
   }
 }
 
-class StubbableBlockView implements NodeView {
+interface MembershipRemountable {
+  readonly stubbed: boolean;
+  applyMembership(wantStub: boolean): void;
+  dom: HTMLElement;
+  contentDOM: HTMLElement | null;
+}
+
+class StubbableBlockView implements NodeView, MembershipRemountable {
   dom!: HTMLElement;
   contentDOM!: HTMLElement | null;
   private node: ProseNode;
   private readonly view: EditorView;
   private readonly getPos: () => number | undefined;
-  private stubbed: boolean;
+  stubbed: boolean;
   private generation: number;
 
   constructor(node: ProseNode, view: EditorView, getPos: () => number | undefined) {
@@ -784,11 +794,25 @@ class StubbableBlockView implements NodeView {
     syncShellAttrs(this.dom, this.node);
   }
 
+  /**
+   * In-place stub ↔ real for surgical remounts. Reassigns `dom` / `contentDOM`;
+   * the plugin view swaps the ViewDesc pointers and fills content when needed.
+   */
+  applyMembership(wantStub: boolean): void {
+    if (wantStub === this.stubbed) return;
+    const stub = viewportStubKey.getState(this.view.state);
+    if (wantStub) this.mountStub(stub);
+    else this.mountReal();
+    this.stubbed = wantStub;
+    this.generation = stub?.generation ?? this.generation;
+  }
+
   update(node: ProseNode): boolean {
     if (node.type.name !== this.node.type.name) return false;
     const stub = viewportStubKey.getState(this.view.state);
     const wantStub = this.computeStubbed(stub);
-    // Stubbed ↔ real transitions remount so contentDOM appears or disappears.
+    // Safety net when ProseMirror calls update (doc edits). Pure viewport
+    // membership changes take the surgical path and never reach here.
     if (wantStub !== this.stubbed) return false;
     this.generation = stub?.generation ?? this.generation;
     if (this.stubbed) {
@@ -813,46 +837,162 @@ class StubbableBlockView implements NodeView {
 
 
 /**
- * Node decorations on the current real window.
+ * Membership remounts no longer go through node decorations.
  *
- * Scroll updates only change plugin state. ProseMirror will not call
- * `NodeView.update` for an unchanged node unless its decorations change, so
- * these marks force remounts when a block enters or leaves the real window.
+ * Decorating the real window forced ProseMirror to run `updateChildren` over
+ * every top-level child whenever membership changed (`DecorationsSet.eq` fails
+ * → full walk + `renderDescs`). On huge that was ~500ms even for a one-block
+ * slide. Stub ↔ real is applied surgically: only enter/leave indices replace
+ * their DOM / ViewDesc, so a pure viewport meta update never walks the doc.
  */
-function decorateRange(
-  doc: ProseNode,
-  range: BlockRange,
-  _generation: number,
-  decorations: Decoration[],
-  seen: Set<number>,
-): void {
-  let position = 0;
-  for (let index = 0; index < range.from; index += 1) {
-    position += doc.child(index).nodeSize;
+
+interface PmViewDesc {
+  parent: PmViewDesc | null | undefined;
+  children: PmViewDesc[];
+  dom: Node;
+  contentDOM: HTMLElement | null;
+  nodeDOM: Node;
+  node: ProseNode;
+  dirty: number;
+  destroy: () => void;
+  updateChildren: (view: EditorView, pos: number) => void;
+  /** Custom NodeView instance when this desc wraps one. */
+  spec?: MembershipRemountable;
+}
+
+interface MembershipWindows {
+  readonly viewport: BlockRange;
+  readonly selection: BlockRange;
+}
+
+function wasIndexReal(windows: MembershipWindows, index: number): boolean {
+  return rangeContains(windows.viewport, index) || rangeContains(windows.selection, index);
+}
+
+function collectWindowIndices(windows: MembershipWindows, into: Set<number>): void {
+  for (let index = windows.viewport.from; index <= windows.viewport.to; index += 1) {
+    into.add(index);
   }
-  for (let index = range.from; index <= range.to; index += 1) {
-    const child = doc.child(index);
-    const end = position + child.nodeSize;
-    if (!seen.has(index) && STUBBABLE.has(child.type.name)) {
-      seen.add(index);
-      // Class presence alone drives stub↔real remounts. Do not stamp generation
-      // into the spec: a slide would otherwise invalidate every still-real node.
-      decorations.push(Decoration.node(position, end, {
-        class: 'noto-stub-real',
-      }));
-    }
-    position = end;
+  for (let index = windows.selection.from; index <= windows.selection.to; index += 1) {
+    into.add(index);
   }
 }
 
-function realWindowDecorations(doc: ProseNode, state: ViewportStubState): DecorationSet {
-  if (!state.enabled) return DecorationSet.empty;
-  const decorations: Decoration[] = [];
-  const seen = new Set<number>();
-  // Two windows, not the span between them — see isIndexReal.
-  decorateRange(doc, state.viewport, state.generation, decorations, seen);
-  decorateRange(doc, state.selection, state.generation, decorations, seen);
-  return DecorationSet.create(doc, decorations);
+function withDomObserverStopped(view: EditorView, run: () => void): void {
+  const observer = (view as unknown as {
+    domObserver?: { stop: () => void; start: () => void };
+  }).domObserver;
+  observer?.stop();
+  try {
+    run();
+  } finally {
+    observer?.start();
+  }
+}
+
+/**
+ * Remount a single top-level stubbable block in place.
+ *
+ * Replaces the NodeView's DOM, updates the owning ViewDesc pointers, and —
+ * when becoming real — runs `updateChildren` only on that block's content,
+ * never on the document's full child list.
+ */
+export function remountTopLevelIndex(view: EditorView, index: number): void {
+  const doc = view.state.doc;
+  if (index < 0 || index >= doc.childCount) return;
+  const node = doc.child(index);
+  if (!STUBBABLE.has(node.type.name)) return;
+
+  const stub = viewportStubKey.getState(view.state);
+  const wantStub = stub ? isIndexStubbed(stub, index, node.type.name) : false;
+
+  const pos = startsOf(doc)[index]!;
+  const dom = view.nodeDOM(pos);
+  if (!dom) return;
+  const desc = (dom as HTMLElement & { pmViewDesc?: PmViewDesc }).pmViewDesc;
+  if (!desc?.spec || typeof desc.spec.applyMembership !== 'function') return;
+  if (desc.spec.stubbed === wantStub) return;
+
+  const oldDom = desc.dom;
+  desc.spec.applyMembership(wantStub);
+  const newDom = desc.spec.dom;
+  const newContent = desc.spec.contentDOM;
+
+  if (oldDom !== newDom && oldDom.parentNode) {
+    oldDom.parentNode.replaceChild(newDom, oldDom);
+  }
+  // Mirror ViewDesc's own DOM ownership: clear the old node, claim the new one.
+  if (oldDom !== newDom) {
+    const oldDesc = (oldDom as HTMLElement & { pmViewDesc?: PmViewDesc }).pmViewDesc;
+    if (oldDesc === desc) {
+      (oldDom as HTMLElement & { pmViewDesc?: PmViewDesc }).pmViewDesc = undefined;
+    }
+  }
+  desc.dom = newDom;
+  desc.nodeDOM = newDom;
+  desc.contentDOM = newContent;
+  (newDom as HTMLElement & { pmViewDesc?: PmViewDesc }).pmViewDesc = desc;
+
+  for (const child of desc.children) child.destroy();
+  desc.children = [];
+  if (newContent && !node.isLeaf) {
+    desc.updateChildren(view, pos + 1);
+  }
+  desc.dirty = 0;
+}
+
+function expandAllStubs(view: EditorView): void {
+  const stubEls = Array.from(view.dom.querySelectorAll(`.${STUB_CLASS}`));
+  for (const el of stubEls) {
+    let pos: number;
+    try {
+      pos = view.posAtDOM(el, 0);
+    } catch {
+      continue;
+    }
+    const index = topLevelIndexAt(view.state.doc, pos);
+    if (index != null && index >= 0 && index < view.state.doc.childCount) {
+      remountTopLevelIndex(view, index);
+    }
+  }
+}
+
+/**
+ * Apply stub ↔ real for indices whose membership changed between `previous`
+ * and the current plugin state. Returns the windows to seed the next diff.
+ */
+function syncMembershipRemounts(
+  view: EditorView,
+  previous: MembershipWindows | null,
+  next: ViewportStubState,
+): MembershipWindows | null {
+  if (!next.enabled) {
+    if (previous) withDomObserverStopped(view, () => expandAllStubs(view));
+    return null;
+  }
+
+  const nextWindows: MembershipWindows = {
+    viewport: next.viewport,
+    selection: next.selection,
+  };
+  if (!previous) return nextWindows;
+
+  const candidates = new Set<number>();
+  collectWindowIndices(previous, candidates);
+  collectWindowIndices(nextWindows, candidates);
+
+  const toRemount: number[] = [];
+  for (const index of candidates) {
+    if (wasIndexReal(previous, index) !== isIndexReal(next, index)) {
+      toRemount.push(index);
+    }
+  }
+  if (toRemount.length > 0) {
+    withDomObserverStopped(view, () => {
+      for (const index of toRemount) remountTopLevelIndex(view, index);
+    });
+  }
+  return nextWindows;
 }
 
 export function stubbableNodeViews(): Record<string, NodeViewConstructor> {
@@ -899,17 +1039,17 @@ export function mergeStubAwareNodeViews(
   return views;
 }
 
-class SpecialisedStubbableView implements NodeView {
+class SpecialisedStubbableView implements NodeView, MembershipRemountable {
   dom!: HTMLElement;
   contentDOM!: HTMLElement | null;
   private node: ProseNode;
   private readonly view: EditorView;
   private readonly getPos: () => number | undefined;
   private readonly createInner: NodeViewConstructor;
-  private readonly decorations: readonly Decoration[];
-  private readonly innerDecorations: DecorationSource;
+  private decorations: readonly Decoration[];
+  private innerDecorations: DecorationSource;
   private inner: NodeView | null = null;
-  private stubbed: boolean;
+  stubbed: boolean;
 
   constructor(
     node: ProseNode,
@@ -962,6 +1102,7 @@ class SpecialisedStubbableView implements NodeView {
   }
 
   private mountInner(): void {
+    this.inner?.destroy?.();
     const created = this.createInner(
       this.node,
       this.view,
@@ -974,16 +1115,29 @@ class SpecialisedStubbableView implements NodeView {
     this.contentDOM = (created.contentDOM as HTMLElement | null | undefined) ?? null;
   }
 
+  applyMembership(wantStub: boolean): void {
+    if (wantStub === this.stubbed) return;
+    const stub = viewportStubKey.getState(this.view.state);
+    if (wantStub) {
+      this.inner?.destroy?.();
+      this.mountStub(stub);
+    } else {
+      this.mountInner();
+    }
+    this.stubbed = wantStub;
+  }
+
   update(
     node: ProseNode,
     decorations: readonly Decoration[],
     innerDecorations: DecorationSource,
   ): boolean {
     if (node.type.name !== this.node.type.name) return false;
+    this.decorations = decorations;
+    this.innerDecorations = innerDecorations;
     const stub = viewportStubKey.getState(this.view.state);
     const wantStub = this.computeStubbed(stub);
-    // Stubbed ↔ real transitions remount so the specialised view (or stub)
-    // is constructed fresh with the correct contentDOM.
+    // Safety net for doc-edit updates; viewport membership uses surgical remount.
     if (wantStub !== this.stubbed) return false;
     if (this.stubbed) {
       this.node = node;
@@ -1027,14 +1181,7 @@ export function viewportStubPlugin(): Plugin<ViewportStubState> {
   return new Plugin<ViewportStubState>({
     key: viewportStubKey,
     state: {
-      init: (_config, state) => {
-        const stub = buildState(state, null, null, STUB_FALLBACK_EM_PX);
-        if (!stub.enabled) return stub;
-        return {
-          ...stub,
-          decorations: realWindowDecorations(state.doc, stub),
-        };
-      },
+      init: (_config, state) => buildState(state, null, null, STUB_FALLBACK_EM_PX),
       apply: (transaction, previous, oldState, newState) => {
         const meta = transaction.getMeta(viewportStubKey) as ViewportMeta | undefined;
         if (!stubbingEnabled(newState.doc.childCount)) {
@@ -1054,26 +1201,8 @@ export function viewportStubPlugin(): Plugin<ViewportStubState> {
         const draft: ViewportStubState = { ...previous, heights, enabled: true };
         const viewport = meta?.viewport
           ?? (transaction.docChanged ? null : previous.viewport);
-        const next = buildState(newState, draft, viewport, STUB_FALLBACK_EM_PX);
-        const windowsUnchanged = previous.enabled
-          && rangesEqual(previous.viewport, next.viewport)
-          && rangesEqual(previous.selection, next.selection);
-        if (windowsUnchanged && !transaction.docChanged) {
-          // Membership untouched — keep the same DecorationSet identity so
-          // ProseMirror does not re-diff O(doc) node decorations on a keystroke.
-          return { ...next, decorations: previous.decorations };
-        }
-        if (windowsUnchanged && transaction.docChanged) {
-          // Same real windows, doc edited (usually inside a real block): map.
-          return {
-            ...next,
-            decorations: previous.decorations.map(transaction.mapping, newState.doc),
-          };
-        }
-        return {
-          ...next,
-          decorations: realWindowDecorations(newState.doc, next),
-        };
+        // decorations stay empty — membership remounts are surgical in view().
+        return buildState(newState, draft, viewport, STUB_FALLBACK_EM_PX);
       },
     },
     props: {
@@ -1089,6 +1218,8 @@ export function viewportStubPlugin(): Plugin<ViewportStubState> {
       let lastMeasuredGeneration = -1;
       /** Caps measure→viewport feedback so remount height fixes can chase once. */
       let resyncBudget = 0;
+      /** Last windows whose stub↔real DOM we synced — for enter/leave diffing. */
+      let syncedWindows: MembershipWindows | null = null;
 
       const dispatchViewport = (viewport: BlockRange) => {
         const current = viewportStubKey.getState(editorView.state);
@@ -1164,10 +1295,15 @@ export function viewportStubPlugin(): Plugin<ViewportStubState> {
       ensureScroll();
       const initial = viewportStubKey.getState(editorView.state);
       if (initial?.enabled) {
+        // Seed before the first scroll dispatch so sync can diff construction
+        // windows against the measured viewport without an O(doc) deco walk.
+        syncedWindows = { viewport: initial.viewport, selection: initial.selection };
         resyncBudget = 6;
         const next = viewportFromScroll(editorView, initial.heights);
         if (next) dispatchViewport(next);
-        publishDataset(editorView, viewportStubKey.getState(editorView.state) ?? initial);
+        const after = viewportStubKey.getState(editorView.state) ?? initial;
+        syncedWindows = syncMembershipRemounts(editorView, syncedWindows, after);
+        publishDataset(editorView, after);
       }
 
       return {
@@ -1176,9 +1312,12 @@ export function viewportStubPlugin(): Plugin<ViewportStubState> {
           const stub = viewportStubKey.getState(view.state);
           if (!stub?.enabled) {
             lastMeasuredGeneration = -1;
+            syncedWindows = syncMembershipRemounts(view, syncedWindows, stub ?? disabledState());
             publishDataset(view, stub ?? disabledState());
             return;
           }
+          // Surgical stub↔real for enter/leave before measure/dataset work.
+          syncedWindows = syncMembershipRemounts(view, syncedWindows, stub);
           // Measuring every transaction forced layout across the whole real
           // window on each keystroke. Remounts (generation bumps) are what
           // need fresh stub sizes; typing into an already-real block can wait.

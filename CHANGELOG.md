@@ -10,12 +10,20 @@ How releases are made, and what each channel receives, is in
 ## [Unreleased]
 
 ### Changed
+- **Faster remount spikes when the stub window moves.** Viewport stubbing no
+  longer marks the real band with node decorations (that forced ProseMirror to
+  walk every top-level child on each membership change). Enter/leave indices
+  remount surgically in the plugin view instead. Linux happy-dom residual
+  remount mid / slide +1, same machine before/after: large **82 → 49 ms** /
+  **51 → 11 ms**, huge **582 → 182 ms** / **460 → 76 ms**.
 - **Faster stub DOM on long-note open, and cheaper membership-stable decoration updates.**
   Stub placeholders are cloned from a shared prototype instead of `createElement`
-  per top-level block, and viewport-stub keeps its real-window `DecorationsSet`
-  across transactions that do not change membership (mapping it on doc edits).
-  Linux happy-dom EditorView open after specialised stubbing (#303), same machine
-  before/after: large **631 → 424 ms** (median of 3), huge **5445 → 3476 ms**.
+  per top-level block, and viewport-stub kept its real-window `DecorationsSet`
+  across transactions that did not change membership (mapping it on doc edits).
+  Superseded for membership signaling by surgical remount above; the open-floor
+  `cloneNode` cut remains. Linux happy-dom EditorView open after specialised
+  stubbing (#303), same machine before/after: large **631 → 424 ms** (median of 3),
+  huge **5445 → 3476 ms**.
 
 ### Added
 - **Long notes stub off-screen fences, tables and display math.** Once a note
