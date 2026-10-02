@@ -7,12 +7,17 @@
  * ViewDesc whose `size` equals the covered nodeSize sum. Real window and
  * selection neighbourhood keep ordinary NodeViewDescs.
  *
- * See docs/performance/spacer-virtualization.md (phase 1).
+ * Phase 2 feeds `docView.innerDeco` through the sparse rebuild so top-level
+ * widgets and node decorations on the real band stay live (phase 1 dropped
+ * them by passing `DecorationsSet.empty`). Widgets inside spacer runs stay
+ * omitted until the band enters — they are off-screen anyway.
+ *
+ * See docs/performance/spacer-virtualization.md.
  */
 
 import { Schema } from 'prosemirror-model';
 import { EditorState } from 'prosemirror-state';
-import { DecorationSet, EditorView, type DecorationSource } from 'prosemirror-view';
+import { Decoration, DecorationSet, EditorView, type DecorationSource } from 'prosemirror-view';
 import type { Node as ProseNode } from 'prosemirror-model';
 
 import {
@@ -82,13 +87,15 @@ type AnyDesc = {
   ) => boolean;
   parseRule?: () => { ignore: true } | null;
   ignoreMutation?: (mutation?: unknown) => boolean;
-  matchesWidget?: () => boolean;
+  matchesWidget?: (widget?: Decoration) => boolean;
   matchesMark?: () => boolean;
   matchesHack?: () => boolean;
   stopEvent?: () => boolean;
   localPosFromDOM?: (dom: Node, offset: number, bias: number) => number;
   domFromPos?: (pos: number, side?: number) => { node: Node; offset: number; atom?: number };
   spec?: unknown;
+  /** Present on WidgetViewDesc. */
+  widget?: Decoration;
   [SPACER_BRAND]?: true;
   indexFrom?: number;
   indexTo?: number;
@@ -120,9 +127,14 @@ type ViewDescCtor = {
   prototype: object;
 };
 
+type WidgetViewDescCtor = {
+  new (parent: AnyDesc, widget: Decoration, view: EditorView, pos: number): AnyDesc;
+};
+
 interface PmInternals {
   NodeViewDesc: NodeViewDescCtor;
   ViewDesc: ViewDescCtor;
+  WidgetViewDesc: WidgetViewDescCtor;
   originalUpdateChildren: (this: AnyDesc, view: EditorView, pos: number) => void;
   originalMatchesNode: (
     this: AnyDesc,
@@ -170,13 +182,26 @@ export function ensureSparseDocViewInstalled(): void {
   ]);
   const mount = document.createElement('div');
   // Detached mount — warm-up must not touch the product DOM.
+  // Include a top-level widget so we can capture WidgetViewDesc.
   const warmView = new EditorView(mount, {
     state: EditorState.create({ doc: warmDoc }),
+    decorations: () => DecorationSet.create(warmDoc, [
+      Decoration.widget(warmDoc.content.size, () => {
+        const el = document.createElement('span');
+        el.className = 'noto-sparse-warm-widget';
+        return el;
+      }, { side: 1, key: 'noto-sparse-warm' }),
+    ]),
   });
   try {
     const docView = (warmView as unknown as { docView: AnyDesc }).docView;
     const NodeViewDesc = Object.getPrototypeOf(docView).constructor as NodeViewDescCtor;
     const ViewDesc = Object.getPrototypeOf(NodeViewDesc.prototype).constructor as ViewDescCtor;
+    const widgetChild = (docView.children as AnyDesc[]).find((child) => child.widget);
+    if (!widgetChild) {
+      throw new Error('sparse-doc-view: warm-up widget desc missing');
+    }
+    const WidgetViewDesc = Object.getPrototypeOf(widgetChild).constructor as WidgetViewDescCtor;
     const originalUpdateChildren = NodeViewDesc.prototype.updateChildren;
     const originalMatchesNode = NodeViewDesc.prototype.matchesNode;
 
@@ -196,7 +221,7 @@ export function ensureSparseDocViewInstalled(): void {
         originalUpdateChildren.call(this, view, pos);
         return;
       }
-      rebuildSparseChildren(this, view, stub, NodeViewDesc, ViewDesc);
+      rebuildSparseChildren(this, view, stub, NodeViewDesc, ViewDesc, WidgetViewDesc);
     };
 
     // Force docView.update when membership generation advances so sparse
@@ -220,7 +245,13 @@ export function ensureSparseDocViewInstalled(): void {
       return originalMatchesNode.call(this, node, outerDeco, innerDeco);
     };
 
-    internals = { NodeViewDesc, ViewDesc, originalUpdateChildren, originalMatchesNode };
+    internals = {
+      NodeViewDesc,
+      ViewDesc,
+      WidgetViewDesc,
+      originalUpdateChildren,
+      originalMatchesNode,
+    };
   } finally {
     warmView.destroy();
   }
@@ -346,9 +377,10 @@ export function refineSpacerPosForClientY(
 
 function collectReusable(
   previous: AnyDesc[],
-): { byIndex: Map<number, AnyDesc>; spacers: AnyDesc[] } {
+): { byIndex: Map<number, AnyDesc>; spacers: AnyDesc[]; widgets: AnyDesc[] } {
   const byIndex = new Map<number, AnyDesc>();
   const spacers: AnyDesc[] = [];
+  const widgets: AnyDesc[] = [];
   let index = 0;
   for (const child of previous) {
     if (isRangeSpacer(child)) {
@@ -356,12 +388,16 @@ function collectReusable(
       index = (child.indexTo ?? index) + 1;
       continue;
     }
+    if (child.widget) {
+      widgets.push(child);
+      continue;
+    }
     if (child.node) {
       byIndex.set(index, child);
       index += 1;
     }
   }
-  return { byIndex, spacers };
+  return { byIndex, spacers, widgets };
 }
 
 function mustMountIndividual(
@@ -371,6 +407,78 @@ function mustMountIndividual(
 ): boolean {
   // Always-real types and everything inside a real window stay individual.
   return !isIndexStubbed(stub, index, typeName);
+}
+
+function decoLocals(deco: DecorationSource, node: ProseNode): readonly Decoration[] {
+  const withLocals = deco as { locals?: (target: ProseNode) => readonly Decoration[] };
+  return withLocals.locals?.(node) ?? [];
+}
+
+function widgetSide(decoration: Decoration): number {
+  return (decoration as Decoration & { type: { side: number } }).type.side;
+}
+
+/** `Decoration.widget` is runtime-only — not on the public .d.ts surface. */
+function isWidgetDecoration(decoration: Decoration): boolean {
+  return !!(decoration as Decoration & { widget?: boolean }).widget;
+}
+
+function compareWidgetSide(a: Decoration, b: Decoration): number {
+  return widgetSide(a) - widgetSide(b);
+}
+
+/**
+ * Drain locals whose `to` equals `offset` into widget / non-widget buckets.
+ * Matches `iterDeco`'s point-widget collection at a seam.
+ */
+function takeAtOffset(
+  locals: readonly Decoration[],
+  decoIndex: { value: number },
+  offset: number,
+): { widgets: Decoration[]; other: Decoration[] } {
+  const widgets: Decoration[] = [];
+  const other: Decoration[] = [];
+  while (decoIndex.value < locals.length && locals[decoIndex.value]!.to === offset) {
+    const next = locals[decoIndex.value]!;
+    decoIndex.value += 1;
+    if (isWidgetDecoration(next)) widgets.push(next);
+    else other.push(next);
+  }
+  widgets.sort(compareWidgetSide);
+  return { widgets, other };
+}
+
+/**
+ * Outer decorations spanning a whole top-level block, same spirit as
+ * `iterDeco` for non-inline children.
+ */
+function outerDecoForBlock(
+  locals: readonly Decoration[],
+  decoIndex: { value: number },
+  offset: number,
+  end: number,
+  active: Decoration[],
+): Decoration[] {
+  for (let i = 0; i < active.length; i += 1) {
+    if (active[i]!.to <= offset) {
+      active.splice(i, 1);
+      i -= 1;
+    }
+  }
+  while (
+    decoIndex.value < locals.length
+    && locals[decoIndex.value]!.from <= offset
+    && locals[decoIndex.value]!.to > offset
+  ) {
+    const next = locals[decoIndex.value]!;
+    decoIndex.value += 1;
+    if (!isWidgetDecoration(next)) active.push(next);
+  }
+  // Skip decorations that end inside this block (belong to forChild / inners).
+  while (decoIndex.value < locals.length && locals[decoIndex.value]!.to < end) {
+    decoIndex.value += 1;
+  }
+  return active.slice();
 }
 
 function renderChildren(parentDOM: HTMLElement, descs: AnyDesc[]): void {
@@ -409,12 +517,17 @@ function rebuildSparseChildren(
   stub: ViewportStubState,
   NodeViewDesc: NodeViewDescCtor,
   ViewDesc: ViewDescCtor,
+  WidgetViewDesc: WidgetViewDescCtor,
 ): void {
   rememberOwner(docView, view);
   const doc = view.state.doc;
   const childCount = doc.childCount;
-  const emptyDeco: DecorationSource = DecorationSet.empty;
-  const outerDeco: unknown[] = [];
+  const innerDeco: DecorationSource = (
+    docView as AnyDesc & { innerDeco?: DecorationSource }
+  ).innerDeco ?? DecorationSet.empty;
+  const locals = decoLocals(innerDeco, doc);
+  const decoIndex = { value: 0 };
+  const active: Decoration[] = [];
 
   // Starts for spacer click mapping / create pos.
   const starts = new Float64Array(childCount);
@@ -424,27 +537,58 @@ function rebuildSparseChildren(
     cursor += doc.child(index).nodeSize;
   }
 
-  const { byIndex, spacers: prevSpacers } = collectReusable(docView.children as AnyDesc[]);
+  const {
+    byIndex,
+    spacers: prevSpacers,
+    widgets: prevWidgets,
+  } = collectReusable(docView.children as AnyDesc[]);
   const reused = new Set<AnyDesc>();
   const next: AnyDesc[] = [];
+
+  const placeWidgets = (widgets: Decoration[], atPos: number): void => {
+    for (const widget of widgets) {
+      let desc: AnyDesc | null = null;
+      for (const candidate of prevWidgets) {
+        if (reused.has(candidate)) continue;
+        if (candidate.matchesWidget?.(widget)) {
+          desc = candidate;
+          break;
+        }
+      }
+      if (!desc) {
+        desc = new WidgetViewDesc(docView, widget, view, atPos);
+      }
+      reused.add(desc);
+      next.push(desc);
+    }
+  };
 
   let index = 0;
   let pos = 0;
   while (index < childCount) {
     const typeName = doc.child(index).type.name;
+    const seam = takeAtOffset(locals, decoIndex, pos);
+
     if (mustMountIndividual(stub, index, typeName)) {
+      // Visible seam before a real block — place top-level widgets.
+      placeWidgets(seam.widgets, pos);
       const node = doc.child(index);
+      const end = pos + node.nodeSize;
+      const outerDeco = outerDecoForBlock(locals, decoIndex, pos, end, active);
+      // Point non-widgets taken at the seam are not span actives; ignore.
+      void seam.other;
+      const childInner = innerDeco.forChild(pos, node);
       const existing = byIndex.get(index);
       let desc: AnyDesc | null = null;
       if (existing) {
-        if (existing.matchesNode?.(node, outerDeco, emptyDeco)) {
+        if (existing.matchesNode?.(node, outerDeco, childInner)) {
           desc = existing;
-        } else if (existing.update?.(node, outerDeco, emptyDeco, view)) {
+        } else if (existing.update?.(node, outerDeco, childInner, view)) {
           desc = existing;
         }
       }
       if (!desc) {
-        desc = NodeViewDesc.create(docView, node, outerDeco, emptyDeco, view, pos);
+        desc = NodeViewDesc.create(docView, node, outerDeco, childInner, view, pos);
         if (desc.contentDOM && desc.updateChildren) {
           desc.updateChildren(view, pos + 1);
         }
@@ -455,17 +599,32 @@ function rebuildSparseChildren(
       reused.add(existing ?? desc);
       next.push(desc);
       byIndex.delete(index);
-      pos += node.nodeSize;
+      pos = end;
       index += 1;
       continue;
     }
 
-    // Contiguous stubbed run → one spacer.
+    // Contiguous stubbed run → one spacer. Widgets at the leading seam are
+    // still visible (they sit after the previous real / before the spacer).
+    placeWidgets(seam.widgets, pos);
     const from = index;
+    let firstInRun = true;
     while (
       index < childCount
       && isIndexStubbed(stub, index, doc.child(index).type.name)
     ) {
+      const stubbed = doc.child(index);
+      const end = pos + stubbed.nodeSize;
+      if (firstInRun) {
+        // Leading seam already consumed by takeAtOffset above.
+        firstInRun = false;
+        outerDecoForBlock(locals, decoIndex, pos, end, active);
+      } else {
+        // Discard widgets / locals inside the off-screen run.
+        takeAtOffset(locals, decoIndex, pos);
+        outerDecoForBlock(locals, decoIndex, pos, end, active);
+      }
+      pos = end;
       index += 1;
     }
     const to = index - 1;
@@ -488,17 +647,21 @@ function rebuildSparseChildren(
       spacer = createRangeSpacer(ViewDesc, docView, doc, stub.heights, from, to, starts);
     }
     next.push(spacer);
-    for (let walked = from; walked <= to; walked += 1) {
-      pos += doc.child(walked).nodeSize;
-    }
   }
 
-  // Destroy leftovers (replaced reals / old spacers).
+  // Trailing widgets after the last top-level block (TOC / index chrome).
+  const trailing = takeAtOffset(locals, decoIndex, pos);
+  placeWidgets(trailing.widgets, pos);
+
+  // Destroy leftovers (replaced reals / old spacers / unused widgets).
   for (const leftover of byIndex.values()) {
     if (!reused.has(leftover)) leftover.destroy();
   }
   for (const spacer of prevSpacers) {
     if (!reused.has(spacer)) spacer.destroy();
+  }
+  for (const widget of prevWidgets) {
+    if (!reused.has(widget)) widget.destroy();
   }
   // Drop parent links on discarded children still listed on docView.
   for (const child of docView.children as AnyDesc[]) {
