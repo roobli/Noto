@@ -445,3 +445,61 @@ describe('in-place default stub remount', () => {
     view.destroy();
   });
 });
+
+describe('in-place specialised stub remount', () => {
+  it('keeps the same DOM node when a fence flips stub ↔ real', () => {
+    const { view } = mount(specialisedMarkdown());
+    setViewport(view, 0, 20);
+
+    const fenceIndex = indexOfType(view.state.doc, 'code_block', 1);
+    const stubEl = childAt(view, fenceIndex);
+    expect(stubEl.classList.contains(STUB_CLASS)).toBe(true);
+    expect(stubEl.tagName).toBe('PRE');
+    expect(stubEl.dataset.stubType).toBe('code_block');
+
+    setViewport(view, fenceIndex - 2, fenceIndex + 5);
+    const realEl = childAt(view, fenceIndex);
+    expect(realEl).toBe(stubEl);
+    expect(realEl.classList.contains(STUB_CLASS)).toBe(false);
+    expect(realEl.classList.contains('noto-fence')).toBe(true);
+    expect(realEl.querySelector('.noto-fence-code')).not.toBeNull();
+
+    setViewport(view, 0, 20);
+    const stubAgain = childAt(view, fenceIndex);
+    expect(stubAgain).toBe(stubEl);
+    expect(stubAgain.classList.contains(STUB_CLASS)).toBe(true);
+    expect(stubAgain.tagName).toBe('PRE');
+
+    view.destroy();
+  });
+
+  it('keeps the same DOM node for tables and display math', () => {
+    const { view } = mount(specialisedMarkdown());
+    setViewport(view, 0, 20);
+
+    const tableIndex = indexOfType(view.state.doc, 'table', 1);
+    const mathIndex = indexOfType(view.state.doc, 'math_block', 1);
+    const tableStub = childAt(view, tableIndex);
+    const mathStub = childAt(view, mathIndex);
+    expect(tableStub.tagName).toBe('DIV');
+    expect(mathStub.tagName).toBe('DIV');
+    expect(tableStub.classList.contains(STUB_CLASS)).toBe(true);
+    expect(mathStub.classList.contains(STUB_CLASS)).toBe(true);
+
+    setViewport(view, tableIndex - 2, mathIndex + 2);
+    expect(childAt(view, tableIndex)).toBe(tableStub);
+    expect(childAt(view, mathIndex)).toBe(mathStub);
+    expect(tableStub.classList.contains(STUB_CLASS)).toBe(false);
+    expect(mathStub.classList.contains(STUB_CLASS)).toBe(false);
+    expect(tableStub.querySelector('table')).not.toBeNull();
+    expect(mathStub.classList.contains('noto-math-block')).toBe(true);
+
+    setViewport(view, 0, 20);
+    expect(childAt(view, tableIndex)).toBe(tableStub);
+    expect(childAt(view, mathIndex)).toBe(mathStub);
+    expect(tableStub.classList.contains(STUB_CLASS)).toBe(true);
+    expect(mathStub.classList.contains(STUB_CLASS)).toBe(true);
+
+    view.destroy();
+  });
+});

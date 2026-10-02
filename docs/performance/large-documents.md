@@ -451,7 +451,43 @@ Linux agent, happy-dom (`PROFILE_RESIDUAL=1`), same machine before/after
 Large wall-clock is noise-dominated on both sides. Instrumented mid remount
 on huge: **same=54 / replaced=10** (all defaults keep the node; specialised
 still swap). Under load, after runs ranged ~10–22 ms (still below the ~29 ms
-before median). HTML/image stay always-real. Residual is specialised
-`replaceChild` + `updateChildren` for the real band. Packaged macOS
-re-measure remains useful; do not invent Apple-silicon numbers.
+before median). HTML/image stay always-real. Residual specialised
+`replaceChild` is addressed in the next section; band `updateChildren`
+remains. Packaged macOS re-measure remains useful; do not invent
+Apple-silicon numbers.
+
+### In-place specialised stub remount, 2026-10-02
+
+After #309, remount-mid on huge still paid `replaceChild` for the specialised
+fraction of the band (instrumented mid remount: **same=54 / replaced=10**, all
+swaps fences/tables/math). Default types already flipped in place; specialised
+stubs were always a `div`, while FenceView roots a `pre` and Table/Math root a
+`div` of their own — so every specialised enter/leave detached and attached
+against the ~44k-child mount (~3 ms of the mid remount).
+
+This cut keeps surgical enter/leave and specialised stubbing, and changes
+specialised shells only:
+
+1. **Typed specialised stubs** — `code_block` stubs as `pre`, `table` /
+   `math_block` as `div`, via the same per-tag prototype path as defaults.
+2. **Host reuse** — Fence/Table/Math constructors accept an optional `host`
+   shell; `SpecialisedStubbableView` passes the stub node on stub→real and
+   paints stub chrome back onto it on real→stub. No `replaceChild` when the
+   tag matches.
+3. **HTML/image unchanged** — still always-real. The huge corpus has **zero**
+   always-real top-level blocks, so stubbing them has no corpus ROI.
+
+Linux agent, happy-dom (`PROFILE_RESIDUAL=1`), same machine before/after
+(post-#309 baseline). Medians of three consecutive separate-process runs:
+
+| corpus | remount mid before | after | slide +1 before | after |
+| --- | ---: | ---: | ---: | ---: |
+| large (10,982 blocks) | 23 ms | **11 ms** | 0.6 ms | **0.5 ms** |
+| huge (43,970 blocks) | 22 ms | **19 ms** | 0.7 ms | **0.5 ms** |
+
+Huge wall-clock is noise-dominated on both sides. Instrumented mid remount on
+huge: **replaceCount 10 → 0** (replace phase ~3 → 0 ms). Residual is band
+`updateChildren` / specialised ctor work (tables still the heaviest
+specialised enter). Packaged macOS re-measure remains useful; do not invent
+Apple-silicon numbers.
 
