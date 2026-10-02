@@ -278,3 +278,34 @@ still walks every top-level child on decoration membership changes. Residual
 probe: `PROFILE_RESIDUAL=1 pnpm vitest run tests/unit/open-view-residual-profile.test.ts`.
 Packaged macOS re-measure remains useful; do not invent Apple-silicon numbers.
 
+### Surgical membership remount, 2026-10-02
+
+After #304, remount spikes when the real window moved were still dominated by
+ProseMirror: node decorations on the real band made `DecorationsSet.eq` fail, so
+`updateChildren` walked every top-level child and `renderDescs` resynced the
+whole list. On huge, a one-block slide cost about as much as remounting a
+61-block band (~460–550 ms) — the walk, not the band.
+
+This cut keeps OR membership and specialised stubbing, and changes the remount
+signal:
+
+1. **No membership decorations** — the stub plugin's decoration set stays empty.
+   A pure viewport meta update no longer fails `matchesNode`, so the O(doc) walk
+   does not run.
+2. **Surgical stub ↔ real** — on generation change the plugin view diffs the
+   previous and next windows and remounts only enter/leave indices in place
+   (`applyMembership` on the NodeView, ViewDesc pointer fixup, `updateChildren`
+   only on that block's content).
+
+Linux agent, happy-dom (`PROFILE_RESIDUAL=1`), same machine before/after.
+Medians of three after runs; before from the post-#304 residual on this box:
+
+| corpus | remount mid (~61) before | after | slide +1 before | after |
+| --- | ---: | ---: | ---: | ---: |
+| large (10,982 blocks) | 82 ms | **49 ms** | 51 ms | **11 ms** |
+| huge (43,970 blocks) | 582 ms | **182 ms** | 460 ms | **76 ms** |
+
+Remount mid still pays for building ~61 real blocks; slide +1 is the walk cut.
+HTML/image stay always-real. Packaged macOS re-measure remains useful; do not
+invent Apple-silicon numbers.
+
