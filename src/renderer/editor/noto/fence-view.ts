@@ -12,6 +12,13 @@
  * code, so the two line up as long as code never wraps, and it does not: a
  * long line scrolls inside the code column while the numbers stay put. Its
  * width follows the block's own line count, two digits at least.
+ *
+ * Tools (language field + copy) match the CSS contract: visible on hover or
+ * while the caret is in the fence. They are mounted on first pointerenter /
+ * focusin rather than in the constructor. Binding the shared language
+ * datalist (`list=`) waits until the field is focused — resolving that id
+ * against a document with tens of thousands of top-level stubs dominated
+ * FenceView construction on remount (~18 ms per fence in happy-dom on huge).
  */
 
 import type { Node as ProseNode } from 'prosemirror-model';
@@ -55,9 +62,11 @@ export class FenceView implements NodeView {
   readonly dom: HTMLElement;
   readonly contentDOM: HTMLElement;
   private readonly gutter: HTMLElement;
-  private readonly tools: HTMLElement;
-  private readonly language: HTMLInputElement;
-  private readonly copy: HTMLButtonElement;
+  private tools: HTMLElement | null = null;
+  private language: HTMLInputElement | null = null;
+  private copy: HTMLButtonElement | null = null;
+  /** Whether the language field has been bound to the shared datalist. */
+  private languageListBound = false;
   private lines = 0;
   /** Present while the fence is a diagram, which its language decides. */
   private diagram: DiagramFrame | null = null;
@@ -93,6 +102,21 @@ export class FenceView implements NodeView {
     // Code is not prose, and every identifier in it would otherwise be a red squiggle.
     this.contentDOM.setAttribute('spellcheck', 'false');
 
+    this.dom.append(this.gutter, this.contentDOM);
+    // Tools stay off the remount path: CSS already shows them only on hover /
+    // active-block / focus-within (see noto-editor.scss). Mount on demand.
+    this.dom.addEventListener('pointerenter', this.ensureTools);
+    this.dom.addEventListener('focusin', this.ensureTools);
+    this.render();
+  }
+
+  /**
+   * Build the language field and copy button once, when the reader reaches
+   * for them. Safe to call repeatedly.
+   */
+  private readonly ensureTools = (): void => {
+    if (this.tools) return;
+
     this.tools = document.createElement('div');
     this.tools.className = 'noto-fence-tools';
     this.tools.contentEditable = 'false';
@@ -107,7 +131,10 @@ export class FenceView implements NodeView {
     this.language.spellcheck = false;
     this.language.autocomplete = 'off';
     this.language.setAttribute('aria-label', 'Code block language');
-    this.language.setAttribute('list', languageList().id);
+    // Do not set `list=` here. Resolving the shared datalist id against a
+    // document full of stub placeholders dominated FenceView construction on
+    // remount; bind it when the field is actually focused.
+    this.language.addEventListener('focus', this.bindLanguageList);
     this.language.addEventListener('change', () => this.commitLanguage());
     this.language.addEventListener('keydown', (event) => {
       if (event.key === 'Enter') {
@@ -116,7 +143,7 @@ export class FenceView implements NodeView {
         this.view.focus();
       } else if (event.key === 'Escape') {
         event.preventDefault();
-        this.language.value = (this.node.attrs.lang as string) || '';
+        if (this.language) this.language.value = (this.node.attrs.lang as string) || '';
         this.view.focus();
       }
     });
@@ -130,10 +157,15 @@ export class FenceView implements NodeView {
     this.copy.addEventListener('mousedown', (event) => event.preventDefault());
     this.copy.addEventListener('click', () => this.copyCode());
     this.tools.append(this.language, this.copy);
+    this.dom.append(this.tools);
+    this.syncLanguageField();
+  };
 
-    this.dom.append(this.gutter, this.contentDOM, this.tools);
-    this.render();
-  }
+  private readonly bindLanguageList = (): void => {
+    if (this.languageListBound || !this.language) return;
+    this.language.setAttribute('list', languageList().id);
+    this.languageListBound = true;
+  };
 
   update(node: ProseNode): boolean {
     if (node.type !== this.node.type) return false;
@@ -144,13 +176,15 @@ export class FenceView implements NodeView {
 
   /** The gutter and the tools are ours. Only the code is the editor's. */
   ignoreMutation(mutation: MutationRecord | { type: 'selection'; target: Node }): boolean {
-    return !this.contentDOM.contains(mutation.target);
+    if (this.contentDOM.contains(mutation.target)) return false;
+    return true;
   }
 
   /** A click on the tools, the gutter or the drawing is not a click in the document. */
   stopEvent(event: Event): boolean {
     return event.target instanceof Node
-      && (this.tools.contains(event.target) || this.gutter.contains(event.target)
+      && ((this.tools !== null && this.tools.contains(event.target))
+        || this.gutter.contains(event.target)
         || (this.diagram !== null && this.diagram.dom.contains(event.target))
         || (this.timeline !== null && this.timeline.dom.contains(event.target)));
   }
@@ -181,12 +215,16 @@ export class FenceView implements NodeView {
 
   destroy(): void {
     if (this.copiedTimer !== null) clearTimeout(this.copiedTimer);
+    this.dom.removeEventListener('pointerenter', this.ensureTools);
+    this.dom.removeEventListener('focusin', this.ensureTools);
+    this.language?.removeEventListener('focus', this.bindLanguageList);
     this.diagram?.destroy();
     this.timeline?.destroy();
   }
 
   /** Write the field's value into the node, as one undoable change. */
   private commitLanguage(): void {
+    if (!this.language) return;
     const lang = this.language.value.trim().toLowerCase();
     if (lang === ((this.node.attrs.lang as string) || '')) return;
     const position = this.getPos();
@@ -195,14 +233,20 @@ export class FenceView implements NodeView {
     this.view.dispatch(state.tr.setNodeMarkup(position, undefined, { ...this.node.attrs, lang }));
   }
 
-  private render(): void {
+  private syncLanguageField(): void {
+    if (!this.language) return;
     const lang = (this.node.attrs.lang as string) || '';
-    if (lang) this.dom.setAttribute('data-lang', lang);
-    else this.dom.removeAttribute('data-lang');
     // Not while the reader is typing in it: a redraw mid-word would take
     // the word away.
     if (document.activeElement !== this.language) this.language.value = lang;
     this.language.size = Math.max(6, lang.length + 1);
+  }
+
+  private render(): void {
+    const lang = (this.node.attrs.lang as string) || '';
+    if (lang) this.dom.setAttribute('data-lang', lang);
+    else this.dom.removeAttribute('data-lang');
+    this.syncLanguageField();
 
     // A mermaid fence is drawn as its diagram, beside the source; a press on
     // the drawing puts the caret at the top of the source.
@@ -240,13 +284,16 @@ export class FenceView implements NodeView {
   }
 
   private copyCode(): void {
+    if (!this.copy) return;
     if (!copyThroughSelection(this.node.textContent)) return;
     this.copy.textContent = 'Copied';
     this.copy.dataset.copied = '';
     if (this.copiedTimer !== null) clearTimeout(this.copiedTimer);
     this.copiedTimer = setTimeout(() => {
-      this.copy.textContent = 'Copy';
-      delete this.copy.dataset.copied;
+      if (this.copy) {
+        this.copy.textContent = 'Copy';
+        delete this.copy.dataset.copied;
+      }
       this.copiedTimer = null;
     }, COPIED_MS);
   }

@@ -10,6 +10,13 @@ How releases are made, and what each channel receives, is in
 ## [Unreleased]
 
 ### Changed
+- **Faster specialised fence remount (lazy tools + deferred datalist).** Fence
+  language/copy chrome mounts on first hover or focus-in, matching the CSS that
+  already hides tools until then; the shared language datalist binds only when
+  the field is focused. Remount no longer pays datalist id-resolution against
+  every top-level stub. Linux happy-dom residual, same machine before/after
+  (median of 3): remount mid huge **146 → 85 ms**, large **37 → 23 ms**. Forced
+  `code_block`×3 applyMembership **80 → 0.6 ms**.
 - **Faster stub remount when the viewport moves (scroller lookup).** Finding the
   scrollport no longer reads computed `overflowY` on the ProseMirror mount
   parent (that forced layout over every top-level child on each membership
