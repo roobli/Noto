@@ -173,6 +173,97 @@ function gapBetween(
   };
 }
 
+
+/**
+ * Whether a block-mode save reproduces the accepted file bytes without assembly.
+ *
+ * True when every unit is a pristine origin in document order and the target
+ * envelope does not convert line endings or the final newline. That is the
+ * common autosave / undo-back-to-clean path: the serializer used to rebuild the
+ * whole output string and then notice `outputText === document.text`. Detecting
+ * identity up front keeps huge-document identity saves off the assembly path.
+ *
+ * Callers still run `validateOrigins` first so forged units never take this door.
+ */
+function isByteIdentitySave(
+  document: NotoDocument,
+  units: readonly NotoUnit[],
+  target: NotoTargetEnvelope,
+): boolean {
+  const lineEnding = target.lineEnding === 'mixed'
+    ? document.envelope.lineEnding
+    : target.lineEnding;
+  if (lineEnding !== document.envelope.lineEnding) return false;
+  if (target.hasFinalNewline !== document.envelope.hasFinalNewline) return false;
+  if (units.length !== document.blocks.length) return false;
+  for (let index = 0; index < units.length; index += 1) {
+    const unit = units[index]!;
+    const block = document.blocks[index];
+    if (!unit.origin || unit.origin.ordinal !== index) return false;
+    if (!isPristine(unit, block)) return false;
+  }
+  return true;
+}
+
+/** Preserved evidence for a byte-identity save, hashed lazily like the engine path. */
+function identityPreservedRanges(document: NotoDocument): NotoPreservedRange[] {
+  const preserved: NotoPreservedRange[] = [];
+  if (document.envelope.bom === 'utf8') {
+    preserved.push({ role: 'bom', start: 0, end: 3, sha256: sha256(UTF8_BOM) });
+  }
+  if (document.leading.length > 0) {
+    preserved.push({
+      role: 'leading',
+      start: 0,
+      end: document.leading.length,
+      sha256: sha256(document.leading),
+    });
+  }
+  for (let index = 0; index < document.blocks.length; index += 1) {
+    if (index > 0) {
+      const gap = document.gaps[index - 1];
+      if (gap !== undefined && gap.beforeOrdinal === index - 1) {
+        const previous = document.blocks[index - 1]!;
+        const current = document.blocks[index]!;
+        preserved.push({
+          role: 'gap',
+          start: previous.end,
+          end: current.start,
+          sha256: sha256(gap.text),
+        });
+      }
+    }
+    const block = document.blocks[index]!;
+    preserved.push({
+      role: 'block',
+      start: block.start,
+      end: block.end,
+      sha256: block.sha256,
+    });
+  }
+  if (document.trailing.length > 0 && document.blocks.length > 0) {
+    const last = document.blocks[document.blocks.length - 1]!;
+    preserved.push({
+      role: 'trailing',
+      start: last.end,
+      end: document.text.length,
+      sha256: sha256(document.trailing),
+    });
+  }
+  return preserved;
+}
+
+function byteIdentityResult(document: NotoDocument): NotoSerializeSuccess {
+  return withLazyPreserved({
+    status: 'serialized',
+    version: NOTO_MARKDOWN_VERSION,
+    outputBytes: document.originalBytes.slice(),
+    // Parse already hashed these bytes into the envelope.
+    outputSha256: document.envelope.sourceSha256,
+    document,
+  }, () => identityPreservedRanges(document));
+}
+
 function serializeBlocks(
   document: NotoDocument,
   units: readonly NotoUnit[],
@@ -180,6 +271,7 @@ function serializeBlocks(
 ): NotoSerializeResult {
   const originFailure = validateOrigins(document, units);
   if (originFailure) return originFailure;
+  if (isByteIdentitySave(document, units, target)) return byteIdentityResult(document);
 
   const { bom } = document.envelope;
   /*
@@ -634,6 +726,7 @@ function serializeBlocksViaRoobli(
 ): NotoSerializeResult {
   const originFailure = validateOrigins(document, units);
   if (originFailure) return originFailure;
+  if (isByteIdentitySave(document, units, target)) return byteIdentityResult(document);
 
   const engineResult = serializeViaRoobli(toEngineDocument(document), {
     units: toSerializeUnits(units),

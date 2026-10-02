@@ -702,6 +702,34 @@ milliseconds of slice/join/hash/encode on `huge`, plus the structured clone of
 one unit object per block — but it is no longer the dominant story, and further
 save work should re-measure rather than assume.
 
+## Identity save short-circuit, 2026-10-02
+
+Autosave / undo-back-to-clean already short-circuited *after* assembling the
+output string (`outputText === document.text`). That still paid O(n) slice/join
+(and, on the `@roobli/md` path, `toEngineDocument` + engine assembly +
+`sha256` of the rebuilt bytes) on every identity save.
+
+`serializeBlocks` / `serializeBlocksViaRoobli` now detect a byte-identity
+transaction up front — every unit a pristine origin in document order, envelope
+not converting line endings or the final newline — and return
+`document.originalBytes` with `envelope.sourceSha256` without assembling.
+Forged origins still fail in `validateOrigins` before this door. Line-ending
+conversion and any dirty unit take the existing assembly path unchanged.
+
+Linux agent, `PROFILE_SAVE=1 pnpm vitest run tests/unit/save-profile.test.ts`,
+same machine before/after (after = short-circuit on; before = same binary with
+the two early returns commented out). Median of three after runs on `huge`:
+
+| document | serialize identity before | after | serialize 1-edit (unchanged path) |
+| -------- | ------------------------: | ----: | --------------------------------: |
+| large    | 34 ms                     | **1 ms** | 40–41 ms |
+| huge     | 173 ms                    | **8–9 ms** | 162–181 ms |
+
+Coverage: `tests/unit/identity-save-short-circuit.test.ts` plus existing
+roobli/micromark identity parity. What remains on a one-block save is still the
+assembly + structured clone of one unit per block; identity is no longer that
+story.
+
 ## Three ways of measuring Typora that did not work
 
 All three were abandoned before a fourth approach succeeded. They are kept
