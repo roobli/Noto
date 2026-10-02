@@ -2,8 +2,6 @@
  * @vitest-environment happy-dom
  */
 import { describe, expect, it } from 'vitest';
-import { readFileSync } from 'node:fs';
-import path from 'node:path';
 import { EditorState, TextSelection } from 'prosemirror-state';
 import { EditorView } from 'prosemirror-view';
 import { splitBlocks } from '../../src/shared/markdown/v3/blocks';
@@ -12,15 +10,21 @@ import { fenceNodeViews } from '../../src/renderer/editor/noto/fence-view';
 import { mathNodeViews } from '../../src/renderer/editor/noto/math-view';
 import { tableNodeViews } from '../../src/renderer/editor/noto/table-view';
 import {
+  STUB_MIN_TOP_LEVEL_BLOCKS,
   mergeStubAwareNodeViews,
   viewportStubKey,
   viewportStubPlugin,
 } from '../../src/renderer/editor/noto/viewport-stub';
 import { isRangeSpacer, sparseTopLevelDescAt } from '../../src/renderer/editor/noto/sparse-doc-view';
 
+/** Same shape as viewport-stub unit tests — no generated bench corpus. */
+function manyParagraphs(count: number): string {
+  return `${Array.from({ length: count }, (_, index) => `Paragraph ${index}.`).join('\n\n')}\n`;
+}
+
 describe('sparse open sanity on large corpus', () => {
   it('keeps size sum, tall spacer, mid remount + edit', () => {
-    const text = readFileSync(path.resolve(__dirname, '../../out/bench/corpus/large.md'), 'utf8');
+    const text = manyParagraphs(STUB_MIN_TOP_LEVEL_BLOCKS + 500);
     const doc = docFromSpans(splitBlocks(text).spans);
     expect(doc.childCount).toBeGreaterThan(3000);
 
