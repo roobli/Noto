@@ -726,9 +726,40 @@ the two early returns commented out). Median of three after runs on `huge`:
 | huge     | 173 ms                    | **8–9 ms** | 162–181 ms |
 
 Coverage: `tests/unit/identity-save-short-circuit.test.ts` plus existing
-roobli/micromark identity parity. What remains on a one-block save is still the
-assembly + structured clone of one unit per block; identity is no longer that
-story.
+roobli/micromark identity parity. What remains on a one-block save was still full assembly; the wire already
+compacts untouched units to runs (see single-block splice below). Identity is
+no longer that story.
+
+## Single-block edit splice, 2026-10-02
+
+After the identity short-circuit, a one-block save of `huge` still paid the
+engine's full assembly (`serializeViaRoobli` ~44 ms with the native hash main
+installs) plus host bookkeeping. The IPC request was already compact: untouched
+blocks travel as ordinal runs (`compactTransaction`), so
+`structuredClone` of the **wire** transaction is ~0 ms. The save-profile's old
+`structuredClone(units)` figure (~60–80 ms) measured the expanded pre-compact
+array, which never crosses the process boundary.
+
+`serializeBlocks` / `serializeBlocksViaRoobli` now detect a single dirty unit
+among pristine same-order origins with no envelope conversion and with blank-line
+gaps beside the edit (the case where `gapBetween` would keep those gaps). The
+output is the accepted text with that one block spliced, then the same windowed
+reparse proof and `buildNextDocument` shift as the full path. A single-newline
+gap beside the dirty unit still takes the assembly path, because that rewrite
+must happen.
+
+Linux agent, native `useSha256` (as in desktop main),
+`PROFILE_1EDIT=1` / `PROFILE_SAVE=1` harnesses, median of five, same machine
+before/after (after = splice on; before = early returns commented out):
+
+| document | serialize 1-edit before | after | structuredClone compact |
+| -------- | ----------------------: | ----: | ----------------------: |
+| large    | 23 ms                   | **13 ms** | ~0 ms |
+| huge     | 85 ms                   | **51 ms** | ~0 ms |
+
+Coverage: `tests/unit/single-block-edit-splice.test.ts`. Multi-block inserts /
+deletes and line-ending conversion stay on the engine path. Open's ~2 s on
+`huge` remains the spacer/virtualization design, separate from this save cut.
 
 ## Three ways of measuring Typora that did not work
 

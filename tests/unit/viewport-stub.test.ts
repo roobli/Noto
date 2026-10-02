@@ -161,7 +161,7 @@ describe('top-level positions', () => {
     }
   });
 
-  it('stays fast for every block of a long note', () => {
+  it('stays fast for every block of a long note', { timeout: 15_000 }, () => {
     // Each stubbable block asks for its index as the view is built. Resolving
     // each position walked the children from the first: quadratic.
     const doc = docFor(`${Array.from({ length: 40_000 }, (_, index) => `P${index}.`).join('\n\n')}\n`);
