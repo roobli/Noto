@@ -63,6 +63,31 @@ function rangeContaining(ranges: readonly TopLevelRange[], pos: number): TopLeve
 }
 
 /**
+ * True when every step edits inside a single top-level block (no merge, split,
+ * insert, or delete of top-level nodes). Origins then stay at the same indices
+ * and the previous array can be reused — building 2×`childCount` range objects
+ * and remapping every origin dominated keystrokes on huge notes (~15 ms).
+ */
+function isInteriorTopLevelEdit(transaction: Transaction): boolean {
+  const startDoc = transaction.docs[0];
+  if (!startDoc || startDoc.childCount !== transaction.doc.childCount) return false;
+  for (let index = 0; index < transaction.steps.length; index += 1) {
+    const doc = transaction.docs[index];
+    if (!doc) return false;
+    const step = transaction.steps[index] as { from?: number; to?: number };
+    if (typeof step.from !== 'number' || typeof step.to !== 'number') return false;
+    if (step.from < 0 || step.to > doc.content.size || step.from > step.to) return false;
+    const $from = doc.resolve(step.from);
+    const $to = doc.resolve(step.to);
+    // Between top-level nodes depth is 0; a whole-node replace also resolves
+    // with depth 0 at the boundaries. Either case can change structure.
+    if ($from.depth < 1 || $to.depth < 1) return false;
+    if ($from.index(0) !== $to.index(0)) return false;
+  }
+  return transaction.steps.length > 0;
+}
+
+/**
  * Carry origins across one replacement step.
  *
  * An origin survives only if some part of its block survived. Two old blocks
@@ -119,6 +144,12 @@ export function createOriginPlugin(initialOrigins: Origins): Plugin<OriginState>
           return { origins: base.map((_origin, index) => rebase.origins[index] ?? null) };
         }
         if (!transaction.docChanged) return previous;
+        if (
+          previous.origins.length === transaction.doc.childCount
+          && isInteriorTopLevelEdit(transaction)
+        ) {
+          return previous;
+        }
         return { origins: mapTransaction(transaction, previous.origins) };
       },
     },
