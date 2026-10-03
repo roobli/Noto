@@ -12,10 +12,13 @@ import {
   NOTO_MARKDOWN_VERSION,
   type NotoBlockOrigin,
   type NotoDocumentWire,
+  type NotoKeptRun,
   type NotoTransaction,
+  type NotoTransactionWire,
   type NotoTargetEnvelope,
   type NotoUnit,
 } from '../../../shared/markdown/v3/contracts';
+import { compactTransaction, sameOrigin } from '../../../shared/markdown/v3/revision-patch';
 
 /** What a block looked like when the document was accepted. */
 export interface PristineBlock {
@@ -120,5 +123,79 @@ export function captureTransaction(input: CaptureInput): { transaction: NotoTran
       },
     },
     stats,
+  };
+}
+
+/**
+ * Save wire for a document whose top-level nodes have not been split, merged,
+ * inserted, or deleted since they were accepted.
+ *
+ * `acceptedNodes[i]` is the node that block had when it was last accepted.
+ * ProseMirror reuses every node an interior edit did not touch, so a save can
+ * name those blocks as kept runs instead of allocating one unit per block and
+ * then folding the units back into the same runs (`compactTransaction`).
+ *
+ * A node that is not the accepted object is still reused when it compares
+ * equal, which is what the full walk does. Anything else is serialized. When
+ * the caller cannot promise index alignment, this falls back to that walk.
+ */
+export function captureStableWire(
+  input: CaptureInput,
+  acceptedNodes: readonly ProseNode[],
+): { transaction: NotoTransactionWire; stats: CaptureStats } {
+  const doc = input.doc;
+  if (acceptedNodes.length !== doc.childCount || input.origins.length !== doc.childCount) {
+    const full = captureTransaction(input);
+    return { transaction: compactTransaction(full.transaction, input.document), stats: full.stats };
+  }
+
+  const units: (NotoUnit | NotoKeptRun)[] = [];
+  let run: { keep: number; count: number } | null = null;
+  let reused = 0;
+  let serialized = 0;
+  const baseOrigins = input.document.origins;
+
+  for (let index = 0; index < doc.childCount; index += 1) {
+    const node = doc.child(index);
+    const origin = input.origins[index] ?? null;
+    let unchanged = node === acceptedNodes[index];
+    if (!unchanged && origin) {
+      const previous = input.pristine.get(origin.blockId);
+      unchanged = !!previous && (node === previous.node || node.eq(previous.node));
+    }
+    const base = origin ? baseOrigins[origin.ordinal] : undefined;
+    if (unchanged && origin && base && sameOrigin(origin, base)) {
+      reused += 1;
+      if (run && run.keep + run.count === origin.ordinal) {
+        run.count += 1;
+      } else {
+        run = { keep: origin.ordinal, count: 1 };
+        units.push(run);
+      }
+      continue;
+    }
+    serialized += 1;
+    run = null;
+    // Unchanged but not a base block at its ordinal still sends no text. A
+    // block with no origin has nothing to reuse and must be rendered.
+    units.push({
+      origin,
+      markdown: unchanged && origin ? null : blockToMarkdown(node),
+    });
+  }
+
+  return {
+    transaction: {
+      version: NOTO_MARKDOWN_VERSION,
+      mode: 'blocks',
+      documentId: input.document.documentId,
+      revisionId: input.document.revisionId,
+      units,
+      envelope: input.envelope ?? {
+        lineEnding: 'mixed',
+        hasFinalNewline: input.document.envelope.hasFinalNewline,
+      },
+    },
+    stats: { reused, serialized },
   };
 }

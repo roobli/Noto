@@ -1030,3 +1030,22 @@ Happy-dom huge (43,970 blocks), mid real band, product plugin set: keystroke
 on caret moves that do not change stub windows and by reusing origins on
 interior in-block edits. See `large-documents.md` (keystroke after sparse).
 
+
+## Capture walk, kept runs, 2026-10-02
+
+The save path still walked every top-level block to allocate a unit, then
+`compactTransaction` folded the untouched ones into runs. On this Linux box
+(`node` 22, corpus `huge` / 43,970 blocks, median of 9 after a warmup) that was
+the whole cost: `node.eq` already returns on `===`, and a pointer walk of the
+document is ~0.2 ms.
+
+| | 1-edit full capture + compact | stable kept-run wire |
+| --- | ---: | ---: |
+| `large`, 10,982 blocks | 1.9 ms (1.2–5.1) | 0.34 ms (0.32–0.59) |
+| `huge`, 43,970 blocks | 7.4 ms (6.4–11.5) | 1.2 ms (1.0–1.4) |
+
+Identity saves match (huge 6.7 → 1.0 ms). The wire expands to the same
+transaction as the full walk, so serialize is unchanged. A split, merge, or
+inserted block still takes the full walk until the next accept. 1-edit
+serialize stays ~50 ms; this was the last renderer-side piece of the save that
+was still one unit per block.

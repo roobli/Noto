@@ -28,7 +28,7 @@ import { QuickOpen, type QuickOpenMode } from './QuickOpen';
 import { searchBoost, type FrecencyStoreV1 } from '../shared/search/v1/frecency';
 import { ConfirmedOpenRecorder } from '../shared/search/v1/confirmed-open';
 import type { NotoDocumentWire } from '../shared/markdown/v3/contracts';
-import { compactTransaction, materializeSaveReply } from './file-truth-save';
+import { materializeSaveReply } from './file-truth-save';
 import { outlineFromDocument } from './outline';
 import { PLUGIN_LIFECYCLE_VERSION, type PluginLifecycleSnapshot } from '../shared/plugins/lifecycle';
 import { rendererProofManifest } from '../shared/plugins/proof-manifests';
@@ -1122,10 +1122,10 @@ function NotoWorkspace({ platform }: { platform: NotoPlatform }) {
     // The editor's own word on being dirty, because the flush above may have
     // just made it so and the state this closure holds is from before.
     if (!editor || !token || pending || !(editorDirty || editor.isDirty)) return;
-    let transaction: ReturnType<NotoEditor['capture']>;
+    let transaction: ReturnType<NotoEditor['captureSave']>;
     let base: NotoDocumentWire;
     try {
-      transaction = editor.capture();
+      transaction = editor.captureSave();
       // The revision the transaction was captured against, which a saved
       // revision comes back as a patch to.
       base = editor.acceptedDocument;
@@ -1141,7 +1141,7 @@ function NotoWorkspace({ platform }: { platform: NotoPlatform }) {
       const reply = await window.notoFileTruth.save({
         version: 1,
         requestId: rid('ft-save'),
-        candidate: { version: 3, saveToken: token, transaction: compactTransaction(transaction, base) },
+        candidate: { version: 3, saveToken: token, transaction },
       });
       const result = await materializeSaveReply(reply, base, async (revisionId) => {
         const whole = await window.notoFileTruth.document({
@@ -1204,7 +1204,7 @@ function NotoWorkspace({ platform }: { platform: NotoPlatform }) {
 
     setPending(true);
     try {
-      const transaction = editor.capture();
+      const transaction = editor.captureSave();
       const result = await window.notoFileTruth.saveCopy({
         version: 1,
         requestId: rid('ft-copy'),

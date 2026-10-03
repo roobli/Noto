@@ -67,7 +67,14 @@ function rangeContaining(ranges: readonly TopLevelRange[], pos: number): TopLeve
  * insert, or delete of top-level nodes). Origins then stay at the same indices
  * and the previous array can be reused — building 2×`childCount` range objects
  * and remapping every origin dominated keystrokes on huge notes (~15 ms).
+ *
+ * False for an empty step list: nothing was classified. Capture treats that
+ * the same as a structural edit and does not take the kept-run path.
  */
+export function transactionKeepsTopLevelNodes(transaction: Transaction): boolean {
+  return isInteriorTopLevelEdit(transaction);
+}
+
 function isInteriorTopLevelEdit(transaction: Transaction): boolean {
   const startDoc = transaction.docs[0];
   if (!startDoc || startDoc.childCount !== transaction.doc.childCount) return false;
