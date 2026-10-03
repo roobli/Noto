@@ -152,7 +152,7 @@ describe('shell failure containment', () => {
   it('rejects a refused capture before pending or IPC, without fabricating a recovery barrier', async () => {
     const app = await shell();
     const saveFlow = between(app, 'const save = async () => {', '  const recover = async () => {');
-    const captureIndex = saveFlow.indexOf('editor.capture()');
+    const captureIndex = saveFlow.indexOf('editor.captureSave()');
     const captureCatch = saveFlow.indexOf('catch (error) {', captureIndex);
     const rejection = saveFlow.slice(captureCatch, saveFlow.indexOf('try {', captureCatch));
     expect(captureIndex).toBeGreaterThan(-1);
@@ -224,7 +224,7 @@ describe('shell failure containment', () => {
   it('contains save-copy failure without reporting a clean copy', async () => {
     const app = await shell();
     const saveCopy = between(app, 'const saveCopy = async (): Promise<boolean> => {', '  const confirmDiscard =');
-    expect(saveCopy.indexOf('editor.capture()')).toBeGreaterThan(saveCopy.indexOf('try {'));
+    expect(saveCopy.indexOf('editor.captureSave()')).toBeGreaterThan(saveCopy.indexOf('try {'));
     expect(saveCopy.indexOf('await window.notoFileTruth.saveCopy')).toBeGreaterThan(saveCopy.indexOf('try {'));
     expect(saveCopy).toContain('Save a copy failed. The original is unchanged.');
     expect(saveCopy).toContain("setState('Save failed');");

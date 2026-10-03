@@ -60,7 +60,7 @@ export function isKeptRun(unit: NotoUnit | NotoKeptRun): unit is NotoKeptRun {
   return 'keep' in unit;
 }
 
-function sameOrigin(left: NotoBlockOrigin, right: NotoBlockOrigin): boolean {
+export function sameOrigin(left: NotoBlockOrigin, right: NotoBlockOrigin): boolean {
   return left.blockId === right.blockId && left.ordinal === right.ordinal
     && left.kind === right.kind && left.semanticKey === right.semanticKey;
 }

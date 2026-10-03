@@ -49,15 +49,17 @@ import {
   type NotoDocumentWire,
   type NotoTargetEnvelope,
   type NotoTransaction,
+  type NotoTransactionWire,
 } from '../../../shared/markdown/v3/contracts';
+import { compactTransaction } from '../../../shared/markdown/v3/revision-patch';
 import {
   encodeSourceBuffer,
   sourceHasFinalNewline,
   sourceSettleKind,
 } from '../../source-mode-text';
-import { captureMarkdown, captureTransaction, type CaptureStats, type PristineBlock } from './capture';
+import { captureMarkdown, captureStableWire, captureTransaction, type CaptureStats, type PristineBlock } from './capture';
 import type { NotoEditorPort } from './NotoEditorPort';
-import { createOriginPlugin, getBlockOrigins, rebaseOrigins } from './origin-plugin';
+import { createOriginPlugin, getBlockOrigins, rebaseOrigins, transactionKeepsTopLevelNodes } from './origin-plugin';
 import { notoInputRules, type InputRuleOptions } from './input-rules';
 import { EDITOR_COMMANDS, insertTable, notoKeymap } from './keymap';
 import { sortTasks, toggleTaskStatus, type TaskStampOptions } from './todo-manager';
@@ -197,6 +199,14 @@ export class NotoEditor implements NotoEditorPort {
   private readonly options: NotoEditorOptions;
   /** What each accepted block looked like, keyed by block id. */
   private pristine = new Map<string, PristineBlock>();
+  /**
+   * Those same nodes in document order.
+   *
+   * Valid only while `topLevelStable` is set: an interior edit keeps every
+   * untouched block as this object, so a save can skip the per-block unit.
+   */
+  private acceptedNodes: ProseNode[] = [];
+  private topLevelStable = false;
   /**
    * Last structural `@roobli/md` split for flagged `replaceMarkdown`.
    * Unused while the micromark engine is selected.
@@ -365,6 +375,7 @@ export class NotoEditor implements NotoEditorPort {
       const span = resolved[index];
       if (origin && span) this.pristine.set(origin.blockId, { node, markdown: toLf(span.markdown) });
     });
+    this.rememberAccepted(doc);
 
     // Flagged path: seed prior split from the open/reload spans (no extra parse).
     if (isRoobliMdEngine()) {
@@ -574,6 +585,10 @@ export class NotoEditor implements NotoEditorPort {
     this.host.dataset.caret = String(this.view?.state.selection.from ?? 0);
     this.reportActiveBlock();
     if (!transaction.docChanged) return;
+    // A split, merge, or inserted block moves nodes between indexes. The
+    // accepted-node array would then keep the wrong block, so the save falls
+    // back to the full walk until the next accept.
+    if (!transactionKeepsTopLevelNodes(transaction)) this.topLevelStable = false;
     this.docVersion += 1;
     // WYSIWYG edits (and paste) diverge from the cached structural split.
     // replaceMarkdown sets replaceInFlight so its own dispatch does not clear.
@@ -1159,6 +1174,34 @@ export class NotoEditor implements NotoEditorPort {
     return this.captureWithStats().transaction;
   }
 
+  /**
+   * The transaction as it is sent to main.
+   *
+   * While every edit since the last accept stayed inside existing blocks, this
+   * emits kept runs directly. Otherwise it is `compactTransaction` of the full
+   * capture, which names the same blocks.
+   */
+  captureSave(): NotoTransactionWire {
+    const view = this.view;
+    if (!view) throw new Error('EDITOR_NOT_READY: the editor is not mounted');
+    if (view.composing) {
+      throw new Error('IME_COMPOSITION_ACTIVE: finish the current word before saving');
+    }
+    if (this.pendingSource !== null) return this.captureWithStats().transaction;
+
+    const input = {
+      doc: view.state.doc,
+      origins: getBlockOrigins(view.state),
+      document: this.document,
+      pristine: this.pristine,
+      envelope: this.target ?? undefined,
+    };
+    if (this.topLevelStable && this.acceptedNodes.length === input.doc.childCount) {
+      return captureStableWire(input, this.acceptedNodes).transaction;
+    }
+    return compactTransaction(captureTransaction(input).transaction, this.document);
+  }
+
   captureWithStats(): { transaction: NotoTransaction; stats: CaptureStats } {
     const view = this.view;
     if (!view) throw new Error('EDITOR_NOT_READY: the editor is not mounted');
@@ -1236,6 +1279,10 @@ export class NotoEditor implements NotoEditorPort {
 
     this.baselineDoc = view.state.doc;
     view.dispatch(rebaseOrigins(view.state.tr, document.origins));
+    // Rebase does not edit the document. The nodes now on screen are what the
+    // file just became, so the next interior edits can take the kept-run path
+    // again even if the save started from a structural change.
+    this.rememberAccepted(view.state.doc);
 
     // A change to the file's endings that this save did not carry is still
     // waiting, so the document is not clean and the reader still has something
@@ -1306,6 +1353,9 @@ export class NotoEditor implements NotoEditorPort {
         }
       }
       this.baselineDoc = view.state.doc;
+      // Enrich swaps in real nodes for the same blocks. Point the accepted
+      // array at them so the next save still hits by reference.
+      this.noteAcceptedWindow(window!.from, window!.to);
       return;
     }
 
@@ -1326,6 +1376,7 @@ export class NotoEditor implements NotoEditorPort {
       selection = Selection.atStart(doc);
     }
     view.updateState(next.apply(next.tr.setSelection(selection)));
+    this.rememberAccepted(view.state.doc);
   }
 
   /**
@@ -1366,7 +1417,26 @@ export class NotoEditor implements NotoEditorPort {
     this.view?.destroy();
     this.view = null;
     this.pristine = new Map();
+    this.acceptedNodes = [];
+    this.topLevelStable = false;
     this.priorSplit.invalidate();
+  }
+
+  private rememberAccepted(doc: ProseNode): void {
+    const nodes = new Array<ProseNode>(doc.childCount);
+    for (let index = 0; index < doc.childCount; index += 1) nodes[index] = doc.child(index);
+    this.acceptedNodes = nodes;
+    this.topLevelStable = true;
+  }
+
+  /** Enrich replaced `from..to` with new node objects for the same blocks. */
+  private noteAcceptedWindow(from: number, to: number): void {
+    const view = this.view;
+    if (!view || view.state.doc.childCount !== this.acceptedNodes.length) return;
+    for (let index = from; index < to; index += 1) {
+      this.acceptedNodes[index] = view.state.doc.child(index);
+    }
+    this.topLevelStable = true;
   }
 }
 
