@@ -95,12 +95,18 @@ import {
 import { syntaxHighlightPlugin } from './highlight';
 import { wikiLinkPlugin } from './wiki-link-plugin';
 import { followLinkPlugin, linkEditorPlugin } from './link-plugin';
-import { countDocumentWords, type DocumentCount } from './word-count';
+import { DocumentCounter, type DocumentCount } from './word-count';
 import { sliceToMarkdown } from './clipboard';
 import { rootSpellCheck, SPELL_CHECK_RESCAN, spellCheckScopeKey, spellCheckScopePlugin } from './spell-check-scope';
 
 /** How long after the last keystroke the document is counted. */
 const COUNT_DELAY_MS = 400;
+
+/**
+ * How long one slice of counting may hold the window. The first count of a
+ * long note is spread over as many slices as it needs, so no slice is a stall.
+ */
+const COUNT_SLICE_MS = 8;
 
 /* The three substitutions are booleans here and functions on the rules, which
    read them each time so a change of setting reaches an editor already open. */
@@ -389,13 +395,14 @@ export class NotoEditor implements NotoEditorPort {
 
   private countTimer: ReturnType<typeof setTimeout> | null = null;
   /**
-   * Per top-level block word counts, keyed by the ProseMirror node.
+   * Counts the document from per top-level block counts, keyed by the
+   * ProseMirror node.
    *
    * An edit leaves every untouched block as the same object, so a recount after
-   * typing only measures the blocks that changed. WeakMap drops counts for
-   * nodes the document no longer holds.
+   * typing only measures the blocks that changed. The weak cache drops counts
+   * for nodes the document no longer holds.
    */
-  private readonly blockCounts = new WeakMap<ProseNode, DocumentCount>();
+  private readonly counter = new DocumentCounter();
   private deferredEnrich: DeferredViewportEnrichController | null = null;
 
   /**
@@ -621,10 +628,25 @@ export class NotoEditor implements NotoEditorPort {
     }, COUNT_DELAY_MS);
   }
 
+  /**
+   * Count for at most COUNT_SLICE_MS, then yield and carry on in the next task
+   * until the count is complete. A change in between restarts the delay
+   * (`scheduleCount` clears this timer too); the blocks already counted stay
+   * cached, so nothing is counted twice.
+   */
   private reportCount(): void {
     const view = this.view;
     if (!view || !this.options.onCountChanged) return;
-    this.options.onCountChanged(countDocumentWords(view.state.doc, this.blockCounts));
+    const deadline = performance.now() + COUNT_SLICE_MS;
+    const count = this.counter.advance(view.state.doc, () => performance.now() >= deadline);
+    if (count) {
+      this.options.onCountChanged(count);
+      return;
+    }
+    this.countTimer = setTimeout(() => {
+      this.countTimer = null;
+      this.reportCount();
+    }, 0);
   }
 
   /** Told only when it changes: this runs on every transaction, typing included. */
