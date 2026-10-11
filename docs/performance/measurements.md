@@ -1103,3 +1103,24 @@ Huge document (8 MB, 43,970 blocks), Linux box:
 Building the stand-ins was never what made `parseDocument` slow (about 10 ms
 of it). Its cost is the engine split plus `canSkipDialectEnrich` and
 `engineSemanticKey` on every block. The win here is in the payload.
+
+## The preload's document hash runs natively, 2026-10-11
+
+The preload still verifies every document it receives against the envelope
+hash. It used to do that with a SHA-256 written in plain JavaScript, because
+validators are synchronous, the sandbox has no `node:crypto`, and Web Crypto
+only answers with a promise. Now the validators run with the hash checks
+collected (`collectDigestClaims`), and the preload awaits them through
+`crypto.subtle.digest` (`verifyDigestClaims`) before handing the payload on.
+The checks and the verdict are the same. Deliveries that can carry a document
+go through one chain, so they still reach the renderer in the order they
+arrived.
+
+Huge document, packaged, Linux box, interleaved with the build before:
+
+| | before | after |
+| --- | ---: | ---: |
+| preload document check, renderer thread (profiled) | ~258 ms | ~52 ms (UTF-8 encode and structure; the digest runs off-thread) |
+| profiled open | 1,721 / 1,758 ms | 1,605 / 1,514 ms |
+| bench open, `BENCH_RUNS=5` | 1,623 / 1,673 ms | 1,522 / 1,465 ms |
+| bench open, large | 661 / 658 ms | 590 / 587 ms |
