@@ -4275,24 +4275,65 @@ export function engineSemanticKey(kind: NotoBlockKind, markdown: string): string
     case 'ordered-list':
     case 'task-list': {
       const list = parseSimpleFlatListSource(markdown);
-      if (list) parts.push(list.ordered, list.start, list.spread, list.items.length);
+      if (list) return listSemanticKey(kind, list);
       break;
     }
     case 'table': {
       const table = parseSimpleTableSource(markdown);
-      if (table) {
-        parts.push(
-          table.rows.length,
-          table.rows[0]?.length ?? 0,
-          table.align.map((value) => value ?? '-').join(''),
-        );
-      }
+      if (table) return tableSemanticKey(kind, table);
       break;
     }
     default:
       break;
   }
   return parts.join('\u0000');
+}
+
+function listSemanticKey(kind: NotoBlockKind, list: ParsedFlatList): string {
+  return [kind, list.ordered, list.start, list.spread, list.items.length].join('\u0000');
+}
+
+function tableSemanticKey(kind: NotoBlockKind, table: NonNullable<ReturnType<typeof parseSimpleTableSource>>): string {
+  return [
+    kind,
+    table.rows.length,
+    table.rows[0]?.length ?? 0,
+    table.align.map((value) => value ?? '-').join(''),
+  ].join('\u0000');
+}
+
+/**
+ * `canSkipDialectEnrich` and `engineSemanticKey` asked together: the block's
+ * semantic key when the engine owns it, null when it needs dialect mdast.
+ *
+ * Asking them one after the other parses a list, table, footnote or link
+ * definition twice, once to decide and once for the key; this parses it once.
+ * For every block, the answer is
+ * `canSkipDialectEnrich(kind, md) ? engineSemanticKey(kind, md) : null`.
+ */
+export function engineOwnedSemanticKey(kind: NotoBlockKind, markdown: string): string | null {
+  switch (kind) {
+    case 'link-definition': {
+      const definition = parseLinkDefinitionSource(markdown);
+      return definition ? [kind, definition.identifier].join('\u0000') : null;
+    }
+    case 'footnote-definition': {
+      const definition = parseSimpleFootnoteDefinitionSource(markdown);
+      return definition ? [kind, definition.identifier].join('\u0000') : null;
+    }
+    case 'bullet-list':
+    case 'ordered-list':
+    case 'task-list': {
+      const list = parseSimpleFlatListSource(markdown);
+      return list ? listSemanticKey(kind, list) : null;
+    }
+    case 'table': {
+      const table = parseSimpleTableSource(markdown);
+      return table ? tableSemanticKey(kind, table) : null;
+    }
+    default:
+      return canSkipDialectEnrich(kind, markdown) ? engineSemanticKey(kind, markdown) : null;
+  }
 }
 
 

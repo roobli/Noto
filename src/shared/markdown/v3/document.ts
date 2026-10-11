@@ -35,15 +35,21 @@ function hasBom(bytes: Uint8Array): boolean {
   return bytes.length >= 3 && bytes[0] === UTF8_BOM[0] && bytes[1] === UTF8_BOM[1] && bytes[2] === UTF8_BOM[2];
 }
 
-function detectLineEnding(text: string): NotoLineEnding {
+/**
+ * `lf` without a `\r` anywhere; otherwise every `\n` is looked at, by
+ * `indexOf` rather than one character at a time (the per-character loop took
+ * about 24 ms on the 8 MB benchmark document), and the answer is known as soon
+ * as both kinds have been seen.
+ */
+export function detectLineEnding(text: string): NotoLineEnding {
+  if (!text.includes('\r')) return 'lf';
   let crlf = 0;
   let bareLf = 0;
-  for (let index = 0; index < text.length; index += 1) {
-    if (text[index] !== '\n') continue;
-    if (index > 0 && text[index - 1] === '\r') crlf += 1;
+  for (let index = text.indexOf('\n'); index !== -1; index = text.indexOf('\n', index + 1)) {
+    if (index > 0 && text.charCodeAt(index - 1) === 13) crlf += 1;
     else bareLf += 1;
+    if (crlf > 0 && bareLf > 0) return 'mixed';
   }
-  if (crlf > 0 && bareLf > 0) return 'mixed';
   return crlf > 0 ? 'crlf' : 'lf';
 }
 
