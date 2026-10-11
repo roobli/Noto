@@ -1124,3 +1124,30 @@ Huge document, packaged, Linux box, interleaved with the build before:
 | profiled open | 1,721 / 1,758 ms | 1,605 / 1,514 ms |
 | bench open, `BENCH_RUNS=5` | 1,623 / 1,673 ms | 1,522 / 1,465 ms |
 | bench open, large | 661 / 658 ms | 590 / 587 ms |
+
+## Open-time scans reuse what is known, 2026-10-11
+
+Two whole-document passes ran between mounting the editor and the first
+frame, and neither needed to:
+
+- **Typora marks' first scan** assembled every text block's text and ran the
+  three mark expressions over it. A block can only draw something if it has
+  an inline HTML node, or one of `=`, `^`, `~` (for the enabled kinds) in its
+  text. `mightDecorate` answers that from the text nodes first and skips the
+  rest. The same skip makes each keystroke's rescan cheaper.
+- **`createEnrichFlags`** asked `canSkipDialectEnrich` of every block again,
+  after main had already asked it of each one in `enrichSpanNone`. A deferred
+  open now ships main's answers as `engineOwned`, one `0` or `1` per block.
+  `blockSpansFromWire` puts each answer on its span, and `createEnrichFlags`
+  and `enrichSpansInRange` use it. They only ask again, against the footnote
+  definitions, for a span that came without an answer.
+
+Huge document, packaged, Linux box, renderer profile, interleaved ×3 with the
+build before:
+
+| | before | after |
+| --- | ---: | ---: |
+| typora marks first scan | 48–57 ms | 24–31 ms |
+| `createEnrichFlags` | 49–55 ms | 2 ms |
+| profiled open | 1,684 / 1,657 / 1,636 ms | 1,604 / 1,637 / 1,551 ms |
+| bench open, `BENCH_RUNS=5`, then `7` | 1,555 / 1,533, 1,801 / 1,609 ms | 1,467 / 1,530, 1,502 / 1,422 ms |

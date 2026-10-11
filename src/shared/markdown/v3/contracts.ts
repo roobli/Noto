@@ -119,6 +119,13 @@ export interface NotoDocument {
    * derived.
    */
   readonly nodesEnrichment?: 'full' | 'deferred';
+  /**
+   * Deferred open only: one character per block, `1` when the engine builds
+   * that block's ProseMirror without dialect mdast (`canSkipDialectEnrich`),
+   * `0` when it still needs enriching. Main computes it while splitting; the
+   * renderer reuses it rather than asking every block again.
+   */
+  readonly engineOwned?: string;
 }
 
 /**
@@ -160,6 +167,13 @@ export interface NotoDocumentWire {
    * omitted after an incremental save.
    */
   readonly nodesEnrichment?: 'full' | 'deferred';
+  /**
+   * Deferred open only: one character per block, `1` when the engine builds
+   * that block's ProseMirror without dialect mdast (`canSkipDialectEnrich`),
+   * `0` when it still needs enriching. Main computes it while splitting; the
+   * renderer reuses it rather than asking every block again.
+   */
+  readonly engineOwned?: string;
 }
 
 /**
