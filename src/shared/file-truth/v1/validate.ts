@@ -321,9 +321,10 @@ export function isNotoDocumentWire(value: unknown): value is NotoDocumentWire {
     || !(value.nodes === null
       || (Array.isArray(value.nodes) && value.nodes.length === value.origins.length
         && value.nodes.every(isWireMdastNode)))
-    // Optional open-path flag; only meaningful when nodes are present.
-    || (withEnrichment && (value.nodes === null
-      || (value.nodesEnrichment !== 'full' && value.nodesEnrichment !== 'deferred')))) return false;
+    // Optional open-path flag. A full open carries nodes; a deferred one may
+    // leave them for the renderer to derive from kinds and text.
+    || (withEnrichment && !(value.nodesEnrichment === 'deferred'
+      || (value.nodesEnrichment === 'full' && value.nodes !== null)))) return false;
 
   const bytes = originalBytesOf(value.text, String(value.envelope.bom));
   return value.envelope.byteLength === bytes.byteLength

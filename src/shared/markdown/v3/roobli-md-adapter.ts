@@ -177,14 +177,56 @@ export interface EnrichSpansInRangeOptions {
  * Keeps the kind-aware stand-in node and stamps a dialect-aligned semanticKey.
  */
 function finalizeEngineAdapterSpan(span: AdapterBlockSpan): AdapterBlockSpan {
+  // An engine-owned block never needs its mdast to reach ProseMirror, so a
+  // stand-in that has not been built yet stays unbuilt.
+  return lazyNodeSpan(
+    {
+      kind: span.kind,
+      start: span.start,
+      end: span.end,
+      markdown: span.markdown,
+      semanticKey: engineSemanticKey(span.kind, span.markdown),
+    },
+    () => span.node,
+  );
+}
+
+/**
+ * A span whose `node` is computed the first time something reads it.
+ *
+ * Open builds tens of thousands of structural stand-ins, and the blocks the
+ * engine converts straight to ProseMirror never look at theirs. The getter
+ * keeps the `BlockSpan` contract (every span has a node) without paying for
+ * the ones nobody reads. It is enumerable and memoised, so spreading,
+ * cloning and comparing a span still see a plain value.
+ */
+export function lazyNodeSpan(
+  fields: Omit<AdapterBlockSpan, 'node'>,
+  build: () => RootContent,
+): AdapterBlockSpan {
+  let node: RootContent | undefined;
   return {
-    kind: span.kind,
-    start: span.start,
-    end: span.end,
-    markdown: span.markdown,
-    semanticKey: engineSemanticKey(span.kind, span.markdown),
-    node: span.node,
+    kind: fields.kind,
+    start: fields.start,
+    end: fields.end,
+    markdown: fields.markdown,
+    semanticKey: fields.semanticKey,
+    get node(): RootContent {
+      if (node === undefined) node = build();
+      return node;
+    },
   };
+}
+
+/**
+ * The structural stand-in for a block, from its engine kind and source.
+ *
+ * The same node `splitBlocksViaRoobli(text, { enrich: 'none' })` attaches. The
+ * renderer derives these from the wire's kinds and text instead of receiving
+ * them over IPC.
+ */
+export function standInNodeFor(kind: NotoBlockKind, markdown: string): RootContent {
+  return standInNode({ kind, start: 0, end: markdown.length, markdown, node: null } as EngineBlockSpan);
 }
 
 function enrichDialectRun(
@@ -684,14 +726,16 @@ function enrichSpan(span: EngineBlockSpan): AdapterBlockSpan {
 function enrichSpanNone(span: EngineBlockSpan): AdapterBlockSpan {
   const kind = span.kind as NotoBlockKind;
   const skip = canSkipDialectEnrich(kind, span.markdown);
-  return {
-    kind,
-    start: span.start,
-    end: span.end,
-    markdown: span.markdown,
-    semanticKey: skip ? engineSemanticKey(kind, span.markdown) : kind,
-    node: standInNode(span),
-  };
+  return lazyNodeSpan(
+    {
+      kind,
+      start: span.start,
+      end: span.end,
+      markdown: span.markdown,
+      semanticKey: skip ? engineSemanticKey(kind, span.markdown) : kind,
+    },
+    () => standInNode(span),
+  );
 }
 
 /**

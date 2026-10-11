@@ -18,8 +18,8 @@ import {
 } from '../../src/shared/markdown/v3/roobli-md-adapter';
 import { canSkipDialectEnrich, engineSemanticKey } from '../../src/shared/markdown/v3/pm/from-engine';
 import { setMarkdownEngineForTests } from '../../src/shared/markdown/v3/engine-flag';
-import { parseDocument } from '../../src/shared/markdown/v3/document';
-import { splitBlocksMicromark } from '../../src/shared/markdown/v3/blocks';
+import { parseDocument, toWire } from '../../src/shared/markdown/v3/document';
+import { blockSpansFromWire, splitBlocksMicromark } from '../../src/shared/markdown/v3/blocks';
 
 const fixturesDir = path.join(process.cwd(), 'tests/fixtures/roobli-md-parity');
 const corpusSmall = path.join(process.cwd(), 'out/bench/corpus/small.md');
@@ -118,12 +118,15 @@ describe('open-path SpanEnrichMode', () => {
     expect(parsed.status).toBe('parsed');
     if (parsed.status !== 'parsed') return;
     expect(parsed.document.nodesEnrichment).toBe('deferred');
-    expect(parsed.document.nodes).not.toBeNull();
-    expect(parsed.document.nodes!.length).toBe(parsed.document.blocks.length);
+    // No stand-ins cross the wire; the renderer derives them from kinds + text.
+    expect(parsed.document.nodes).toBeNull();
+    const derived = blockSpansFromWire(toWire(parsed.document));
+    expect(derived).not.toBeNull();
+    expect(derived!.length).toBe(parsed.document.blocks.length);
     // Structural stand-ins: kinds from the native scanner; kind-aware mdast shells.
     // Plain heading is engine-owned (final key); marked paragraph stays deferred (key === kind).
     expect(parsed.document.blocks.map((b) => b.kind)).toEqual(['heading', 'paragraph']);
-    expect(parsed.document.nodes!.map((n) => n.type)).toEqual(['heading', 'paragraph']);
+    expect(derived!.map((span) => span.node.type)).toEqual(['heading', 'paragraph']);
     expect(parsed.document.blocks[0]!.semanticKey).toBe(
       engineSemanticKey('heading', parsed.document.blocks[0]!.markdown),
     );

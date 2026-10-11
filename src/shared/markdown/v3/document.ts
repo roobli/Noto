@@ -153,7 +153,10 @@ export function parseDocument(bytes: Uint8Array): NotoParseResult {
       gaps,
       leading: split.leading,
       trailing: split.trailing,
-      nodes: split.spans.map((span) => span.node),
+      // Deferred open ships no nodes: the stand-ins are a function of each
+      // block's kind and source, both already on the wire, and engine-owned
+      // blocks never read theirs. The renderer derives them on demand.
+      nodes: deferred ? null : split.spans.map((span) => span.node),
       nodesEnrichment: deferred ? 'deferred' : 'full',
     },
   };

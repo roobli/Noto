@@ -102,17 +102,21 @@ export interface NotoDocument {
   /**
    * Top-level mdast nodes from the parse that produced this document, or null
    * when the document was assembled without a full micromark pass (incremental
-   * save). Open ships these on the wire so the renderer can skip its second
-   * parse; they are not needed after the editor is mounted.
+   * save) or when open is deferred (`nodesEnrichment: 'deferred'`), whose
+   * structural stand-ins the renderer derives from kinds and text. A full open
+   * ships these on the wire so the renderer can skip its second parse; they are
+   * not needed after the editor is mounted.
    */
   readonly nodes: readonly import('mdast').RootContent[] | null;
   /**
    * How `nodes` were produced on open/reload.
    *
    * - `full`: every node is dialect-enriched (micromark open, or flagged bulk).
-   * - `deferred`: structural / `enrich: 'none'` stand-ins — renderer enriches a
-   *   first-paint window then viewport / idle deferred ranges (flagged lazy
-   *   open). Absent when `nodes` is null (incremental save).
+   * - `deferred`: `nodes` is null. The renderer derives the structural /
+   *   `enrich: 'none'` stand-ins itself (`blockSpansFromWire`), enriches a
+   *   first-paint window, then viewport / idle deferred ranges.
+   * Absent after an incremental save, where `nodes` is null and nothing is
+   * derived.
    */
   readonly nodesEnrichment?: 'full' | 'deferred';
 }
@@ -145,14 +149,15 @@ export interface NotoDocumentWire {
   /**
    * Top-level mdast nodes aligned with `spans` / `origins`, or null.
    *
-   * Present after a full `parseDocument` (open and reload). Null after an
-   * incremental save, where main did not reparse the whole file; the renderer
-   * keeps its editor and only needs Worker/sync parse again on a full reload.
+   * Present after a full `parseDocument` with `nodesEnrichment: 'full'`. Null
+   * after a deferred open or reload (the renderer derives stand-ins from
+   * `origins` and `text`) and after an incremental save, where main did not
+   * reparse the whole file and the renderer keeps its editor.
    */
   readonly nodes: readonly import('mdast').RootContent[] | null;
   /**
-   * Mirrors `NotoDocument.nodesEnrichment`. Present with open/reload nodes;
-   * omitted when `nodes` is null.
+   * Mirrors `NotoDocument.nodesEnrichment`. Present on open and reload;
+   * omitted after an incremental save.
    */
   readonly nodesEnrichment?: 'full' | 'deferred';
 }
