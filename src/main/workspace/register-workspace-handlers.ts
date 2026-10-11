@@ -40,6 +40,7 @@ import { isTrustedRendererSender } from '../ipc/trusted-renderer';
 import type { StructuredLogger } from '../logger';
 import type { RecentFiles } from './recent-files';
 import type { WorkspaceSession } from './session';
+import { openedNote, openReply } from './open-reply';
 
 export function registerWorkspaceHandlers(deps: {
   session: WorkspaceSession;
@@ -145,7 +146,7 @@ export function registerWorkspaceHandlers(deps: {
       // A tab that is not open is not an error worth failing the call over; the
       // renderer's list was simply a moment out of date.
       if (opened) deps.onMenuStale();
-      return { version: NOTO_WORKSPACE_VERSION, opened } as const;
+      return { version: NOTO_WORKSPACE_VERSION, opened: opened ? openedNote(opened) : null } as const;
     });
 
   register(WORKSPACE_CHANNELS.closeTab, isWorkspaceTabRequestV1,
@@ -158,14 +159,14 @@ export function registerWorkspaceHandlers(deps: {
   register(WORKSPACE_CHANNELS.openDialog, isWorkspaceRequestV1, async () => {
     const opened = await deps.session.openWithDialog();
     if (opened) deps.onMenuStale();
-    return { version: NOTO_WORKSPACE_VERSION, opened } as const;
+    return { version: NOTO_WORKSPACE_VERSION, opened: opened ? openedNote(opened) : null } as const;
   });
 
   register(WORKSPACE_CHANNELS.openPath, isWorkspaceOpenPathRequestV1,
     async (request: WorkspaceOpenPathRequestV1) => {
       const reply = await deps.session.openPath(request.path);
       deps.onMenuStale();
-      return reply;
+      return openReply(reply);
     });
 
   register(WORKSPACE_CHANNELS.saveAsDialog, isWorkspaceRequestV1, async () => ({

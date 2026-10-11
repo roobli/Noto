@@ -1049,3 +1049,30 @@ transaction as the full walk, so serialize is unchanged. A split, merge, or
 inserted block still takes the full walk until the next accept. 1-edit
 serialize stays ~50 ms; this was the last renderer-side piece of the save that
 was still one unit per block.
+
+## The document crosses IPC once, 2026-10-11
+
+A renderer CPU profile of opening the 8 MB document (packaged app, Linux box)
+showed the preload spending about 490 ms in `isNotoDocumentWire`, almost all
+of it in its plain-JavaScript SHA-256 of the text. It ran twice per open: once
+for the `documentOpened` event the renderer adopts, and once for the
+`openPath` reply, which carried the same `FileTruthOpenReplyV1` again and was
+read only for `ok`. Main also serialised the roughly 24 MB payload twice.
+
+The open, open-dialog and activate-tab replies now name the note
+(`{ path, documentId }`) and leave the document to the event, which every open
+and activation already publishes before replying.
+
+Packaged, Linux x64 under Xvfb, `BENCH_RUNS=5`, same machine, before and after:
+
+| document | open before | open after |
+| --- | ---: | ---: |
+| large (2 MB) | 797 ms | 674 ms |
+| huge (8 MB) | 2,226 ms | 1,694 ms |
+
+What is left on the huge open, from the same profiles: main's
+`parseDocument` (about 320 ms, half of it building stand-in mdast that
+engine-owned blocks never read), the one remaining preload hash of the event
+(about 200 ms), `docFromSpans` (about 140 ms), `EditorState.create` (about
+110 ms, typora marks' full scan about 50 ms of it), and `createEnrichFlags`
+re-running `canSkipDialectEnrich` over every span (about 50 ms).

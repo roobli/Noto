@@ -7,8 +7,10 @@
  *
  * Opens can start in either process: the renderer asks when the user clicks,
  * and main pushes when the user goes through the application menu, the dock, or
- * a file association. Both paths end in the same reply shape, so the renderer
- * has one way to adopt a document.
+ * a file association. Both paths end in the same event, `documentOpened`, so
+ * the renderer has one way to adopt a document. An open the renderer asked for
+ * also gets a reply, but the reply only names the note: the document itself
+ * crosses IPC once, on the event.
  */
 
 import type { FileTruthOpenReplyV1 } from '../../file-truth/v1/contracts';
@@ -178,8 +180,23 @@ export interface WorkspaceCodeViewEventV1 {
   readonly codeView: WorkspaceCodeViewV1 | null;
 }
 
+/**
+ * Which note an open or a tab switch brought to the front.
+ *
+ * Not the document. Every open and activation publishes the full
+ * `FileTruthOpenReplyV1` on `documentOpened` before it replies, and that event
+ * is what the renderer adopts. Echoing the document in the reply as well sent
+ * an 8 MB note across IPC twice, and the preload verified both copies against
+ * the envelope hash, which made the second copy a few hundred milliseconds of
+ * open spent on a document nothing read.
+ */
+export interface WorkspaceOpenedNoteV1 {
+  readonly path: string;
+  readonly documentId: string;
+}
+
 export type WorkspaceOpenReplyV1 =
-  | { readonly version: typeof NOTO_WORKSPACE_VERSION; readonly opened: FileTruthOpenReplyV1 }
+  | { readonly version: typeof NOTO_WORKSPACE_VERSION; readonly opened: WorkspaceOpenedNoteV1 }
   | { readonly version: typeof NOTO_WORKSPACE_VERSION; readonly opened: null }
   | { readonly version: typeof NOTO_WORKSPACE_VERSION; readonly codeView: WorkspaceCodeViewV1 };
 
