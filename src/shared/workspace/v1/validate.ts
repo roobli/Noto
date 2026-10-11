@@ -179,10 +179,17 @@ function isCodeView(value: unknown): value is WorkspaceCodeViewV1 {
     && typeof value.truncated === 'boolean';
 }
 
+function isOpenedNote(value: unknown): boolean {
+  return record(value) && exact(value, ['path', 'documentId'])
+    && typeof value.path === 'string' && value.path.length > 0 && value.path.length <= 4096
+    && typeof value.documentId === 'string' && value.documentId.startsWith('noto-doc-v3:');
+}
+
 function isOpenReply(value: unknown): value is WorkspaceOpenReplyV1 {
   if (!record(value) || value.version !== 1) return false;
   if (exact(value, ['version', 'opened'])) {
-    return value.opened === null || isFileTruthOpenReplyV1(value.opened);
+    // The document came on `documentOpened`; the reply only names it.
+    return value.opened === null || isOpenedNote(value.opened);
   }
   return exact(value, ['version', 'codeView']) && isCodeView(value.codeView);
 }

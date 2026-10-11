@@ -33,7 +33,6 @@ import {
   type WorkspaceTagIndexReplyV1,
   type WorkspaceNotesByTagReplyV1,
   type WorkspaceCodeViewV1,
-  type WorkspaceOpenReplyV1,
 } from '../../shared/workspace/v1/contracts';
 import type {
   WorkspaceEntryActionV1,
@@ -89,6 +88,17 @@ interface OpenDocument {
 
 /** How many documents may be open at once, so a stray loop cannot exhaust handles. */
 const MAX_TABS = 24;
+
+/**
+ * What an open produced, inside main.
+ *
+ * Carries the whole document because main keeps it per tab. The IPC reply is
+ * narrower (`WorkspaceOpenReplyV1` only names the note); the document reaches
+ * the renderer once, on `documentOpened`.
+ */
+export type WorkspaceSessionOpenV1 =
+  | { readonly version: typeof NOTO_WORKSPACE_VERSION; readonly opened: FileTruthOpenReplyV1 }
+  | { readonly version: typeof NOTO_WORKSPACE_VERSION; readonly codeView: WorkspaceCodeViewV1 };
 
 export class WorkspaceSession {
   /** Keyed by resolved path: opening the same file twice reuses its tab. */
@@ -185,7 +195,7 @@ export class WorkspaceSession {
    * A failed open leaves the other tabs alone; the caller decides how to report
    * it. Nothing is remembered as recent unless the open actually succeeded.
    */
-  async openPath(filePath: string): Promise<WorkspaceOpenReplyV1> {
+  async openPath(filePath: string): Promise<WorkspaceSessionOpenV1> {
     const resolved = path.resolve(filePath);
     /*
      * Notes go through file-truth. Everything else the code viewer recognises
