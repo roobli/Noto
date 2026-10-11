@@ -1151,3 +1151,43 @@ build before:
 | `createEnrichFlags` | 49–55 ms | 2 ms |
 | profiled open | 1,684 / 1,657 / 1,636 ms | 1,604 / 1,637 / 1,551 ms |
 | bench open, `BENCH_RUNS=5`, then `7` | 1,555 / 1,533, 1,801 / 1,609 ms | 1,467 / 1,530, 1,502 / 1,422 ms |
+
+## Main's parse does each block's work once, 2026-10-11
+
+Main's `parseDocument` of the 8 MB document took about 320 ms in Node, and a
+CPU profile showed four costs that were repeated or slower than they needed
+to be:
+
+- `canSkipDialectEnrich` and then `engineSemanticKey` on every block. For a
+  list, table, footnote or link definition both parse the same source, one to
+  decide and one for the key; tables alone were 24 ms plus 22 ms.
+  `engineOwnedSemanticKey` asks both in one parse and gives the key, or null
+  when the block needs dialect mdast. Every golden block, under every kind,
+  gets the answer asking them apart gives.
+- The per-block SHA-256 built a `createHash` object for each of 43,970 small
+  strings. Node's one-shot `crypto.hash` gives the same digest without the
+  object: about 44 ms down to 19 ms in Electron's Node.
+- `detectLineEnding` looked at the 8 MB text one character at a time (about
+  24 ms). It now answers `lf` straight away when there is no `\r`, and
+  otherwise steps from `\n` to `\n` with `indexOf`. `toLf` returns LF text as
+  it is.
+
+Huge document, `parseDocument`, Node, three interleaved runs of eleven:
+
+| | before | after |
+| --- | ---: | ---: |
+| median | 335 / 322 / 319 ms | 221 / 233 / 224 ms |
+
+Packaged, Linux x64 under Xvfb, interleaved with the build before:
+
+| | before | after |
+| --- | ---: | ---: |
+| main `parseDocument` (profiled, ×3) | 428 / 361 / 377 ms | 249 / 255 / 279 ms |
+| open reply (profiled, ×3) | 878 / 738 / 736 ms | 579 / 566 / 630 ms |
+| bench open, huge, `BENCH_RUNS=5`, ×2 | 1,404 / 1,371 ms | 1,303 / 1,232 ms |
+| bench open, large | 548 / 524 ms | 513 / 553 ms |
+
+What is left in main's parse: the engine's block split (about 60 ms), the
+inline scan inside `canSkipDialectEnrich` (`tryInlineNodesFromSource` builds
+ProseMirror nodes only to see whether it can; about 40 ms), the lazy span
+objects (about 20 ms) and garbage collection.
