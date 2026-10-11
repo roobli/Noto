@@ -24,6 +24,12 @@
  * paragraph. The composition matches `textBetween(0, size, '\n', '\n')` of the
  * whole document, which is what the status bar used to count in one pass.
  *
+ * The first count of a long note has no cached blocks, and counting the 8 MB
+ * benchmark document in one go held the window for about 350 ms right after
+ * the first pause in typing. `DocumentCounter` does the same work in slices:
+ * it counts uncached blocks until it is told time is up, keeps its place, and
+ * answers only once every block has a count.
+ *
  * Pure helpers, so the rule can be tested against real notes rather than
  * argued about.
  */
@@ -137,4 +143,57 @@ export function countDocumentWords(
     parts.push(count);
   });
   return composeBlockCounts(parts);
+}
+
+/**
+ * A document count that can stop and resume.
+ *
+ * `advance` walks the document's top-level blocks, taking cached counts as
+ * they are and counting the rest until `outOfTime` says stop. It always counts
+ * at least one block per call, so repeated calls finish. Asked about the same
+ * document again it carries on where it stopped; asked about a different one
+ * (the note changed in between) it starts over, which costs little because
+ * every block it already counted is in the cache. The answer, once it comes,
+ * is the one `countDocumentWords` gives for that document.
+ */
+export class DocumentCounter {
+  private doc: ProseNode | null = null;
+  private index = 0;
+  private parts: DocumentCount[] = [];
+
+  constructor(private readonly cache = new WeakMap<ProseNode, DocumentCount>()) {}
+
+  /** The count of `doc`, or null when time ran out first; call again to go on. */
+  advance(doc: ProseNode, outOfTime: () => boolean): DocumentCount | null {
+    if (doc !== this.doc) {
+      this.doc = doc;
+      this.index = 0;
+      this.parts = [];
+    }
+    let counted = false;
+    while (this.index < doc.childCount) {
+      const node = doc.child(this.index);
+      let count = this.cache.get(node);
+      if (!count) {
+        if (counted && outOfTime()) return null;
+        count = countWords(blockDrawnText(node));
+        this.cache.set(node, count);
+        counted = true;
+      }
+      this.parts.push(count);
+      this.index += 1;
+    }
+    const total = composeBlockCounts(this.parts);
+    this.doc = null;
+    this.index = 0;
+    this.parts = [];
+    return total;
+  }
+
+  /** Forget a walk in progress; cached block counts stay. */
+  reset(): void {
+    this.doc = null;
+    this.index = 0;
+    this.parts = [];
+  }
 }

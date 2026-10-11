@@ -63,7 +63,10 @@ function median(values) {
  * ColdModeSpellCheck case without hanging the harness forever.
  *
  * Long Tasks API entries, when the runtime exposes them, are folded in so a
- * single long task that lands between two polls cannot hide.
+ * single long task that lands between two polls cannot hide. Only tasks that
+ * reach into the observed window count: the observer is buffered, and the
+ * buffer also holds the open's own long tasks from a second or two earlier,
+ * which until 2026-10-11 were most of the number this reported.
  */
 async function measureIdleLagMs(page) {
   return page.evaluate(async () => {
@@ -77,7 +80,7 @@ async function measureIdleLagMs(page) {
     try {
       observer = new PerformanceObserver((list) => {
         for (const entry of list.getEntries()) {
-          longTasks.push(entry.duration);
+          longTasks.push(entry);
         }
       });
       observer.observe({ type: 'longtask', buffered: true });
@@ -114,7 +117,11 @@ async function measureIdleLagMs(page) {
     }
 
     if (observer) observer.disconnect();
-    const maxLongTask = longTasks.length ? Math.max(...longTasks) : 0;
+    let maxLongTask = 0;
+    for (const entry of longTasks) {
+      if (entry.startTime + entry.duration <= started) continue;
+      maxLongTask = Math.max(maxLongTask, entry.duration);
+    }
     return Math.max(maxGap, maxLongTask);
   });
 }

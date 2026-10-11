@@ -1151,3 +1151,33 @@ build before:
 | `createEnrichFlags` | 49–55 ms | 2 ms |
 | profiled open | 1,684 / 1,657 / 1,636 ms | 1,604 / 1,637 / 1,551 ms |
 | bench open, `BENCH_RUNS=5`, then `7` | 1,555 / 1,533, 1,801 / 1,609 ms | 1,467 / 1,530, 1,502 / 1,422 ms |
+
+## The first word count runs in slices, 2026-10-11
+
+A renderer profile of the seconds after typing stops on the 8 MB document
+showed one stall, about 350–390 ms, and all of it was the word count. Counts
+are cached per top-level block, so a recount after an edit is cheap, but the
+first count of a note has nothing cached. It is scheduled 400 ms after the
+editor mounts, typing keeps pushing it back, and so it landed as one task
+right after the first pause: `countWords` over all 43,970 blocks. Once that
+first count has run, a pause after typing stalls nothing over 30 ms.
+
+`DocumentCounter` does the same counting in slices of at most 8 ms. It keeps
+its place between slices, starts over if the note changed (blocks it already
+counted are in the cache), and reports once every block has a count. The
+number is the same; on the huge document it arrives about 0.1 s later.
+
+The benchmark's idle-lag probe also folded in long tasks from before the
+window it watches: its Long Tasks observer is buffered, and the buffer holds
+the open's own 450–650 ms mount task. Most of the idle-lag reported before
+this date was that. The probe now counts only long tasks that reach into the
+observed window. Both columns below use the corrected probe.
+
+Packaged, Linux x64 under Xvfb, `BENCH_RUNS=5`, two interleaved runs each:
+
+| document | idle-lag before | idle-lag after |
+| --- | ---: | ---: |
+| large (2 MB) | 105 / 110 ms | 17 / 16 ms |
+| huge (8 MB) | 383 / 375 ms | 16 / 18 ms |
+
+Open, typing and save are unchanged within noise.
