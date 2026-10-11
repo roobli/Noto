@@ -101,6 +101,8 @@ import {
   isFileTruthSaveReplyResultV1,
   isFileTruthDocumentRequestV1,
   isFileTruthDocumentResultV1,
+  collectDigestClaims,
+  verifyDigestClaims,
 } from '../shared/file-truth/v1/validate';
 import type {
   NotoWorkspaceApiV1,
@@ -192,6 +194,32 @@ function rejected<T>(requestId: string, message: string): Result<T> {
   return { ok: false, requestId, error: { code: 'BAD_REQUEST', message } };
 }
 
+/*
+ * Replies and events that can carry a document are checked in the order they
+ * arrived.
+ *
+ * A document is verified against its envelope hash before anything sees it.
+ * That hash runs in Web Crypto, natively and off this thread, which makes the
+ * check asynchronous; a JavaScript SHA-256 of an 8 MB note used to hold the
+ * renderer for about 200 ms per copy. One chain for every such delivery keeps
+ * the old ordering: an event that arrived after a document is not handed on
+ * before it, whether or not it carries one itself.
+ */
+let deliveries: Promise<unknown> = Promise.resolve();
+
+function inArrivalOrder<T>(work: () => Promise<T>): Promise<T> {
+  const next = deliveries.then(work, work);
+  deliveries = next.catch(() => undefined);
+  return next;
+}
+
+/** Same verdict as `validate(value)`, with the document hashes run natively. */
+async function passes(validate: (value: unknown) => boolean, value: unknown): Promise<boolean> {
+  const { result, claims } = collectDigestClaims(() => validate(value));
+  if (!result) return false;
+  return claims.length === 0 || verifyDigestClaims(claims);
+}
+
 async function invoke<T>(
   channel: string,
   request: unknown,
@@ -199,10 +227,9 @@ async function invoke<T>(
   validate: (value: unknown, expectedRequestId: string) => value is Result<T>,
 ): Promise<Result<T>> {
   const value: unknown = await ipcRenderer.invoke(channel, request);
-  if (!validate(value, requestId)) {
-    return rejected(requestId, 'Main returned an invalid protocol response');
-  }
-  return value;
+  return inArrivalOrder(async () => (await passes((candidate) => validate(candidate, requestId), value)
+    ? value as Result<T>
+    : rejected(requestId, 'Main returned an invalid protocol response')));
 }
 
 async function invokePlugin(
@@ -288,7 +315,9 @@ function rejectedFileTruth<T>(requestId: string, message: string): FileTruthResu
 async function invokeFileTruth<T>(channel: string, request: unknown, requestId: string,
   validate: (value: unknown, expectedRequestId: string) => value is FileTruthResultV1<T>): Promise<FileTruthResultV1<T>> {
   const value: unknown = await ipcRenderer.invoke(channel, request);
-  return validate(value, requestId) ? value : rejectedFileTruth(requestId, 'Main returned an invalid file-truth v1 response');
+  return inArrivalOrder(async () => (await passes((candidate) => validate(candidate, requestId), value)
+    ? value as FileTruthResultV1<T>
+    : rejectedFileTruth(requestId, 'Main returned an invalid file-truth v1 response')));
 }
 
 const fileTruthApi: NotoFileTruthApiV1 = Object.freeze({
@@ -329,7 +358,9 @@ function rejectedWorkspace<T>(requestId: string, message: string): WorkspaceResu
 async function invokeWorkspace<T>(channel: string, request: unknown, requestId: string,
   validate: (value: unknown, expectedRequestId: string) => value is WorkspaceResultV1<T>): Promise<WorkspaceResultV1<T>> {
   const value: unknown = await ipcRenderer.invoke(channel, request);
-  return validate(value, requestId) ? value : rejectedWorkspace(requestId, 'Main returned an invalid workspace response');
+  return inArrivalOrder(async () => (await passes((candidate) => validate(candidate, requestId), value)
+    ? value as WorkspaceResultV1<T>
+    : rejectedWorkspace(requestId, 'Main returned an invalid workspace response')));
 }
 
 /**
@@ -338,7 +369,9 @@ async function invokeWorkspace<T>(channel: string, request: unknown, requestId: 
  */
 function subscribe<T>(channel: string, guard: (value: unknown) => value is T, listener: (event: T) => void): () => void {
   const handler = (_event: unknown, value: unknown) => {
-    if (guard(value)) listener(value);
+    void inArrivalOrder(async () => {
+      if (await passes(guard, value)) listener(value as T);
+    });
   };
   ipcRenderer.on(channel, handler);
   return () => { ipcRenderer.removeListener(channel, handler); };

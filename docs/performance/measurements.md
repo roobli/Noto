@@ -1076,3 +1076,24 @@ engine-owned blocks never read), the one remaining preload hash of the event
 (about 200 ms), `docFromSpans` (about 140 ms), `EditorState.create` (about
 110 ms, typora marks' full scan about 50 ms of it), and `createEnrichFlags`
 re-running `canSkipDialectEnrich` over every span (about 50 ms).
+
+## The preload's document hash runs natively, 2026-10-11
+
+The preload still verifies every document it receives against the envelope
+hash. It used to do that with a SHA-256 written in plain JavaScript, because
+validators are synchronous, the sandbox has no `node:crypto`, and Web Crypto
+only answers with a promise. Now the validators run with the hash checks
+collected (`collectDigestClaims`), and the preload awaits them through
+`crypto.subtle.digest` (`verifyDigestClaims`) before handing the payload on.
+The checks and the verdict are the same. Deliveries that can carry a document
+go through one chain, so they still reach the renderer in the order they
+arrived.
+
+Huge document, packaged, Linux box, interleaved with the build before:
+
+| | before | after |
+| --- | ---: | ---: |
+| preload document check, renderer thread (profiled) | ~258 ms | ~52 ms (UTF-8 encode and structure; the digest runs off-thread) |
+| profiled open | 1,721 / 1,758 ms | 1,605 / 1,514 ms |
+| bench open, `BENCH_RUNS=5` | 1,623 / 1,673 ms | 1,522 / 1,465 ms |
+| bench open, large | 661 / 658 ms | 590 / 587 ms |
