@@ -74,6 +74,9 @@ export function toWire(document: NotoDocument): NotoDocumentWire {
     ...(document.nodesEnrichment !== undefined
       ? { nodesEnrichment: document.nodesEnrichment }
       : {}),
+    ...(document.nodesEnrichment === 'deferred' && document.engineOwned !== undefined
+      ? { engineOwned: document.engineOwned }
+      : {}),
   };
 }
 
@@ -158,6 +161,12 @@ export function parseDocument(bytes: Uint8Array): NotoParseResult {
       // blocks never read theirs. The renderer derives them on demand.
       nodes: deferred ? null : split.spans.map((span) => span.node),
       nodesEnrichment: deferred ? 'deferred' : 'full',
+      // Main already asked `canSkipDialectEnrich` of every block; one
+      // character each so the renderer reuses the answers instead of asking
+      // again when it decides what is left to enrich.
+      ...(deferred
+        ? { engineOwned: split.spans.map((span) => ((span as { engineOwned?: boolean }).engineOwned ? '1' : '0')).join('') }
+        : {}),
     },
   };
 }

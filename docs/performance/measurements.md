@@ -1103,3 +1103,30 @@ Huge document (8 MB, 43,970 blocks), Linux box:
 Building the stand-ins was never what made `parseDocument` slow (about 10 ms
 of it). Its cost is the engine split plus `canSkipDialectEnrich` and
 `engineSemanticKey` on every block. The win here is in the payload.
+
+## Open-time scans reuse what is known, 2026-10-11
+
+Two whole-document passes ran between mounting the editor and the first
+frame, and neither needed to:
+
+- **Typora marks' first scan** assembled every text block's text and ran the
+  three mark expressions over it. A block can only draw something if it has
+  an inline HTML node, or one of `=`, `^`, `~` (for the enabled kinds) in its
+  text. `mightDecorate` answers that from the text nodes first and skips the
+  rest. The same skip makes each keystroke's rescan cheaper.
+- **`createEnrichFlags`** asked `canSkipDialectEnrich` of every block again,
+  after main had already asked it of each one in `enrichSpanNone`. A deferred
+  open now ships main's answers as `engineOwned`, one `0` or `1` per block.
+  `blockSpansFromWire` puts each answer on its span, and `createEnrichFlags`
+  and `enrichSpansInRange` use it. They only ask again, against the footnote
+  definitions, for a span that came without an answer.
+
+Huge document, packaged, Linux box, renderer profile, interleaved ×3 with the
+build before:
+
+| | before | after |
+| --- | ---: | ---: |
+| typora marks first scan | 48–57 ms | 24–31 ms |
+| `createEnrichFlags` | 49–55 ms | 2 ms |
+| profiled open | 1,684 / 1,657 / 1,636 ms | 1,604 / 1,637 / 1,551 ms |
+| bench open, `BENCH_RUNS=5`, then `7` | 1,555 / 1,533, 1,801 / 1,609 ms | 1,467 / 1,530, 1,502 / 1,422 ms |

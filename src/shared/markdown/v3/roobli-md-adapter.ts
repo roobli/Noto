@@ -65,6 +65,18 @@ export interface AdapterBlockSpan {
   readonly markdown: string;
   readonly semanticKey: string;
   readonly node: RootContent;
+  /**
+   * Whether the engine turns this block into ProseMirror without dialect
+   * mdast (`canSkipDialectEnrich`), when whoever built the span already asked.
+   * Main answers it for every block of a deferred open and the answer rides
+   * the wire, so the renderer does not ask again. Absent means not known.
+   */
+  readonly engineOwned?: boolean;
+}
+
+/** `span.engineOwned` when known, else the question asked now. */
+function isEngineOwned(span: { readonly kind: NotoBlockKind; readonly markdown: string; readonly engineOwned?: boolean }): boolean {
+  return span.engineOwned ?? canSkipDialectEnrich(span.kind, span.markdown);
 }
 
 export interface AdapterSplitDocument {
@@ -186,6 +198,7 @@ function finalizeEngineAdapterSpan(span: AdapterBlockSpan): AdapterBlockSpan {
       end: span.end,
       markdown: span.markdown,
       semanticKey: engineSemanticKey(span.kind, span.markdown),
+      engineOwned: true,
     },
     () => span.node,
   );
@@ -211,6 +224,7 @@ export function lazyNodeSpan(
     end: fields.end,
     markdown: fields.markdown,
     semanticKey: fields.semanticKey,
+    ...(fields.engineOwned !== undefined ? { engineOwned: fields.engineOwned } : {}),
     get node(): RootContent {
       if (node === undefined) node = build();
       return node;
@@ -285,13 +299,13 @@ export function enrichSpansInRange<T extends AdapterBlockSpan>(
     let i = from;
     while (i < to) {
       const span = out[i]!;
-      if (canSkipDialectEnrich(span.kind, span.markdown)) {
+      if (isEngineOwned(span)) {
         out[i] = finalizeEngineAdapterSpan(span);
         i += 1;
         continue;
       }
       let j = i + 1;
-      while (j < to && !canSkipDialectEnrich(out[j]!.kind, out[j]!.markdown)) {
+      while (j < to && !isEngineOwned(out[j]!)) {
         j += 1;
       }
       const enriched = enrichDialectRun(out.slice(i, j), text);
@@ -360,20 +374,31 @@ export const OPEN_VIEWPORT_ENRICH_PAD = 40;
 export function createEnrichFlags(
   length: number,
   enrichedExclusiveTo: number,
-  spans?: readonly { readonly kind: NotoBlockKind; readonly markdown: string }[],
+  spans?: readonly { readonly kind: NotoBlockKind; readonly markdown: string; readonly engineOwned?: boolean }[],
 ): Uint8Array {
   const flags = new Uint8Array(Math.max(0, length));
   const to = Math.max(0, Math.min(enrichedExclusiveTo, flags.length));
   if (to > 0) flags.fill(1, 0, to);
   if (spans) {
     const n = Math.min(spans.length, flags.length);
-    const knownFootnoteIds = collectFootnoteDefinitionIds(spans);
-    withKnownFootnoteIds(knownFootnoteIds, () => {
-      for (let i = to; i < n; i += 1) {
-        const span = spans[i]!;
-        if (canSkipDialectEnrich(span.kind, span.markdown)) flags[i] = 1;
-      }
-    });
+    // A deferred open already knows, block by block, what main decided; only
+    // spans without that answer pay for the question (and for the footnote
+    // definitions it is asked against).
+    let unknown = false;
+    for (let i = to; i < n; i += 1) {
+      const owned = spans[i]!.engineOwned;
+      if (owned === undefined) unknown = true;
+      else if (owned) flags[i] = 1;
+    }
+    if (unknown) {
+      const knownFootnoteIds = collectFootnoteDefinitionIds(spans);
+      withKnownFootnoteIds(knownFootnoteIds, () => {
+        for (let i = to; i < n; i += 1) {
+          const span = spans[i]!;
+          if (span.engineOwned === undefined && canSkipDialectEnrich(span.kind, span.markdown)) flags[i] = 1;
+        }
+      });
+    }
   }
   return flags;
 }
@@ -733,6 +758,7 @@ function enrichSpanNone(span: EngineBlockSpan): AdapterBlockSpan {
       end: span.end,
       markdown: span.markdown,
       semanticKey: skip ? engineSemanticKey(kind, span.markdown) : kind,
+      engineOwned: skip,
     },
     () => standInNode(span),
   );

@@ -298,7 +298,11 @@ export function isRevisionPatch(value: unknown): value is NotoRevisionPatch {
 export function isNotoDocumentWire(value: unknown): value is NotoDocumentWire {
   const wireKeys = ['version', 'documentId', 'revisionId', 'envelope', 'text', 'origins', 'spans', 'nodes'] as const;
   const withEnrichment = record(value) && Object.prototype.hasOwnProperty.call(value, 'nodesEnrichment');
-  if (!record(value) || !exact(value, withEnrichment ? [...wireKeys, 'nodesEnrichment'] : [...wireKeys])
+  const withOwned = record(value) && Object.prototype.hasOwnProperty.call(value, 'engineOwned');
+  const keys: string[] = [...wireKeys];
+  if (withEnrichment) keys.push('nodesEnrichment');
+  if (withOwned) keys.push('engineOwned');
+  if (!record(value) || !exact(value, keys)
     || value.version !== 3
     || typeof value.documentId !== 'string' || !value.documentId.startsWith('noto-doc-v3:')
     || typeof value.revisionId !== 'string' || !value.revisionId.startsWith('noto-rev-v3:')
@@ -324,7 +328,10 @@ export function isNotoDocumentWire(value: unknown): value is NotoDocumentWire {
     // Optional open-path flag. A full open carries nodes; a deferred one may
     // leave them for the renderer to derive from kinds and text.
     || (withEnrichment && !(value.nodesEnrichment === 'deferred'
-      || (value.nodesEnrichment === 'full' && value.nodes !== null)))) return false;
+      || (value.nodesEnrichment === 'full' && value.nodes !== null)))
+    // Deferred open only: one `0` or `1` per block.
+    || (withOwned && (value.nodesEnrichment !== 'deferred' || typeof value.engineOwned !== 'string'
+      || value.engineOwned.length !== value.origins.length || !/^[01]*$/.test(value.engineOwned)))) return false;
 
   const bytes = originalBytesOf(value.text, String(value.envelope.bom));
   return value.envelope.byteLength === bytes.byteLength

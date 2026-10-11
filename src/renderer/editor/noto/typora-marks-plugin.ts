@@ -47,12 +47,46 @@ interface TagNode {
   readonly position: number;
 }
 
+/** The characters a mark of each kind cannot do without. */
+export function markCharacters(kinds: TyporaMarkKinds): string {
+  return (kinds.highlight ? '=' : '') + (kinds.superscript ? '^' : '') + (kinds.subscript ? '~' : '');
+}
+
+/**
+ * Whether a block could draw anything at all.
+ *
+ * Nothing is drawn without an inline HTML node or, in plain text, one of the
+ * characters a mark is spelled with. Most blocks of a long note have neither,
+ * and answering that from the text nodes is far cheaper than assembling the
+ * block's text and running the three expressions over it, which is what the
+ * scan does for a block that might.
+ */
+export function mightDecorate(block: ProseNode, characters: string): boolean {
+  let found = false;
+  block.forEach((child) => {
+    if (found) return;
+    if (child.type.name === 'inline_html') {
+      found = true;
+    } else if (child.isText && characters.length > 0) {
+      const text = child.text!;
+      for (let index = 0; index < characters.length; index += 1) {
+        if (text.includes(characters[index]!)) {
+          found = true;
+          return;
+        }
+      }
+    }
+  });
+  return found;
+}
+
 function blockDecorations(
   block: ProseNode,
   position: number,
   editing: boolean,
   kinds: TyporaMarkKinds,
 ): Decoration[] {
+  if (!mightDecorate(block, markCharacters(kinds))) return [];
   const contentStart = position + 1;
   const decorations: Decoration[] = [];
   let text = '';

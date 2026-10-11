@@ -4,7 +4,10 @@ import type { Decoration } from 'prosemirror-view';
 import { splitBlocks } from '../../src/shared/markdown/v3/blocks';
 import { docFromSpans } from '../../src/shared/markdown/v3/pm/from-mdast';
 import { notoSchema } from '../../src/shared/markdown/v3/pm/schema';
-import { typoraMarksKey, typoraMarksPlugin } from '../../src/renderer/editor/noto/typora-marks-plugin';
+import { markCharacters, mightDecorate, typoraMarksKey, typoraMarksPlugin } from '../../src/renderer/editor/noto/typora-marks-plugin';
+import { ALL_MARK_KINDS, typoraMarkRanges } from '../../src/renderer/editor/noto/typora-marks';
+import { readdirSync, readFileSync } from 'node:fs';
+import path from 'node:path';
 
 /**
  * A state whose caret is in the last block. A fresh state puts it in the
@@ -66,3 +69,44 @@ describe('the Typora marks plugin', () => {
     expect(drawn(state)).toHaveLength(4);
   });
 });
+
+/**
+ * The open-time scan skips a block that cannot draw anything. The skip has to
+ * be conservative: a block it passes over must be one the full read would have
+ * left bare.
+ */
+describe('the skip for blocks that cannot draw', () => {
+  it('only skips blocks with no inline HTML and no mark in their text, across the golden fixtures', () => {
+    const dir = path.resolve(__dirname, '../fixtures/markdown-golden');
+    const characters = markCharacters(ALL_MARK_KINDS);
+    let skipped = 0;
+    let read = 0;
+    for (const name of readdirSync(dir).filter((file) => file.endsWith('.md'))) {
+      const doc = docFromSpans(splitBlocks(readFileSync(path.join(dir, name), 'utf8')).spans);
+      doc.descendants((node) => {
+        if (!node.isTextblock) return true;
+        if (mightDecorate(node, characters)) {
+          read += 1;
+          return false;
+        }
+        skipped += 1;
+        let html = false;
+        node.forEach((child) => { if (child.type.name === 'inline_html') html = true; });
+        expect(html, name).toBe(false);
+        expect(typoraMarkRanges(node.textContent), `${name}: ${node.textContent}`).toEqual([]);
+        return false;
+      });
+    }
+    expect(skipped).toBeGreaterThan(100);
+    expect(read).toBeGreaterThan(10);
+  });
+
+  it('still reads a block whose only mark character sits in a text node next to code', () => {
+    expect(drawn(stateFor('`code` then ^sup^ end\n\nelsewhere'))).toEqual(['noto-typora-delim', 'noto-mark-sup', 'noto-typora-delim']);
+  });
+
+  it('reads nothing for a kind that is switched off', () => {
+    expect(markCharacters({ highlight: false, superscript: true, subscript: false })).toBe('^');
+  });
+});
+

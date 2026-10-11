@@ -28,6 +28,8 @@ export interface BlockSpan {
   readonly markdown: string;
   readonly semanticKey: string;
   readonly node: RootContent;
+  /** See `AdapterBlockSpan.engineOwned`: main's answer, when it sent one. */
+  readonly engineOwned?: boolean;
 }
 
 export interface SplitDocument {
@@ -205,11 +207,19 @@ export function blockSpansFromWire(document: NotoDocumentWire): readonly BlockSp
     // Deferred open: main sent kinds and offsets, not stand-ins. Each stand-in
     // is built from the block's kind and source the first time it is read,
     // which for an engine-owned block is never.
+    const owned = document.engineOwned;
     return document.spans.map((span, index) => {
       const origin = document.origins[index]!;
       const markdown = document.text.slice(span.start, span.end);
       return lazyNodeSpan(
-        { kind: origin.kind, start: span.start, end: span.end, markdown, semanticKey: origin.semanticKey },
+        {
+          kind: origin.kind,
+          start: span.start,
+          end: span.end,
+          markdown,
+          semanticKey: origin.semanticKey,
+          ...(owned !== undefined ? { engineOwned: owned.charCodeAt(index) === 49 } : {}),
+        },
         () => standInNodeFor(origin.kind, markdown),
       );
     });
