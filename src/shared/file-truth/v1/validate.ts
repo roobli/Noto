@@ -334,9 +334,78 @@ export function isNotoDocumentWire(value: unknown): value is NotoDocumentWire {
       || value.engineOwned.length !== value.origins.length || !/^[01]*$/.test(value.engineOwned)))) return false;
 
   const bytes = originalBytesOf(value.text, String(value.envelope.bom));
-  return value.envelope.byteLength === bytes.byteLength
-    && sha256Hex(bytes) === value.envelope.sourceSha256
-    && value.origins.every((origin, index) => (origin as { ordinal: number }).ordinal === index);
+  if (value.envelope.byteLength !== bytes.byteLength) return false;
+  if (digestClaims) {
+    // Verified by `verifyDigestClaims` before the payload is handed on.
+    digestClaims.push({ bytes, sha256: value.envelope.sourceSha256 as string });
+  } else if (sha256Hex(bytes) !== value.envelope.sourceSha256) {
+    return false;
+  }
+  return value.origins.every((origin, index) => (origin as { ordinal: number }).ordinal === index);
+}
+
+/** A document whose envelope hash still has to be checked against its bytes. */
+export interface DigestClaim {
+  readonly bytes: Uint8Array;
+  readonly sha256: string;
+}
+
+let digestClaims: DigestClaim[] | null = null;
+
+/**
+ * Run a validator with the envelope hash checks collected instead of computed.
+ *
+ * Every other check runs as usual. The hash of each document the validator
+ * meets is recorded, and the payload is only as valid as `verifyDigestClaims`
+ * says those claims are. The preload uses this so the hash runs in native code
+ * (Web Crypto is asynchronous and the validators are not); the checks and the
+ * verdict are the same as the synchronous path.
+ */
+export function collectDigestClaims<T>(run: () => T): { readonly result: T; readonly claims: readonly DigestClaim[] } {
+  const outer = digestClaims;
+  const claims: DigestClaim[] = [];
+  digestClaims = claims;
+  try {
+    return { result: run(), claims };
+  } finally {
+    digestClaims = outer;
+  }
+}
+
+export type Sha256Digest = (bytes: Uint8Array) => Promise<string>;
+
+/**
+ * SHA-256 through Web Crypto, hex encoded, or null where it is unavailable.
+ *
+ * A sandboxed preload has no `node:crypto`, but it does have `crypto.subtle`,
+ * which hashes natively and off the main thread. Same digest as `sha256Hex`.
+ */
+export function webCryptoSha256(): Sha256Digest | null {
+  const subtle = (globalThis as { crypto?: { subtle?: SubtleCrypto } }).crypto?.subtle;
+  if (!subtle || typeof subtle.digest !== 'function') return null;
+  return async (bytes) => {
+    const digest = new Uint8Array(await subtle.digest('SHA-256', bytes as Uint8Array<ArrayBuffer>));
+    let hex = '';
+    for (const byte of digest) hex += byte.toString(16).padStart(2, '0');
+    return hex;
+  };
+}
+
+/**
+ * Whether every collected document hashes to what its envelope claims.
+ *
+ * Uses the native digest when there is one and the portable `sha256Hex`
+ * otherwise, so the verdict never depends on which ran.
+ */
+export async function verifyDigestClaims(
+  claims: readonly DigestClaim[],
+  digest: Sha256Digest | null = webCryptoSha256(),
+): Promise<boolean> {
+  for (const claim of claims) {
+    const actual = digest ? await digest(claim.bytes) : sha256Hex(claim.bytes);
+    if (actual !== claim.sha256) return false;
+  }
+  return true;
 }
 
 /**
