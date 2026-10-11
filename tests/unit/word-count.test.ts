@@ -6,6 +6,7 @@ import {
   blockDrawnText,
   composeBlockCounts,
   countDocumentWords,
+  DocumentCounter,
   countWords,
   type DocumentCount,
 } from '../../src/renderer/editor/noto/word-count';
@@ -134,3 +135,59 @@ describe('counting a document by its blocks', () => {
     });
   });
 });
+
+describe('counting a long note in slices', () => {
+  const markdown = '# Title\n\nHello world.\n\n- a\n- b\n\n```\ncode\n```\n\n自由度测试\n\nOne more.\n\nAnd the last.\n';
+
+  it('gives the whole-document count however small the slices are', () => {
+    const doc = docOf(markdown);
+    const counter = new DocumentCounter();
+    let calls = 0;
+    let count = null;
+    while (count === null) {
+      calls += 1;
+      count = counter.advance(doc, () => true);
+    }
+    expect(count).toEqual(fullCount(doc));
+    // Always out of time still counts one block per call, so it finishes.
+    expect(calls).toBe(doc.childCount);
+  });
+
+  it('answers in one call when there is time', () => {
+    const doc = docOf(markdown);
+    expect(new DocumentCounter().advance(doc, () => false)).toEqual(fullCount(doc));
+  });
+
+  it('starts over on a changed document without counting a kept block twice', () => {
+    const before = docOf(markdown);
+    const cache = new WeakMap<ProseNode, DocumentCount>();
+    let measured = 0;
+    const probing = {
+      get: (node: ProseNode) => cache.get(node),
+      set: (node: ProseNode, count: DocumentCount) => {
+        measured += 1;
+        cache.set(node, count);
+        return probing;
+      },
+      has: (node: ProseNode) => cache.has(node),
+      delete: (node: ProseNode) => cache.delete(node),
+    } as WeakMap<ProseNode, DocumentCount>;
+    const counter = new DocumentCounter(probing);
+    expect(counter.advance(before, () => true)).toBeNull();
+    expect(counter.advance(before, () => true)).toBeNull();
+    expect(measured).toBe(2);
+
+    // An edit to the last block: the first blocks stay the same objects.
+    const last = before.child(before.childCount - 1);
+    const at = before.content.size - last.nodeSize + 1;
+    const after = before.replace(at, at + last.content.size, before.slice(at, at + 3));
+    expect(after.child(0)).toBe(before.child(0));
+
+    let count = null;
+    while (count === null) count = counter.advance(after, () => true);
+    expect(count).toEqual(fullCount(after));
+    // Every block of the changed document measured once, the first two only before.
+    expect(measured).toBe(after.childCount);
+  });
+});
+
