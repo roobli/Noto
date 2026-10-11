@@ -229,6 +229,27 @@ Happy-dom on this Linux agent after phase 2 (`PROFILE_SPARSE_DOC` shape):
 
 Packaged height-map drift on macOS stays deferred (needs the packaged machine).
 
+### Wide selections keep only their ends real (landed)
+
+The selection window was the whole span between the selection's ends, so
+Select All (or a shift-click across the note) mounted every block and paid back
+the open cost on Cmd+A. A selection covering more than
+`STUB_SELECTION_SPAN_MAX` (64) top-level blocks now keeps only the
+neighbourhoods of its two ends real (`selection` / `selectionEnd` in the stub
+state); the interior is spacers until the viewport reaches it. ProseMirror
+places the DOM selection from the two ends, and copy, cut, delete and typing
+over a cross-block selection work from the document, so nothing needs the
+interior's DOM.
+
+Happy-dom on this Linux agent, Select All then collapse:
+
+| corpus | select all | collapse | DOM children while selected |
+| ------ | ---------: | -------: | --------------------------: |
+| large  | 1,643 → 3 ms | 413 → 2 ms | 10,982 → 7 |
+| huge   | 15,352 → 7 ms | 3,518 → 4 ms | 43,970 → 7 |
+
+Locked by `tests/unit/viewport-stub-wide-selection.test.ts`.
+
 ### Phase 3 — only if measured
 
 - Idle prefetch of near-edge blocks beyond `STUB_SCREEN_BUFFER`.
@@ -242,7 +263,8 @@ Packaged height-map drift on macOS stays deferred (needs the packaged machine).
    `sum(heights)` within the same tolerance today's stubs already accept.
 3. `posAtCoords` / `coordsAtPos` round-trip for positions in the real band;
    for positions in a spacer, land on that block's start (or remounted real).
-4. Selection neighbourhood blocks are never inside a spacer.
+4. Selection neighbourhood blocks are never inside a spacer (for a wide
+   selection: the neighbourhoods of both ends).
 5. Medium docs (`childCount < 3000`) take the unpatched PM path (no spacers).
 6. Specialised fence/table/math still remount in place via host reuse when
    entering from a spacer (spacer yields a fresh typed shell, then host mount).
