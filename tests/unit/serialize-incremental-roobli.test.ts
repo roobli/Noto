@@ -187,7 +187,8 @@ describe('a @roobli/md save without a full reparse', () => {
     const result = serializeDocument(document, withUnits(base, units));
     expect(result.status).toBe('serialized');
     if (result.status !== 'serialized') return;
-    expect(result.document.nodes).not.toBeNull();
+    // A full reparse marks its open shape; the incremental path leaves it off.
+    expect(result.document.nodesEnrichment).toBe('deferred');
     const full = parsed(new TextDecoder().decode(result.outputBytes));
     expect(shape(result.document)).toEqual({ ...shape(full), documentId: document.documentId });
   });

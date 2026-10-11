@@ -17,7 +17,7 @@
 
 import type { List, RootContent } from 'mdast';
 import { isRoobliMdEngine } from './engine-flag';
-import { parseSingleBlockViaRoobli, splitBlocksViaRoobli } from './roobli-md-adapter';
+import { lazyNodeSpan, parseSingleBlockViaRoobli, splitBlocksViaRoobli, standInNodeFor } from './roobli-md-adapter';
 import { parseMarkdown, topLevelNodes } from './syntax';
 import type { NotoBlockKind, NotoDocumentWire } from './contracts';
 
@@ -191,13 +191,29 @@ export function parseSingleBlock(markdown: string): BlockSpan | null {
 }
 
 /**
- * Rebuild `BlockSpan`s from a wire document that still carries mdast nodes.
+ * Rebuild `BlockSpan`s from an open or reload wire document.
  *
- * Returns null when `nodes` is absent (incremental save replies), so callers
- * can fall back to `parseDocumentSpans` / the Worker.
+ * A full open carries mdast nodes; a deferred one carries none and gets lazy
+ * structural stand-ins derived from each block's kind and source. Returns null
+ * when neither applies (incremental save replies), so callers can fall back to
+ * `parseDocumentSpans` / the Worker.
  */
 export function blockSpansFromWire(document: NotoDocumentWire): readonly BlockSpan[] | null {
   const { nodes } = document;
+  if (nodes === null && document.nodesEnrichment === 'deferred'
+    && document.spans.length === document.origins.length) {
+    // Deferred open: main sent kinds and offsets, not stand-ins. Each stand-in
+    // is built from the block's kind and source the first time it is read,
+    // which for an engine-owned block is never.
+    return document.spans.map((span, index) => {
+      const origin = document.origins[index]!;
+      const markdown = document.text.slice(span.start, span.end);
+      return lazyNodeSpan(
+        { kind: origin.kind, start: span.start, end: span.end, markdown, semanticKey: origin.semanticKey },
+        () => standInNodeFor(origin.kind, markdown),
+      );
+    });
+  }
   if (!nodes || nodes.length !== document.spans.length || nodes.length !== document.origins.length) {
     return null;
   }

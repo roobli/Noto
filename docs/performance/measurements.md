@@ -1076,3 +1076,30 @@ engine-owned blocks never read), the one remaining preload hash of the event
 (about 200 ms), `docFromSpans` (about 140 ms), `EditorState.create` (about
 110 ms, typora marks' full scan about 50 ms of it), and `createEnrichFlags`
 re-running `canSkipDialectEnrich` over every span (about 50 ms).
+
+## Deferred open ships no stand-in nodes, 2026-10-11
+
+On a deferred open (`@roobli/md`, the default) main used to attach a
+structural stand-in mdast node to every block and send all of them across
+IPC. The renderer never reads a stand-in for an engine-owned block, and for
+the rest it re-parses the source anyway when it enriches. Now
+`parseDocument` sends `nodes: null` with `nodesEnrichment: 'deferred'`, and
+`blockSpansFromWire` derives each stand-in from the block's kind and source
+the first time something reads it. `enrichSpanNone` builds its stand-ins the
+same lazy way. Every golden fixture yields the same nodes and the same
+ProseMirror document either way.
+
+Huge document (8 MB, 43,970 blocks), Linux box:
+
+| | before | after |
+| --- | ---: | ---: |
+| open wire payload (v8 serialised) | 24.98 MB | 14.07 MB |
+| main `publish` (IPC send) | ~71 ms | ~36 ms |
+| renderer deserialise (Node v8 proxy) | ~164 ms | ~42 ms |
+| main `parseDocument` | ~310 ms | ~330 ms |
+| packaged open, profiled, 3 interleaved runs | 1,600–1,747 ms | 1,499–1,890 ms (1,499 / 1,516 without the outlier) |
+| packaged bench, `BENCH_RUNS=5`, 2 interleaved runs | 1,826 / 1,671 ms | 1,636 / 1,582 ms |
+
+Building the stand-ins was never what made `parseDocument` slow (about 10 ms
+of it). Its cost is the engine split plus `canSkipDialectEnrich` and
+`engineSemanticKey` on every block. The win here is in the payload.
