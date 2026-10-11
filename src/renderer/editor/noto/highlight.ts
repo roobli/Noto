@@ -265,7 +265,7 @@ function decorationsForStubWindows(doc: ProseNode, stub: ViewportStubState): Dec
   // not decorated, so a mid-document caret must not scan every trailing block.
   const last = Math.min(
     doc.childCount - 1,
-    Math.max(stub.viewport.to, stub.selection.to),
+    Math.max(stub.viewport.to, stub.selection.to, stub.selectionEnd.to),
   );
   let position = 0;
   for (let index = 0; index <= last; index += 1) {
@@ -287,7 +287,8 @@ function stubWindowsChanged(
   if (Boolean(before?.enabled) !== Boolean(after?.enabled)) return true;
   if (!before || !after) return true;
   return !rangesEqual(before.viewport, after.viewport)
-    || !rangesEqual(before.selection, after.selection);
+    || !rangesEqual(before.selection, after.selection)
+    || !rangesEqual(before.selectionEnd, after.selectionEnd);
 }
 
 function decorationsForState(state: EditorState): DecorationSet {

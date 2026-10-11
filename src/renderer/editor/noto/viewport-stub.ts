@@ -63,6 +63,20 @@ export const STUB_SCREEN_BUFFER = 3;
 /** Top-level neighbours of the selection that must stay fully real. */
 export const STUB_SELECTION_RADIUS = 2;
 
+/**
+ * Widest selection (in top-level blocks between its ends) whose interior stays
+ * real. Past this, only the neighbourhoods of the two ends stay real and the
+ * interior is stubbed like any off-screen run.
+ *
+ * Keeping the whole span real made Select All on a long note mount every
+ * block: on the 8 MB corpus document (43,970 blocks) that was ~15 s in
+ * happy-dom to select and ~3.5 s more to collapse again — the open cost that
+ * sparse docView removed, paid back on Cmd+A. Nothing needs the interior's
+ * DOM: ProseMirror places the DOM selection from its two ends, and copy, cut,
+ * delete and typing over a cross-block selection all work from the document.
+ */
+export const STUB_SELECTION_SPAN_MAX = 64;
+
 /** Fallback line height guess when the host has not been measured yet. */
 export const STUB_FALLBACK_EM_PX = 16;
 
@@ -253,8 +267,17 @@ export interface ViewportStubState {
   readonly enabled: boolean;
   /** Inclusive top-level index window kept real for the scroller. */
   readonly viewport: BlockRange;
-  /** Inclusive top-level index window kept real for the selection. */
+  /**
+   * Inclusive top-level index window kept real for the selection: the whole
+   * span for a narrow selection, or the neighbourhood of its start when the
+   * selection is wider than `STUB_SELECTION_SPAN_MAX`.
+   */
   readonly selection: BlockRange;
+  /**
+   * Neighbourhood of the selection's end when the selection is wide; equal to
+   * `selection` otherwise, so membership is always `selection ∪ selectionEnd`.
+   */
+  readonly selectionEnd: BlockRange;
   /**
    * Bounding span covering viewport and selection (for observability).
    * Membership uses `isIndexReal`, not this contiguous span — otherwise
@@ -289,6 +312,7 @@ function disabledState(childCount = 0): ViewportStubState {
     enabled: false,
     viewport: emptyRange(),
     selection: emptyRange(),
+    selectionEnd: emptyRange(),
     real: emptyRange(),
     heights: new Float64Array(childCount),
     generation: 0,
@@ -320,6 +344,9 @@ export function rangesEqual(a: BlockRange, b: BlockRange): boolean {
  *
  * Same spirit as paint deferral's live neighbourhood, slightly wider so a
  * stub does not sit against the caret after a short move.
+ *
+ * This is the contiguous span between the selection's ends. Membership uses
+ * `selectionRealWindows`, which splits a wide span into its two ends.
  */
 export function selectionRealRange(
   doc: ProseNode,
@@ -336,6 +363,28 @@ export function selectionRealRange(
     toIndex = swap;
   }
   return clampRange(fromIndex - radius, toIndex + radius, last);
+}
+
+/**
+ * The selection's real windows: one contiguous span while the selection
+ * covers at most `spanMax` top-level blocks between its ends, else the
+ * neighbourhoods of its two ends with the interior left to the viewport.
+ */
+export function selectionRealWindows(
+  doc: ProseNode,
+  selection: Selection,
+  radius: number = STUB_SELECTION_RADIUS,
+  spanMax: number = STUB_SELECTION_SPAN_MAX,
+): { readonly start: BlockRange; readonly end: BlockRange } {
+  const span = selectionRealRange(doc, selection, radius);
+  const last = doc.childCount - 1;
+  const fromIndex = Math.min(selection.$from.index(0), last);
+  const toIndex = Math.min(selection.$to.index(0), last);
+  if (toIndex - fromIndex <= spanMax) return { start: span, end: span };
+  return {
+    start: clampRange(fromIndex - radius, fromIndex + radius, last),
+    end: clampRange(toIndex - radius, toIndex + radius, last),
+  };
 }
 
 /**
@@ -492,7 +541,9 @@ export function rangeContains(range: BlockRange, index: number): boolean {
  */
 export function isIndexReal(state: ViewportStubState, index: number): boolean {
   if (!state.enabled) return true;
-  return rangeContains(state.viewport, index) || rangeContains(state.selection, index);
+  return rangeContains(state.viewport, index)
+    || rangeContains(state.selection, index)
+    || rangeContains(state.selectionEnd, index);
 }
 
 export function isIndexStubbed(
@@ -567,7 +618,7 @@ function buildState(
   if (!stubbingEnabled(doc.childCount)) return disabledState(doc.childCount);
 
   const last = doc.childCount - 1;
-  const selectionRange = selectionRealRange(doc, selection);
+  const { start: selectionRange, end: selectionEnd } = selectionRealWindows(doc, selection);
   const heights = previous && previous.heights.length === doc.childCount
     ? previous.heights
     : estimateAllHeights(doc, emPx);
@@ -580,10 +631,11 @@ function buildState(
     viewport?.to ?? previous?.viewport.to ?? (selectionRange.to + initialPad),
     last,
   );
-  const real = unionRanges(viewportRange, selectionRange, last);
+  const real = unionRanges(unionRanges(viewportRange, selectionRange, last), selectionEnd, last);
   const generation = previous
     && rangesEqual(previous.viewport, viewportRange)
     && rangesEqual(previous.selection, selectionRange)
+    && rangesEqual(previous.selectionEnd, selectionEnd)
     ? previous.generation
     : (previous?.generation ?? 0) + 1;
 
@@ -591,6 +643,7 @@ function buildState(
     enabled: true,
     viewport: viewportRange,
     selection: selectionRange,
+    selectionEnd,
     real,
     heights,
     generation,
@@ -837,7 +890,9 @@ function publishDataset(view: EditorView, stub: ViewportStubState): void {
   host.dataset.stubEnabled = '1';
   // Viewport window (what is on screen), not the contiguous caret↔viewport span.
   host.dataset.stubReal = `${stub.viewport.from}-${stub.viewport.to}`;
-  host.dataset.stubSelection = `${stub.selection.from}-${stub.selection.to}`;
+  host.dataset.stubSelection = rangesEqual(stub.selection, stub.selectionEnd)
+    ? `${stub.selection.from}-${stub.selection.to}`
+    : `${stub.selection.from}-${stub.selection.to},${stub.selectionEnd.from}-${stub.selectionEnd.to}`;
   host.dataset.stubCount = String(stubbed);
 }
 
@@ -1058,18 +1113,18 @@ interface PmViewDesc {
 interface MembershipWindows {
   readonly viewport: BlockRange;
   readonly selection: BlockRange;
+  readonly selectionEnd: BlockRange;
 }
 
 function wasIndexReal(windows: MembershipWindows, index: number): boolean {
-  return rangeContains(windows.viewport, index) || rangeContains(windows.selection, index);
+  return rangeContains(windows.viewport, index)
+    || rangeContains(windows.selection, index)
+    || rangeContains(windows.selectionEnd, index);
 }
 
 function collectWindowIndices(windows: MembershipWindows, into: Set<number>): void {
-  for (let index = windows.viewport.from; index <= windows.viewport.to; index += 1) {
-    into.add(index);
-  }
-  for (let index = windows.selection.from; index <= windows.selection.to; index += 1) {
-    into.add(index);
+  for (const range of [windows.viewport, windows.selection, windows.selectionEnd]) {
+    for (let index = range.from; index <= range.to; index += 1) into.add(index);
   }
 }
 
@@ -1230,6 +1285,7 @@ function syncMembershipRemounts(
   const nextWindows: MembershipWindows = {
     viewport: next.viewport,
     selection: next.selection,
+    selectionEnd: next.selectionEnd,
   };
   if (!previous) return nextWindows;
 
@@ -1581,7 +1637,11 @@ export function viewportStubPlugin(): Plugin<ViewportStubState> {
       if (initial?.enabled) {
         // Seed before the first scroll dispatch so sync can diff construction
         // windows against the measured viewport without an O(doc) deco walk.
-        syncedWindows = { viewport: initial.viewport, selection: initial.selection };
+        syncedWindows = {
+          viewport: initial.viewport,
+          selection: initial.selection,
+          selectionEnd: initial.selectionEnd,
+        };
         resyncBudget = 6;
         const next = viewportFromScroll(editorView, initial.heights);
         if (next) dispatchViewport(next);
