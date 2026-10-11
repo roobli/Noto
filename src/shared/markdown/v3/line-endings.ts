@@ -11,6 +11,7 @@
 import type { NotoLineEnding } from './contracts';
 
 export function toLf(text: string): string {
+  if (!text.includes('\r')) return text;
   return text.replaceAll('\r\n', '\n').replaceAll('\r', '\n');
 }
 

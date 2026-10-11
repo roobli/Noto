@@ -50,6 +50,7 @@ import {
   canSkipDialectEnrich,
   collectFootnoteDefinitionIds,
   engineSemanticKey,
+  engineOwnedSemanticKey,
   parseLinkDefinitionSource,
   parseSimpleQuoteSource,
   withKnownFootnoteIds,
@@ -750,15 +751,15 @@ function enrichSpan(span: EngineBlockSpan): AdapterBlockSpan {
  */
 function enrichSpanNone(span: EngineBlockSpan): AdapterBlockSpan {
   const kind = span.kind as NotoBlockKind;
-  const skip = canSkipDialectEnrich(kind, span.markdown);
+  const engineKey = engineOwnedSemanticKey(kind, span.markdown);
   return lazyNodeSpan(
     {
       kind,
       start: span.start,
       end: span.end,
       markdown: span.markdown,
-      semanticKey: skip ? engineSemanticKey(kind, span.markdown) : kind,
-      engineOwned: skip,
+      semanticKey: engineKey ?? kind,
+      engineOwned: engineKey !== null,
     },
     () => standInNode(span),
   );
