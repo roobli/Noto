@@ -27,16 +27,16 @@ benchmark's generated documents; the largest is 8 MB and 43,970 blocks.
   the caret are drawn when they scroll into view rather than all at open,
   runs of off-screen blocks are kept as single placeholders, the document
   crosses between the app's processes once instead of twice, and work the
-  open repeated is done once. The 8 MB document opens in about 1.1 seconds in
-  the packaged benchmark on macOS, where the build measured on 29 September
-  took about 10.
+  open repeated is done once. The 8 MB document opens in about 1.3 seconds in
+  this release's packaged benchmark on macOS, where the build measured on
+  29 September took about 10.
 - **Scrolling, typing and saving in a long note are lighter.** A block coming
   into view reuses the placeholder it replaces, a fence's language and copy
   controls are built the first time you hover or focus it, moving the caret
   or typing inside a block no longer rebuilds the whole note's highlighting
-  and block positions, and a save writes out only the blocks that changed. In the packaged benchmark on macOS, a
-  keystroke in the 8 MB document went from about 86 ms to about 16 ms, and a
-  save from about 3.1 seconds to about 0.3.
+  and block positions, and a save writes out only the blocks that changed.
+  In the same benchmark, a keystroke in the 8 MB document went from about
+  86 ms to about 21 ms, and a save from about 3.1 seconds to under 0.5.
 - The README and the docs site lead with what Noto is for: *Edit the page.
   Keep the file.* The download table lists what releases actually carry.
 
