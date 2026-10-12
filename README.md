@@ -177,25 +177,29 @@ copy rather than an overwrite.
 
 ## Performance
 
-Measured by the [benchmark workflow](.github/workflows/bench.yml) on a packaged
-build of `main` at `acb3d66`, 29 September 2026, on a GitHub-hosted `macos-14`
-runner, a virtual Apple silicon Mac. It opens four generated documents through
-the workspace, the way the menu or the file tree does, types in the middle of
-each and saves. Open and save are timed by the harness driving the app, a
-keystroke inside the page, from the edit to the next frame. Median of five
-runs; [the run](https://github.com/roobli/Noto/actions/runs/36566313564).
+Measured by the [benchmark workflow](.github/workflows/bench.yml) on the
+packaged release build of `v0.0.2-alpha.114`, 12 October 2026, on a
+GitHub-hosted `macos-14` runner, a virtual Apple silicon Mac. It opens four
+generated documents through the workspace, the way the menu or the file tree
+does, types in the middle of each and saves. Open and save are timed by the
+harness driving the app; a keystroke inside the page, from the edit to the
+next frame; idle lag is the longest main-thread stall after typing stops.
+Median of three runs;
+[the run](https://github.com/roobli/Noto/actions/runs/38279651351).
 
-| document |     bytes | blocks |      open | keystroke |     save |
-| -------- | --------: | -----: | --------: | --------: | -------: |
-| small    |    66,061 |    338 |    224 ms |   14.2 ms |   150 ms |
-| medium   |   524,952 |  2,742 |    604 ms |   11.5 ms |   261 ms |
-| large    | 2,097,661 | 10,982 |  1,733 ms |   24.5 ms |   734 ms |
-| huge     | 8,389,427 | 43,970 | 10,026 ms |   85.7 ms | 3,146 ms |
+| document |     bytes | blocks |     open | keystroke | idle lag |   save |
+| -------- | --------: | -----: | -------: | --------: | -------: | -----: |
+| small    |    66,061 |    338 |   432 ms |   12.4 ms |    83 ms | 202 ms |
+| medium   |   524,952 |  2,742 |   586 ms |   11.2 ms |    36 ms | 205 ms |
+| large    | 2,097,661 | 10,982 |   471 ms |   15.0 ms |    44 ms | 203 ms |
+| huge     | 8,389,427 | 43,970 | 1,250 ms |   20.6 ms |    44 ms | 445 ms |
 
-Up to half a megabyte a note opens in under a second and a keystroke stays
-inside one 60 Hz frame. At 2 MB opening takes under two seconds, a keystroke
-about a frame and a half, and a save under one. At 8 MB opening takes ten
-seconds and a keystroke about five frames, which is the part still to improve.
+Up to 2 MB a note opens in about half a second, a keystroke stays inside one
+60 Hz frame, and a save takes about a fifth of a second. At 8 MB opening takes
+about a second and a quarter, a keystroke a little over a frame, and a save
+under half a second. On 29 September the same 8 MB document took ten seconds
+to open, 86 ms a keystroke and three seconds to save
+([that run](https://github.com/roobli/Noto/actions/runs/36566313564)).
 
 These are runs on a shared virtual machine, and two runs of one build have
 differed by up to 41%, so compare them only with other runs of the workflow.
