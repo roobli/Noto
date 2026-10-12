@@ -9,85 +9,53 @@ How releases are made, and what each channel receives, is in
 
 ## [Unreleased]
 
-### Changed
-- **Faster remount by flipping specialised stubs in place.** Fences, tables and
-  display math now stub on typed shells (`pre` / `div`) and remount the real
-  Fence/Table/Math view onto that same node (`host`), so specialised
-  membership changes skip `replaceChild` too. Linux happy-dom residual, same
-  machine before/after (median of 3, post-#309 baseline): remount mid large
-  **23 → 11 ms**; huge wall-clock is noise-dominated (**22 → 19 ms**) while
-  instrumented mid remount shows **replaceCount 10 → 0** (~3 ms of
-  `replaceChild` removed). Slide +1 stays sub-ms. HTML/image stay always-real
-  (zero always-real blocks on the corpus).
-- **Faster remount by flipping default stubs in place.** Default-rendered
-  top-level stubs (`paragraph`, `heading`, lists, …) now use the same tag as
-  the real shell, so stub↔real membership changes mutate that node instead of
-  `replaceChild` + a fresh shell. Linux happy-dom residual, same machine
-  before/after (median of 3, post-#308 baseline): remount mid huge
-  **29 → 12 ms**; large is noise-dominated both sides. Slide +1 stays ~1 ms.
-  Mid remount kept **54 / 64** DOM nodes before specialised in-place followed.
-- **Faster band-enter remount (ignore mutations + index ViewDesc).** Surgical
-  stub↔real no longer disconnects/re-observes the MutationObserver on the
-  mount (O(children) on huge) — remount mutations are discarded instead — and
-  looks up each top-level ViewDesc by child index rather than `nodeDOM`/
-  `descAt` (O(index) per block). Linux happy-dom residual, same machine
-  before/after (median of 3, post-#307 baseline): remount mid huge
-  **85 → 28 ms**, large **23 → 15 ms**; slide +1 huge **41 → 1.1 ms**, large
-  **9 → 0.6 ms**.
-- **Faster specialised fence remount (lazy tools + deferred datalist).** Fence
-  language/copy chrome mounts on first hover or focus-in, matching the CSS that
-  already hides tools until then; the shared language datalist binds only when
-  the field is focused. Remount no longer pays datalist id-resolution against
-  every top-level stub. Linux happy-dom residual, same machine before/after
-  (median of 3): remount mid huge **146 → 85 ms**, large **37 → 23 ms**. Forced
-  `code_block`×3 applyMembership **80 → 0.6 ms**.
-- **Faster stub remount when the viewport moves (scroller lookup).** Finding the
-  scrollport no longer reads computed `overflowY` on the ProseMirror mount
-  parent (that forced layout over every top-level child on each membership
-  dispatch). Inline overflow and `.canvas-scroll` are preferred; the plugin
-  keeps the attached scroller across updates. Linux happy-dom residual, same
-  machine before/after (median of 3): remount mid huge **178 → 146 ms**; slide +1
-  huge **79 → 42 ms**; same-window dispatch huge **47 → 0.4 ms** (large same
-  **5.5 → 0.2 ms**). Remount-mid large stays ~36 ms (noise).
-- **Faster remount spikes when the stub window moves.** Viewport stubbing no
-  longer marks the real band with node decorations (that forced ProseMirror to
-  walk every top-level child on each membership change). Enter/leave indices
-  remount surgically in the plugin view instead. Linux happy-dom residual
-  remount mid / slide +1, same machine before/after: large **82 → 49 ms** /
-  **51 → 11 ms**, huge **582 → 182 ms** / **460 → 76 ms**.
-- **Faster stub DOM on long-note open, and cheaper membership-stable decoration updates.**
-  Stub placeholders are cloned from a shared prototype instead of `createElement`
-  per top-level block, and viewport-stub kept its real-window `DecorationsSet`
-  across transactions that did not change membership (mapping it on doc edits).
-  Superseded for membership signaling by surgical remount above; the open-floor
-  `cloneNode` cut remains. Linux happy-dom EditorView open after specialised
-  stubbing (#303), same machine before/after: large **631 → 424 ms** (median of 3),
-  huge **5445 → 3476 ms**.
+## [0.0.2-alpha.114] - 2026-10-12
+
+Two weeks of work on long notes. Everything below was measured on the
+benchmark's generated documents; the largest is 8 MB and 43,970 blocks.
 
 ### Added
-- **Long notes stub off-screen fences, tables and display math.** Once a note
-  has enough top-level blocks for viewport stubbing, those specialised blocks
-  use a height placeholder until they scroll (or the caret) into the real
-  window, then remount their normal editing chrome. HTML and images stay
-  fully real. Linux view-open microbench on the corpus: about 2.1–2.4× faster
-  constructing the editor for large/huge versus always-real specialised views.
-
-- **The packaged benchmark records post-type idle lag.** After a typing burst
-  it measures the longest main-thread stall until the renderer goes quiet, so a
-  freeze like the Chromium ColdModeSpellCheckRequester case (tens of seconds on
-  the 8 MB document with every keystroke still under a frame) cannot land
-  without a number next to it. Reported for every corpus size in CI beside
-  open, keystroke and save; skip locally with `BENCH_IDLE_LAG=0`.
-- A unit test that times a one-block save at *n* and at *4n* paragraphs and
-  fails if the larger one takes more than ten times as long, so an accidental
-  return of the quadratic save lookup cannot land quietly.
 - **Intel Macs are supported again.** Each release carries an Intel zip beside
   the Apple silicon one, and the update feed lists both, so each Mac's updater
   takes the build it can run.
 - Release builds can be signed and notarized as soon as the Apple credentials
-  exist; see [RELEASING.md](RELEASING.md).
+  exist; see [RELEASING.md](RELEASING.md). This release is still not
+  notarized.
+
+### Changed
+- **A long note opens much faster.** Fences, tables and display math far from
+  the caret are drawn when they scroll into view rather than all at open,
+  runs of off-screen blocks are kept as single placeholders, the document
+  crosses between the app's processes once instead of twice, and work the
+  open repeated is done once. The 8 MB document opens in about 1.1 seconds in
+  the packaged benchmark on macOS, where the build measured on 29 September
+  took about 10.
+- **Scrolling, typing and saving in a long note are lighter.** A block coming
+  into view reuses the placeholder it replaces, a fence's language and copy
+  controls are built the first time you hover or focus it, moving the caret
+  or typing inside a block no longer rebuilds the whole note's highlighting
+  and block positions, and a save writes out only the blocks that changed. In the packaged benchmark on macOS, a
+  keystroke in the 8 MB document went from about 86 ms to about 16 ms, and a
+  save from about 3.1 seconds to about 0.3.
+- The README and the docs site lead with what Noto is for: *Edit the page.
+  Keep the file.* The download table lists what releases actually carry.
 
 ### Fixed
+- **A long note no longer freezes when you stop typing.** Each time typing
+  paused, the spell checker went through the whole note in one go, and the
+  window ignored every click until it finished: about 37 seconds, twice, in
+  the 8 MB document. In a note of a few thousand paragraphs or more, spelling
+  is now checked in the paragraphs around the caret; shorter notes are
+  checked whole, as before.
+- **Counting words no longer stalls a long note.** The status bar counted
+  every character of the note each time typing stopped. Counts are now kept
+  per block and reused for blocks an edit left alone, and the first count of
+  a note runs in small slices, so the longest stall after typing stops in the
+  8 MB document fell from about 380 ms to under 20.
+- **Select All in a long note no longer draws the whole note.** Selecting
+  everything, or shift-clicking from one end to the other, made every block
+  real again, which took seconds on the largest documents. Only the
+  neighbourhoods of the selection's two ends are drawn now.
 - **Settings → Updates → Stable no longer offers alphas.** Some alphas were
   published without GitHub's prerelease flag, and Stable trusted that flag
   alone. A version with a prerelease component is now always treated as a
@@ -105,35 +73,15 @@ How releases are made, and what each channel receives, is in
   had every list in it drawn as a line of text, and editing one could write
   escape characters into the file. The frontmatter parser now only runs when a
   note opens with a closed `---` fence.
-- **A long note no longer freezes when you stop typing.** Each time typing
-  paused, the spell checker went through the whole note in one go, and the
-  window ignored every click until it finished: about 37 seconds, twice, in
-  the 8 MB benchmark document. In a note of a few thousand paragraphs or more,
-  spelling is now checked in the paragraphs around the caret; shorter notes are
-  checked whole, as before.
-- **Counting the words in a long note no longer walks the whole note after
-  every pause.** The status bar counted every character of the document each
-  time typing stopped, about 0.6 s on the 8 MB benchmark document, which was
-  the longest task left after the spell-check fix. Counts are now kept per
-  top-level block and reused for blocks an edit left alone, so a one-paragraph
-  change costs about that paragraph.
-- **A long note opens faster.** Building the view of a note took time in
-  proportion to the square of its number of blocks, because every block looked
-  up its own position by walking the note from the top. The 8 MB benchmark
-  document now opens in a packaged build on Linux in about 5.5 seconds instead
-  of 9.
-- **Saving a long note is faster.** Part of every save took time in
-  proportion to the square of the number of blocks in the note, and now grows
-  only with the number. On the 8 MB benchmark document, 44,000 blocks, that
-  part fell from over five seconds to under one, and a whole save in the
-  packaged app from between 3.2 and 4.5 seconds to 2.6. A save also no longer
-  parses the file twice, and only what changed now travels between the app's
-  processes, in both directions; the same save in a packaged build on Linux
-  now takes under a second.
 
-### Changed
-- The README and the docs site lead with what Noto is for: *Edit the page.
-  Keep the file.* The download table lists what releases actually carry.
+### For contributors
+- The packaged benchmark runs on every tag and reports post-type idle lag
+  beside open, keystroke and save; its probe no longer counts the open's own
+  long task. Skip it locally with `BENCH_IDLE_LAG=0`.
+- A unit test fails if a one-block save at *4n* paragraphs takes more than ten
+  times one at *n*, so the quadratic save lookup cannot return quietly.
+- Measurements and profiles for each change above are in
+  [docs/performance/measurements.md](docs/performance/measurements.md).
 
 ## [0.0.2-alpha] - 2026-09-10 to 2026-09-28
 
@@ -197,6 +145,7 @@ The first release with downloadable builds for macOS, Windows and Linux.
   to link a note.
 - An optional loopback-only remote control for scripts on the same machine.
 
-[Unreleased]: https://github.com/roobli/Noto/compare/v0.0.2-alpha.113...main
+[Unreleased]: https://github.com/roobli/Noto/compare/v0.0.2-alpha.114...main
+[0.0.2-alpha.114]: https://github.com/roobli/Noto/compare/v0.0.2-alpha.113...v0.0.2-alpha.114
 [0.0.2-alpha]: https://github.com/roobli/Noto/compare/v0.0.1...v0.0.2-alpha.113
 [0.0.1]: https://github.com/roobli/Noto/releases/tag/v0.0.1

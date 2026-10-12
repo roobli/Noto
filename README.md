@@ -53,7 +53,7 @@ numbers are below.
 
 Builds for macOS, Windows and Linux are on the
 [releases page](https://github.com/roobli/Noto/releases). Each release carries
-one download per platform, listed below as of `v0.0.2-alpha.113`.
+the downloads listed below, as of `v0.0.2-alpha.114`.
 
 **First open:** until we ship Apple notarization and a Windows code-signing
 certificate, each OS warns once on a fresh download. That is expected — not a
@@ -74,13 +74,10 @@ Packaged builds can check GitHub Releases from **Settings → Updates**. Stable
 | Platform | Download |
 | --- | --- |
 | macOS, Apple silicon | `Noto-<version>-macos-arm64.zip`: unzip and move `Noto.app` to Applications |
+| macOS, Intel | `Noto-<version>-macos-x64.zip`: the same, for Intel Macs |
 | Windows, x64 | `NotoSetup-<version>.exe` |
 | Linux, Debian and Ubuntu, x64 | `noto_<version>_amd64.deb` |
 | Linux, Fedora and openSUSE, x64 | `noto-<version>-1.x86_64.rpm` |
-
-Intel Macs are not supported by current releases: the macOS build is Apple
-silicon only, and Rosetta runs Intel apps on Apple silicon, not the other way
-round.
 
 ## Getting started
 
