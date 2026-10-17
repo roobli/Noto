@@ -415,6 +415,17 @@ describe('known issue (not a save bug)', () => {
     expectSavedMatchesEditor(h, 'nested emphasis');
   });
 
+  // Dropping an emptied paragraph that separated two lists of the same type
+  // leaves them adjacent, so they re-read as one (loose) list.
+  it.fails('an emptied paragraph between two lists keeps them separate on reopen', { timeout: 60_000 }, () => {
+    const h = openTracked('- a\n\nx\n\n- b\n');
+    const v = view(h);
+    const at = blockStart(v.state.doc, 1);
+    v.dispatch(v.state.tr.delete(at + 1, at + 2));
+    save(h);
+    expect(fullDoc(h.saved).childCount).toBe(2);
+  });
+
   it.fails('a footnote reference in a dialect-enriched paragraph resolves its definition', () => {
     const text = 'Footnote ref[^n1] in ta*bext.\n\n[^n1]: The note.\n';
     let found = false;
