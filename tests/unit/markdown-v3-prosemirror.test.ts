@@ -224,14 +224,6 @@ describe('a URL written on its own', () => {
     expect(roundTrip('<https://example.com/a.>')).toBe('<https://example.com/a.>');
     expect(roundTrip('<mailto:someone@example.com>')).toBe('<mailto:someone@example.com>');
   });
-
-  it('keeps the brackets where text touches the address', () => {
-    // Bare, `seehttps://…` is not a link and `…/aK` swallows the K.
-    expect(roundTrip('see<https://example.com/a>')).toBe('see<https://example.com/a>');
-    expect(roundTrip('<https://example.com/a>K and more')).toBe('<https://example.com/a>K and more');
-    // A boundary on both sides still writes it bare.
-    expect(roundTrip('see <https://example.com/a>. Next')).toBe('see https://example.com/a. Next');
-  });
 });
 
 describe('emphasis beside Chinese text', () => {

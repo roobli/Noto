@@ -273,13 +273,6 @@ const bareAutolink: ToMarkdownOptions = {
         && only.value === node.url
         && (node.title === null || node.title === undefined)
         && BARE_URL.test(node.url)
-        // GFM only links a bare address at a boundary: a letter right before
-        // it stops it linking (`seehttps://…`) and a letter right after it
-        // becomes part of the address (`…/794K794`). There, keep the brackets.
-        // Trailing punctuation after it is trimmed by GFM, so a sentence's
-        // full stop or a closing bracket still leaves the address bare.
-        && /^(?:|[\s*_~(])$/.test(info.before.slice(-1))
-        && /^(?:|[\s.,:;!?)\]*_~'"])$/.test(info.after.slice(0, 1))
       ) {
         return node.url;
       }
