@@ -211,7 +211,26 @@ function normalized(node: ProseNode): unknown {
       value = { ...value, attrs } as typeof value;
     }
     if (!value.content) return value;
-    let content = value.content.map((child) => walk(child as never) as { type: string; text?: string });
+    let content = value.content.map((child) => walk(child as never) as { type: string; text?: string; marks?: Array<{ type: string; attrs?: { href?: string } }> });
+    // A bare URL is GFM autolink text: typing against it intentionally extends
+    // or ends the address on re-read (see autolink-packaged e2e). Compare such
+    // links as the plain text they are written as.
+    content = content.map((child) => {
+      if (child.type !== 'text' || !child.marks) return child;
+      const marks = child.marks.filter((mark) => !(mark.type === 'link' && /^https?:\/\//.test(mark.attrs?.href ?? '') && child.text?.includes('://')));
+      return marks.length === child.marks.length ? child : { ...child, marks: marks.length ? marks : undefined };
+    });
+    const merged: typeof content = [];
+    for (const child of content) {
+      const previous = merged[merged.length - 1];
+      if (previous && previous.type === 'text' && child.type === 'text'
+        && JSON.stringify(previous.marks ?? []) === JSON.stringify(child.marks ?? [])) {
+        merged[merged.length - 1] = { ...previous, text: (previous.text ?? '') + (child.text ?? '') };
+      } else {
+        merged.push(child);
+      }
+    }
+    content = merged.map((child) => (child.marks === undefined ? (({ marks: _m, ...rest }) => rest)(child) : child));
     const isTextblock = content.some((child) => child.type === 'text');
     if (isTextblock) {
       const first = content[0];
