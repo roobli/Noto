@@ -36,10 +36,15 @@ import {
 export interface DeferredViewportEnrichHost {
   getView(): EditorView | null;
   isDirtyNow(): boolean;
+  /**
+   * Swap in the enriched window. Returning false means nothing was applied
+   * (for example mid-composition), so the window stays deferred and is
+   * retried on a later tick.
+   */
   applyDialectEnrichedSpans(
     spans: readonly BlockSpan[],
     window?: { readonly from: number; readonly to: number },
-  ): void;
+  ): boolean | void;
 }
 
 export interface DeferredViewportEnrichOptions {
@@ -192,11 +197,12 @@ export class DeferredViewportEnrichController {
       to: toExclusive,
     }, { budget: OPEN_VIEWPORT_ENRICH_BUDGET });
     if (!result.window) return false;
-    this.spans = result.spans;
-    this.flags = result.flags;
     this.applying = true;
     try {
-      this.host.applyDialectEnrichedSpans(this.spans, result.window);
+      const applied = this.host.applyDialectEnrichedSpans(result.spans, result.window);
+      if (applied === false) return false;
+      this.spans = result.spans;
+      this.flags = result.flags;
     } catch (error) {
       this.onError?.(error instanceof Error ? error.message : 'Dialect enrich after open failed.');
       return false;
