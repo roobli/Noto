@@ -105,7 +105,7 @@ function phrasingFrom(node: ProseNode): PhrasingContent[] {
     output.push(leaf);
   });
 
-  return trimTrailingSpace(mergeAdjacent(output));
+  return trimLeadingSpace(trimTrailingSpace(mergeAdjacent(output)));
 }
 
 /**
@@ -117,12 +117,45 @@ function phrasingFrom(node: ProseNode): PhrasingContent[] {
  * they cannot see. A deliberate hard break is its own node, so nothing is lost.
  */
 function trimTrailingSpace(nodes: PhrasingContent[]): PhrasingContent[] {
-  const last = nodes.at(-1);
-  if (!last || last.type !== 'text') return nodes;
-  const trimmed = last.value.replace(/[ \t]+$/, '');
-  if (trimmed === last.value) return nodes;
-  if (trimmed.length === 0) return nodes.slice(0, -1);
-  return [...nodes.slice(0, -1), { type: 'text', value: trimmed }];
+  return trimEdge(nodes, 'end');
+}
+
+/**
+ * Trim spaces off one edge of a block's phrasing, looking inside marks: a
+ * space at the end of `*c word *` is still at the end of the block, and was
+ * written as `*c word&#x20;*`.
+ */
+function trimEdge(nodes: PhrasingContent[], edge: 'start' | 'end'): PhrasingContent[] {
+  const at = edge === 'start' ? 0 : nodes.length - 1;
+  const node = nodes[at];
+  if (!node) return nodes;
+  let replacement: PhrasingContent | null;
+  if (node.type === 'text') {
+    const value = edge === 'start' ? node.value.replace(/^[ \t]+/, '') : node.value.replace(/[ \t]+$/, '');
+    if (value === node.value) return nodes;
+    replacement = value.length === 0 ? null : { type: 'text', value };
+  } else if (node.type === 'emphasis' || node.type === 'strong' || node.type === 'delete') {
+    const children = trimEdge(node.children, edge);
+    if (children === node.children) return nodes;
+    replacement = children.length === 0 ? null : { ...node, children } as PhrasingContent;
+  } else {
+    return nodes;
+  }
+  const rest = edge === 'start' ? nodes.slice(1) : nodes.slice(0, -1);
+  if (replacement === null) return trimEdge(rest, edge);
+  return edge === 'start' ? [replacement, ...rest] : [...rest, replacement];
+}
+
+/**
+ * Drop leading spaces at the start of a block, for the same reason.
+ *
+ * A paragraph cannot start with a space in markdown (it is stripped on read),
+ * so `mdast-util-to-markdown` writes `&#x20;`. The parser keeps character
+ * references as literal text, so deleting a paragraph's first word and saving
+ * used to reopen as a visible `&#x20;` in the user's file.
+ */
+function trimLeadingSpace(nodes: PhrasingContent[]): PhrasingContent[] {
+  return trimEdge(nodes, 'start');
 }
 
 /**
