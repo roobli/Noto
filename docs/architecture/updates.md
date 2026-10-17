@@ -35,6 +35,15 @@ to `v0.0.2-alpha.109` until this rule and the integrity workflow below landed.
 
 ## Platforms
 
+> **Unsigned builds never install themselves.** Until releases carry real
+> Apple notarization / Windows code signing, auto-install is disabled on every
+> platform (`SIGNED_BUILD_AUTO_INSTALL = false` in
+> `src/main/updates/install-policy.ts`). Found updates open the matching
+> download on the release page, and the "Download automatically" setting is
+> hidden.
+> The table below describes behaviour once that flag is turned on for a
+> signed release.
+
 | Platform | Auto download / install | Fallback |
 | -------- | ----------------------- | -------- |
 | macOS (packaged zip) | `electron-updater` via `latest-mac.yml` | Open the release zip |
