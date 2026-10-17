@@ -164,7 +164,122 @@ export function ensureSparseDocViewInstalled(): void {
   if (internals || installAttempted) return;
   installAttempted = true;
   if (typeof document === 'undefined') return;
+  try {
+    installSparseDocView();
+  } catch (error) {
+    // Any surprise from prosemirror-view internals means stock rendering.
+    reportSparseFallback(error instanceof Error ? error.message : String(error));
+  }
+}
 
+/** True once the sparse docView patch is live on NodeViewDesc. */
+export function isSparseDocViewInstalled(): boolean {
+  return internals !== null;
+}
+
+/** Why sparse was not installed (empty when installed or not attempted). */
+export function sparseDocViewFallbackReason(): string {
+  return fallbackReason;
+}
+
+let fallbackReason = '';
+let forcedShapeFailure: string | null = null;
+
+function reportSparseFallback(reason: string): void {
+  internals = null;
+  if (fallbackReason) return;
+  fallbackReason = reason.slice(0, 512);
+  console.warn(`[noto] sparse docView disabled, using stock rendering: ${fallbackReason}`);
+}
+
+/**
+ * Test-only: forget install state so ensureSparseDocViewInstalled runs again.
+ * Does not undo an earlier successful prototype patch (that one is permanent).
+ */
+export function __resetSparseDocViewForTests(options: { forceShapeFailure?: string } = {}): void {
+  installAttempted = false;
+  fallbackReason = '';
+  forcedShapeFailure = options.forceShapeFailure ?? null;
+  if (forcedShapeFailure) internals = null;
+}
+
+function isFn(value: unknown): value is (...args: unknown[]) => unknown {
+  return typeof value === 'function';
+}
+
+function hasAccessor(proto: object, name: string): boolean {
+  for (let cursor: object | null = proto; cursor; cursor = Object.getPrototypeOf(cursor)) {
+    const descriptor = Object.getOwnPropertyDescriptor(cursor, name);
+    if (descriptor) return isFn(descriptor.get) || descriptor.value !== undefined;
+  }
+  return false;
+}
+
+/**
+ * Check the private prosemirror-view shape the sparse patch relies on.
+ * Returns a problem description, or '' when the shape matches.
+ * Pinned against prosemirror-view 1.42.3; any drift must land here first.
+ */
+export function validatePmViewShape(
+  docView: unknown,
+  NodeViewDesc: unknown,
+  ViewDesc: unknown,
+  WidgetViewDesc: unknown,
+  widgetChild: unknown,
+): string {
+  const doc = docView as AnyDesc | null;
+  if (!doc || typeof doc !== 'object') return 'docView missing';
+  if (doc.parent) return 'docView has a parent';
+  if (!Array.isArray(doc.children)) return 'docView.children is not an array';
+  if (!(doc.dom instanceof Node)) return 'docView.dom is not a Node';
+  if (!(doc.contentDOM instanceof Node)) return 'docView.contentDOM is not a Node';
+  if (typeof doc.dirty !== 'number') return 'docView.dirty is not a number';
+  if (!doc.node || typeof doc.node !== 'object') return 'docView.node missing';
+  const innerDeco = (doc as { innerDeco?: { forChild?: unknown } }).innerDeco;
+  if (!innerDeco || !isFn(innerDeco.forChild)) {
+    return 'docView.innerDeco.forChild missing';
+  }
+
+  if (!isFn(NodeViewDesc)) return 'NodeViewDesc is not a constructor';
+  if (!isFn((NodeViewDesc as { create?: unknown }).create)) return 'NodeViewDesc.create missing';
+  const nodeProto = (NodeViewDesc as { prototype: Record<string, unknown> }).prototype;
+  for (const method of ['updateChildren', 'matchesNode', 'update', 'destroy']) {
+    if (!isFn(nodeProto[method])) return `NodeViewDesc.prototype.${method} missing`;
+  }
+
+  if (!isFn(ViewDesc)) return 'ViewDesc is not a constructor';
+  const viewProto = (ViewDesc as { prototype: Record<string, unknown> }).prototype;
+  if (!(nodeProto instanceof (ViewDesc as unknown as new () => object))) return 'NodeViewDesc does not extend ViewDesc';
+  for (const method of [
+    'destroy', 'localPosFromDOM', 'domFromPos', 'parseRule', 'ignoreMutation',
+    'matchesWidget', 'matchesMark', 'matchesNode', 'matchesHack', 'stopEvent',
+  ]) {
+    if (!isFn(viewProto[method])) return `ViewDesc.prototype.${method} missing`;
+  }
+  for (const accessor of ['size', 'border', 'domAtom']) {
+    if (!hasAccessor(viewProto, accessor)) return `ViewDesc.prototype.${accessor} missing`;
+  }
+
+  if (!widgetChild || typeof widgetChild !== 'object') return 'warm-up widget desc missing';
+  if (!(widgetChild as AnyDesc).widget) return 'widget desc has no .widget';
+  if (!isFn(WidgetViewDesc)) return 'WidgetViewDesc is not a constructor';
+  const widgetProto = (WidgetViewDesc as { prototype: object }).prototype;
+  if (!(widgetProto instanceof (ViewDesc as unknown as new () => object))) return 'WidgetViewDesc does not extend ViewDesc';
+
+  // Spacers are built with `new ViewDesc(parent, [], dom, null)`.
+  const probeDom = document.createElement('div');
+  const probe = new (ViewDesc as unknown as ViewDescCtor)(doc, [], probeDom, null) as AnyDesc;
+  if (probe.dom !== probeDom || probe.parent !== doc || !Array.isArray(probe.children)) {
+    return 'ViewDesc constructor signature changed';
+  }
+  if ((probeDom as unknown as { pmViewDesc?: unknown }).pmViewDesc !== probe) {
+    return 'ViewDesc no longer sets dom.pmViewDesc';
+  }
+  delete (probeDom as unknown as { pmViewDesc?: unknown }).pmViewDesc;
+  return '';
+}
+
+function installSparseDocView(): void {
   const schema = new Schema({
     nodes: {
       doc: { content: 'block+' },
@@ -195,13 +310,23 @@ export function ensureSparseDocViewInstalled(): void {
   });
   try {
     const docView = (warmView as unknown as { docView: AnyDesc }).docView;
-    const NodeViewDesc = Object.getPrototypeOf(docView).constructor as NodeViewDescCtor;
-    const ViewDesc = Object.getPrototypeOf(NodeViewDesc.prototype).constructor as ViewDescCtor;
-    const widgetChild = (docView.children as AnyDesc[]).find((child) => child.widget);
-    if (!widgetChild) {
-      throw new Error('sparse-doc-view: warm-up widget desc missing');
+    const NodeViewDesc = docView ? Object.getPrototypeOf(docView)?.constructor as NodeViewDescCtor : undefined;
+    const ViewDesc = NodeViewDesc?.prototype
+      ? Object.getPrototypeOf(NodeViewDesc.prototype)?.constructor as ViewDescCtor
+      : undefined;
+    const widgetChild = Array.isArray(docView?.children)
+      ? (docView.children as AnyDesc[]).find((child) => child.widget)
+      : undefined;
+    const WidgetViewDesc = widgetChild
+      ? Object.getPrototypeOf(widgetChild)?.constructor as WidgetViewDescCtor
+      : undefined;
+    const problem = forcedShapeFailure
+      ?? validatePmViewShape(docView, NodeViewDesc, ViewDesc, WidgetViewDesc, widgetChild);
+    if (problem) {
+      reportSparseFallback(`prosemirror-view shape mismatch: ${problem}`);
+      return;
     }
-    const WidgetViewDesc = Object.getPrototypeOf(widgetChild).constructor as WidgetViewDescCtor;
+    if (!NodeViewDesc || !ViewDesc || !WidgetViewDesc) return;
     const originalUpdateChildren = NodeViewDesc.prototype.updateChildren;
     const originalMatchesNode = NodeViewDesc.prototype.matchesNode;
 
@@ -211,7 +336,7 @@ export function ensureSparseDocViewInstalled(): void {
       pos: number,
     ): void {
       // Only the document desc has no parent. Nested blocks keep stock PM.
-      if (this.parent) {
+      if (this.parent || !internals) {
         originalUpdateChildren.call(this, view, pos);
         return;
       }
@@ -232,7 +357,7 @@ export function ensureSparseDocViewInstalled(): void {
       outerDeco: unknown[],
       innerDeco: DecorationSource,
     ): boolean {
-      if (!this.parent) {
+      if (!this.parent && internals) {
         // Document desc — check whether some EditorView owns us.
         const owner = findOwnerView(this);
         if (owner) {

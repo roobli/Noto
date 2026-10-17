@@ -1,10 +1,12 @@
 /**
  * Quiet GitHub Releases updater.
  *
- * electron-updater handles download and swap on packaged macOS and Windows once
- * the release feed files are attached (see docs/architecture/updates.md). Linux
- * packages and unpackaged runs check the same channel but open the release page
- * rather than trying to replace the running binary.
+ * Every build checks the GitHub channel; while builds are unsigned (see
+ * install-policy.ts) all platforms open the release download page rather than
+ * replacing the running binary. electron-updater download/swap is only used on
+ * packaged macOS and Windows once SIGNED_BUILD_AUTO_INSTALL is enabled.
+ * The autoDownloadUpdates setting only gates a launch-time download through
+ * canAutoInstall(); autoUpdater.autoDownload itself is always false.
  */
 
 import { app, shell, type BrowserWindow } from 'electron';
@@ -12,6 +14,7 @@ import { autoUpdater } from 'electron-updater';
 import type { StructuredLogger } from '../logger';
 import type { UpdateChannelV1, UpdatePhaseV1, UpdateStatusV1 } from '../../shared/updates/v1/contracts';
 import { NOTO_UPDATES_VERSION, UPDATE_CHANNELS, UPDATE_GITHUB } from '../../shared/updates/v1/contracts';
+import { canAutoInstall, SIGNED_BUILD_AUTO_INSTALL } from './install-policy';
 import { latestReleaseForChannel, preferredAssetUrl, type GithubReleaseSummary } from './github-releases';
 
 export interface AppUpdaterOptions {
@@ -167,7 +170,11 @@ export class AppUpdater {
   }
 
   private canAutoInstall(): boolean {
-    return app.isPackaged && (process.platform === 'darwin' || process.platform === 'win32');
+    return canAutoInstall({
+      packaged: app.isPackaged,
+      platform: process.platform,
+      signedBuild: SIGNED_BUILD_AUTO_INSTALL,
+    });
   }
 
   private ensureConfigured(): void {
@@ -179,7 +186,8 @@ export class AppUpdater {
       repo: UPDATE_GITHUB.repo,
     });
     autoUpdater.autoDownload = false;
-    autoUpdater.autoInstallOnAppQuit = true;
+    // Never swap the binary on quit unless the build is allowed to auto-install.
+    autoUpdater.autoInstallOnAppQuit = this.canAutoInstall();
     autoUpdater.allowDowngrade = false;
     autoUpdater.allowPrerelease = this.options.getChannel() === 'testing';
     // Silence electron-updater's own dialogs; Settings owns the chrome.

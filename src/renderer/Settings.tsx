@@ -583,6 +583,8 @@ function UpdatesPane({
         onChange={(value) => onChange({ checkUpdatesOnLaunch: value })}
         testId="setting-check-updates-launch"
       />
+      {/* Only offered where the app can install a download itself (signed builds). */}
+      {status?.canAutoInstall && (
       <Switch
         label="Download updates automatically"
         hint="When a check finds a build on this channel, fetch it without asking. Install still waits for you."
@@ -590,6 +592,7 @@ function UpdatesPane({
         onChange={(value) => onChange({ autoDownloadUpdates: value })}
         testId="setting-auto-download-updates"
       />
+      )}
       <p className="pref-status" data-testid="update-status">{updateStatusLine(status, settings)}</p>
       <div className="pref-row pref-actions">
         <button
