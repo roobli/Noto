@@ -20,6 +20,18 @@ import {
 } from '../../../shared/markdown/v3/contracts';
 import { compactTransaction, sameOrigin } from '../../../shared/markdown/v3/revision-patch';
 
+/**
+ * A top-level block with nothing to write: an empty paragraph or heading.
+ *
+ * Markdown has no empty paragraph, and the serializer refuses an empty unit
+ * (EMPTY_UNIT), so a paragraph whose text was deleted used to fail the whole
+ * save. Such a block is left out of the save; reading the file back would not
+ * produce it either.
+ */
+export function isUnwritableBlock(node: ProseNode): boolean {
+  return node.isTextblock && node.childCount === 0 && !node.type.spec.code;
+}
+
 /** What a block looked like when the document was accepted. */
 export interface PristineBlock {
   readonly node: ProseNode;
@@ -94,6 +106,7 @@ export function captureUnits(input: CaptureInput): { units: NotoUnit[]; stats: C
 
   input.doc.forEach((node, _offset, index) => {
     const origin = input.origins[index] ?? null;
+    if (isUnwritableBlock(node)) return;
     const result = markdownFor(node, origin, input.pristine);
     if (result.reused) reused += 1;
     else serialized += 1;
@@ -158,6 +171,11 @@ export function captureStableWire(
   for (let index = 0; index < doc.childCount; index += 1) {
     const node = doc.child(index);
     const origin = input.origins[index] ?? null;
+    if (isUnwritableBlock(node)) {
+      serialized += 1;
+      run = null;
+      continue;
+    }
     let unchanged = node === acceptedNodes[index];
     if (!unchanged && origin) {
       const previous = input.pristine.get(origin.blockId);

@@ -57,7 +57,7 @@ import {
   sourceHasFinalNewline,
   sourceSettleKind,
 } from '../../source-mode-text';
-import { captureMarkdown, captureStableWire, captureTransaction, type CaptureStats, type PristineBlock } from './capture';
+import { captureMarkdown, captureStableWire, captureTransaction, isUnwritableBlock, type CaptureStats, type PristineBlock } from './capture';
 import type { NotoEditorPort } from './NotoEditorPort';
 import { createOriginPlugin, getBlockOrigins, rebaseOrigins, transactionKeepsTopLevelNodes } from './origin-plugin';
 import { notoInputRules, type InputRuleOptions } from './input-rules';
@@ -1307,9 +1307,13 @@ export class NotoEditor implements NotoEditorPort {
     // again. Main already worked out where every block sits and sent the
     // offsets, so a save no longer costs a full parse in the renderer too.
     this.pristine = new Map();
+    const alignment = alignSavedBlocks(view.state.doc, document.origins.length);
+    const origins = alignment.map((block) => (block === null ? null : document.origins[block] ?? null));
     view.state.doc.forEach((node, _offset, index) => {
-      const origin = document.origins[index];
-      const span = document.spans[index];
+      const block = alignment[index];
+      if (block === null || block === undefined) return;
+      const origin = document.origins[block];
+      const span = document.spans[block];
       if (!origin || !span) return;
       this.pristine.set(origin.blockId, {
         node,
@@ -1318,7 +1322,7 @@ export class NotoEditor implements NotoEditorPort {
     });
 
     this.baselineDoc = view.state.doc;
-    view.dispatch(rebaseOrigins(view.state.tr, document.origins));
+    view.dispatch(rebaseOrigins(view.state.tr, origins));
     // Rebase does not edit the document. The nodes now on screen are what the
     // file just became, so the next interior edits can take the kept-run path
     // again even if the save started from a structural change.
@@ -1505,6 +1509,36 @@ export class NotoEditor implements NotoEditorPort {
     }
     this.topLevelStable = true;
   }
+}
+
+/**
+ * Which saved block each top-level node is, after a save.
+ *
+ * Normally one to one. A save leaves out top-level blocks with nothing to
+ * write (an emptied paragraph: markdown has no empty paragraph), so those
+ * nodes get no block and the rest keep their order. Any other mismatch means
+ * the editor cannot tell which bytes belong to which node; then no node is
+ * paired, so the next save re-renders blocks rather than reusing another
+ * block's bytes.
+ */
+export function alignSavedBlocks(doc: ProseNode, blockCount: number): (number | null)[] {
+  const alignment = new Array<number | null>(doc.childCount).fill(null);
+  if (doc.childCount === blockCount) {
+    for (let index = 0; index < blockCount; index += 1) alignment[index] = index;
+    return alignment;
+  }
+  let block = 0;
+  let empty = 0;
+  doc.forEach((node, _offset, index) => {
+    if (isUnwritableBlock(node)) {
+      empty += 1;
+      return;
+    }
+    alignment[index] = block;
+    block += 1;
+  });
+  if (block !== blockCount || doc.childCount - empty !== blockCount) alignment.fill(null);
+  return alignment;
 }
 
 export { notoSchema };
