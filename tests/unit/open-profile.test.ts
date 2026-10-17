@@ -5,7 +5,6 @@ import { blockSpansFromWire, splitBlocks, splitBlocksMicromark } from '../../src
 import { docFromSpans } from '../../src/shared/markdown/v3/pm/from-mdast';
 import { parseDocument, toWire } from '../../src/shared/markdown/v3/document';
 import { outlineFromDocument, outlineOf } from '../../src/renderer/outline';
-import { setMarkdownEngineForTests } from '../../src/shared/markdown/v3/engine-flag';
 import {
   parseBlocksStructural,
   splitBlocksViaRoobli,
@@ -68,7 +67,6 @@ it.skipIf(!enabled)('profiles the phases of opening a document', { timeout: 300_
     const text = bytes.toString('utf8');
     lines.push(`\n${name} (${bytes.length.toLocaleString()} bytes)`);
 
-    setMarkdownEngineForTests('micromark');
     // What the main process does, which is already finished by the time the
     // renderer starts its own copy of the same work.
     const parsed = time('main: parseDocument', () => parseDocument(bytes));
@@ -91,7 +89,6 @@ it.skipIf(!enabled)('profiles the phases of opening a document', { timeout: 300_
     time('outline: fromDocument', () => outlineFromDocument(wire));
 
     // Flagged engine open phases (bulk cut + lazy first-paint window).
-    setMarkdownEngineForTests('roobli-md');
     time('roobli: structural', () => { parseBlocksStructural(text); });
     time('roobli: enrich none', () => { splitBlocksViaRoobli(text, { enrich: 'none' }); });
     time('roobli: enrich per-span', () => { splitBlocksViaRoobli(text, { enrich: 'per-span' }); });
@@ -148,7 +145,6 @@ it.skipIf(!enabled)('profiles the phases of opening a document', { timeout: 300_
     time('micromark: splitBlocksMicromark', () => { splitBlocksMicromark(text); });
   }
 
-  setMarkdownEngineForTests(null);
 
   const out = path.resolve(__dirname, '../../out/bench/open-profile.txt');
   await mkdir(path.dirname(out), { recursive: true });

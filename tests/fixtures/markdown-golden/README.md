@@ -1,9 +1,10 @@
-# Markdown golden fixtures (A/B gates)
+# Markdown golden fixtures
 
-Small public fixtures for comparing the **product default** `@roobli/md` path
-against the legacy escape hatch `NOTO_MARKDOWN_ENGINE=micromark`. Product
-default is `@roobli/md` (landed #282 / alpha.112); keep both engines green on
-every fixture here.
+Small public fixtures for the `@roobli/md` engine, the only engine since the
+`NOTO_MARKDOWN_ENGINE=micromark` escape hatch was removed. Split boundaries are
+still compared against micromark (`splitBlocksMicromark`, a parity oracle);
+saves must reproduce the source (identity) or re-parse to exactly the requested
+blocks (`tests/unit/serialize-oracle.ts`).
 
 | File | Covers |
 | ---- | ------ |

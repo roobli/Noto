@@ -3,12 +3,12 @@
  *
  * Bulk attach remains the default adapter enrich; flagged `parseDocument` now
  * ships `enrich: 'none'` (deferred) and the renderer fills a first-paint window
- * via `enrichSpansInRange`. Default product engine stays micromark.
+ * via `enrichSpansInRange`.
  */
 
 import { readFileSync } from 'node:fs';
 import path from 'node:path';
-import { afterEach, describe, expect, it } from 'vitest';
+import { describe, expect, it } from 'vitest';
 import {
   splitBlocksViaRoobli,
   parseBlocksStructural,
@@ -17,16 +17,11 @@ import {
   OPEN_LAZY_INITIAL_SPANS,
 } from '../../src/shared/markdown/v3/roobli-md-adapter';
 import { canSkipDialectEnrich, engineSemanticKey } from '../../src/shared/markdown/v3/pm/from-engine';
-import { setMarkdownEngineForTests } from '../../src/shared/markdown/v3/engine-flag';
 import { parseDocument, toWire } from '../../src/shared/markdown/v3/document';
 import { blockSpansFromWire, splitBlocksMicromark } from '../../src/shared/markdown/v3/blocks';
 
 const fixturesDir = path.join(process.cwd(), 'tests/fixtures/roobli-md-parity');
 const corpusSmall = path.join(process.cwd(), 'out/bench/corpus/small.md');
-
-afterEach(() => {
-  setMarkdownEngineForTests(null);
-});
 
 const SAMPLES = [
   '# Hello\n\nWorld\n',
@@ -111,7 +106,6 @@ describe('open-path SpanEnrichMode', () => {
   });
 
   it('flagged parseDocument ships deferred structural nodes (enrich none)', () => {
-    setMarkdownEngineForTests('roobli-md');
     const text = '# Title\n\nHello **world**\n';
     const bytes = new TextEncoder().encode(text);
     const parsed = parseDocument(bytes);
@@ -131,17 +125,6 @@ describe('open-path SpanEnrichMode', () => {
       engineSemanticKey('heading', parsed.document.blocks[0]!.markdown),
     );
     expect(parsed.document.blocks[1]!.semanticKey).toBe('paragraph');
-  });
-
-  it('micromark parseDocument still ships full dialect nodes', () => {
-    setMarkdownEngineForTests('micromark');
-    const text = '# Title\n\nHello **world**\n';
-    const parsed = parseDocument(new TextEncoder().encode(text));
-    expect(parsed.status).toBe('parsed');
-    if (parsed.status !== 'parsed') return;
-    expect(parsed.document.nodesEnrichment).toBe('full');
-    expect(parsed.document.nodes![0]!.type).toBe('heading');
-    expect(parsed.document.nodes![1]!.type).toBe('paragraph');
   });
 
   it('enrichSpansInRange attaches dialect with one window parse', () => {

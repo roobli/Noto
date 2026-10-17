@@ -8,7 +8,7 @@
 
 import { readFileSync, readdirSync } from 'node:fs';
 import path from 'node:path';
-import { afterEach, describe, expect, it } from 'vitest';
+import { describe, expect, it } from 'vitest';
 import {
   joinSplit,
   parseBlocksStructural,
@@ -23,7 +23,6 @@ import {
 import { splitBlocksMicromark, parseSingleBlock, splitBlocks } from '../../src/shared/markdown/v3/blocks';
 import { parseDocument, sha256 } from '../../src/shared/markdown/v3/document';
 import { identityTransaction, serializeDocument } from '../../src/shared/markdown/v3/serialize';
-import { getMarkdownEngine, setMarkdownEngineForTests } from '../../src/shared/markdown/v3/engine-flag';
 import { parseDocument as engineParseDocument } from '@roobli/md';
 
 const fixturesDir = path.join(process.cwd(), 'tests/fixtures/roobli-md-parity');
@@ -66,10 +65,6 @@ const G002_PARITY = [
   'table-math.md',
 ];
 
-afterEach(() => {
-  setMarkdownEngineForTests(null);
-});
-
 function structuralParity(text: string): void {
   const engine = parseBlocksStructural(text);
   const micro = splitBlocksMicromark(text);
@@ -108,9 +103,7 @@ describe('@roobli/md adapter — structural parity', () => {
 });
 
 describe('@roobli/md adapter — flag routing', () => {
-  it('defaults to roobli-md and matches micromark on simple headings', () => {
-    setMarkdownEngineForTests(null);
-    expect(getMarkdownEngine()).toBe('roobli-md');
+  it('matches micromark on simple headings', () => {
     const text = '# A\n\nB\n';
     expect(splitBlocks(text).spans.map((s) => s.markdown)).toEqual(
       splitBlocksMicromark(text).spans.map((s) => s.markdown),
@@ -118,7 +111,6 @@ describe('@roobli/md adapter — flag routing', () => {
   });
 
   it('routes splitBlocks through the adapter when explicit roobli-md', () => {
-    setMarkdownEngineForTests('roobli-md');
     const text = '# A\n\nB\n';
     const viaFlag = splitBlocks(text);
     const viaAdapter = splitBlocksViaRoobli(text);
@@ -130,7 +122,6 @@ describe('@roobli/md adapter — flag routing', () => {
   });
 
   it('parseSingleBlock agrees on a heading', () => {
-    setMarkdownEngineForTests('roobli-md');
     const span = parseSingleBlock('# Title');
     expect(span?.kind).toBe('heading');
     expect(parseSingleBlockViaRoobli('# Title')?.markdown).toBe('# Title');
@@ -184,7 +175,6 @@ describe('@roobli/md adapter — indented-code (v0.1.2)', () => {
   });
 
   it('routes indented-code through the adapter when explicit roobli-md', () => {
-    setMarkdownEngineForTests('roobli-md');
     const text = 'Para\n\n    code();\n';
     const viaFlag = splitBlocks(text);
     expect(viaFlag.spans.map((s) => s.kind)).toEqual(['paragraph', 'indented-code']);

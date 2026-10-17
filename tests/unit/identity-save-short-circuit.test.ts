@@ -1,6 +1,5 @@
-import { describe, expect, it, afterEach } from 'vitest';
+import { describe, expect, it } from 'vitest';
 import { parseDocument, sha256 } from '../../src/shared/markdown/v3/document';
-import { setMarkdownEngineForTests } from '../../src/shared/markdown/v3/engine-flag';
 import { identityTransaction, serializeDocument } from '../../src/shared/markdown/v3/serialize';
 import {
   NOTO_MARKDOWN_VERSION,
@@ -22,14 +21,9 @@ function mustSerialize(document: NotoDocument, transaction: NotoTransaction) {
   return result;
 }
 
-afterEach(() => {
-  setMarkdownEngineForTests(null);
-});
-
 describe('byte-identity save short-circuit', () => {
-  for (const engine of ['roobli-md', 'micromark'] as const) {
+  for (const engine of ['roobli-md'] as const) {
     it(`${engine}: identity returns original bytes and envelope hash`, () => {
-      setMarkdownEngineForTests(engine);
       const document = parsed('# Hello\n\nWorld\n');
       const result = mustSerialize(document, identityTransaction(document));
       expect(Buffer.from(result.outputBytes).equals(Buffer.from(document.originalBytes))).toBe(true);
@@ -45,7 +39,6 @@ describe('byte-identity save short-circuit', () => {
     });
 
     it(`${engine}: one dirty unit still assembles (not identity)`, () => {
-      setMarkdownEngineForTests(engine);
       const document = parsed('# Hello\n\nWorld\n');
       const identity = identityTransaction(document);
       if (identity.mode !== 'blocks') throw new Error('expected blocks');
@@ -61,7 +54,6 @@ describe('byte-identity save short-circuit', () => {
     });
 
     it(`${engine}: line-ending conversion skips the short-circuit`, () => {
-      setMarkdownEngineForTests(engine);
       const document = parsed('# Hello\n\nWorld\n');
       const identity = identityTransaction(document) as Extract<NotoTransaction, { mode: 'blocks' }>;
       const transaction: NotoTransaction = {
@@ -75,7 +67,6 @@ describe('byte-identity save short-circuit', () => {
   }
 
   it('rejects forged origins before taking the identity door', () => {
-    setMarkdownEngineForTests('roobli-md');
     const document = parsed('# Hello\n\nWorld\n');
     const identity = identityTransaction(document);
     if (identity.mode !== 'blocks') throw new Error('expected blocks');

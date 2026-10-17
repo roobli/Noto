@@ -1,9 +1,6 @@
 /**
  * Host cache of the last structural `@roobli/md` split for incremental
- * `reparseFromText` on flagged `replaceMarkdown`.
- *
- * Only used when `NOTO_MARKDOWN_ENGINE=roobli-md` (or the test override). The
- * micromark path never consults this cache.
+ * `reparseFromText` on `replaceMarkdown`.
  *
  * Lifecycle (host design):
  * - **Seed** on open / external reload / after a successful replace (or full
