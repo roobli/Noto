@@ -9,7 +9,7 @@ D1 to D4 in the [decision log](https://roobli.github.io/Noto.docs/direction/deci
 | --- | --- | --- | --- |
 | CI build | Every merge to `main`, kept as workflow artifacts | Every merge | Nobody automatically |
 | Alpha, `0.0.2-alpha.N` | A change a reader would notice and should test | At most weekly | Settings → Updates → Testing |
-| Release, `0.1.0` and on | The current horizon's gate is met | Per milestone | Stable and Testing |
+| Release, `0.0.3` and on | The current horizon's gate is met | Per milestone | Stable and Testing |
 
 A build is not a release. No release exists only to bump a number, and in
 particular none exists only to raise the nesting cap.
@@ -38,25 +38,54 @@ particular none exists only to raise the nesting cap.
 published or edited, so a mistake made in the GitHub UI is corrected, not
 shipped to Stable.
 
-## Leaving alpha: `0.1.0`
+## Leaving alpha: `0.0.3`
 
-Per D2, `0.1.0` ships only when all of these hold, and the release owner signs
-off; whoever cuts the tag does not decide it.
+D2 originally named the first release outside alpha `0.1.0` and gated it on
+notarized macOS builds. On 17 October 2026 the release owner amended it: the
+first full release is **`0.0.3`, and it ships unsigned**. Signing is deferred
+to a later release, not dropped.
+
+What "unsigned" means for `0.0.3`:
+
+- **macOS:** ad-hoc signed after packaging, as every alpha has been, and not
+  notarized. The first open needs Right-click → Open (or
+  `xattr -cr Noto.app`), as written in [docs/install.md](docs/install.md).
+- **Windows:** the installer is not code-signed; SmartScreen asks once, and
+  *More info → Run anyway* proceeds.
+- Linux packages are unaffected.
+
+The release workflow states this rather than doing it silently: with
+`UNSIGNED_FULL_RELEASE_ALLOWED: 'true'` in `.github/workflows/release.yml`, a
+full tag without the signing secrets publishes to Stable with a warning in the
+run and the first-open steps on the release page. Set it to `'false'` once the
+credentials exist, so a missing secret fails a full release instead.
+
+Gate for `0.0.3`:
 
 - [x] `@roobli/md` is the default engine (`v0.0.2-alpha.112`).
 - [x] The Stable channel offers only full releases.
 - [x] Intel Macs have a stated position: every release now builds an Intel
       zip beside the Apple silicon one.
-- [ ] macOS builds are signed with a Developer ID, notarized, stapled, and
-      launch from quarantine on a clean machine with no warning.
 - [x] Open, keystroke and save are measured on a packaged build with the
       current engine, by the benchmark workflow on every tag, and the README
       shows them (29 September 2026).
+- [x] Unsigned builds are stated on the release page with first-open steps.
+
+Deferred to the first signed release:
+
+- [ ] macOS builds are signed with a Developer ID, notarized, stapled, and
+      launch from quarantine on a clean machine with no warning.
+- [ ] Windows builds are code-signed.
 - [ ] The comparison with Typora is repeated with the current engine, on a
       Mac that has Typora installed.
 
-Windows signing and the rest of the roadmap's *Now* horizon may follow in the
-release after.
+## Cutting a release
+
+As for an alpha, with a plain version (`0.0.3`) in `package.json`, the
+changelog heading and the tag `v0.0.3`. The workflow writes the release body
+from that changelog section (plus the first-open steps while unsigned),
+flags it a full release, and `release-integrity.yml` marks it Latest, which
+is what Stable reads.
 
 ## Signing, when the credentials exist
 

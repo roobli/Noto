@@ -5,9 +5,52 @@ What changed in Noto, for the person updating. The format follows
 lives in [`@roobli/md`'s changelog](https://github.com/roobli/md/blob/main/CHANGELOG.md).
 
 How releases are made, and what each channel receives, is in
-[RELEASING.md](RELEASING.md). The first release outside alpha will be `0.1.0`.
+[RELEASING.md](RELEASING.md). The first release outside alpha is `0.0.3`; it is not signed or notarized yet.
 
 ## [Unreleased]
+
+## [0.0.3] - 2026-10-17
+
+The first full release since `0.0.1`, on the Stable channel. It carries
+everything from the `0.0.2` alphas below, summarised here.
+
+**This release is not signed.** On macOS it is ad-hoc signed and not
+notarized, and on Windows the installer is not code-signed. That is
+expected, not a broken download; signed and notarized builds will follow in
+a later release. First open:
+
+- **macOS:** unzip, then Right-click → Open, or run
+  `xattr -cr Noto.app && open Noto.app`.
+- **Windows:** when SmartScreen appears, choose *More info → Run anyway*.
+
+Full steps are in [docs/install.md](docs/install.md).
+
+### Added
+- **Source Code Mode** for the whole note (`Cmd+/`), a read-only viewer for
+  non-Markdown files, sidenotes, timeline fences, tags and task dates,
+  export with diagrams and callouts, and a command palette (`Cmd+K`).
+- **Links in the rail** (*Links to*, *Linked from*, *Related*), opt-in.
+- **Settings as one page**, with Plugins inside it, and **update channels**:
+  Stable for full releases, Testing for alphas.
+- **Intel Macs are supported again**, with a separate Intel zip.
+
+### Changed
+- **A new Markdown engine**, `@roobli/md`, is the default; untouched blocks
+  are still saved byte for byte.
+- **Long notes are much faster.** In the packaged benchmark on macOS, an
+  8 MB note opens in about 1.1–1.3 seconds (about 10 at the end of
+  September), a keystroke takes about 16–21 ms instead of 86, and a save
+  under half a second instead of about 3.
+- Quieter source markers, empty state and title bars on Windows and Linux.
+
+### Fixed
+- Long notes no longer freeze after typing (spell check and word count),
+  and Select All no longer draws the whole note.
+- Stable no longer offers alphas.
+- Fences, math and comments opened by a change on disk, Source Mode or a
+  transform show what the file says; a note starting with `---` keeps its
+  lists.
+- macOS downloads are no longer reported as "damaged".
 
 ## [0.0.2-alpha.114] - 2026-10-12
 
@@ -145,7 +188,8 @@ The first release with downloadable builds for macOS, Windows and Linux.
   to link a note.
 - An optional loopback-only remote control for scripts on the same machine.
 
-[Unreleased]: https://github.com/roobli/Noto/compare/v0.0.2-alpha.114...main
+[Unreleased]: https://github.com/roobli/Noto/compare/v0.0.3...main
+[0.0.3]: https://github.com/roobli/Noto/compare/v0.0.1...v0.0.3
 [0.0.2-alpha.114]: https://github.com/roobli/Noto/compare/v0.0.2-alpha.113...v0.0.2-alpha.114
 [0.0.2-alpha]: https://github.com/roobli/Noto/compare/v0.0.1...v0.0.2-alpha.113
 [0.0.1]: https://github.com/roobli/Noto/releases/tag/v0.0.1

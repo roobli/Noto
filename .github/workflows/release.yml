@@ -8,6 +8,12 @@
 #
 # Unsigned unless the signing secrets are set on the repository. What that
 # means for somebody downloading is written on the release itself.
+#
+# A full (non-prerelease) release without signing secrets is allowed only
+# while UNSIGNED_FULL_RELEASE_ALLOWED below is 'true'. Per RELEASING.md (D2,
+# amended 17 October 2026), 0.0.3 ships unsigned with signing deferred; set it
+# to 'false' once the Apple and Windows credentials exist, so a missing secret
+# fails a full release instead of quietly shipping an unsigned one.
 name: Release
 
 on:
@@ -21,6 +27,9 @@ on:
 
 permissions:
   contents: write
+
+env:
+  UNSIGNED_FULL_RELEASE_ALLOWED: 'true'
 
 concurrency:
   group: release-${{ github.event.inputs.tag || github.ref }}
@@ -37,6 +46,56 @@ jobs:
     name: Release for the tag
     runs-on: ubuntu-latest
     steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event.inputs.tag || github.ref }}
+
+      # An unsigned full release is a decision, not an accident: it is stated
+      # in the log, the job summary, and on the release page.
+      - name: Decide signed or unsigned
+        id: signing
+        env:
+          TAG: ${{ github.event.inputs.tag || github.ref_name }}
+          HAS_MAC_IDENTITY: ${{ secrets.NOTO_APPLE_SIGNING_IDENTITY != '' }}
+          HAS_WINDOWS_CERT: ${{ secrets.WINDOWS_CERTIFICATE_FILE != '' }}
+        shell: bash
+        run: |
+          if [ "$HAS_MAC_IDENTITY" = true ] && [ "$HAS_WINDOWS_CERT" = true ]; then
+            echo "unsigned=false" >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
+          echo "unsigned=true" >> "$GITHUB_OUTPUT"
+          case "$TAG" in
+            *-*) echo "prerelease $TAG: unsigned (macOS ad-hoc, Windows unsigned)" ;;
+            *)
+              if [ "$UNSIGNED_FULL_RELEASE_ALLOWED" != true ]; then
+                echo "::error::$TAG is a full release but the signing secrets are missing, and UNSIGNED_FULL_RELEASE_ALLOWED is not 'true'. See RELEASING.md."
+                exit 1
+              fi
+              echo "::warning::$TAG is an UNSIGNED full release (macOS ad-hoc signed, not notarized; Windows unsigned). Allowed by UNSIGNED_FULL_RELEASE_ALLOWED per RELEASING.md D2."
+              echo "**$TAG ships unsigned** (allowed by \`UNSIGNED_FULL_RELEASE_ALLOWED\`, RELEASING.md D2)." >> "$GITHUB_STEP_SUMMARY"
+              ;;
+          esac
+
+      # The changelog section for the version, then, while builds are unsigned,
+      # the first-open steps from docs/install.md.
+      - name: Write the release notes
+        env:
+          TAG: ${{ github.event.inputs.tag || github.ref_name }}
+          UNSIGNED: ${{ steps.signing.outputs.unsigned }}
+        shell: bash
+        run: |
+          version="${TAG#v}"
+          awk -v v="$version" '
+            index($0, "## [" v "]") == 1 { on = 1; next }
+            on && /^## \[/ { exit }
+            on { print }
+          ' CHANGELOG.md > notes.md
+          if [ "$UNSIGNED" = true ] && ! grep -qi "first open" notes.md; then
+            { echo; awk '/^```markdown$/ { on = 1; next } on && /^```$/ { exit } on { print }' docs/install.md; } >> notes.md
+          fi
+          cat notes.md
+
       - name: Create or correct the release
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
@@ -52,7 +111,12 @@ jobs:
             gh release edit "$TAG" "${flags[@]}"
             echo "corrected $TAG: ${flags[*]}"
           else
-            gh release create "$TAG" --verify-tag --title "$TAG" --generate-notes "${flags[@]}"
+            if [ -s notes.md ]; then
+              notes=(--notes-file notes.md)
+            else
+              notes=(--generate-notes)
+            fi
+            gh release create "$TAG" --verify-tag --title "$TAG" "${notes[@]}" "${flags[@]}"
             echo "created $TAG: ${flags[*]}"
           fi
 
