@@ -41,7 +41,7 @@ import {
   resolveDeferredOpenSpans,
 } from '../../../shared/markdown/v3/roobli-md-adapter';
 import { DeferredViewportEnrichController } from './deferred-viewport-enrich';
-import { enrichPmPatchForWindow, type EnrichPmWindow } from './enrich-pm-patch';
+import type { EnrichPmWindow } from './enrich-pm-patch';
 import { parseDocumentSpans } from './parse-document';
 import { toLf } from '../../../shared/markdown/v3/line-endings';
 import {
@@ -57,7 +57,7 @@ import {
   sourceHasFinalNewline,
   sourceSettleKind,
 } from '../../source-mode-text';
-import { captureMarkdown, captureStableWire, captureTransaction, type CaptureStats, type PristineBlock } from './capture';
+import { captureMarkdown, captureStableWire, captureTransaction, isUnwritableBlock, type CaptureStats, type PristineBlock } from './capture';
 import type { NotoEditorPort } from './NotoEditorPort';
 import { createOriginPlugin, getBlockOrigins, rebaseOrigins, transactionKeepsTopLevelNodes } from './origin-plugin';
 import { notoInputRules, type InputRuleOptions } from './input-rules';
@@ -110,6 +110,9 @@ const COUNT_SLICE_MS = 8;
 
 /* The three substitutions are booleans here and functions on the rules, which
    read them each time so a change of setting reaches an editor already open. */
+/** Transaction meta marking a background dialect-enrichment swap. */
+const ENRICH_META = 'noto-dialect-enrich';
+
 export interface NotoEditorOptions extends Omit<InputRuleOptions, 'smartQuotes' | 'smartDashes' | 'smartEllipsis'> {
   readonly mac: boolean;
   /** Native spell checking, which the user can turn off in settings. */
@@ -213,6 +216,13 @@ export class NotoEditor implements NotoEditorPort {
    */
   private acceptedNodes: ProseNode[] = [];
   private topLevelStable = false;
+  /**
+   * Stand-in node objects from a deferred open, by opened index. Background
+   * enrichment replaces one only while it is still this exact object.
+   */
+  private enrichSources: (ProseNode | null)[] | null = null;
+  /** Document text the deferred open's spans were split from. */
+  private enrichText: string | null = null;
   /**
    * Last structural `@roobli/md` split for flagged `replaceMarkdown`.
    * Unused while the micromark engine is selected.
@@ -592,6 +602,14 @@ export class NotoEditor implements NotoEditorPort {
     this.host.dataset.caret = String(this.view?.state.selection.from ?? 0);
     this.reportActiveBlock();
     if (!transaction.docChanged) return;
+    // Background enrichment swaps a stand-in for the real node of the same
+    // bytes. Not an edit: not dirty, no autosave, top-level nodes keep their
+    // indexes (applyDialectEnrichedSpans re-points accepted nodes itself).
+    if (transaction.getMeta(ENRICH_META) === true) {
+      this.docVersion += 1;
+      this.scheduleCount();
+      return;
+    }
     // A split, merge, or inserted block moves nodes between indexes. The
     // accepted-node array would then keep the wrong block, so the save falls
     // back to the full walk until the next accept.
@@ -1289,9 +1307,13 @@ export class NotoEditor implements NotoEditorPort {
     // again. Main already worked out where every block sits and sent the
     // offsets, so a save no longer costs a full parse in the renderer too.
     this.pristine = new Map();
+    const alignment = alignSavedBlocks(view.state.doc, document.origins.length);
+    const origins = alignment.map((block) => (block === null ? null : document.origins[block] ?? null));
     view.state.doc.forEach((node, _offset, index) => {
-      const origin = document.origins[index];
-      const span = document.spans[index];
+      const block = alignment[index];
+      if (block === null || block === undefined) return;
+      const origin = document.origins[block];
+      const span = document.spans[block];
       if (!origin || !span) return;
       this.pristine.set(origin.blockId, {
         node,
@@ -1300,7 +1322,7 @@ export class NotoEditor implements NotoEditorPort {
     });
 
     this.baselineDoc = view.state.doc;
-    view.dispatch(rebaseOrigins(view.state.tr, document.origins));
+    view.dispatch(rebaseOrigins(view.state.tr, origins));
     // Rebase does not edit the document. The nodes now on screen are what the
     // file just became, so the next interior edits can take the kept-run path
     // again even if the save started from a structural change.
@@ -1328,6 +1350,7 @@ export class NotoEditor implements NotoEditorPort {
   ): void {
     this.deferredEnrich?.destroy();
     this.deferredEnrich = null;
+    this.enrichSources = null;
     if (!this.view || remainderFrom >= spans.length) return;
     const controller = new DeferredViewportEnrichController(this, {
       spans,
@@ -1336,69 +1359,94 @@ export class NotoEditor implements NotoEditorPort {
       onError,
     });
     this.deferredEnrich = controller;
+    const sources = new Array<ProseNode | null>(spans.length).fill(null);
+    const doc = this.view.state.doc;
+    if (doc.childCount === spans.length) {
+      for (let index = remainderFrom; index < spans.length; index += 1) sources[index] = doc.child(index);
+    }
+    this.enrichSources = sources;
+    this.enrichText = this.document.text;
     controller.start();
   }
 
   /**
    * Apply dialect-enriched spans after a flagged lazy open.
    *
-   * Prefer an incremental top-level `replaceWith` for the enriched window so
-   * viewport / idle ticks do not rebuild the whole `EditorState` (keeps plugin
-   * state; avoids re-materialising untouched stand-ins). Falls back to a full
-   * rebuild when no window is supplied or the live doc shape diverges.
+   * `spans` and `window` are indexed by the document as it was opened. Each
+   * enriched block replaces its structural stand-in only while that stand-in
+   * is still the very node object open created, found by identity wherever it
+   * now sits. An edited, split, merged or deleted block is never that object,
+   * so enrichment cannot overwrite typing, and it keeps working after a save
+   * re-points the document or a structural edit shifts indexes. (Indexing by
+   * position used to replace a saved edit with the text from open, and a
+   * block-count change stopped enrichment for good.)
    *
-   * No-op when dirty or when the editor was torn down — typing is never clobbered.
+   * The replacement is not an edit: it does not mark the document dirty, and
+   * the clean baseline, pristine nodes and accepted nodes follow it. No-op
+   * while dirty, while composing, or when the editor was torn down.
    */
-  applyDialectEnrichedSpans(spans: readonly BlockSpan[], window?: EnrichPmWindow): void {
+  applyDialectEnrichedSpans(spans: readonly BlockSpan[], window?: EnrichPmWindow): boolean {
     const view = this.view;
-    if (!view || this.dirty) return;
-    if (spans.length !== this.document.spans.length) return;
+    if (!view || this.dirty || view.composing) return false;
+    const sources = this.enrichSources;
+    if (!sources || sources.length !== spans.length) return false;
+    const from = Math.max(0, Math.min(window?.from ?? 0, spans.length));
+    const to = Math.max(from, Math.min(window?.to ?? spans.length, spans.length));
+    if (from >= to) return true;
 
-    if (isRoobliMdEngine()) {
+    const doc = view.state.doc;
+    const indexOf = new Map<ProseNode, number>();
+    const offsets = new Array<number>(doc.childCount);
+    let offset = 0;
+    doc.forEach((node, _offset, index) => {
+      indexOf.set(node, index);
+      offsets[index] = offset;
+      offset += node.nodeSize;
+    });
+
+    const replacements: { index: number; source: ProseNode; node: ProseNode }[] = [];
+    withKnownFootnoteIds(collectFootnoteDefinitionIds(spans), () => {
+      for (let opened = from; opened < to; opened += 1) {
+        const source = sources[opened];
+        if (!source) continue;
+        sources[opened] = null;
+        const index = indexOf.get(source);
+        if (index === undefined) continue;
+        replacements.push({ index, source, node: blockFromSpan(spans[opened]!) });
+      }
+    });
+    // Every stand-in in the window was edited or removed: nothing to swap,
+    // and nothing left to retry.
+    if (replacements.length === 0) return true;
+
+    if (isRoobliMdEngine() && this.document.text === this.enrichText) {
       this.priorSplit.seedFromSpans(this.document.text, spans);
     }
 
-    const patch = window ? enrichPmPatchForWindow(view.state.doc, spans, window) : null;
-    if (patch) {
-      const tr = view.state.tr
-        .replaceWith(patch.from, patch.to, patch.nodes)
-        .setMeta('addToHistory', false);
-      view.dispatch(tr);
-      // Refresh pristine only for the patched window; untouched blocks keep
-      // their open-time stand-in / first-paint entries until later ticks.
-      for (let index = window!.from; index < window!.to; index += 1) {
-        const node = view.state.doc.child(index);
-        const origin = this.document.origins[index];
-        const span = spans[index];
-        if (origin && span) {
-          this.pristine.set(origin.blockId, { node, markdown: toLf(span.markdown) });
-        }
-      }
-      this.baselineDoc = view.state.doc;
-      // Enrich swaps in real nodes for the same blocks. Point the accepted
-      // array at them so the next save still hits by reference.
-      this.noteAcceptedWindow(window!.from, window!.to);
-      return;
+    replacements.sort((a, b) => b.index - a.index);
+    const tr = view.state.tr;
+    for (const { index, source, node } of replacements) {
+      const at = offsets[index]!;
+      tr.replaceWith(at, at + source.nodeSize, node);
     }
+    tr.setMeta('addToHistory', false).setMeta(ENRICH_META, true);
+    view.dispatch(tr);
 
-    const doc = docFromSpans(spans);
-    this.pristine = new Map();
-    doc.forEach((node, _offset, index) => {
-      const origin = this.document.origins[index];
-      const span = spans[index];
-      if (origin && span) this.pristine.set(origin.blockId, { node, markdown: toLf(span.markdown) });
-    });
-    this.baselineDoc = doc;
-    const { anchor, head } = view.state.selection;
-    const next = EditorState.create({ doc, plugins: this.plugins(this.document) });
-    let selection: Selection;
-    try {
-      selection = TextSelection.create(doc, Math.min(anchor, doc.content.size), Math.min(head, doc.content.size));
-    } catch {
-      selection = Selection.atStart(doc);
+    const origins = getBlockOrigins(view.state);
+    const next = view.state.doc;
+    for (const { index, source } of replacements) {
+      const node = next.child(index);
+      const origin = origins[index];
+      const previous = origin ? this.pristine.get(origin.blockId) : undefined;
+      // Same block, same bytes: only the node that stands for them changed.
+      if (origin && previous && previous.node === source) {
+        this.pristine.set(origin.blockId, { node, markdown: previous.markdown });
+      }
+      if (this.acceptedNodes[index] === source) this.acceptedNodes[index] = node;
     }
-    view.updateState(next.apply(next.tr.setSelection(selection)));
-    this.rememberAccepted(view.state.doc);
+    // Not dirty (checked above), so the document on screen is the baseline.
+    this.baselineDoc = next;
+    return true;
   }
 
   /**
@@ -1434,6 +1482,7 @@ export class NotoEditor implements NotoEditorPort {
   destroy(): void {
     this.deferredEnrich?.destroy();
     this.deferredEnrich = null;
+    this.enrichSources = null;
     if (this.countTimer !== null) clearTimeout(this.countTimer);
     this.countTimer = null;
     this.view?.destroy();
@@ -1460,6 +1509,36 @@ export class NotoEditor implements NotoEditorPort {
     }
     this.topLevelStable = true;
   }
+}
+
+/**
+ * Which saved block each top-level node is, after a save.
+ *
+ * Normally one to one. A save leaves out top-level blocks with nothing to
+ * write (an emptied paragraph: markdown has no empty paragraph), so those
+ * nodes get no block and the rest keep their order. Any other mismatch means
+ * the editor cannot tell which bytes belong to which node; then no node is
+ * paired, so the next save re-renders blocks rather than reusing another
+ * block's bytes.
+ */
+export function alignSavedBlocks(doc: ProseNode, blockCount: number): (number | null)[] {
+  const alignment = new Array<number | null>(doc.childCount).fill(null);
+  if (doc.childCount === blockCount) {
+    for (let index = 0; index < blockCount; index += 1) alignment[index] = index;
+    return alignment;
+  }
+  let block = 0;
+  let empty = 0;
+  doc.forEach((node, _offset, index) => {
+    if (isUnwritableBlock(node)) {
+      empty += 1;
+      return;
+    }
+    alignment[index] = block;
+    block += 1;
+  });
+  if (block !== blockCount || doc.childCount - empty !== blockCount) alignment.fill(null);
+  return alignment;
 }
 
 export { notoSchema };
