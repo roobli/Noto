@@ -10,9 +10,8 @@
  * No Node builtins here. The renderer imports this module to build its
  * ProseMirror document.
  *
- * Product default is `@roobli/md` via `roobli-md-adapter.ts`. Set
- * `NOTO_MARKDOWN_ENGINE=micromark` (or the test override) to force the
- * legacy micromark path.
+ * Splitting goes through `@roobli/md` (`roobli-md-adapter.ts`);
+ * `splitBlocksMicromark` remains only as a test parity oracle.
  */
 
 import type { List, RootContent } from 'mdast';

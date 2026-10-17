@@ -12,14 +12,13 @@
  * edit which would silently merge or split blocks, for example a heading edited
  * into plain text that then absorbs the paragraph beneath it.
  *
- * Product default is `@roobli/md`: block-mode saves (identity, single-block,
+ * Block-mode saves (identity, single-block,
  * multi-block insert/delete) route byte assembly through `@roobli/md`
  * `serializeDocument`, then a host reparse proof refuses boundary damage
  * (unterminated fences swallowing neighbours). Identity, single-block edits,
  * and contiguous multi-block insert/delete regions short-circuit before that
  * assembly: the host returns `originalBytes`, splices one block, or copies
- * pristine flanks and assembles only the dirty middle. Set
- * `NOTO_MARKDOWN_ENGINE=micromark` for the legacy path. Source mode stays on
+ * pristine flanks and assembles only the dirty middle. Source mode stays on
  * the Noto serializer.
  */
 
