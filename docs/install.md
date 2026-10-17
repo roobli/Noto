@@ -67,7 +67,7 @@ Paste something like this at the top of every release body until notarization sh
 ```markdown
 ## First open (macOS / Windows)
 
-Builds are not Apple-notarized yet. **That is expected** — not a broken download.
+Builds are not signed or Apple-notarized yet. **That is expected** — not a broken download.
 
 **macOS:** unzip, then Right-click → Open, or:
 
