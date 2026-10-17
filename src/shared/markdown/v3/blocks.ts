@@ -10,13 +10,11 @@
  * No Node builtins here. The renderer imports this module to build its
  * ProseMirror document.
  *
- * Product default is `@roobli/md` via `roobli-md-adapter.ts`. Set
- * `NOTO_MARKDOWN_ENGINE=micromark` (or the test override) to force the
- * legacy micromark path.
+ * Splitting goes through `@roobli/md` (`roobli-md-adapter.ts`);
+ * `splitBlocksMicromark` remains only as a test parity oracle.
  */
 
 import type { List, RootContent } from 'mdast';
-import { isRoobliMdEngine } from './engine-flag';
 import { lazyNodeSpan, parseSingleBlockViaRoobli, splitBlocksViaRoobli, standInNodeFor } from './roobli-md-adapter';
 import { parseMarkdown, topLevelNodes } from './syntax';
 import type { NotoBlockKind, NotoDocumentWire } from './contracts';
@@ -169,10 +167,7 @@ export function splitBlocksMicromark(text: string): SplitDocument {
  * serializer rebuild an untouched document byte for byte.
  */
 export function splitBlocks(text: string): SplitDocument {
-  if (isRoobliMdEngine()) {
-    return splitBlocksViaRoobli(text);
-  }
-  return splitBlocksMicromark(text);
+  return splitBlocksViaRoobli(text);
 }
 
 /**
@@ -183,13 +178,7 @@ export function splitBlocks(text: string): SplitDocument {
  * quietly change the document structure.
  */
 export function parseSingleBlock(markdown: string): BlockSpan | null {
-  if (isRoobliMdEngine()) {
-    return parseSingleBlockViaRoobli(markdown);
-  }
-  const split = splitBlocksMicromark(markdown);
-  if (split.spans.length !== 1) return null;
-  if (split.leading.trim().length > 0 || split.trailing.trim().length > 0) return null;
-  return split.spans[0]!;
+  return parseSingleBlockViaRoobli(markdown);
 }
 
 /**

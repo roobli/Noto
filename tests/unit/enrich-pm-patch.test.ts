@@ -6,7 +6,7 @@
  * for the enriched window and refuse mismatched doc shapes.
  */
 
-import { describe, expect, it, afterEach } from 'vitest';
+import { describe, expect, it } from 'vitest';
 import { EditorState } from 'prosemirror-state';
 import {
   splitBlocksViaRoobli,
@@ -17,12 +17,7 @@ import {
   OPEN_VIEWPORT_ENRICH_BUDGET,
 } from '../../src/shared/markdown/v3/roobli-md-adapter';
 import { docFromSpans } from '../../src/shared/markdown/v3/pm/from-mdast';
-import { setMarkdownEngineForTests } from '../../src/shared/markdown/v3/engine-flag';
 import { enrichPmPatchForWindow } from '../../src/renderer/editor/noto/enrich-pm-patch';
-
-afterEach(() => {
-  setMarkdownEngineForTests(null);
-});
 
 /** Dialect-heavy paras (nested-bracket image alts) so deferred enrich still has work after doc-aware footnote refs became engine-owned. */
 function manyParas(count: number): string {
@@ -31,7 +26,6 @@ function manyParas(count: number): string {
 
 describe('enrichPmPatchForWindow', () => {
   it('returns null for empty / out-of-range windows and childCount mismatch', () => {
-    setMarkdownEngineForTests('roobli-md');
     const text = '# A\n\npara\n';
     const spans = splitBlocksViaRoobli(text).spans;
     const doc = docFromSpans(spans);
@@ -41,7 +35,6 @@ describe('enrichPmPatchForWindow', () => {
   });
 
   it('matches a full docFromSpans rebuild for a mid-document enrich window', () => {
-    setMarkdownEngineForTests('roobli-md');
     const text = manyParas(200);
     const none = splitBlocksViaRoobli(text, { enrich: 'none' });
     const prepared = resolveDeferredOpenSpans(none.spans, text, { deferred: true });

@@ -12,14 +12,13 @@
  * edit which would silently merge or split blocks, for example a heading edited
  * into plain text that then absorbs the paragraph beneath it.
  *
- * Product default is `@roobli/md`: block-mode saves (identity, single-block,
+ * Block-mode saves (identity, single-block,
  * multi-block insert/delete) route byte assembly through `@roobli/md`
  * `serializeDocument`, then a host reparse proof refuses boundary damage
  * (unterminated fences swallowing neighbours). Identity, single-block edits,
  * and contiguous multi-block insert/delete regions short-circuit before that
  * assembly: the host returns `originalBytes`, splices one block, or copies
- * pristine flanks and assembles only the dirty middle. Set
- * `NOTO_MARKDOWN_ENGINE=micromark` for the legacy path. Source mode stays on
+ * pristine flanks and assembles only the dirty middle. Source mode stays on
  * the Noto serializer.
  */
 
@@ -28,7 +27,6 @@ import { checkWindow, verificationWindows, type ReparsedBlock } from './incremen
 // `parseDocument` remains for source mode, where the whole file is replaced
 // and there is no per-block knowledge to build a revision from.
 import { fromLf, parseDocument, sha256, toLf } from './document';
-import { isRoobliMdEngine } from './engine-flag';
 import {
   serializeViaRoobli,
   toEngineDocument,
@@ -801,221 +799,6 @@ function serializeContiguousRegion(
   });
 }
 
-function serializeBlocks(
-  document: NotoDocument,
-  units: readonly NotoUnit[],
-  target: NotoTargetEnvelope,
-): NotoSerializeResult {
-  const originFailure = validateOrigins(document, units);
-  if (originFailure) return originFailure;
-  if (isByteIdentitySave(document, units, target)) return byteIdentityResult(document);
-  const singleEdit = singleBlockEditIndex(document, units, target);
-  if (singleEdit !== null) return serializeSingleBlockEdit(document, units, target, singleEdit);
-  const region = serializeContiguousRegion(document, units, target);
-  if (region !== null) return region;
-
-  const { bom } = document.envelope;
-  /*
-   * The endings the output is written with.
-   *
-   * `mixed` on the target means leave them as they are, so it resolves to
-   * whatever the document already had and nothing is rewritten. Anything else
-   * is a deliberate conversion of the whole file, and that is the one case in
-   * this serializer where a block nobody edited is written out again.
-   */
-  const lineEnding = target.lineEnding === 'mixed' ? document.envelope.lineEnding : target.lineEnding;
-  const converting = lineEnding !== document.envelope.lineEnding;
-  /*
-   * A converted file has no preserved ranges, and must not claim any.
-   *
-   * `preserved` is the evidence that a byte range came through a save
-   * untouched, which the store checks. Every line in the file has moved, so
-   * there is nothing to point at, and pointing at it anyway would be a lie the
-   * verification would then have to catch.
-   */
-  const keep = (range: NotoPreservedRange) => { if (!converting) preserved.push(range); };
-
-  // A file with no blocks is pure whitespace. It has no units to drive the
-  // loop below, so preserve it directly rather than emitting nothing.
-  if (document.blocks.length === 0 && units.length === 0) {
-    const outputBytes = encodeOutput(document.text, bom);
-    return {
-      status: 'serialized',
-      version: NOTO_MARKDOWN_VERSION,
-      outputBytes,
-      outputSha256: sha256(outputBytes),
-      document,
-      preserved: [{ role: 'trailing', start: 0, end: document.text.length, sha256: sha256(document.text) }],
-    };
-  }
-  const parts: string[] = [];
-  const preserved: NotoPreservedRange[] = [];
-  // Where each unit and gap lands in the output text, so the next revision can
-  // be built by shifting offsets instead of parsing the file again.
-  const unitStart: number[] = [];
-  const unitEnd: number[] = [];
-  const emittedGaps: string[] = [];
-  let cursor = 0;
-  const emit = (text: string) => { parts.push(text); cursor += text.length; };
-
-  if (bom === 'utf8') keep({ role: 'bom', start: 0, end: 3, sha256: sha256(UTF8_BOM) });
-
-  const startsAtFirstBlock = units[0]?.origin?.ordinal === 0;
-  const emittedLeading = startsAtFirstBlock
-    ? (converting ? fromLf(toLf(document.leading), lineEnding) : document.leading)
-    : '';
-  if (emittedLeading.length > 0) {
-    emit(emittedLeading);
-    keep({ role: 'leading', start: 0, end: document.leading.length, sha256: sha256(document.leading) });
-  }
-
-  const pristine = units.map((unit) => isPristine(unit, unit.origin ? document.blocks[unit.origin.ordinal] : undefined));
-
-  for (let index = 0; index < units.length; index += 1) {
-    const unit = units[index];
-    if (index > 0) {
-      const found = gapBetween(document, units[index - 1], unit, pristine[index - 1], pristine[index], lineEnding);
-      const gap = converting ? { text: fromLf(toLf(found.text), lineEnding), preserved: null } : found;
-      emittedGaps.push(gap.text);
-      emit(gap.text);
-      if (gap.preserved) keep(gap.preserved);
-    }
-
-    if (pristine[index] && unit.origin) {
-      const block = document.blocks[unit.origin.ordinal];
-      const source = document.text.slice(block.start, block.end);
-      unitStart.push(cursor);
-      // A block nobody edited is copied byte for byte, unless the whole file is
-      // being converted, in which case its own line endings have to move too.
-      emit(converting ? fromLf(toLf(source), lineEnding) : source);
-      unitEnd.push(cursor);
-      keep({ role: 'block', start: block.start, end: block.end, sha256: block.sha256 });
-      continue;
-    }
-
-    // Only a changed unit reaches here, so its text is always present. A unit
-    // that claims to be unchanged but has no origin to be unchanged from is a
-    // malformed transaction rather than a save that should quietly proceed.
-    const markdown = unitMarkdown(unit, document);
-    if (markdown === null) {
-      return fail(document, 'MULTI_BLOCK_UNIT',
-        'An unchanged unit must reference a block of the open document.');
-    }
-    if (parseSingleBlock(markdown) === null) {
-      return fail(document, 'MULTI_BLOCK_UNIT',
-        'Each editing unit must be exactly one markdown block.');
-    }
-    unitStart.push(cursor);
-    emit(fromLf(markdown, lineEnding));
-    unitEnd.push(cursor);
-  }
-
-  const lastUnit = units.at(-1);
-  const endsAtLastBlock = lastUnit?.origin?.ordinal === document.blocks.length - 1;
-  const trailingUnchanged = !converting && target.hasFinalNewline === document.envelope.hasFinalNewline;
-  let emittedTrailing = '';
-  if (endsAtLastBlock && pristine[units.length - 1] && document.trailing.length > 0 && trailingUnchanged) {
-    const lastBlock = document.blocks[document.blocks.length - 1];
-    emittedTrailing = document.trailing;
-    emit(emittedTrailing);
-    keep({
-      role: 'trailing',
-      start: lastBlock.end,
-      end: document.text.length,
-      sha256: sha256(document.trailing),
-    });
-  } else if (target.hasFinalNewline && units.length > 0) {
-    /*
-     * Whatever the file ended with, in the endings it is being written with.
-     *
-     * A file that ended with a blank line keeps it: the option is about
-     * whether the file ends with a newline, not about how many, and silently
-     * deleting a blank line the author left is not what it was asked to do.
-     */
-    const source = endsAtLastBlock && document.trailing.length > 0 ? toLf(document.trailing) : '\n';
-    emittedTrailing = fromLf(source, lineEnding);
-    emit(emittedTrailing);
-  }
-
-  const outputText = parts.join('');
-  const outputBytes = encodeOutput(outputText, bom);
-
-  // A save that reproduces the bytes we parsed needs no reparse.
-  //
-  // Parsing is deterministic, so reparsing identical bytes can only rebuild the
-  // document already in hand. On a large file that check is the difference
-  // between a save costing a full parse and costing a string comparison, and it
-  // is the common case: an autosave, or a save after an edit that was undone.
-  if (outputText === document.text) {
-    return {
-      status: 'serialized',
-      version: NOTO_MARKDOWN_VERSION,
-      outputBytes,
-      outputSha256: sha256(outputBytes),
-      document,
-      preserved,
-    };
-  }
-
-  // Verify only where a change could have altered a boundary, and build the
-  // next revision by shifting the offsets of everything that did not move.
-  const dirty = pristine.map((clean) => !clean);
-  const effective = units.map((unit) => unitMarkdown(unit, document));
-  if (effective.some((markdown) => markdown === null)) {
-    return fail(document, 'REPARSE_MISMATCH', 'An unchanged unit lost the block it referenced.');
-  }
-
-  const reparsedBlocks = new Map<number, ReparsedBlock>();
-  for (const window of verificationWindows(dirty)) {
-    const sliceStart = window.from === 0 ? 0 : unitStart[window.from];
-    const sliceEnd = window.to === units.length - 1 ? outputText.length : unitEnd[window.to];
-    const check = checkWindow(
-      outputText.slice(sliceStart, sliceEnd),
-      window,
-      effective.slice(window.from, window.to + 1) as string[],
-    );
-    if (!check.ok || !check.blocks) {
-      return fail(document, 'REPARSE_MISMATCH',
-        `Block ${(check.failedAt ?? window.from) + 1} would not have survived a reparse unchanged.`);
-    }
-    check.blocks.forEach((block: ReparsedBlock, offset: number) =>
-      reparsedBlocks.set(window.from + offset, block));
-  }
-
-  const nextDocument = buildNextDocument({
-    previous: document,
-    outputText,
-    outputBytes,
-    bom,
-    lineEnding,
-    units,
-    effective: effective as string[],
-    unitStart,
-    unitEnd,
-    gaps: emittedGaps,
-    leading: emittedLeading,
-    trailing: emittedTrailing,
-    reparsedBlocks,
-  });
-
-  return {
-    status: 'serialized',
-    version: NOTO_MARKDOWN_VERSION,
-    outputBytes,
-    outputSha256: sha256(outputBytes),
-    document: nextDocument,
-    preserved,
-  };
-}
-
-/**
- * The document the saved bytes represent, assembled rather than parsed.
- *
- * Every block's text is already known: an unchanged one keeps the markdown it
- * had, and a changed one was just confirmed by its window. What moves is where
- * they sit in the file, and that is arithmetic. Parsing again to learn it would
- * cost a full parse to rediscover facts already in hand.
- */
 function buildNextDocument(input: {
   previous: NotoDocument;
   outputText: string;
@@ -1415,11 +1198,7 @@ export function serializeDocument(
     };
   }
 
-  if (isRoobliMdEngine()) {
-    return serializeBlocksViaRoobli(document, transaction.units, transaction.envelope);
-  }
-
-  return serializeBlocks(document, transaction.units, transaction.envelope);
+  return serializeBlocksViaRoobli(document, transaction.units, transaction.envelope);
 }
 
 /**

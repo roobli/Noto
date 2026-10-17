@@ -7,8 +7,6 @@
  */
 
 import { sha256 } from '../../sha256';
-import { splitBlocksMicromark } from './blocks';
-import { isRoobliMdEngine } from './engine-flag';
 import { toLf } from './line-endings';
 import { splitBlocksViaRoobli } from './roobli-md-adapter';
 import {
@@ -120,13 +118,9 @@ export function parseDocument(bytes: Uint8Array): NotoParseResult {
     sourceSha256,
   };
 
-  // Flagged open: structural / enrich none on the critical path; renderer
+  // Open is structural (enrich none) on the critical path; the renderer
   // fills dialect nodes for the first-paint window then the remainder.
-  // Micromark and non-open splitBlocks callers stay on full dialect attach.
-  const deferred = isRoobliMdEngine();
-  const split = deferred
-    ? splitBlocksViaRoobli(text, { enrich: 'none' })
-    : splitBlocksMicromark(text);
+  const split = splitBlocksViaRoobli(text, { enrich: 'none' });
   const documentId = `noto-doc-v3:${sourceSha256}` as NotoDocumentId;
   const revisionId = `noto-rev-v3:${sourceSha256}` as NotoRevisionId;
 
@@ -165,14 +159,12 @@ export function parseDocument(bytes: Uint8Array): NotoParseResult {
       // Deferred open ships no nodes: the stand-ins are a function of each
       // block's kind and source, both already on the wire, and engine-owned
       // blocks never read theirs. The renderer derives them on demand.
-      nodes: deferred ? null : split.spans.map((span) => span.node),
-      nodesEnrichment: deferred ? 'deferred' : 'full',
+      nodes: null,
+      nodesEnrichment: 'deferred',
       // Main already asked `canSkipDialectEnrich` of every block; one
       // character each so the renderer reuses the answers instead of asking
       // again when it decides what is left to enrich.
-      ...(deferred
-        ? { engineOwned: split.spans.map((span) => ((span as { engineOwned?: boolean }).engineOwned ? '1' : '0')).join('') }
-        : {}),
+      engineOwned: split.spans.map((span) => ((span as { engineOwned?: boolean }).engineOwned ? '1' : '0')).join(''),
     },
   };
 }

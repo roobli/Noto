@@ -35,7 +35,6 @@ import {
 } from '../../../shared/markdown/v3/pm/from-engine';
 import { blockToMarkdown } from '../../../shared/markdown/v3/pm/to-mdast';
 import { blockSpansFromWire, parseSingleBlock, splitBlocks, type BlockSpan } from '../../../shared/markdown/v3/blocks';
-import { isRoobliMdEngine } from '../../../shared/markdown/v3/engine-flag';
 import { PriorSplitCache } from '../../../shared/markdown/v3/prior-split-cache';
 import {
   resolveDeferredOpenSpans,
@@ -224,8 +223,7 @@ export class NotoEditor implements NotoEditorPort {
   /** Document text the deferred open's spans were split from. */
   private enrichText: string | null = null;
   /**
-   * Last structural `@roobli/md` split for flagged `replaceMarkdown`.
-   * Unused while the micromark engine is selected.
+   * Last structural `@roobli/md` split for `replaceMarkdown`.
    */
   private readonly priorSplit = new PriorSplitCache();
   /** True while `replaceMarkdown` is dispatching, so typing invalidation skips. */
@@ -393,12 +391,8 @@ export class NotoEditor implements NotoEditorPort {
     });
     this.rememberAccepted(doc);
 
-    // Flagged path: seed prior split from the open/reload spans (no extra parse).
-    if (isRoobliMdEngine()) {
-      this.priorSplit.seedFromSpans(document.text, resolved);
-    } else {
-      this.priorSplit.invalidate();
-    }
+    // Seed the prior split from the open/reload spans (no extra parse).
+    this.priorSplit.seedFromSpans(document.text, resolved);
 
     return doc;
   }
@@ -617,7 +611,7 @@ export class NotoEditor implements NotoEditorPort {
     this.docVersion += 1;
     // WYSIWYG edits (and paste) diverge from the cached structural split.
     // replaceMarkdown sets replaceInFlight so its own dispatch does not clear.
-    if (!this.replaceInFlight && isRoobliMdEngine()) {
+    if (!this.replaceInFlight) {
       this.priorSplit.invalidate();
     }
     this.refreshDirty();
@@ -1089,12 +1083,9 @@ export class NotoEditor implements NotoEditorPort {
     });
 
     const lf = toLf(markdown);
-    // Flagged `@roobli/md` path: incremental reparseFromText when a prior split
-    // is cached; full split + reseed after typing invalidation. Micromark
-    // stays on splitBlocks unchanged.
-    const spans = isRoobliMdEngine()
-      ? this.priorSplit.spansForReplace(lf).spans
-      : splitBlocks(lf).spans;
+    // Incremental `@roobli/md` reparseFromText when a prior split is cached;
+    // full split + reseed after typing invalidation.
+    const spans = this.priorSplit.spansForReplace(lf).spans;
     const next = spans.map((span) => toLf(span.markdown));
     if (current.length === next.length && current.every((value, index) => value === next[index])) return false;
 
@@ -1419,7 +1410,7 @@ export class NotoEditor implements NotoEditorPort {
     // and nothing left to retry.
     if (replacements.length === 0) return true;
 
-    if (isRoobliMdEngine() && this.document.text === this.enrichText) {
+    if (this.document.text === this.enrichText) {
       this.priorSplit.seedFromSpans(this.document.text, spans);
     }
 

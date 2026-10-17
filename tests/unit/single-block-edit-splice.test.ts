@@ -1,6 +1,5 @@
-import { afterEach, describe, expect, it } from 'vitest';
+import { describe, expect, it } from 'vitest';
 import { parseDocument, sha256 } from '../../src/shared/markdown/v3/document';
-import { setMarkdownEngineForTests } from '../../src/shared/markdown/v3/engine-flag';
 import { identityTransaction, serializeDocument } from '../../src/shared/markdown/v3/serialize';
 import {
   NOTO_MARKDOWN_VERSION,
@@ -39,14 +38,9 @@ function bodyText(document: NotoDocument, bytes: Uint8Array): string {
   return decoder.decode(bytes.subarray(offset));
 }
 
-afterEach(() => {
-  setMarkdownEngineForTests(null);
-});
-
 describe('single-block edit splice', () => {
-  for (const engine of ['roobli-md', 'micromark'] as const) {
+  for (const engine of ['roobli-md'] as const) {
     it(`${engine}: mid paragraph splice matches full assembly bytes`, () => {
-      setMarkdownEngineForTests(engine);
       const document = parsed('# Title\n\nAlpha\n\nBeta\n\nGamma\n');
       const dirty = 1;
       const markdown = 'Alpha edited';
@@ -65,7 +59,6 @@ describe('single-block edit splice', () => {
     });
 
     it(`${engine}: first and last block edits splice`, () => {
-      setMarkdownEngineForTests(engine);
       const document = parsed('# Title\n\nBody paragraph\n\nTail\n');
       for (const dirty of [0, document.blocks.length - 1]) {
         const markdown = dirty === 0 ? '# Title changed' : 'Tail changed';
@@ -78,7 +71,6 @@ describe('single-block edit splice', () => {
     });
 
     it(`${engine}: single-newline gap falls through to assembly (rewrites gap)`, () => {
-      setMarkdownEngineForTests(engine);
       // Heading then paragraph with only one newline between them. Editing the
       // heading makes gapBetween emit a blank line; a pure splice would keep
       // the single newline. The splice door must stay closed.
@@ -95,7 +87,6 @@ describe('single-block edit splice', () => {
     });
 
     it(`${engine}: CRLF file keeps CRLF around the spliced block`, () => {
-      setMarkdownEngineForTests(engine);
       const document = parsed('# Title\r\n\r\nBody\r\n\r\nTail\r\n');
       expect(document.envelope.lineEnding).toBe('crlf');
       const dirty = 1;
@@ -107,7 +98,6 @@ describe('single-block edit splice', () => {
     });
 
     it(`${engine}: line-ending conversion still takes the assembly path`, () => {
-      setMarkdownEngineForTests(engine);
       const document = parsed('# Title\n\nBody\n');
       const identity = identityTransaction(document);
       if (identity.mode !== 'blocks') throw new Error('expected blocks');
@@ -121,7 +111,6 @@ describe('single-block edit splice', () => {
   }
 
   it('forged origin still fails before splice', () => {
-    setMarkdownEngineForTests('roobli-md');
     const document = parsed('# A\n\nB\n');
     const identity = identityTransaction(document);
     if (identity.mode !== 'blocks') throw new Error('expected blocks');

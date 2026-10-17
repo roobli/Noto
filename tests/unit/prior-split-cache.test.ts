@@ -5,19 +5,14 @@
  * `@roobli/md` engine is selected.
  */
 
-import { afterEach, describe, expect, it } from 'vitest';
+import { describe, expect, it } from 'vitest';
 import { joinSplit } from '../../src/shared/markdown/v3/roobli-md-adapter';
 import {
   PriorSplitCache,
   parseStructuralForTests,
   structuralSplitFromSpans,
 } from '../../src/shared/markdown/v3/prior-split-cache';
-import { setMarkdownEngineForTests } from '../../src/shared/markdown/v3/engine-flag';
 import { splitBlocks } from '../../src/shared/markdown/v3/blocks';
-
-afterEach(() => {
-  setMarkdownEngineForTests(null);
-});
 
 describe('structuralSplitFromSpans', () => {
   it('rebuilds leading / gaps / trailing without reparsing', () => {
@@ -88,7 +83,6 @@ describe('PriorSplitCache', () => {
   });
 
   it('seedFromSpans matches open-path offsets used by the editor', () => {
-    setMarkdownEngineForTests('roobli-md');
     const text = '```js\ncode\n```\n\nAfter\n';
     const opened = splitBlocks(text);
     const cache = new PriorSplitCache();

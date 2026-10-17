@@ -1,7 +1,7 @@
-import { afterEach, describe, expect, it } from 'vitest';
+import { describe, expect, it } from 'vitest';
 import { parseDocument } from '../../src/shared/markdown/v3/document';
-import { setMarkdownEngineForTests } from '../../src/shared/markdown/v3/engine-flag';
 import { identityTransaction, serializeDocument } from '../../src/shared/markdown/v3/serialize';
+import { expectSaveMatchesOracle } from './serialize-oracle';
 import {
   NOTO_MARKDOWN_VERSION,
   type NotoDocument,
@@ -34,14 +34,9 @@ function bodyText(document: NotoDocument, bytes: Uint8Array): string {
   return decoder.decode(bytes.subarray(offset));
 }
 
-afterEach(() => {
-  setMarkdownEngineForTests(null);
-});
-
 describe('multi-block serialize region splice', () => {
-  for (const engine of ['roobli-md', 'micromark'] as const) {
+  for (const engine of ['roobli-md'] as const) {
     it(`${engine}: insert mid matches hand-built splice bytes`, () => {
-      setMarkdownEngineForTests(engine);
       const document = parsed('# Title\n\nAlpha\n\nBeta\n\nGamma\n');
       const identity = blocksIdentity(document);
       const transaction: NotoTransaction = {
@@ -72,7 +67,6 @@ describe('multi-block serialize region splice', () => {
     });
 
     it(`${engine}: delete mid matches hand-built splice bytes`, () => {
-      setMarkdownEngineForTests(engine);
       const document = parsed('# Title\n\nAlpha\n\nDoomed\n\nGamma\n');
       const identity = blocksIdentity(document);
       const transaction: NotoTransaction = {
@@ -95,7 +89,6 @@ describe('multi-block serialize region splice', () => {
     });
 
     it(`${engine}: delete first drops leading and keeps suffix bytes`, () => {
-      setMarkdownEngineForTests(engine);
       const document = parsed('# Title\n\nBody\n\nTail\n');
       const identity = blocksIdentity(document);
       const transaction: NotoTransaction = {
@@ -113,7 +106,6 @@ describe('multi-block serialize region splice', () => {
     });
 
     it(`${engine}: delete last keeps prefix and adds final newline`, () => {
-      setMarkdownEngineForTests(engine);
       const document = parsed('# Title\n\nBody\n\nTail\n');
       const identity = blocksIdentity(document);
       const transaction: NotoTransaction = {
@@ -130,7 +122,6 @@ describe('multi-block serialize region splice', () => {
     });
 
     it(`${engine}: insert + edit contiguous cluster`, () => {
-      setMarkdownEngineForTests(engine);
       const document = parsed('# A\n\nB\n\nC\n\nD\n');
       const identity = blocksIdentity(document);
       const transaction: NotoTransaction = {
@@ -151,7 +142,6 @@ describe('multi-block serialize region splice', () => {
     });
 
     it(`${engine}: engines agree on insert and delete`, () => {
-      setMarkdownEngineForTests(engine);
       const document = parsed('# Title\n\nAlpha\n\nBeta\n');
       const identity = blocksIdentity(document);
       const insertTx: NotoTransaction = {
@@ -163,17 +153,11 @@ describe('multi-block serialize region splice', () => {
           identity.units[2]!,
         ],
       };
-      // Cross-check: other engine produces the same bytes.
-      const other = engine === 'roobli-md' ? 'micromark' : 'roobli-md';
-      setMarkdownEngineForTests(other);
-      const otherBytes = mustSerialize(document, insertTx).outputBytes;
-      setMarkdownEngineForTests(engine);
-      const ours = mustSerialize(document, insertTx).outputBytes;
-      expect(Buffer.from(ours).equals(Buffer.from(otherBytes))).toBe(true);
+      const ours = mustSerialize(document, insertTx);
+      expectSaveMatchesOracle(document, insertTx, ours);
     });
 
     it(`${engine}: line-ending conversion still takes the assembly path`, () => {
-      setMarkdownEngineForTests(engine);
       const document = parsed('# Title\n\nBody\n');
       const identity = blocksIdentity(document);
       const transaction: NotoTransaction = {
@@ -190,7 +174,6 @@ describe('multi-block serialize region splice', () => {
     });
 
     it(`${engine}: CRLF file keeps CRLF around insert`, () => {
-      setMarkdownEngineForTests(engine);
       const document = parsed('# Title\r\n\r\nBody\r\n\r\nTail\r\n');
       expect(document.envelope.lineEnding).toBe('crlf');
       const identity = blocksIdentity(document);
@@ -214,7 +197,6 @@ describe('multi-block serialize region splice', () => {
     // Deleting the paragraph between two lists merges them on reparse. The
     // region window cannot prove two units; the engine full-reparse door must
     // still accept, matching serialize-incremental-roobli.
-    setMarkdownEngineForTests('roobli-md');
     const document = parsed('- a\n\nbetween\n\n- b\n');
     const identity = blocksIdentity(document);
     const transaction: NotoTransaction = {
@@ -231,7 +213,6 @@ describe('multi-block serialize region splice', () => {
   });
 
   it('forged origin still fails before region splice', () => {
-    setMarkdownEngineForTests('roobli-md');
     const document = parsed('# A\n\nB\n');
     const identity = blocksIdentity(document);
     const forged = {

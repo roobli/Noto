@@ -41,13 +41,7 @@ import {
   createEnrichFlags,
   countDeferredFlags,
 } from '../../src/shared/markdown/v3/roobli-md-adapter';
-import { splitBlocks } from '../../src/shared/markdown/v3/blocks';
-import { setMarkdownEngineForTests } from '../../src/shared/markdown/v3/engine-flag';
-import { afterEach } from 'vitest';
-
-afterEach(() => {
-  setMarkdownEngineForTests(null);
-});
+import { splitBlocks, splitBlocksMicromark } from '../../src/shared/markdown/v3/blocks';
 
 describe('from-engine IR helpers', () => {
   it('detects inline dialect markers conservatively', () => {
@@ -3638,9 +3632,7 @@ describe('blockFromEngineSpan', () => {
 
     ];
     for (const md of samples) {
-      setMarkdownEngineForTests('micromark');
-      const micro = blockFromSpan(splitBlocks(md).spans[0]!);
-      setMarkdownEngineForTests('roobli-md');
+      const micro = blockFromSpan(splitBlocksMicromark(md).spans[0]!);
       const none = splitBlocksViaRoobli(md, { enrich: 'none' });
       const engine = blockFromSpan(none.spans[0]!);
       expect(engine.type.name).toBe(micro.type.name);

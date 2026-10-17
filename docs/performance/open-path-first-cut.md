@@ -1,7 +1,7 @@
 # Open-path / `parseDocument` — measured cuts
 
-Status: **lazy / deferred wire nodes + viewport-driven enrich + incremental PM patch + kind-aware stand-ins + engine-owned IR→PM (common blocks + simple quotes incl. nested plain + lists-in-quotes + hard breaks in quotes + lazy nest continuation + true no-`>` lazy + simple flat / nested lists (same-family or mixed-marker) any depth incl. hard breaks + unindented lazy soft-wrap + multi-paragraph items + structural quote/fence/ATX-heading/HTML/table/hr children + setext-shaped tight `---`/`===` in list items + empty-item+blank+structural outside at split + list-steal pipe-less closed at split + lazy empty-container / link-def title / ordered start≠1 closed at split + under-indented nest-exit (structural + paragraph-after-blank) + nest-sibling after nest-exit + simple GFM tables (incl. escaped pipes + ragged body rows + pipe-optional leading `|`) + simple footnote-defs incl. empty + hard breaks + plain/simple-marked/simple-marked-title/heavy-title (incl. nested-bracket wiki) callouts + simple marked phrasing `**`/`*`/`~~`/`` ` `` incl. up to thirty-seven-level nests + matched `***`/`___` triple delimiters + mixed triple closers + same-delimiter stacks + simple inline links/images (incl. simple image alts) + simple reference links/images + simple bare http(s) + angle-bracket http(s) + www. + email autolinks + simple wiki links + setext-`---` headings + multi-line inline HTML)** under the `@roobli/md` path (now the product default; escape hatch
-`NOTO_MARKDOWN_ENGINE=micromark`).
+Status: **lazy / deferred wire nodes + viewport-driven enrich + incremental PM patch + kind-aware stand-ins + engine-owned IR→PM (common blocks + simple quotes incl. nested plain + lists-in-quotes + hard breaks in quotes + lazy nest continuation + true no-`>` lazy + simple flat / nested lists (same-family or mixed-marker) any depth incl. hard breaks + unindented lazy soft-wrap + multi-paragraph items + structural quote/fence/ATX-heading/HTML/table/hr children + setext-shaped tight `---`/`===` in list items + empty-item+blank+structural outside at split + list-steal pipe-less closed at split + lazy empty-container / link-def title / ordered start≠1 closed at split + under-indented nest-exit (structural + paragraph-after-blank) + nest-sibling after nest-exit + simple GFM tables (incl. escaped pipes + ragged body rows + pipe-optional leading `|`) + simple footnote-defs incl. empty + hard breaks + plain/simple-marked/simple-marked-title/heavy-title (incl. nested-bracket wiki) callouts + simple marked phrasing `**`/`*`/`~~`/`` ` `` incl. up to thirty-seven-level nests + matched `***`/`___` triple delimiters + mixed triple closers + same-delimiter stacks + simple inline links/images (incl. simple image alts) + simple reference links/images + simple bare http(s) + angle-bracket http(s) + www. + email autolinks + simple wiki links + setext-`---` headings + multi-line inline HTML)** under the `@roobli/md` path (the only engine; the `NOTO_MARKDOWN_ENGINE=micromark`
+escape hatch was removed).
 
 ## Evidence (already recorded)
 
@@ -200,8 +200,8 @@ Does **not** flip default-on.
 
 ## Default-on (landed)
 
-Product default is `@roobli/md` (see `engine-flag.ts` and
-`docs/design/roobli-md-engine.md`). Escape hatch: `NOTO_MARKDOWN_ENGINE=micromark`.
+`@roobli/md` is the only engine (see `docs/design/roobli-md-engine.md`); the
+`NOTO_MARKDOWN_ENGINE=micromark` escape hatch was removed.
 
 IR→PM leftovers that remain **dialect** after the flip:
 

@@ -2,7 +2,14 @@
 
 Noto’s markdown v3 stack (`src/shared/markdown/v3/`) defaults to the public MIT
 package **[@roobli/md](https://github.com/roobli/md)** v0.1.20 (“WYSIWYG-first
-markdown engine for Noto”). Escape hatch: `NOTO_MARKDOWN_ENGINE=micromark`.
+markdown engine for Noto”).
+
+> **Update:** the `NOTO_MARKDOWN_ENGINE` switch, `engine-flag.ts`, and the
+> legacy micromark split/serialize branches have been removed; `@roobli/md` is
+> the only engine. micromark/mdast remain for dialect enrichment
+> (`roobli-md-adapter`), `blockToMarkdown` serialization, and as the
+> `splitBlocksMicromark` parity oracle in tests. Sections below that mention
+> the escape hatch are historical.
 
 ## Why
 
@@ -25,27 +32,15 @@ either to the same tarball.
 pnpm must allow its `prepare` (tsc) build — see `allowBuilds` in
 `pnpm-workspace.yaml`.
 
-## Feature flag (default on)
+## Engine selection
 
-| Switch | Effect |
-| ------ | ------ |
-| unset / anything else | `@roobli/md` path (product default) |
-| `NOTO_MARKDOWN_ENGINE=micromark` | force legacy micromark path |
-| `NOTO_MARKDOWN_ENGINE=roobli-md` | explicit `@roobli/md` (same as default) |
-| `setMarkdownEngineForTests('roobli-md' | 'micromark' | null)` | unit-test override |
+There is none: `splitBlocks`, `parseSingleBlock`, `parseDocument` and
+`serializeDocument` always use `@roobli/md`.
 
 Implementation:
 
-- `src/shared/markdown/v3/engine-flag.ts` — env + test override
 - `src/shared/markdown/v3/roobli-md-adapter.ts` — thin mapping
-- `src/shared/markdown/v3/blocks.ts` — `splitBlocksMicromark` baseline; `splitBlocks` respects the flag
-
-### Escape hatch (legacy micromark)
-
-```bash
-NOTO_MARKDOWN_ENGINE=micromark pnpm start
-NOTO_MARKDOWN_ENGINE=micromark pnpm test
-```
+- `src/shared/markdown/v3/blocks.ts` — `splitBlocks` via the adapter; `splitBlocksMicromark` kept as a test parity oracle
 
 Tight adjacent quotes/callouts and native indented-code match micromark
 (`@roobli/md` v0.1.2+). Intentional leftover dialect: thirty-eight+ nests (cap) and nested-bracket image alts / exotic inline refuses.

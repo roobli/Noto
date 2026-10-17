@@ -2,7 +2,6 @@ import { describe, expect, it } from 'vitest';
 import { parseDocument } from '../../src/shared/markdown/v3/document';
 import { identityTransaction, serializeDocument } from '../../src/shared/markdown/v3/serialize';
 import type { NotoDocument, NotoTransaction, NotoUnit } from '../../src/shared/markdown/v3/contracts';
-import { isRoobliMdEngine } from '../../src/shared/markdown/v3/engine-flag';
 
 /**
  * A `@roobli/md` save builds its next revision from the engine's offsets and a
@@ -129,7 +128,6 @@ function shape(document: NotoDocument) {
 
 describe('a @roobli/md save without a full reparse', () => {
   it('runs on the engine these tests are about', () => {
-    expect(isRoobliMdEngine()).toBe(true);
   });
 
   it('builds the same revision a full parse of the output would', () => {
