@@ -370,6 +370,17 @@ describe('dialect decisions that stay', () => {
     expect(blockToMarkdown(blockFromSpan(paragraph))).toBe('A paragraph with spaces');
   });
 
+  it('strips leading spaces instead of writing a character reference', () => {
+    // Deleting a paragraph's first word leaves a leading space. Written as
+    // `&#x20;` it reopened as literal text, because character references are
+    // kept verbatim on read.
+    const schema = blockFromSpan(splitBlocks('x\n').spans[0]).type.schema;
+    const paragraph = schema.node('paragraph', null, schema.text(' and a word'));
+    expect(blockToMarkdown(paragraph)).toBe('and a word');
+    const heading = schema.node('heading', { level: 2 }, schema.text('  Title'));
+    expect(blockToMarkdown(heading)).toBe('## Title');
+  });
+
   it('still leaves a six-dash rule and a padded table alone beside an edit', () => {
     const source = [
       'Lead paragraph.',
