@@ -9,6 +9,11 @@ How releases are made, and what each channel receives, is in
 
 ## [Unreleased]
 
+### Fixed
+- A reference link (`[text][label]`) or footnote reference (`[^label]`) whose
+  definition is elsewhere in the note no longer opens as literal brackets in
+  paragraphs that also use less common syntax.
+
 ## [0.0.3] - 2026-10-17
 
 The first full release since `0.0.1`, on the Stable channel. It carries

@@ -244,15 +244,75 @@ export function standInNodeFor(kind: NotoBlockKind, markdown: string): RootConte
   return standInNode({ kind, start: 0, end: markdown.length, markdown, node: null } as EngineBlockSpan);
 }
 
+/** A label the document defines, and the minimal definition that stands in for it. */
+interface DefinitionStub {
+  /** `[label]` lowercased, as a reference to it would contain it. */
+  readonly needle: string;
+  readonly line: string;
+}
+
+/**
+ * Labels defined anywhere in the document, as stub definitions.
+ *
+ * A dialect run is parsed on its own, so a `[text][label]` or `[^label]` whose
+ * definition sits in another block would read as literal text, unlike the
+ * whole-file parse. Only the labels matter (references carry no url), so each
+ * becomes a minimal definition the run can be parsed against. Empty when the
+ * document defines nothing.
+ */
+function referenceDefinitionStubs(
+  spans: readonly { readonly kind: string; readonly markdown: string }[],
+): DefinitionStub[] {
+  const stubs: DefinitionStub[] = [];
+  for (const span of spans) {
+    if (span.kind !== 'link-definition' && span.kind !== 'footnote-definition') continue;
+    const line = span.markdown.replace(/\r\n/g, '\n').split('\n')[0] ?? '';
+    const m = /^ {0,3}\[((?:\\.|[^\\\[\]])+)\]:/u.exec(line);
+    if (!m) continue;
+    const label = m[1]!;
+    stubs.push({
+      needle: `[${label}]`.toLowerCase(),
+      line: `[${label}]: ${span.kind === 'link-definition' ? '#' : 'x'}`,
+    });
+  }
+  return stubs;
+}
+
+/**
+ * Top-level nodes for `slice`, parsed as if the labels it mentions were
+ * defined after it.
+ *
+ * The stubs are dropped again. Returns null when no stub applies, or when the
+ * stubs did not come back as their own trailing definitions (an unclosed fence
+ * or html block swallowed them), so the caller parses the slice alone instead.
+ */
+function nodesWithDefinitions(slice: string, stubs: readonly DefinitionStub[]): readonly RootContent[] | null {
+  if (stubs.length === 0 || !slice.includes('[')) return null;
+  const lower = slice.toLowerCase();
+  const used = stubs.filter((stub) => lower.includes(stub.needle)).map((stub) => stub.line);
+  if (used.length === 0) return null;
+  const nodes = topLevelNodes(parseMarkdown(`${slice}\n\n${used.join('\n\n')}\n`));
+  const own = nodes.length - used.length;
+  if (own < 0) return null;
+  for (let index = own; index < nodes.length; index += 1) {
+    const type = nodes[index]!.type;
+    if (type !== 'definition' && type !== 'footnoteDefinition') return null;
+  }
+  const lastOwnEnd = own > 0 ? nodes[own - 1]!.position?.end.offset : 0;
+  if (lastOwnEnd === undefined || lastOwnEnd > slice.length) return null;
+  return nodes.slice(0, own);
+}
+
 function enrichDialectRun(
   run: readonly AdapterBlockSpan[],
   text: string,
+  stubs: readonly DefinitionStub[] = [],
 ): AdapterBlockSpan[] {
   if (run.length === 0) return [];
   const sliceStart = run[0]!.start;
   const sliceEnd = run[run.length - 1]!.end;
   const slice = text.slice(sliceStart, sliceEnd);
-  const nodes = topLevelNodes(parseMarkdown(slice));
+  const nodes = nodesWithDefinitions(slice, stubs) ?? topLevelNodes(parseMarkdown(slice));
   if (nodes.length === run.length) {
     return run.map((span, index) => attachDialectNode(
       {
@@ -295,6 +355,7 @@ export function enrichSpansInRange<T extends AdapterBlockSpan>(
   // Doc-wide footnote defs (may sit outside `range`) so `[^id]` in callout
   // titles/bodies can be engine-owned with micromark promote/literal parity.
   const knownFootnoteIds = collectFootnoteDefinitionIds(spans);
+  const stubs = referenceDefinitionStubs(spans);
   return withKnownFootnoteIds(knownFootnoteIds, () => {
     const out = spans.slice() as AdapterBlockSpan[];
     let i = from;
@@ -309,7 +370,7 @@ export function enrichSpansInRange<T extends AdapterBlockSpan>(
       while (j < to && !isEngineOwned(out[j]!)) {
         j += 1;
       }
-      const enriched = enrichDialectRun(out.slice(i, j), text);
+      const enriched = enrichDialectRun(out.slice(i, j), text, stubs);
       for (let k = 0; k < enriched.length; k += 1) {
         out[i + k] = enriched[k]!;
       }

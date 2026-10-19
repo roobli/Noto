@@ -171,4 +171,32 @@ describe('open-path SpanEnrichMode', () => {
       micro.spans.map((s) => [s.start, s.end, s.markdown]),
     );
   });
+
+  it('a range enrich resolves references defined outside the range, like the bulk parse', () => {
+    const text = [
+      'See [ref][r1] and a note[^n1] in ta*bext.',
+      '[r1]: https://ref.example/1',
+      '[^n1]: The note.',
+      '',
+    ].join('\n\n');
+    const none = splitBlocksViaRoobli(text, { enrich: 'none' });
+    const bulk = splitBlocksViaRoobli(text, { enrich: 'bulk' });
+    const ranged = enrichSpansInRange(none.spans, text, { from: 0, to: 1 });
+    expect(ranged[0]!.node).toEqual(bulk.spans[0]!.node);
+    expect(ranged[0]!.semanticKey).toBe(bulk.spans[0]!.semanticKey);
+    const kinds = (ranged[0]!.node as { children: { type: string }[] }).children.map((c) => c.type);
+    expect(kinds).toContain('linkReference');
+    expect(kinds).toContain('footnoteReference');
+  });
+
+  it('an open fence inside a ranged quote keeps its own text when definitions exist elsewhere', () => {
+    const text = '[r1]: https://ref.example/1\n\n> see [r1] in ta*bext\n>\n> ```\n> code [r1]\n';
+    const none = splitBlocksViaRoobli(text, { enrich: 'none' });
+    const bulk = splitBlocksViaRoobli(text, { enrich: 'bulk' });
+    const last = none.spans.length - 1;
+    const ranged = enrichSpansInRange(none.spans, text, { from: last, to: last + 1 });
+    const strip = (value: unknown): unknown => JSON.parse(JSON.stringify(value, (key, v) => (key === 'position' ? undefined : v)));
+    expect(strip(ranged[last]!.node)).toEqual(strip(bulk.spans[last]!.node));
+    expect(JSON.stringify(ranged[last]!.node)).not.toContain(': #');
+  });
 });

@@ -48,14 +48,13 @@ const BLOCKS: readonly ((i: number) => string)[] = [
   (i) => `| a | b |\n| --- | --- |\n| ${i} | ${i + 1} |`,
   (i) => `\`\`\`ts\nconst v${i} = ${i};\n\`\`\``,
   (i) => `$$\n\\sum_{k=0}^{${i}} k\n$$`,
-  // Footnote references are left out for the same reason as reference links
-  // (known issue below); definitions on their own are fine.
+  // References to these definitions are covered by the focused tests below
+  // rather than the random corpus; definitions on their own are fine.
   (i) => `[^n${i}]: The note ${i}.`,
   (i) => `> [!NOTE]\n> callout ${i}`,
   (i) => `1. one ${i}\n2. two ${i}`,
   // Shapes the engine does not own: these open as structural stand-ins and
   // wait for background dialect enrichment.
-  // Reference links are left out on purpose: see the known-issue test below.
   (i) => `See <https://auto.example/${i}>, <kbd>K${i}</kbd> and ![img](a${i}.png "t").`,
   (i) => `> quote ${i} with a list\n>\n> - a\n> - **b** *c*`,
   (i) => `- item ${i}\n\n  \`\`\`\n  code ${i}\n  \`\`\`\n\n- after`,
@@ -400,10 +399,6 @@ describe('background enrichment after a save', () => {
 });
 
 describe('known issue (not a save bug)', () => {
-  // A paragraph the engine does not own is enriched on its own, without the
-  // document's link definitions, so `[text][label]` defined in another block
-  // re-parses as literal text. The saved bytes are correct; reopening shows
-  // the brackets. Tracked separately; flip to `it` once fixed.
   // `***a _b_ c***` with an edit inside re-serializes ambiguously and reads
   // back as different emphasis (seen with seed 4: "nested" -> "neste").
   it.fails('nested emphasis inside strong emphasis survives an edit', () => {
@@ -425,8 +420,12 @@ describe('known issue (not a save bug)', () => {
     save(h);
     expect(fullDoc(h.saved).childCount).toBe(2);
   });
+});
 
-  it.fails('a footnote reference in a dialect-enriched paragraph resolves its definition', () => {
+describe('references in a paragraph the engine does not own', () => {
+  // Such a paragraph is enriched on its own; definitions in other blocks must
+  // still resolve, as they do in a whole-file parse.
+  it('a footnote reference in a dialect-enriched paragraph resolves its definition', () => {
     const text = 'Footnote ref[^n1] in ta*bext.\n\n[^n1]: The note.\n';
     let found = false;
     fullDoc(text).child(0).descendants((node) => {
@@ -435,7 +434,7 @@ describe('known issue (not a save bug)', () => {
     expect(found).toBe(true);
   });
 
-  it.fails('a reference link in a dialect-enriched paragraph resolves its definition', () => {
+  it('a reference link in a dialect-enriched paragraph resolves its definition', () => {
     const text = 'See [ref][r1], [htt#ps://a.example/1](https://a.example/1).\n\n[r1]: https://ref.example/1\n';
     const first = fullDoc(text).child(0);
     let linked = false;
