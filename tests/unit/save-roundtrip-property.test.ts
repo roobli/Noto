@@ -388,6 +388,20 @@ describe('save edge cases found by the property test', () => {
     v2.dispatch(v2.state.tr.insertText('Back', blockStart(v2.state.doc, 1) + 1));
     expect(save(h)).toBe('# T\n\nBack\n\nTwo.\n');
   });
+
+  it('a typed star stays a literal star', () => {
+    const h = openTracked('On *nix, *emph* text.\n');
+    const typeAfter = (before: string, text: string) => {
+      const v = view(h);
+      const at = blockStart(v.state.doc, 0) + 1 + v.state.doc.child(0).textContent.indexOf(before) + before.length;
+      v.dispatch(v.state.tr.insertText(text, at));
+    };
+    // At the end of the emphasis the typed text joins it.
+    typeAfter('emph', 'a*b');
+    typeAfter('text', ' a*b');
+    expect(save(h)).toBe('On *nix, *empha\\*b* text a\\*b.\n');
+    expectSavedMatchesEditor(h, 'typed star');
+  });
 });
 
 describe('background enrichment after a save', () => {

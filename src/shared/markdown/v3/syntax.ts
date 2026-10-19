@@ -190,6 +190,8 @@ const VERBATIM_RUN = new RegExp(
      * an emphasis node, so the text handler never sees its delimiters. What it
      * does see is a star that CommonMark left literal, and the serializer then
      * escaped "just in case", rewriting every `*nix` in an edited heading.
+     * Only where the star cannot pair with another: see `bareStarStaysLiteral`.
+     * Keep this the only alternative that starts with a star.
      */
     `\\*[A-Za-z][A-Za-z0-9.+_-]*`,
   ].join('|'),
@@ -305,6 +307,29 @@ const hardBreakAsTwoSpaces: ToMarkdownOptions = {
 };
 
 /**
+ * Whether a `*nix` run can be written with its star bare.
+ *
+ * A star followed by a letter can always open emphasis. It is still literal if
+ * nothing pairs with it, and outside a starred span nothing else can: every
+ * other literal star is escaped, and a real span's closer pairs with its own
+ * opener. So it is safe exactly when it cannot close. It can when a letter or
+ * digit sits before it: `a\*b\*c` was saved as `a*b*c` and came back as
+ * emphasis on `b`. Inside emphasis or strong, which this dialect writes with
+ * stars, it pairs with the span's own delimiters: `*see a\*b*` was saved as
+ * `*see a*b*` and came back as emphasis on `see a` and a literal `b*`.
+ *
+ * So the star stays bare only after whitespace, ASCII punctuation or the start
+ * of the text, and only outside a starred span; everywhere else it takes the
+ * serializer's escape like any other literal star. Other Unicode punctuation
+ * is left out on purpose, because the CJK-friendly flanking rules let a star
+ * after CJK punctuation close.
+ */
+function bareStarStaysLiteral(previous: string, stack: readonly string[]): boolean {
+  if (stack.includes('emphasis') || stack.includes('strong')) return false;
+  return previous === '' || /[\s!-\/:-@\[-`{-~]/.test(previous);
+}
+
+/**
  * Emit a string with the dialect's verbatim runs left alone.
  *
  * Shared by the text handler and the image handler: an image alt is not a
@@ -313,7 +338,10 @@ const hardBreakAsTwoSpaces: ToMarkdownOptions = {
  */
 function emitWithVerbatimRuns(
   value: string,
-  state: { safe: (value: string, info: { before: string; after: string }) => string },
+  state: {
+    safe: (value: string, info: { before: string; after: string }) => string;
+    stack: readonly string[];
+  },
   info: { before: string; after: string },
 ): string {
   VERBATIM_RUN.lastIndex = 0;
@@ -334,6 +362,15 @@ function emitWithVerbatimRuns(
   for (;;) {
     const match = VERBATIM_RUN.exec(value);
     if (match === null) break;
+    if (match[0].startsWith('*')) {
+      const previous = match.index > 0 ? value[match.index - 1]! : info.before.slice(-1);
+      if (!bareStarStaysLiteral(previous, state.stack)) {
+        // Leave the star to the ordinary segment, and let the rest of the run
+        // still match on its own (`a*b_c` keeps `b_c` whole).
+        VERBATIM_RUN.lastIndex = match.index + 1;
+        continue;
+      }
+    }
     if (match.index > last) {
       out += state.safe(value.slice(last, match.index), {
         ...info,
@@ -345,7 +382,7 @@ function emitWithVerbatimRuns(
     last = match.index + match[0].length;
   }
   if (last < value.length) {
-    out += state.safe(value.slice(last), { ...info, before: ']' });
+    out += state.safe(value.slice(last), { ...info, before: last === 0 ? info.before : ']' });
   }
   return out;
 }
@@ -367,7 +404,7 @@ const verbatimRunsInText: ToMarkdownOptions = {
       state.safe = ((value: string, safeInfo: { before: string; after: string }) => {
         // Only the alt is passed with `after: ']'` immediately after `![`.
         if (safeInfo.after === ']' && safeInfo.before.endsWith('![')) {
-          return emitWithVerbatimRuns(value, { safe: original }, safeInfo);
+          return emitWithVerbatimRuns(value, { safe: original, stack: state.stack }, safeInfo);
         }
         return original(value, safeInfo);
       }) as typeof state.safe;
