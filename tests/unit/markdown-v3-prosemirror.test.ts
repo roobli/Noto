@@ -271,6 +271,31 @@ describe('what the serializer must not escape', () => {
   });
 });
 
+describe('a literal star glued to a word', () => {
+  // Every star in these is literal. Editing the block must not turn any of
+  // them into emphasis, so each one written bare has to be one that cannot pair.
+  it('stays literal when it could close', () => {
+    expect(roundTrip('*nix and a\\*b')).toBe('*nix and a\\*b');
+    expect(roundTrip('a\\*b\\*c')).toBe('a\\*b\\*c');
+    // CJK-friendly flanking lets a star after a CJK character close.
+    expect(roundTrip('漢\\*nix 字\\*BSD')).toBe('漢\\*nix 字\\*BSD');
+  });
+
+  it('stays literal inside emphasis and strong, which are written with stars', () => {
+    expect(roundTrip('*see a\\*b* here')).toBe('*see a\\*b* here');
+    expect(roundTrip('*on \\*nix*')).toBe('*on \\*nix*');
+    expect(roundTrip('**on \\*nix**')).toBe('**on \\*nix**');
+  });
+
+  it('keeps the rest of the text escaped as it was', () => {
+    // The star takes the escape; the identifier after it is still left whole.
+    expect(roundTrip('a\\*b_c d')).toBe('a\\*b_c d');
+    // With its only run skipped, the text is escaped from the paragraph's own
+    // start, where `1.` must stay escaped or it opens a list.
+    expect(roundTrip('1\\. a\\*b')).toBe('1\\. a\\*b');
+  });
+});
+
 describe('a table, written back', () => {
   it('keeps the three dashes and the unpadded cells the vault writes', () => {
     const plain = '| 字段 | 值 |\n| --- | --- |\n| a | 1 |';

@@ -16,6 +16,10 @@ How releases are made, and what each channel receives, is in
 - In a long note, editing a block before it had finished loading, or using
   Replace All, no longer saves its formatting as escaped characters
   (`***bold***` turning into `\*\*\*bold\*\*\*`).
+- A literal star after a letter (`a*b*c`) or inside italic or bold text,
+  whether typed or already escaped in the file, no longer turns text into
+  italics when the paragraph is edited and saved. Such a star is now written
+  escaped (`a\*b\*c`).
 
 ## [0.0.3] - 2026-10-17
 
