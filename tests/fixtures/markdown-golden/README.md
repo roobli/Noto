@@ -27,6 +27,7 @@ blocks (`tests/unit/serialize-oracle.ts`).
 | `hr-setext.md` | setext `===` heading + thematic breaks (`***` / `---` / `___`) |
 | `simple-setext-dash-headings.md` | setext level-2 (`text` + `---` / `-`) + standalone thematic breaks; closes Phase 15 intentional gap |
 | `link-defs.md` | reference links + link definition blocks |
+| `character-references.md` | named / decimal / hex references in paragraph, heading, list, table, quote, marks and link text (dialect-owned; decoded on read, spelling kept on save); bare `&` that cannot start one; non-references (unknown name, no `;`, escaped, in code) |
 | `trailing-spaces.md` | trailing spaces stripped; soft break (single newline, no hard break) |
 | `simple-quotes.md` | simple `>` quotes (single / continuation / multi-para / indent / trailing spaces / CJK); no nested, lists, or callouts |
 | `simple-nested-quotes.md` | nested plain `>` quotes (any reasonable depth; sibling nests; blank separators); no callouts, lists-in-quotes, marks, or lazy continuations |

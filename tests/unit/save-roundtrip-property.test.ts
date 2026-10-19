@@ -11,7 +11,7 @@
  */
 import { afterEach, describe, expect, it } from 'vitest';
 import { TextSelection } from 'prosemirror-state';
-import { Fragment, type Node as ProseNode } from 'prosemirror-model';
+import { DOMParser, Fragment, type Node as ProseNode } from 'prosemirror-model';
 import { isUnwritableBlock } from '../../src/renderer/editor/noto/capture';
 import { NotoEditor } from '../../src/renderer/editor/noto/NotoEditor';
 import { parseDocument, toWire } from '../../src/shared/markdown/v3/document';
@@ -404,6 +404,33 @@ describe('save edge cases found by the property test', () => {
   });
 });
 
+describe('character references through an edit', () => {
+  it('keep their spelling, and a typed ampersand stays text', () => {
+    const h = openTracked('Tom &amp; Jerry &copy; Q&A.\n\n| a &vert; b | c |\n| --- | --- |\n| &nbsp; | d |\n');
+    const v = view(h);
+    expect(v.state.doc.child(0).textContent).toBe('Tom & Jerry © Q&A.');
+    const end = blockStart(v.state.doc, 0) + v.state.doc.child(0).nodeSize - 1;
+    v.dispatch(v.state.tr.insertText(' Typed &amp; R&D', end));
+    expect(save(h)).toBe('Tom &amp; Jerry &copy; Q&A. Typed \\&amp; R&D\n\n| a &vert; b | c |\n| --- | --- |\n| &nbsp; | d |\n');
+    expectSavedMatchesEditor(h, 'character references');
+  });
+
+  it('a pasted reference keeps its spelling only when it is one', () => {
+    const v = view(openTracked('x\n'));
+    const parse = (html: string) => {
+      const host = document.createElement('div');
+      host.innerHTML = html;
+      return DOMParser.fromSchema(v.state.schema).parse(host);
+    };
+    const kept = parse('<p>a<span class="noto-character-reference" data-source="&amp;amp;">&amp;</span>b</p>');
+    expect(kept.firstChild?.child(1).type.name).toBe('character_reference');
+    expect(kept.firstChild?.child(1).attrs.source).toBe('&amp;');
+    const forged = parse('<p><span class="noto-character-reference" data-source="**x**">&amp;</span></p>');
+    expect(forged.firstChild?.firstChild?.isText).toBe(true);
+    expect(forged.textContent).toBe('&');
+  });
+});
+
 describe('background enrichment after a save', () => {
   it('does not overwrite an edited neighbour of a still-deferred block', { timeout: 60_000 }, () => {
     const h = openTracked(corpus(BIG));
@@ -449,6 +476,19 @@ describe('background enrichment after a save', () => {
     expect(h.saved).not.toContain('\\*\\*\\*');
     expect(strongText(fullDoc(h.saved).child(k))).toMatch(/both \d+/);
     expectSavedMatchesEditor(h, 'deferred block edit');
+  });
+
+  it('an edit inside a still-deferred block keeps its character references', { timeout: 60_000 }, () => {
+    // The engine leaves a block with a reference to the dialect, so in a large
+    // note it opens as a stand-in showing its raw markdown.
+    const text = `${corpus(BIG)}\nTom &amp; Jerry &copy; Q&A.\n`;
+    const h = openTracked(text);
+    const k = firstDeferredStandIn(h, 1500, 'Tom &amp;');
+    placeCaretAtBlockStart(h, k);
+    expect(view(h).state.doc.child(k).textContent).toBe('Tom & Jerry © Q&A.');
+    typeAtCaret(h, 'EDITED ');
+    expect(save(h).endsWith('\n\nEDITED Tom &amp; Jerry &copy; Q&A.\n')).toBe(true);
+    expectSavedMatchesEditor(h, 'deferred reference edit');
   });
 
   it('keeps enriching while the document is dirty, and undo still reads as clean', { timeout: 60_000 }, () => {

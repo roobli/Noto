@@ -372,8 +372,7 @@ describe('dialect decisions that stay', () => {
 
   it('strips leading spaces instead of writing a character reference', () => {
     // Deleting a paragraph's first word leaves a leading space. Written as
-    // `&#x20;` it reopened as literal text, because character references are
-    // kept verbatim on read.
+    // `&#x20;`, it is a reference to a space nobody can see, in the file.
     const schema = blockFromSpan(splitBlocks('x\n').spans[0]).type.schema;
     const paragraph = schema.node('paragraph', null, schema.text(' and a word'));
     expect(blockToMarkdown(paragraph)).toBe('and a word');

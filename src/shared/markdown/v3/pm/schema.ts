@@ -13,6 +13,7 @@
 
 import { Schema, type MarkSpec, type NodeSpec } from 'prosemirror-model';
 import { tableNodes } from 'prosemirror-tables';
+import { isCharacterReferenceShape } from '../syntax';
 
 /**
  * The table nodes, with one attribute of our own on the table itself.
@@ -269,6 +270,33 @@ const nodes: Record<string, NodeSpec> = {
     atom: true,
     attrs: { value: { default: '' } },
     toDOM: (node) => ['span', { class: 'noto-inline-html' }, node.attrs.value],
+  },
+
+  /**
+   * A character reference such as `&amp;` or `&nbsp;`: the character it stands
+   * for on screen, and the spelling the file wrote it with on save.
+   *
+   * One atom rather than its character as text, because the character alone
+   * cannot say how it was written, and an edited paragraph is written from
+   * this tree. The caret steps over it as one character and a backspace
+   * removes it whole.
+   */
+  character_reference: {
+    group: 'inline',
+    inline: true,
+    atom: true,
+    attrs: { source: { default: '' }, value: { default: '' } },
+    leafText: (node) => node.attrs.value as string,
+    parseDOM: [{
+      tag: 'span.noto-character-reference[data-source]',
+      // The spelling is written to the file as it is, so a pasted one has to
+      // be a reference; anything else arrives as its text.
+      getAttrs: (dom) => {
+        const source = (dom as HTMLElement).dataset.source ?? '';
+        return isCharacterReferenceShape(source) ? { source, value: dom.textContent ?? '' } : false;
+      },
+    }],
+    toDOM: (node) => ['span', { class: 'noto-character-reference', 'data-source': node.attrs.source }, node.attrs.value],
   },
 
   math_inline: {
