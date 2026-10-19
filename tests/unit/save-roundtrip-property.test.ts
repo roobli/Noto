@@ -326,6 +326,38 @@ function firstDeferredIndex(h: Harness, from = 0): number {
   return -1;
 }
 
+/** The text of `block` that carries strong emphasis. */
+function strongText(block: ProseNode): string {
+  let text = '';
+  block.descendants((node) => {
+    if (node.isText && node.marks.some((mark) => mark.type.name === 'strong')) text += node.text;
+  });
+  return text;
+}
+
+/** First still-deferred block at or after `from` whose text contains `needle`. */
+function firstDeferredStandIn(h: Harness, from: number, needle: string): number {
+  const flags = deferredFlags(h);
+  const doc = view(h).state.doc;
+  for (let i = from; i < flags.length; i += 1) {
+    if (flags[i] === 0 && doc.child(i).textContent.includes(needle)) return i;
+  }
+  throw new Error(`no deferred block with ${needle} after ${from}`);
+}
+
+/** Put the caret at the start of block `index`, as a click does: its own transaction. */
+function placeCaretAtBlockStart(h: Harness, index: number): void {
+  const v = view(h);
+  const pos = textPosIn(v.state.doc, index, () => 0);
+  if (pos === null) throw new Error(`block ${index} has no text`);
+  v.dispatch(v.state.tr.setSelection(TextSelection.create(v.state.doc, pos)));
+}
+
+function typeAtCaret(h: Harness, text: string): void {
+  const v = view(h);
+  v.dispatch(v.state.tr.insertText(text));
+}
+
 function insertAtBlockStart(h: Harness, index: number, text: string): void {
   const v = view(h);
   const pos = textPosIn(v.state.doc, index, () => 0);
@@ -388,13 +420,48 @@ describe('background enrichment after a save', () => {
   });
 
   it('saving an edit inside a still-deferred block keeps its markdown', { timeout: 60_000 }, () => {
-    const h = openTracked(corpus(BIG));
-    const k = firstDeferredIndex(h, 1500);
-    const original = view(h).state.doc.child(k).textContent;
-    insertAtBlockStart(h, k, 'EDITED ');
+    const text = corpus(BIG);
+    const h = openTracked(text);
+    const k = firstDeferredStandIn(h, 1500, '***both');
+    // A caret placed in the stand-in enriches it before the keystroke lands.
+    placeCaretAtBlockStart(h, k);
+    expect(deferredFlags(h)[k]).toBe(1);
+    typeAtCaret(h, 'EDITED ');
+    // The swap kept the caret in its block.
+    expect(view(h).state.doc.child(k).textContent).toContain('EDITED');
     save(h);
+    // The block's emphasis is still markdown, not escaped literal asterisks.
+    expect(h.saved).toContain('EDITED');
+    expect(h.saved).not.toContain('\\*\\*\\*');
+    expect(strongText(fullDoc(h.saved).child(k))).toMatch(/both \d+/);
     expectSavedMatchesEditor(h, 'deferred block edit');
-    expect(original.length).toBeGreaterThan(0);
+  });
+
+  it('keeps enriching while the document is dirty, and undo still reads as clean', { timeout: 60_000 }, () => {
+    const h = openTracked(corpus(BIG));
+    insertAtBlockStart(h, 0, 'EDITED ');
+    expect(h.editor.isDirty).toBe(true);
+    const before = deferredController(h)!.deferredCount();
+    expect(before).toBeGreaterThan(0);
+    drainEnrichment(h);
+    expect(deferredController(h)!.deferredCount()).toBe(0);
+    expect(h.editor.isDirty).toBe(true);
+    // The baseline followed the swaps, so undoing the one edit is clean again.
+    while (h.editor.history('undo')) { /* drain */ }
+    expect(h.editor.isDirty).toBe(false);
+  });
+
+  it('replace all edits real nodes, not markdown shown as text', { timeout: 60_000 }, () => {
+    const h = openTracked(corpus(BIG));
+    expect(deferredController(h)!.deferredCount()).toBeGreaterThan(0);
+    const found = h.editor.search({ query: 'both', caseSensitive: true, wholeWord: false, regex: false });
+    expect(deferredController(h)!.deferredCount()).toBe(0);
+    expect(found.matches).toBeGreaterThan(100);
+    expect(h.editor.replace('BOTH', 'all')).toBe(found.matches);
+    save(h);
+    expect(h.saved).toContain('***BOTH 16***');
+    expect(h.saved).not.toContain('\\*\\*\\*');
+    expectSavedMatchesEditor(h, 'replace all');
   });
 });
 

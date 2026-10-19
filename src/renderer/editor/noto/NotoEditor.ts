@@ -26,7 +26,7 @@ import { history, redo, undo } from 'prosemirror-history';
 import { dropCursor } from 'prosemirror-dropcursor';
 import { gapCursor } from 'prosemirror-gapcursor';
 import { columnResizing, tableEditing } from 'prosemirror-tables';
-import type { Node as ProseNode } from 'prosemirror-model';
+import { Fragment, type Node as ProseNode } from 'prosemirror-model';
 import { notoSchema } from '../../../shared/markdown/v3/pm/schema';
 import { blockFromSpan, blocksFromSpans, docFromSpans } from '../../../shared/markdown/v3/pm/from-mdast';
 import {
@@ -220,6 +220,8 @@ export class NotoEditor implements NotoEditorPort {
    * enrichment replaces one only while it is still this exact object.
    */
   private enrichSources: (ProseNode | null)[] | null = null;
+  /** The opened index of each node still in `enrichSources`. */
+  private enrichIndex = new Map<ProseNode, number>();
   /** Document text the deferred open's spans were split from. */
   private enrichText: string | null = null;
   /**
@@ -595,6 +597,7 @@ export class NotoEditor implements NotoEditorPort {
     // moment lands where the caret was.
     this.host.dataset.caret = String(this.view?.state.selection.from ?? 0);
     this.reportActiveBlock();
+    if (transaction.getMeta(ENRICH_META) !== true) this.enrichAtSelection();
     if (!transaction.docChanged) return;
     // Background enrichment swaps a stand-in for the real node of the same
     // bytes. Not an edit: not dirty, no autosave, top-level nodes keep their
@@ -699,10 +702,6 @@ export class NotoEditor implements NotoEditorPort {
   /** Host surface for `DeferredViewportEnrichController`. */
   getView(): EditorView | null {
     return this.view;
-  }
-
-  isDirtyNow(): boolean {
-    return this.dirty;
   }
 
   get isComposing(): boolean {
@@ -852,6 +851,7 @@ export class NotoEditor implements NotoEditorPort {
   search(options: SearchOptions): { matches: number; active: number } {
     const view = this.view;
     if (!view) return { matches: 0, active: -1 };
+    this.enrichEverywhere();
     view.dispatch(setSearch(view.state.tr, { options }));
     const state = getSearchState(view.state);
     return { matches: state.matches.length, active: state.active };
@@ -871,6 +871,9 @@ export class NotoEditor implements NotoEditorPort {
   replace(replacement: string, scope: 'one' | 'all'): number {
     const view = this.view;
     if (!view) return 0;
+    // Normally done when the query was set; a stand-in may have appeared since
+    // (a reload), and replacing inside one would save its markdown escaped.
+    this.enrichEverywhere();
     const before = getSearchState(view.state).matches.length;
     const transaction = scope === 'all'
       ? replaceAll(view.state, replacement)
@@ -1342,6 +1345,7 @@ export class NotoEditor implements NotoEditorPort {
     this.deferredEnrich?.destroy();
     this.deferredEnrich = null;
     this.enrichSources = null;
+    this.enrichIndex = new Map();
     if (!this.view || remainderFrom >= spans.length) return;
     const controller = new DeferredViewportEnrichController(this, {
       spans,
@@ -1353,7 +1357,11 @@ export class NotoEditor implements NotoEditorPort {
     const sources = new Array<ProseNode | null>(spans.length).fill(null);
     const doc = this.view.state.doc;
     if (doc.childCount === spans.length) {
-      for (let index = remainderFrom; index < spans.length; index += 1) sources[index] = doc.child(index);
+      for (let index = remainderFrom; index < spans.length; index += 1) {
+        const node = doc.child(index);
+        sources[index] = node;
+        this.enrichIndex.set(node, index);
+      }
     }
     this.enrichSources = sources;
     this.enrichText = this.document.text;
@@ -1373,12 +1381,15 @@ export class NotoEditor implements NotoEditorPort {
    * block-count change stopped enrichment for good.)
    *
    * The replacement is not an edit: it does not mark the document dirty, and
-   * the clean baseline, pristine nodes and accepted nodes follow it. No-op
-   * while dirty, while composing, or when the editor was torn down.
+   * the clean baseline, pristine nodes and accepted nodes follow it. It runs
+   * while the document is dirty too, because a stand-in left in place is raw
+   * markdown shown as text, and an edit to it saved that markdown escaped. A
+   * caret inside a swapped block stays inside it. No-op while composing or
+   * when the editor was torn down.
    */
   applyDialectEnrichedSpans(spans: readonly BlockSpan[], window?: EnrichPmWindow): boolean {
     const view = this.view;
-    if (!view || this.dirty || view.composing) return false;
+    if (!view || view.composing) return false;
     const sources = this.enrichSources;
     if (!sources || sources.length !== spans.length) return false;
     const from = Math.max(0, Math.min(window?.from ?? 0, spans.length));
@@ -1401,6 +1412,7 @@ export class NotoEditor implements NotoEditorPort {
         const source = sources[opened];
         if (!source) continue;
         sources[opened] = null;
+        this.enrichIndex.delete(source);
         const index = indexOf.get(source);
         if (index === undefined) continue;
         replacements.push({ index, source, node: blockFromSpan(spans[opened]!) });
@@ -1410,7 +1422,8 @@ export class NotoEditor implements NotoEditorPort {
     // and nothing left to retry.
     if (replacements.length === 0) return true;
 
-    if (this.document.text === this.enrichText) {
+    // While dirty, the structural split no longer describes the editor.
+    if (!this.dirty && this.document.text === this.enrichText) {
       this.priorSplit.seedFromSpans(this.document.text, spans);
     }
 
@@ -1420,13 +1433,19 @@ export class NotoEditor implements NotoEditorPort {
       const at = offsets[index]!;
       tr.replaceWith(at, at + source.nodeSize, node);
     }
+    keepSelectionInSwappedBlocks(tr, view.state.selection, replacements.map(({ index, source }) => ({
+      from: offsets[index]!,
+      size: source.nodeSize,
+    })));
     tr.setMeta('addToHistory', false).setMeta(ENRICH_META, true);
     view.dispatch(tr);
 
     const origins = getBlockOrigins(view.state);
     const next = view.state.doc;
+    const swapped = new Map<ProseNode, ProseNode>();
     for (const { index, source } of replacements) {
       const node = next.child(index);
+      swapped.set(source, node);
       const origin = origins[index];
       const previous = origin ? this.pristine.get(origin.blockId) : undefined;
       // Same block, same bytes: only the node that stands for them changed.
@@ -1435,9 +1454,52 @@ export class NotoEditor implements NotoEditorPort {
       }
       if (this.acceptedNodes[index] === source) this.acceptedNodes[index] = node;
     }
-    // Not dirty (checked above), so the document on screen is the baseline.
-    this.baselineDoc = next;
+    if (!this.dirty) {
+      // The document on screen is the baseline.
+      this.baselineDoc = next;
+    } else {
+      // The baseline holds the same stand-ins, wherever the edits left them;
+      // swap them there too, so undoing back to it still reads as clean.
+      let changed = false;
+      const children: ProseNode[] = [];
+      this.baselineDoc.forEach((node) => {
+        const replacement = swapped.get(node);
+        if (replacement) changed = true;
+        children.push(replacement ?? node);
+      });
+      if (changed) this.baselineDoc = this.baselineDoc.copy(Fragment.from(children));
+    }
     return true;
+  }
+
+  /**
+   * Enrich the stand-ins the selection touches, before anything can edit
+   * them. An edit to a stand-in is an edit to its raw markdown shown as text,
+   * which saves escaped. Called after every transaction, so it must stay cheap
+   * when the selection is not in one: two map lookups.
+   */
+  private enrichAtSelection(): void {
+    const view = this.view;
+    const controller = this.deferredEnrich;
+    if (!view || !controller || view.composing || this.enrichIndex.size === 0) return;
+    const { $from, $to } = view.state.selection;
+    const doc = view.state.doc;
+    for (const index of new Set([$from.index(0), $to.index(0)])) {
+      if (index >= doc.childCount) continue;
+      const opened = this.enrichIndex.get(doc.child(index));
+      if (opened !== undefined) controller.enrichNow(opened, opened + 1);
+    }
+  }
+
+  /**
+   * Enrich every remaining stand-in now. Find and replace edit text anywhere
+   * in the document, so its matches must be found in, and replaced in, the
+   * real nodes rather than in raw markdown shown as text.
+   */
+  private enrichEverywhere(): void {
+    const sources = this.enrichSources;
+    if (!sources || this.enrichIndex.size === 0) return;
+    this.deferredEnrich?.enrichNow(0, sources.length);
   }
 
   /**
@@ -1474,6 +1536,7 @@ export class NotoEditor implements NotoEditorPort {
     this.deferredEnrich?.destroy();
     this.deferredEnrich = null;
     this.enrichSources = null;
+    this.enrichIndex = new Map();
     if (this.countTimer !== null) clearTimeout(this.countTimer);
     this.countTimer = null;
     this.view?.destroy();
@@ -1533,3 +1596,35 @@ export function alignSavedBlocks(doc: ProseNode, blockCount: number): (number | 
 }
 
 export { notoSchema };
+
+/**
+ * After `tr` replaced whole top-level blocks (`swapped`, positions in the
+ * document before it), keep an end of `selection` that sat inside one of them
+ * inside its replacement, at the same offset clamped to the new block. The
+ * default mapping sends such a position past the replaced block, which moved
+ * the caret out of the paragraph it was in.
+ */
+function keepSelectionInSwappedBlocks(
+  tr: Transaction,
+  selection: Selection,
+  swapped: readonly { readonly from: number; readonly size: number }[],
+): void {
+  if (!(selection instanceof TextSelection)) return;
+  const place = (pos: number): number | null => {
+    for (const block of swapped) {
+      if (pos <= block.from || pos >= block.from + block.size) continue;
+      const start = tr.mapping.map(block.from, -1);
+      const node = tr.doc.nodeAt(start);
+      if (!node) return null;
+      return Math.max(start + 1, Math.min(start + (pos - block.from), start + node.nodeSize - 1));
+    }
+    return null;
+  };
+  const anchor = place(selection.anchor);
+  const head = place(selection.head);
+  if (anchor === null && head === null) return;
+  tr.setSelection(TextSelection.between(
+    tr.doc.resolve(anchor ?? tr.mapping.map(selection.anchor)),
+    tr.doc.resolve(head ?? tr.mapping.map(selection.head)),
+  ));
+}
