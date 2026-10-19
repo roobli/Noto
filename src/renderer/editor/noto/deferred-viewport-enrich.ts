@@ -11,8 +11,13 @@
  * 3. Each tick passes the enriched window to the host for an incremental PM
  *    patch (avoid full `EditorState` rebuild per tick).
  *
- * Flagged `@roobli/md` only. Does not flip product default. No-ops once dirty
- * so typing is never clobbered (same contract as `applyDialectEnrichedSpans`).
+ * Enrichment keeps running while the document is dirty: the host swaps a
+ * stand-in only while it is still the very node open created, so an edited
+ * block is never replaced. It has to keep running, because an edit made to a
+ * stand-in would be an edit to raw markdown shown as text, and saving that
+ * escapes the markdown (`***a***` became `\*\*\*a\*\*\*`). The host enriches the
+ * block under the caret, and the whole document before find and replace, with
+ * `enrichNow` so that no edit ever lands in a stand-in.
  */
 
 import type { EditorView } from 'prosemirror-view';
@@ -24,6 +29,7 @@ import {
   createEnrichFlags,
   enrichNextDeferredInRange,
   enrichRangeFromVisibleInclusive,
+  nextDeferredEnrichWindow,
   nextDeferredEnrichWindowFrom,
 } from '../../../shared/markdown/v3/roobli-md-adapter';
 import {
@@ -35,7 +41,6 @@ import {
 
 export interface DeferredViewportEnrichHost {
   getView(): EditorView | null;
-  isDirtyNow(): boolean;
   /**
    * Swap in the enriched window. Returning false means nothing was applied
    * (for example mid-composition), so the window stays deferred and is
@@ -137,6 +142,23 @@ export class DeferredViewportEnrichController {
     return this.applyEnrichWindow(from, toExclusive);
   }
 
+  /**
+   * Enrich every stand-in in `[from, toExclusive)` (opened indexes) now,
+   * one budget-sized window at a time. Returns false when one could not be
+   * applied (mid-composition, or re-entered while a window is applying), so
+   * the range may still hold stand-ins.
+   */
+  enrichNow(from: number, toExclusive: number): boolean {
+    const to = Math.min(toExclusive, this.spans.length);
+    // Each applied window flips at least one flag, so this terminates; the
+    // bound only guards against a host that reports success without applying.
+    for (let guard = 0; guard <= to - from; guard += 1) {
+      if (nextDeferredEnrichWindow(this.flags, from, to, OPEN_VIEWPORT_ENRICH_BUDGET) === null) return true;
+      if (!this.applyEnrichWindow(from, to)) return false;
+    }
+    return nextDeferredEnrichWindow(this.flags, from, to, OPEN_VIEWPORT_ENRICH_BUDGET) === null;
+  }
+
   private ensureScroll(): void {
     const view = this.host.getView();
     if (!view) return;
@@ -163,7 +185,7 @@ export class DeferredViewportEnrichController {
 
   private enrichVisible(): void {
     const view = this.host.getView();
-    if (!view || this.destroyed || this.host.isDirtyNow()) return;
+    if (!view || this.destroyed) return;
     const visible = resolveEnrichVisibleRange(view);
     if (!visible) return;
     const range = enrichRangeFromVisibleInclusive(
@@ -182,7 +204,7 @@ export class DeferredViewportEnrichController {
     if (countDeferredFlags(this.flags) === 0) return;
     this.idleHandle = scheduleIdle(() => {
       this.idleHandle = null;
-      if (this.destroyed || this.host.isDirtyNow()) return;
+      if (this.destroyed) return;
       const window = nextDeferredEnrichWindowFrom(this.flags, 0, OPEN_VIEWPORT_ENRICH_BUDGET);
       if (!window) return;
       this.applyEnrichWindow(window.from, window.to);
@@ -191,7 +213,7 @@ export class DeferredViewportEnrichController {
   }
 
   private applyEnrichWindow(from: number, toExclusive: number): boolean {
-    if (this.destroyed || this.host.isDirtyNow() || this.applying) return false;
+    if (this.destroyed || this.applying) return false;
     const result = enrichNextDeferredInRange(this.spans, this.text, this.flags, {
       from,
       to: toExclusive,
