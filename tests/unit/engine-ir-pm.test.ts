@@ -77,6 +77,18 @@ describe('from-engine IR helpers', () => {
     expect(needsDialectInlineInQuote('plain')).toBe(false);
   });
 
+  it('leaves a block that may hold a character reference to the dialect', () => {
+    // The engine would read `&amp;` as five characters; mdast decodes it.
+    expect(canSkipDialectEnrich('paragraph', 'Tom &amp; Jerry')).toBe(false);
+    expect(canSkipDialectEnrich('heading', '# &copy; 2026')).toBe(false);
+    expect(canSkipDialectEnrich('table', '| &#35; | b |\n| --- | --- |\n| 1 | 2 |')).toBe(false);
+    expect(blockFromEngineSpan('paragraph', 'Tom &amp; Jerry')).toBeNull();
+    // An ampersand that cannot start one, and leaf blocks, which never decode.
+    expect(canSkipDialectEnrich('paragraph', 'Q&A and AT&T')).toBe(true);
+    expect(canSkipDialectEnrich('fenced-code', '```\n&amp;\n```')).toBe(true);
+    expect(canSkipDialectEnrich('html', '<p>&amp;</p>')).toBe(true);
+  });
+
   it('canSkipDialectEnrich for leaf + plain phrasing + simple/nested quote + lists-in-quotes + flat/nested list + table + footnote', () => {
     expect(canSkipDialectEnrich('fenced-code', '```js\nx\n```')).toBe(true);
     expect(canSkipDialectEnrich('thematic-break', '---')).toBe(true);

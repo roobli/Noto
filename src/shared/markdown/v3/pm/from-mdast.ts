@@ -118,6 +118,9 @@ function inlineContent(nodes: readonly PhrasingContent[], marks: readonly Mark[]
       case 'html':
         output.push(schema.nodes.inline_html.create({ value: node.value }));
         break;
+      case 'characterReference':
+        output.push(schema.nodes.character_reference.create({ source: node.source, value: node.value }, null, marks));
+        break;
       default:
         // Unknown phrasing content still round trips as its own source text.
         output.push(...textNode(renderMarkdown(node), marks));

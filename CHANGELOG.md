@@ -20,6 +20,13 @@ How releases are made, and what each channel receives, is in
   whether typed or already escaped in the file, no longer turns text into
   italics when the paragraph is edited and saved. Such a star is now written
   escaped (`a\*b\*c`).
+- Character references such as `&amp;`, `&nbsp;`, `&copy;` or `&#35;` now show
+  as the character they stand for instead of as their code, and an edited
+  paragraph saves them as they were written. Editing one used to save
+  `&amp;` as `\&amp;`, which every other app then showed as `&amp;`.
+- An `&` that cannot start a character reference (`Q&A`, or the `&` between a
+  link's query parameters) is no longer saved as `\&` when its paragraph is
+  edited.
 
 ## [0.0.3] - 2026-10-17
 

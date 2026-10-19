@@ -7,7 +7,7 @@
  * builtins, because the renderer runs sandboxed without Node integration.
  */
 
-import { fromMarkdown } from 'mdast-util-from-markdown';
+import { fromMarkdown, type CompileContext, type Extension as FromMarkdownExtension, type Token } from 'mdast-util-from-markdown';
 import { defaultHandlers, toMarkdown, type Options as ToMarkdownOptions } from 'mdast-util-to-markdown';
 import { gfm } from 'micromark-extension-gfm';
 import { cjkFriendlyExtension } from 'micromark-extension-cjk-friendly';
@@ -17,7 +17,27 @@ import { math } from 'micromark-extension-math';
 import { mathFromMarkdown, mathToMarkdown } from 'mdast-util-math';
 import { frontmatter } from 'micromark-extension-frontmatter';
 import { frontmatterFromMarkdown, frontmatterToMarkdown } from 'mdast-util-frontmatter';
-import type { Nodes, Root, RootContent } from 'mdast';
+import type { Literal, Nodes, Root, RootContent } from 'mdast';
+
+/**
+ * A character reference, `&amp;` or `&#35;`, as one node of its own.
+ *
+ * `value` is the character it stands for and `source` is how the file wrote
+ * it. See `characterReferencesAsNodes`.
+ */
+export interface CharacterReference extends Literal {
+  type: 'characterReference';
+  source: string;
+}
+
+declare module 'mdast' {
+  interface PhrasingContentMap {
+    characterReference: CharacterReference;
+  }
+  interface RootContentMap {
+    characterReference: CharacterReference;
+  }
+}
 
 // YAML only. TOML frontmatter has no mdast node type and no meaningful adoption
 // in the editors Noto has to interoperate with.
@@ -68,7 +88,67 @@ export function opensWithFrontmatterFence(text: string): boolean {
   return open !== null && FRONTMATTER_CLOSE.test(text.slice(open[0].length));
 }
 
+/**
+ * The shape of a character reference: `&` and a name, or `#` and a decimal or
+ * hexadecimal code point, then `;`. CommonMark reads it as the character it
+ * stands for.
+ *
+ * Only the shape. Whether `&name;` really is one depends on the HTML entity
+ * table, which only the parser consults; `&Year;` has the shape and is not one.
+ * So a match means a reference may be there, never that one is.
+ */
+const AFTER_REFERENCE_AMPERSAND = '(?:#[0-9]{1,7}|#[xX][0-9a-fA-F]{1,6}|[A-Za-z][A-Za-z0-9]{1,30});';
+const CHARACTER_REFERENCE_SHAPE = new RegExp(`&${AFTER_REFERENCE_AMPERSAND}`);
+const WHOLE_CHARACTER_REFERENCE = new RegExp(`^&${AFTER_REFERENCE_AMPERSAND}$`);
+
+/** An ampersand that cannot start a character reference. */
+const LONE_AMPERSAND = new RegExp(`&(?!${AFTER_REFERENCE_AMPERSAND})`, 'g');
+
+/** Whether `markdown` holds something shaped like a character reference. */
+export function mayHoldCharacterReference(markdown: string): boolean {
+  return markdown.includes('&') && CHARACTER_REFERENCE_SHAPE.test(markdown);
+}
+
+/** Whether `text` is exactly one thing shaped like a character reference. */
+export function isCharacterReferenceShape(text: string): boolean {
+  return WHOLE_CHARACTER_REFERENCE.test(text);
+}
+
+/**
+ * Each character reference stays a node of its own instead of melting into
+ * the text around it.
+ *
+ * mdast decodes `&amp;` into `&` and joins it to its neighbours, which is right
+ * for reading and loses the spelling: an edited paragraph is written from the
+ * tree, so `&amp;` would come back as `&`, `&nbsp;` as an invisible no-break
+ * space and `&lt;b&gt;` as `\<b>`. Typora keeps what the author wrote, and so
+ * does this, by carrying the written form next to the decoded character for the
+ * serializer to put back (`characterReferenceVerbatim`).
+ *
+ * The decoding itself is mdast's: the reference's value is filled in by the
+ * stock handler, on this node rather than on a text node. Strings that are not
+ * phrasing, a link's destination or an image's alt, still read as the decoded
+ * text, because they are built from the values of what is inside them, and
+ * are written back as that text, which reads the same.
+ */
+const characterReferencesAsNodes: FromMarkdownExtension = {
+  enter: {
+    characterReference(this: CompileContext, token: Token) {
+      const node: CharacterReference = { type: 'characterReference', value: '', source: '' };
+      this.enter(node, token);
+    },
+  },
+  exit: {
+    characterReference(this: CompileContext, token: Token) {
+      const node = this.stack[this.stack.length - 1] as unknown as CharacterReference;
+      node.source = this.sliceSerialize(token);
+      this.exit(token);
+    },
+  },
+};
+
 const mdastExtensions = [
+  characterReferencesAsNodes,
   gfmFromMarkdown(),
   mathFromMarkdown(),
   frontmatterFromMarkdown(),
@@ -278,7 +358,8 @@ const bareAutolink: ToMarkdownOptions = {
       ) {
         return node.url;
       }
-      return defaultHandlers.link(node, parent, state, info);
+      // The destination and the title; the link's text is the text handler's.
+      return withSafe(state, withBareAmpersands, () => defaultHandlers.link(node, parent, state, info));
     },
   },
 };
@@ -327,6 +408,54 @@ const hardBreakAsTwoSpaces: ToMarkdownOptions = {
 function bareStarStaysLiteral(previous: string, stack: readonly string[]): boolean {
   if (stack.includes('emphasis') || stack.includes('strong')) return false;
   return previous === '' || /[\s!-\/:-@\[-`{-~]/.test(previous);
+}
+
+type Safe = (value: string, info: { before: string; after: string }) => string;
+
+/**
+ * `safe`, with every ampersand that cannot start a character reference
+ * written bare.
+ *
+ * The serializer escapes any `&` before a letter or `#`, in case it begins a
+ * reference, so editing a paragraph turned `Q&A` into `Q\&A` and the query of
+ * a link, `?p=1&vd_source=…`, into `?p=1\&vd_source=…`; the vault holds the
+ * second in 246 links across 100 notes. Only an `&` followed by the whole
+ * shape of a reference can be read as one, so only that one keeps the escape,
+ * and typing `&amp;` as text still saves as those five characters.
+ *
+ * Each stretch between bare ampersands is escaped with its real neighbours,
+ * so the `&` is what the characters either side of it see.
+ */
+function withBareAmpersands(safe: Safe): Safe {
+  return (value, info) => {
+    if (!value.includes('&')) return safe(value, info);
+    let out = '';
+    let last = 0;
+    for (const match of value.matchAll(LONE_AMPERSAND)) {
+      if (match.index > last) {
+        out += safe(value.slice(last, match.index), { ...info, before: last === 0 ? info.before : '&', after: '&' });
+      }
+      out += '&';
+      last = match.index + 1;
+    }
+    if (last === 0) return safe(value, info);
+    if (last < value.length) out += safe(value.slice(last), { ...info, before: '&' });
+    return out;
+  };
+}
+
+/**
+ * Run a handler with `state.safe` replaced, putting the original back after.
+ */
+function withSafe<T>(state: { safe: Safe }, replacement: (original: Safe) => Safe, run: () => T): T {
+  const original = state.safe;
+  // The serializer's own `safe` reads its state from `this`.
+  state.safe = replacement(original.bind(state));
+  try {
+    return run();
+  } finally {
+    state.safe = original;
+  }
 }
 
 /**
@@ -387,10 +516,26 @@ function emitWithVerbatimRuns(
   return out;
 }
 
+/**
+ * A character reference is written the way the file wrote it.
+ *
+ * The node holds the spelling it was read with (`characterReferencesAsNodes`),
+ * and that spelling is a complete reference, so nothing around it needs
+ * escaping on its account. It reads as an `&` to the text before it.
+ */
+function characterReference(node: CharacterReference): string {
+  return node.source;
+}
+characterReference.peek = (): string => '&';
+
+const characterReferenceVerbatim: ToMarkdownOptions = {
+  handlers: { characterReference },
+};
+
 const verbatimRunsInText: ToMarkdownOptions = {
   handlers: {
     text(node, _parent, state, info) {
-      return emitWithVerbatimRuns(node.value, state, info);
+      return emitWithVerbatimRuns(node.value, { safe: withBareAmpersands(state.safe.bind(state)), stack: state.stack }, info);
     },
     /*
      * An image alt is a plain string, not phrasing, so the text handler never
@@ -399,20 +544,17 @@ const verbatimRunsInText: ToMarkdownOptions = {
      * paragraph holding the image.
      */
     image(node, parent, state, info) {
-      if (!node.alt) return defaultHandlers.image(node, parent, state, info);
-      const original = state.safe.bind(state);
-      state.safe = ((value: string, safeInfo: { before: string; after: string }) => {
-        // Only the alt is passed with `after: ']'` immediately after `![`.
-        if (safeInfo.after === ']' && safeInfo.before.endsWith('![')) {
-          return emitWithVerbatimRuns(value, { safe: original, stack: state.stack }, safeInfo);
-        }
-        return original(value, safeInfo);
-      }) as typeof state.safe;
-      try {
-        return defaultHandlers.image(node, parent, state, info);
-      } finally {
-        state.safe = original;
-      }
+      return withSafe(state, (original) => {
+        const bare = withBareAmpersands(original);
+        return (value, safeInfo) => {
+          // Only the alt is passed with `after: ']'` immediately after `![`.
+          if (safeInfo.after === ']' && safeInfo.before.endsWith('![')) {
+            return emitWithVerbatimRuns(value, { safe: bare, stack: state.stack }, safeInfo);
+          }
+          // The destination and the title.
+          return bare(value, safeInfo);
+        };
+      }, () => defaultHandlers.image(node, parent, state, info));
     },
   },
 };
@@ -483,7 +625,7 @@ const serializerOptions: ToMarkdownOptions = {
     // CommonMark's own flanking rules and, believing the run cannot close,
     // escapes the Chinese character after it into a numeric reference.
     cjkFriendlyToMarkdown(),
-    tablesAsTheVaultWritesThem(tildeOnlyInPairs(gfmToMarkdown({ tablePipeAlign: false }))), mathToMarkdown(), frontmatterToMarkdown(), verbatimRunsInText, listMarkerFromNode, bareAutolink, hardBreakAsTwoSpaces],
+    tablesAsTheVaultWritesThem(tildeOnlyInPairs(gfmToMarkdown({ tablePipeAlign: false }))), mathToMarkdown(), frontmatterToMarkdown(), characterReferenceVerbatim, verbatimRunsInText, listMarkerFromNode, bareAutolink, hardBreakAsTwoSpaces],
 };
 
 /**

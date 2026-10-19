@@ -271,6 +271,77 @@ describe('what the serializer must not escape', () => {
   });
 });
 
+describe('a character reference', () => {
+  function referencesIn(markdown: string): Array<{ source: string; value: string }> {
+    const found: Array<{ source: string; value: string }> = [];
+    pmDoc(markdown).descendants((node) => {
+      if (node.type.name === 'character_reference') found.push({ source: node.attrs.source, value: node.attrs.value });
+    });
+    return found;
+  }
+
+  it('reads as the character it stands for', () => {
+    expect(pmDoc('Tom &amp; Jerry').textContent).toBe('Tom & Jerry');
+    expect(pmDoc('&copy; 2026, &#35;tag and &#x22;q&#x22;').textContent).toBe('© 2026, #tag and "q"');
+    expect(pmDoc('# Head &lt;b&gt;').textContent).toBe('Head <b>');
+    expect(pmDoc('- item &amp; more').textContent).toBe('item & more');
+    expect(pmDoc('> q &amp; r').textContent).toBe('q & r');
+    expect(pmDoc('| a &vert; b | c |\n| --- | --- |\n| &nbsp; | d |').textContent).toBe('a | bc\u00a0d');
+    expect(referencesIn('**Tom &amp; Jerry**')).toEqual([{ source: '&amp;', value: '&' }]);
+  });
+
+  it('is written back the way the file wrote it', () => {
+    for (const markdown of [
+      'Tom &amp; Jerry',
+      '&copy; 2026, &#35;tag and &#x22;q&#x22;',
+      '&nbsp;&nbsp;indented by hand',
+      'A *x* &lt;tag&gt; and &amp;&amp;',
+      '**Tom &amp; Jerry** and [a &amp; b](https://e.test/)',
+      '# Head &amp; x',
+      '| a &vert; b | c |\n| --- | --- |\n| &nbsp; | d |',
+    ]) {
+      expect(roundTrip(markdown), markdown).toBe(markdown);
+    }
+  });
+
+  it('is not one where CommonMark does not read one', () => {
+    // Not a known name, no semicolon, escaped, or inside code: literal text.
+    expect(referencesIn('&notanentity; &amp \\&amp; `&amp;`')).toEqual([]);
+    expect(pmDoc('&amp \\&amp; `&amp;`').textContent).toBe('&amp &amp; &amp;');
+    expect(roundTrip('&amp \\&amp; `&amp;`')).toBe('&amp \\&amp; `&amp;`');
+    // Escaped because it has the shape of one, which reads the same.
+    expect(roundTrip('&notanentity;')).toBe('\\&notanentity;');
+  });
+
+  it('inside code is the code\'s own character', () => {
+    const schema = pmDoc('x').type.schema;
+    const code = schema.marks.inline_code.create();
+    const paragraph = schema.node('paragraph', null, [
+      schema.text('a', [code]),
+      schema.nodes.character_reference.create({ source: '&amp;', value: '&' }, null, [code]),
+      schema.text('b', [code]),
+    ]);
+    expect(blockToMarkdown(paragraph)).toBe('`a&b`');
+  });
+});
+
+describe('an ampersand', () => {
+  it('stays bare where it cannot start a reference', () => {
+    expect(roundTrip('Q&A, AT&T and R&D.')).toBe('Q&A, AT&T and R&D.');
+    expect(roundTrip('[v](https://b.test/v?p=1&vd_source=abc) x')).toBe('[v](https://b.test/v?p=1&vd_source=abc) x');
+    expect(roundTrip('![i](a.png?x=1&y=2 "t&t")')).toBe('![i](a.png?x=1&y=2 "t&t")');
+  });
+
+  it('typed as text is escaped where it would start one', () => {
+    const schema = pmDoc('x').type.schema;
+    const typed = (text: string) => blockToMarkdown(schema.node('paragraph', null, schema.text(text)));
+    expect(typed('write &amp; for &')).toBe('write \\&amp; for &');
+    expect(typed('&#35; and &#x22;')).toBe('\\&#35; and \\&#x22;');
+    // Each re-reads as the text that was typed.
+    expect(pmDoc(typed('write &amp; for &')).textContent).toBe('write &amp; for &');
+  });
+});
+
 describe('a literal star glued to a word', () => {
   // Every star in these is literal. Editing the block must not turn any of
   // them into emphasis, so each one written bare has to be one that cannot pair.

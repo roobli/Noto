@@ -65,15 +65,20 @@ function phrasingFrom(node: ProseNode): PhrasingContent[] {
       output.push({ type: 'html', value: child.attrs.value });
       return;
     }
-    if (!child.isText) return;
-
-    const value = child.text ?? '';
+    const reference = child.type.name === 'character_reference';
+    if (!child.isText && !reference) return;
+    const value = reference ? child.attrs.value as string : child.text ?? '';
     if (value.length === 0) return;
 
     const codeMark = child.marks.find((mark) => mark.type.name === 'inline_code');
+    // A reference is wrapped in its marks like text, so `**Tom &amp; Jerry**`
+    // stays one run. Inside code nothing is a reference: the character the
+    // reader sees is the code's text.
     let leaf: PhrasingContent = codeMark
       ? { type: 'inlineCode', value }
-      : { type: 'text', value };
+      : reference
+        ? { type: 'characterReference', source: child.attrs.source, value }
+        : { type: 'text', value };
 
     // Wrap outward so the innermost mark ends up closest to the text.
     for (const mark of child.marks) {
@@ -150,9 +155,9 @@ function trimEdge(nodes: PhrasingContent[], edge: 'start' | 'end'): PhrasingCont
  * Drop leading spaces at the start of a block, for the same reason.
  *
  * A paragraph cannot start with a space in markdown (it is stripped on read),
- * so `mdast-util-to-markdown` writes `&#x20;`. The parser keeps character
- * references as literal text, so deleting a paragraph's first word and saving
- * used to reopen as a visible `&#x20;` in the user's file.
+ * so `mdast-util-to-markdown` writes `&#x20;`: deleting a paragraph's first
+ * word and saving put a reference to a space nobody can see into the file.
+ * A reference the file already had is its own node, not a space, and stays.
  */
 function trimLeadingSpace(nodes: PhrasingContent[]): PhrasingContent[] {
   return trimEdge(nodes, 'start');
@@ -196,6 +201,11 @@ function mergeAdjacent(nodes: PhrasingContent[]): PhrasingContent[] {
       continue;
     }
     if (previous && previous.type === 'text' && node.type === 'text') {
+      previous.value += node.value;
+      continue;
+    }
+    // Code with a reference made code inside it is one span, not `` `a``&``b` ``.
+    if (previous && previous.type === 'inlineCode' && node.type === 'inlineCode') {
       previous.value += node.value;
       continue;
     }

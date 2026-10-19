@@ -69,6 +69,7 @@
 
 import type { Mark, Node as ProseNode } from 'prosemirror-model';
 import type { NotoBlockKind } from '../contracts';
+import { mayHoldCharacterReference } from '../syntax';
 import { notoSchema } from './schema';
 
 const schema = notoSchema;
@@ -158,9 +159,13 @@ export function hasHardBreak(markdown: string): boolean {
  * simple reference links / images + simple bare http(s) + angle-bracket
  * http(s) + www. + email autolinks + simple wiki links + simple backslash
  * escapes + simple inline HTML + simple inline math allowed — engine-owned).
+ * Never a non-leaf block that may hold a character reference (`&amp;`): the
+ * engine reads one as literal text, so those blocks go through mdast, which
+ * decodes it and keeps its spelling (`characterReferencesAsNodes` in syntax).
  */
 export function canSkipDialectEnrich(kind: NotoBlockKind, markdown: string): boolean {
   if (ENGINE_LEAF_KINDS.has(kind)) return true;
+  if (mayHoldCharacterReference(markdown)) return false;
   if (kind === 'link-definition') {
     return parseLinkDefinitionSource(markdown) !== null;
   }
@@ -4312,6 +4317,7 @@ function tableSemanticKey(kind: NotoBlockKind, table: NonNullable<ReturnType<typ
  * `canSkipDialectEnrich(kind, md) ? engineSemanticKey(kind, md) : null`.
  */
 export function engineOwnedSemanticKey(kind: NotoBlockKind, markdown: string): string | null {
+  if (!ENGINE_LEAF_KINDS.has(kind) && mayHoldCharacterReference(markdown)) return null;
   switch (kind) {
     case 'link-definition': {
       const definition = parseLinkDefinitionSource(markdown);
