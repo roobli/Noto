@@ -53,15 +53,17 @@ test('small controls take a press over 24px and draw the size they did', async (
     await expect(page.locator('.noto-table-tools').first()).toHaveCSS('opacity', '1');
     await page.locator('.tree-vault-row').first().hover();
 
-    const expected: Array<[string, number, number]> = [
-      ['.rail-tab', 34, 20],
+    // A rail tab is as wide as its word, which the platform's font sets
+    // (34px here, 36 on the Linux runner), so only its height is held.
+    const expected: Array<[string, number | null, number]> = [
+      ['.rail-tab', null, 20],
       ['.rail-search', 22, 22],
       ['.vault-menu-button', 20, 20],
       ['.noto-table-tool', 24, 22],
     ];
     for (const [selector, width, height] of expected) {
       const found = await reach(page, selector);
-      expect({ selector, width: found.width, height: found.height }).toEqual({ selector, width, height });
+      expect({ selector, width: width === null ? null : found.width, height: found.height }).toEqual({ selector, width, height });
       expect({ selector, hits: found.hits }).toEqual({ selector, hits: [true, true, true, true] });
     }
   } finally {
