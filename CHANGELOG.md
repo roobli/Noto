@@ -16,7 +16,7 @@ How releases are made, and what each channel receives, is in
   Noto only reads git, through the `git` command already installed, and never
   writes to the repository. Without git or a repository nothing is shown.
 - **The open note shows which blocks changed since the last commit**: a thin
-  amber line beside a changed block, a green one beside a new block, and a
+  solid amber line beside a changed block, a dashed green one beside a new block, and a
   small red marker where blocks were deleted. Pressing the line or the marker
   shows the block as committed, read-only; Escape closes it. From the
   keyboard, "Show Block as Committed" in the command palette does the same
