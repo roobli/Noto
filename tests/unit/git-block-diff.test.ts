@@ -275,3 +275,23 @@ describe.skipIf(!hasGit)('committed text from a real repository', () => {
     expect(asked).toBe(false);
   });
 });
+
+describe('diffBlocks past the table limit', () => {
+  it('still aligns a long note edited all over, on blocks unique to each side', () => {
+    const head = Array.from({ length: 8000 }, (_, index) => `Paragraph ${index}.`);
+    const now = head.slice();
+    for (let index = 0; index < now.length; index += 7) now[index] += ' Edited.';
+    const inserted: number[] = [];
+    for (let index = 3; index < now.length; index += 50) { now.splice(index, 0, `New ${index}.`); inserted.push(index); }
+    const started = performance.now();
+    const result = diffBlocks(head, now);
+    expect(performance.now() - started).toBeLessThan(1_000);
+    const added = result.changed.filter((entry) => entry.change === 'added').map((entry) => now[entry.ordinal]);
+    const modified = result.changed.filter((entry) => entry.change === 'modified');
+    expect(added.every((text) => text.startsWith('New '))).toBe(true);
+    expect(added).toHaveLength(inserted.length);
+    expect(modified.every((entry) => now[entry.ordinal].endsWith(' Edited.'))).toBe(true);
+    expect(modified).toHaveLength(Math.ceil(8000 / 7));
+    expect(result.deleted).toEqual([]);
+  });
+});

@@ -39,64 +39,145 @@ export interface GitBlockDiffV1 {
 }
 
 /**
- * The most cells the alignment table may have. Past it the unmatched middle
- * is not aligned at all and reads as changed, which on a note rewritten that
- * thoroughly is the truth anyway, and the cost stays bounded.
+ * The most cells one alignment table may have. A middle larger than this is
+ * first split at blocks that occur exactly once on each side (patience
+ * anchors), and each piece is aligned on its own; a piece still too large
+ * and with no such anchor is not aligned and reads as changed, which on a
+ * stretch rewritten that thoroughly is the truth anyway. The cost stays
+ * bounded either way.
  */
 export const MAX_ALIGNMENT_CELLS = 4_000_000;
 
+const MAX_ANCHOR_DEPTH = 32;
+
 /**
- * Pairs of equal blocks, in order, from a longest common subsequence.
+ * Pairs of equal blocks, in order: a longest common subsequence where the
+ * table fits, patience anchors where it does not.
  *
  * Common prefix and suffix are taken first, which is all an ordinary edit
- * needs, so the table is only ever built over the part that actually moved.
+ * needs, so a table is only ever built over the part that actually moved.
  */
 function alignment(head: readonly string[], current: readonly string[], maxCells: number): Array<[number, number]> {
   const pairs: Array<[number, number]> = [];
-  let start = 0;
-  while (start < head.length && start < current.length && head[start] === current[start]) {
-    pairs.push([start, start]);
-    start += 1;
+  alignRange(head, current, 0, head.length, 0, current.length, maxCells, pairs, 0);
+  return pairs;
+}
+
+function alignRange(
+  head: readonly string[], current: readonly string[],
+  headStart: number, headEnd: number, currentStart: number, currentEnd: number,
+  maxCells: number, pairs: Array<[number, number]>, depth: number,
+): void {
+  while (headStart < headEnd && currentStart < currentEnd && head[headStart] === current[currentStart]) {
+    pairs.push([headStart, currentStart]);
+    headStart += 1;
+    currentStart += 1;
   }
-  let headEnd = head.length;
-  let currentEnd = current.length;
   const tail: Array<[number, number]> = [];
-  while (headEnd > start && currentEnd > start && head[headEnd - 1] === current[currentEnd - 1]) {
+  while (headEnd > headStart && currentEnd > currentStart && head[headEnd - 1] === current[currentEnd - 1]) {
     headEnd -= 1;
     currentEnd -= 1;
     tail.push([headEnd, currentEnd]);
   }
 
-  const rows = headEnd - start;
-  const columns = currentEnd - start;
-  if (rows > 0 && columns > 0 && rows * columns <= maxCells) {
-    // lengths[i][j]: LCS of head[start+i..] and current[start+j..], flattened.
-    const width = columns + 1;
-    const lengths = new Uint32Array((rows + 1) * width);
-    for (let i = rows - 1; i >= 0; i -= 1) {
-      for (let j = columns - 1; j >= 0; j -= 1) {
-        lengths[i * width + j] = head[start + i] === current[start + j]
-          ? lengths[(i + 1) * width + j + 1] + 1
-          : Math.max(lengths[(i + 1) * width + j], lengths[i * width + j + 1]);
+  const rows = headEnd - headStart;
+  const columns = currentEnd - currentStart;
+  if (rows > 0 && columns > 0) {
+    if (rows * columns <= maxCells) {
+      tableAlign(head, current, headStart, rows, currentStart, columns, pairs);
+    } else if (depth < MAX_ANCHOR_DEPTH) {
+      let headAt = headStart;
+      let currentAt = currentStart;
+      for (const [headIndex, currentIndex] of uniqueAnchors(head, current, headStart, headEnd, currentStart, currentEnd)) {
+        alignRange(head, current, headAt, headIndex, currentAt, currentIndex, maxCells, pairs, depth + 1);
+        pairs.push([headIndex, currentIndex]);
+        headAt = headIndex + 1;
+        currentAt = currentIndex + 1;
       }
-    }
-    let i = 0;
-    let j = 0;
-    while (i < rows && j < columns) {
-      if (head[start + i] === current[start + j]) {
-        pairs.push([start + i, start + j]);
-        i += 1;
-        j += 1;
-      } else if (lengths[(i + 1) * width + j] >= lengths[i * width + j + 1]) {
-        i += 1;
-      } else {
-        j += 1;
+      if (headAt !== headStart || currentAt !== currentStart) {
+        alignRange(head, current, headAt, headEnd, currentAt, currentEnd, maxCells, pairs, depth + 1);
       }
     }
   }
 
   for (let index = tail.length - 1; index >= 0; index -= 1) pairs.push(tail[index]);
-  return pairs;
+}
+
+/** Longest common subsequence by table, for a middle that fits. */
+function tableAlign(
+  head: readonly string[], current: readonly string[],
+  start: number, rows: number, currentStart: number, columns: number,
+  pairs: Array<[number, number]>,
+): void {
+  // lengths[i][j]: LCS of head[start+i..] and current[currentStart+j..], flattened.
+  const width = columns + 1;
+  const lengths = new Uint32Array((rows + 1) * width);
+  for (let i = rows - 1; i >= 0; i -= 1) {
+    for (let j = columns - 1; j >= 0; j -= 1) {
+      lengths[i * width + j] = head[start + i] === current[currentStart + j]
+        ? lengths[(i + 1) * width + j + 1] + 1
+        : Math.max(lengths[(i + 1) * width + j], lengths[i * width + j + 1]);
+    }
+  }
+  let i = 0;
+  let j = 0;
+  while (i < rows && j < columns) {
+    if (head[start + i] === current[currentStart + j]) {
+      pairs.push([start + i, currentStart + j]);
+      i += 1;
+      j += 1;
+    } else if (lengths[(i + 1) * width + j] >= lengths[i * width + j + 1]) {
+      i += 1;
+    } else {
+      j += 1;
+    }
+  }
+}
+
+/**
+ * Blocks that occur exactly once on each side, the longest run of them in
+ * the same order on both (patience sorting, n log n).
+ */
+function uniqueAnchors(
+  head: readonly string[], current: readonly string[],
+  headStart: number, headEnd: number, currentStart: number, currentEnd: number,
+): Array<[number, number]> {
+  const seen = new Map<string, { head: number; headCount: number; current: number; currentCount: number }>();
+  for (let index = headStart; index < headEnd; index += 1) {
+    const entry = seen.get(head[index]);
+    if (entry) entry.headCount += 1;
+    else seen.set(head[index], { head: index, headCount: 1, current: -1, currentCount: 0 });
+  }
+  for (let index = currentStart; index < currentEnd; index += 1) {
+    const entry = seen.get(current[index]);
+    if (!entry) continue;
+    entry.currentCount += 1;
+    entry.current = index;
+  }
+  const candidates: Array<[number, number]> = [];
+  for (let index = headStart; index < headEnd; index += 1) {
+    const entry = seen.get(head[index])!;
+    if (entry.head === index && entry.headCount === 1 && entry.currentCount === 1) candidates.push([index, entry.current]);
+  }
+  if (candidates.length === 0) return [];
+  // Longest increasing run of current indices, in head order.
+  const tops: number[] = [];
+  const previous = new Int32Array(candidates.length).fill(-1);
+  for (let index = 0; index < candidates.length; index += 1) {
+    const value = candidates[index][1];
+    let low = 0;
+    let high = tops.length;
+    while (low < high) {
+      const middle = (low + high) >> 1;
+      if (candidates[tops[middle]][1] < value) low = middle + 1;
+      else high = middle;
+    }
+    if (low > 0) previous[index] = tops[low - 1];
+    tops[low] = index;
+  }
+  const anchors: Array<[number, number]> = [];
+  for (let index = tops[tops.length - 1]; index >= 0; index = previous[index]) anchors.push(candidates[index]);
+  return anchors.reverse();
 }
 
 /**
