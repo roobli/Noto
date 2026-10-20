@@ -308,6 +308,8 @@ function NotoWorkspace({ platform }: { platform: NotoPlatform }) {
   };
   const [pluginAvailability, setPluginAvailability] = useState<PluginSnapshotAvailability>('loading');
   const [paletteOpen, setPaletteOpen] = useState(false);
+  const paletteRef = useRef<HTMLDivElement>(null);
+  const paletteWasOpen = useRef(false);
   const [recent, setRecent] = useState<readonly RecentFileV1[]>([]);
   useEffect(() => {
     setFrecency((current) => {
@@ -742,6 +744,41 @@ function NotoWorkspace({ platform }: { platform: NotoPlatform }) {
     window.addEventListener('keydown', onKeyDown);
     return () => window.removeEventListener('keydown', onKeyDown);
   }, []);
+
+  /*
+   * The palette is a modal dialog, and behaves as one.
+   *
+   * It said so, `role="dialog"` and `aria-modal`, and did nothing about it: it
+   * opened with the focus still in the document, so the keyboard typed into
+   * the note behind it, and Escape went there too, so the only way out was the
+   * pointer or the shortcut again. Opening now moves the focus onto the
+   * dialog, as Settings does, without drawing a ring on the first command;
+   * Escape closes it from anywhere; and closing hands the focus back to the
+   * document unless something else, an export's save dialog or a plugin, has
+   * already taken it.
+   */
+  useEffect(() => {
+    if (paletteOpen) {
+      paletteWasOpen.current = true;
+      queueMicrotask(() => paletteRef.current?.focus({ preventScroll: true }));
+      return;
+    }
+    if (!paletteWasOpen.current) return;
+    paletteWasOpen.current = false;
+    const active = globalThis.document.activeElement;
+    if (active === null || active === globalThis.document.body) editorRef.current?.focus();
+  }, [paletteOpen]);
+
+  useEffect(() => {
+    if (!paletteOpen) return;
+    const onKey = (event: KeyboardEvent) => {
+      if (event.key !== 'Escape') return;
+      event.preventDefault();
+      setPaletteOpen(false);
+    };
+    window.addEventListener('keydown', onKey, true);
+    return () => window.removeEventListener('keydown', onKey, true);
+  }, [paletteOpen]);
 
   const executePluginCommand = useCallback((pluginId: string, commandId: string) => {
     void window.notoDesktop.plugins.executeCommand({
@@ -2530,7 +2567,7 @@ function NotoWorkspace({ platform }: { platform: NotoPlatform }) {
 
       {paletteOpen && (
         <div className="command-palette" role="dialog" aria-modal="true" aria-label="Commands"
-          data-testid="command-palette">
+          ref={paletteRef} tabIndex={-1} data-testid="command-palette">
           <div className="dialog-heading">
             <strong>Commands</strong>
             <button type="button" onClick={() => setPaletteOpen(false)}>Close</button>
