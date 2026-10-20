@@ -668,10 +668,63 @@ function innerEmphasis(node: Parents, found: { node: Emphasis; parent: Parents }
   return found;
 }
 
+/**
+ * The character a delimiter run at one edge of `node` has against it.
+ *
+ * Runs at the same edge are written next to each other, so this descends
+ * through them to what is inside. Anything but text is written with
+ * punctuation at its edges (a backtick, a bracket, a dollar), and stands in as
+ * one.
+ */
+function edgeCharacter(node: RootContent, edge: 'first' | 'last'): string {
+  let current: RootContent | undefined = node;
+  while (current && (current.type === 'emphasis' || current.type === 'strong')) {
+    const children: PhrasingContent[] = current.children;
+    current = edge === 'first' ? children[0] : children[children.length - 1];
+  }
+  if (!current) return '';
+  if (current.type !== 'text') return '!';
+  return edge === 'first' ? current.value.charAt(0) : current.value.charAt(current.value.length - 1);
+}
+
+/**
+ * Whether the stars where one run closes and the next opens read back as that.
+ *
+ * Both are written with stars, so they fuse into one delimiter run such as the
+ * `***` in `*a***b**`. That run has to close the first and open the second,
+ * which CommonMark only allows when it is both left- and right-flanking: no
+ * whitespace on either side, and punctuation on both sides or on neither.
+ */
+function touchingStarsReadBack(before: string, after: string): boolean {
+  if (before === '' || after === '' || /\s/u.test(before) || /\s/u.test(after)) return false;
+  const punctuation = /[\p{P}\p{S}]/u;
+  return punctuation.test(before) === punctuation.test(after);
+}
+
+/**
+ * An emphasis run touching a strong run whose stars would not read back.
+ *
+ * `*a.b*` then `**<x**` was saved as `*a.b***<x**`. The `***` sits between a
+ * letter and punctuation, so it can only close: the strong text came back as
+ * literal stars. Written with an underscore, `_a.b_**<x**`, each run has its
+ * own delimiters again. Two strong runs or two emphasis runs never touch (the
+ * editor merges them), so emphasis next to strong is the only pair.
+ */
+function touchesStrongStars(node: Emphasis, parent: Parents | undefined): boolean {
+  if (!parent) return false;
+  const siblings = parent.children as RootContent[];
+  const index = siblings.indexOf(node);
+  const before = siblings[index - 1];
+  const after = siblings[index + 1];
+  return (before?.type === 'strong' && !touchingStarsReadBack(edgeCharacter(before, 'last'), edgeCharacter(node, 'first')))
+    || (after?.type === 'strong' && !touchingStarsReadBack(edgeCharacter(node, 'last'), edgeCharacter(after, 'first')));
+}
+
 function emphasisMarker(node: Emphasis, parent: Parents | undefined, state: State): '*' | '_' {
   const enclosing = emphasisMarkers.get(state)?.at(-1);
   if (enclosing === '_') return '*';
   const wantsUnderscore = enclosing === '*'
+    || touchesStrongStars(node, parent)
     || innerEmphasis(node).some((inner) => !underscoreFits(inner.node, inner.parent));
   return wantsUnderscore && underscoreFits(node, parent) ? '_' : '*';
 }

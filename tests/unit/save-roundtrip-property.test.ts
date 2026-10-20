@@ -625,6 +625,43 @@ describe('a space at the edge of a styled run', () => {
   });
 });
 
+describe('emphasis touching strong', () => {
+  function style(h: Harness, target: string, mark: 'emphasis' | 'strong'): void {
+    const v = view(h);
+    const from = blockStart(v.state.doc, 0) + 1 + v.state.doc.child(0).textContent.indexOf(target);
+    v.dispatch(v.state.tr.addMark(from, from + target.length, v.state.schema.marks[mark].create()));
+  }
+
+  // `*foo***(x)**`: the `***` between a letter and a bracket can only close,
+  // so the bold came back as literal stars.
+  it('italic before bold that opens with punctuation keeps both', () => {
+    const h = openTracked('Call foo(x) now.\n');
+    style(h, 'foo', 'emphasis');
+    style(h, '(x)', 'strong');
+    expect(save(h)).toBe('Call _foo_**(x)** now.\n');
+    expectSavedMatchesEditor(h, 'italic then bold punctuation');
+  });
+
+  // `**Note:***see*`: after a colon and before a letter the `***` can only open.
+  it('bold that ends in punctuation before italic keeps both', () => {
+    const h = openTracked('Note:see below.\n');
+    style(h, 'Note:', 'strong');
+    style(h, 'see', 'emphasis');
+    expect(save(h)).toBe('**Note:**_see_ below.\n');
+    expectSavedMatchesEditor(h, 'bold punctuation then italic');
+  });
+
+  // Between two letters the fused run both closes and opens, so the stars the
+  // file already uses stay.
+  it('keeps the stars where the touching run reads back', () => {
+    const h = openTracked('Then ab now.\n');
+    style(h, 'a', 'emphasis');
+    style(h, 'b', 'strong');
+    expect(save(h)).toBe('Then *a***b** now.\n');
+    expectSavedMatchesEditor(h, 'letters on both sides');
+  });
+});
+
 describe('two lists the editor leaves adjacent', () => {
   // With only blank lines between them, two lists of one family and marker
   // read back as one loose list. The later one is written with the other marker.
