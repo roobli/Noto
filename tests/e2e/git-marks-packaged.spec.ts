@@ -10,11 +10,11 @@
  */
 
 import { execFileSync } from 'node:child_process';
-import { mkdirSync, mkdtempSync, realpathSync, rmSync, writeFileSync } from 'node:fs';
+import { mkdirSync, mkdtempSync, readFileSync, realpathSync, rmSync, writeFileSync } from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
 import { expect, test, _electron as electron, type ElectronApplication, type Page } from '@playwright/test';
-import { MOD, packagedExecutable, placeCaretAtEnd } from './packaged-app';
+import { packagedExecutable, placeCaretAtEnd } from './packaged-app';
 
 /** Screenshots for review, when asked for: `NOTO_GIT_SHOTS=/some/dir`. */
 const SHOTS = process.env.NOTO_GIT_SHOTS ?? '';
@@ -105,7 +105,7 @@ test.describe('git changes in the tree', () => {
       await expect(fileRow(page, 'gone.md')).toHaveCount(0);
 
       // Said in words as well as colour: the row's name and its hover.
-      await expect(fileRow(page, 'edited.md')).toHaveAccessibleName(/edited\.md, changed since the last commit/);
+      await expect(fileRow(page, 'edited.md')).toHaveAccessibleName(/^edited\.md\s*, changed since the last commit$/);
       await expect(fileRow(page, 'idea.md')).toHaveAttribute('title', /new since the last commit/);
       // A mark is never a target, so the row's hit area is the row's.
       await expect(mark(fileRow(page, 'edited.md'))).toHaveCSS('pointer-events', 'none');
@@ -114,8 +114,6 @@ test.describe('git changes in the tree', () => {
         await fileRow(page, 'edited.md').click();
         await page.waitForSelector('[data-testid="noto-editor"]', { state: 'visible' });
         await page.screenshot({ path: path.join(SHOTS, 'git-marks-light.png') });
-        await page.locator('.workspace-rail, [data-testid="file-tree"]').first()
-          .screenshot({ path: path.join(SHOTS, 'git-marks-light-rail.png') });
       }
     } finally {
       await app.close();
@@ -138,7 +136,8 @@ test.describe('git changes in the tree', () => {
       await page.waitForSelector('[data-testid="noto-editor"]', { state: 'visible' });
       await placeCaretAtEnd(page, page.locator('.ProseMirror > p').first());
       await page.keyboard.type(' Edited in Noto.');
-      await page.keyboard.press(`${MOD}+s`);
+      await page.getByTestId('save-button').click();
+      await expect.poll(() => readFileSync(path.join(vault, 'kept.md'), 'utf8')).toContain('Edited in Noto.');
       await expect(mark(fileRow(page, 'kept.md'))).toHaveAttribute('data-git', 'modified', { timeout: 15_000 });
     } finally {
       await app.close();
@@ -200,8 +199,6 @@ test.describe('git changes in the tree', () => {
         await fileRow(page, 'edited.md').click();
         await page.waitForSelector('[data-testid="noto-editor"]', { state: 'visible' });
         await page.screenshot({ path: path.join(SHOTS, 'git-marks-dark.png') });
-        await page.locator('.workspace-rail, [data-testid="file-tree"]').first()
-          .screenshot({ path: path.join(SHOTS, 'git-marks-dark-rail.png') });
       }
     } finally {
       await app.close();
