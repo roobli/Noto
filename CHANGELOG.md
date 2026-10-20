@@ -31,6 +31,10 @@ How releases are made, and what each channel receives, is in
   was emptied or deleted, no longer reopen as one list. The second is saved
   with the other marker (`*` after `-`, `1)` after `1.`), which is what keeps
   them apart in Markdown.
+- Italic text with bold words inside it (`*see **this** here*`) no longer
+  breaks apart when its paragraph is edited and saved. It used to be written
+  as `*see&#x20;****this****&#x20;here*`, which reopened with the bold lost or
+  doubled. Strikethrough and links inside italic are written plainly too.
 
 ## [0.0.3] - 2026-10-17
 
