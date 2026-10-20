@@ -247,8 +247,10 @@ button:disabled { color: var(--muted); opacity: 0.7; }
   flex: 0 4 auto;
   min-width: 0;
   overflow: hidden;
+  /* The muted tier itself, not a fade of it: an opacity under the muted ink
+     took the folder to 2.8:1, below what text has to clear to be read. The
+     name beside it is a step darker and the chevron sets the two apart. */
   color: var(--muted);
-  opacity: 0.7;
   font-size: 12.5px;
   text-overflow: ellipsis;
   white-space: nowrap;
@@ -809,13 +811,10 @@ button:disabled { color: var(--muted); opacity: 0.7; }
 }
 
 .pref-section.is-buried {
+  /* Set back by the muted ink and a smaller size, not by fading the muted
+     ink further, which put Remote and Plugins at 3.5:1. */
   color: var(--muted);
   font-size: 12px;
-  opacity: 0.85;
-}
-
-.pref-section.is-buried.is-current {
-  opacity: 1;
 }
 
 /* The mark beside the word. A column of words is a list; a column of words
@@ -1827,7 +1826,9 @@ button:disabled { color: var(--muted); opacity: 0.7; }
    highlighter block, which at this size turns a filename into a barcode. */
 .quick-hit {
   background: none;
-  color: var(--accent);
+  /* The accent taken a step toward the strong ink: the accent itself is
+     4.3:1 on the selected row by day, and these are letters to be read. */
+  color: color-mix(in srgb, var(--accent) 85%, var(--ink-strong));
   font-weight: 600;
 }
 
