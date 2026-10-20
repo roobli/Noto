@@ -22,7 +22,7 @@ import type { NotoBlockOrigin } from '../../src/shared/markdown/v3/contracts';
 import { diffBlocks } from '../../src/shared/git/block-diff';
 import { blocksOf, committedText, gitBlockDiff, GUTTER_MAX_BYTES, showArguments } from '../../src/main/workspace/git-blocks';
 import { systemGit } from '../../src/main/workspace/git-marks';
-import { WORKSPACE_V1_VERSION, type WorkspaceGitBlocksV1 } from '../../src/shared/workspace/v1/contracts';
+import { NOTO_WORKSPACE_VERSION, type WorkspaceGitBlocksV1 } from '../../src/shared/workspace/v1/contracts';
 
 describe('diffBlocks', () => {
   it('finds nothing in an unchanged note', () => {
@@ -144,7 +144,7 @@ function originsFor(count: number): NotoBlockOrigin[] {
 }
 
 function event(blocks: WorkspaceGitBlocksV1['blocks'], deleted: WorkspaceGitBlocksV1['deleted'] = []): WorkspaceGitBlocksV1 {
-  return { version: WORKSPACE_V1_VERSION, documentId: 'doc', blocks, deleted };
+  return { version: NOTO_WORKSPACE_VERSION, documentId: 'doc', blocks, deleted };
 }
 
 function stateWith(texts: string[], gutter: WorkspaceGitBlocksV1) {
