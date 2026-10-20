@@ -29,6 +29,11 @@ How releases are made, and what each channel receives, is in
   now the only engine.
 
 ### Fixed
+- Strikethrough no longer turns into literal tildes on save when it starts or
+  ends with punctuation next to a letter (`.txt` struck in `notes.txt`), or
+  starts or ends with a tilde (`~5 min` struck). The letter is written as a
+  character reference there, as bold and italic already were
+  (`note&#x73;~~.txt~~`), and the tilde is escaped (`~~\~5 min~~`).
 - Italic text right next to bold text no longer loses the bold on save when
   punctuation sits where the two meet (`foo` in italic, `(x)` in bold). The
   italic is written with underscores there, `_foo_**(x)**`.

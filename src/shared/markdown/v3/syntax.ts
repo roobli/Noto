@@ -186,16 +186,80 @@ const mdastExtensions = [
  * Typora does and what the vault writes for a subscript. The strikethrough
  * serializer, though, escapes every tilde in phrasing, so editing a paragraph
  * holding `H~2~O` saved it as `H\~2\~O`. Only a pair can strike now, so
- * only a tilde followed by another needs the escape.
+ * only a tilde next to another needs the escape.
+ *
+ * Next to on either side: a struck run's own delimiters are tildes too, and a
+ * literal one against them makes a run of three, which strikes nothing. `~a`
+ * struck was saved as `~~~a~~`, and `a` struck before a literal `~b` as
+ * `~~a~~~b`; both came back as plain text with the tildes showing. The tilde
+ * before a closer was already escaped, because the serializer passes the
+ * closer as what follows.
  */
 function tildeOnlyInPairs(extension: ToMarkdownOptions): ToMarkdownOptions {
   return {
     ...extension,
-    unsafe: extension.unsafe?.map((rule) =>
-      rule.character === '~' && rule.after === undefined ? { ...rule, after: '~' } : rule,
+    unsafe: extension.unsafe?.flatMap((rule) =>
+      rule.character === '~' && rule.after === undefined && rule.before === undefined
+        // A lookbehind, so the match does not take the tilde before it: the
+        // opener is passed in front of the text, and `~~` matched as a pair
+        // would hide a third tilde right after it.
+        ? [{ ...rule, after: '~' }, { ...rule, before: '(?<=~)' }]
+        : [rule],
     ),
     extensions: extension.extensions?.map(tildeOnlyInPairs),
   };
+}
+
+/**
+ * A struck run whose tildes open and close where they are written.
+ *
+ * GFM gives `~~` the flanking rules of `*`: it cannot open with a letter before
+ * it and punctuation after, nor close with punctuation before it and a letter
+ * after. The emphasis and strong handlers know this and write the letter
+ * outside as a character reference, which is how `a` before `*.b*` is saved as
+ * `&#x61;*.b*`. The strikethrough handler does not, so `a` then `.b` struck was
+ * saved as `a~~.b~~`, and `*x*` struck between two letters as `a~~*x*~~c`;
+ * both read back with the tildes as text. This does what the emphasis handler
+ * does, through the same hook, so the character the serializer writes next to
+ * the run is encoded and nothing else is.
+ *
+ * Whitespace at the run's inner edge never reaches here: the editor writes it
+ * outside the run (`to-mdast.ts`). CJK text is left as it was, because the
+ * CJK-friendly amendment the dialect takes for emphasis has a strikethrough
+ * counterpart the dialect does not take yet, and encoding every ideograph next
+ * to `~~「…」~~` would fill Chinese notes with references.
+ */
+function strikethroughFlanks(extension: ToMarkdownOptions): ToMarkdownOptions {
+  const write = extension.handlers?.delete;
+  // Like the table handler, this one lives in a sub-extension of the bundle.
+  const nested = extension.extensions?.map(strikethroughFlanks);
+  if (typeof write !== 'function') {
+    return nested ? { ...extension, extensions: nested } : extension;
+  }
+  const handle: Handle = (node, parent, state, info) => {
+    const value = write(node, parent, state, info);
+    const between = [...value.slice(2, -2)];
+    state.attentionEncodeSurroundingInfo = {
+      before: tildesCannotFlank([...info.before].at(-1) ?? '', between[0] ?? ''),
+      after: tildesCannotFlank([...info.after][0] ?? '', between.at(-1) ?? ''),
+    };
+    return value;
+  };
+  const { peek } = write as { peek?: Handle };
+  const deleteHandler = peek ? Object.assign(handle, { peek }) : handle;
+  return { ...extension, ...(nested ? { extensions: nested } : {}), handlers: { ...extension.handlers, delete: deleteHandler } };
+}
+
+const CJK = /[\u2E80-\u9FFF\uAC00-\uD7AF\uF900-\uFAFF\uFE30-\uFE4F\uFF00-\uFFEF]/u;
+
+/**
+ * Whether a `~~` between `outside` and `inside` neither opens nor closes:
+ * a letter outside against punctuation inside.
+ */
+function tildesCannotFlank(outside: string, inside: string): boolean {
+  if (outside === '' || inside === '' || CJK.test(outside) || CJK.test(inside)) return false;
+  const punctuation = /[\p{P}\p{S}]/u;
+  return !/\s/u.test(outside) && !punctuation.test(outside) && punctuation.test(inside);
 }
 
 
@@ -768,7 +832,7 @@ const serializerOptions: ToMarkdownOptions = {
     // CommonMark's own flanking rules and, believing the run cannot close,
     // escapes the Chinese character after it into a numeric reference.
     nestedEmphasisAlternates(cjkFriendlyToMarkdown()),
-    tablesAsTheVaultWritesThem(tildeOnlyInPairs(gfmToMarkdown({ tablePipeAlign: false }))), mathToMarkdown(), frontmatterToMarkdown(), characterReferenceVerbatim, verbatimRunsInText, listMarkerFromNode, bareAutolink, hardBreakAsTwoSpaces],
+    tablesAsTheVaultWritesThem(strikethroughFlanks(tildeOnlyInPairs(gfmToMarkdown({ tablePipeAlign: false })))), mathToMarkdown(), frontmatterToMarkdown(), characterReferenceVerbatim, verbatimRunsInText, listMarkerFromNode, bareAutolink, hardBreakAsTwoSpaces],
 };
 
 /**
