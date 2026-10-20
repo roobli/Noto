@@ -37,6 +37,9 @@ How releases are made, and what each channel receives, is in
   now the only engine.
 
 ### Fixed
+- Italic text right next to bold text no longer loses the bold on save when
+  punctuation sits where the two meet (`foo` in italic, `(x)` in bold). The
+  italic is written with underscores there, `_foo_**(x)**`.
 - A long note no longer counts as unsaved as soon as it opens. That also
   stopped the rest of the note from finishing loading.
 - Emptying a paragraph no longer makes the whole save fail.
