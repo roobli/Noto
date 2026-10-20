@@ -59,7 +59,7 @@ import {
 } from '../shared/settings/v1/contracts';
 import type { AssetRefusalV1 } from '../shared/assets/v1/contracts';
 import { copyThroughSelection } from './editor/noto/clipboard';
-import type { WorkspaceEntryRefusalV1, WorkspaceExportKindV1 } from '../shared/workspace/v1/contracts';
+import type { WorkspaceEntryRefusalV1, WorkspaceExportKindV1, WorkspaceGitMarksV1 } from '../shared/workspace/v1/contracts';
 import { EXPORT_PALETTE_COMMANDS } from '../shared/export/targets';
 import { EMPTY_TRAIL, forget as forgetTrail, record as recordTrail, stepBack, stepForward, type Trail } from './trail';
 import { wikiCandidates, wikiTargetFor } from './wiki-target';
@@ -342,6 +342,14 @@ function NotoWorkspace({ platform }: { platform: NotoPlatform }) {
   settingsRef.current = settings;
 
   const [folder, setFolder] = useState<{ root: string | null; name: string | null }>({ root: null, name: null });
+  /** What git says about the folder's notes, as main last sent it. */
+  const [gitMarks, setGitMarks] = useState<WorkspaceGitMarksV1 | null>(null);
+  // Keyed for the tree's lookups, and only for the folder on screen: marks
+  // that arrive for a folder the window has since left are not drawn.
+  const treeGitMarks = useMemo(() => {
+    if (!gitMarks || gitMarks.root === null || gitMarks.root !== folder.root || gitMarks.files.length === 0) return null;
+    return { files: new Map(gitMarks.files), folders: new Set(gitMarks.folders) };
+  }, [gitMarks, folder.root]);
 
   /*
    * The trail, from the author's plugin of that name: three notes back and
@@ -889,6 +897,13 @@ function NotoWorkspace({ platform }: { platform: NotoPlatform }) {
     const unsubscribeTree = window.notoWorkspace.onTreeChanged(() => {
       if (active) setTreeVersion((current) => current + 1);
     });
+    const unsubscribeGit = window.notoWorkspace.onGitMarksChanged((event) => {
+      if (active) setGitMarks(event);
+    });
+    // Marks for a folder opened before this page could listen.
+    void window.notoWorkspace.gitMarks({ version: 1, requestId: rid('ws-git') })
+      .then((result) => { if (active && result.ok) setGitMarks((current) => current ?? result.value); })
+      .catch(() => { /* No marks is the ordinary answer. */ });
     const unsubscribeRename = window.notoWorkspace.onRenameRow((event) => {
       if (active) setTreeEditing({ path: event.path, intent: event.intent });
     });
@@ -967,6 +982,7 @@ function NotoWorkspace({ platform }: { platform: NotoPlatform }) {
       unsubscribeCode();
       unsubscribeExternal();
       unsubscribeTree();
+      unsubscribeGit();
       unsubscribeRename();
       unsubscribeTabs();
       unsubscribeFolder();
@@ -2235,6 +2251,7 @@ function NotoWorkspace({ platform }: { platform: NotoPlatform }) {
               onEditingDone: finishTreeEdit,
               reloadToken: treeVersion,
               collapseToken: treeCollapse,
+              gitMarks: treeGitMarks,
             }}
           />
       )}

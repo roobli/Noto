@@ -64,3 +64,14 @@ describe('Readable text', () => {
     expect(ruleOf(editor, '.ProseMirror .noto-fence-gutter {')).not.toMatch(/^\s*opacity:/m);
   });
 });
+
+describe.each(['light', 'dark'] as const)('The git marks in the %s theme', (name) => {
+  it('clear 3:1 on the panel and the active row, as a mark that carries meaning must', async () => {
+    const t = await theme(name);
+    for (const mark of ['git-changed', 'success', 'muted']) {
+      for (const surface of ['panel', 'surface-active']) {
+        expect(contrast(t[mark], t[surface]), `${mark} on ${surface}`).toBeGreaterThanOrEqual(3);
+      }
+    }
+  });
+});

@@ -32,6 +32,8 @@ export function registerFileTruthHandlers(deps: {
     readonly currentPath: string | null;
     activeStore(): FileTruthStoreV1 | null;
     storeForDocument(documentId: string): FileTruthStoreV1 | null;
+    /** A save landed, so what git reports about the folder may have changed. */
+    refreshGitMarks?(): void;
   };
   getWindow: () => BrowserWindow | null;
   logger: StructuredLogger;
@@ -90,10 +92,18 @@ export function registerFileTruthHandlers(deps: {
   // A saved revision goes back as a patch against the one the save started
   // from (`revision-patch.ts`); the renderer holds that one already.
   register<FileTruthSaveRequestV1, Awaited<ReturnType<FileTruthStoreV1['saveForRenderer']>>>(FILE_TRUTH_CHANNELS.save, isFileTruthSaveRequestV1,
-    (request) => storeForSave(request.candidate.transaction.documentId).saveForRenderer(request.candidate));
+    async (request) => {
+      const outcome = await storeForSave(request.candidate.transaction.documentId).saveForRenderer(request.candidate);
+      deps.session.refreshGitMarks?.();
+      return outcome;
+    });
   register<FileTruthSaveCopyRequestV1, Awaited<ReturnType<FileTruthStoreV1['saveCopy']>>>(FILE_TRUTH_CHANNELS.saveCopy, isFileTruthSaveCopyRequestV1,
-    (request) => storeForSave(request.candidate.transaction.documentId)
-      .saveCopy(request.candidate, request.destinationPath));
+    async (request) => {
+      const outcome = await storeForSave(request.candidate.transaction.documentId)
+        .saveCopy(request.candidate, request.destinationPath);
+      deps.session.refreshGitMarks?.();
+      return outcome;
+    });
   register<FileTruthRequestV1, Awaited<ReturnType<FileTruthStoreV1['recover']>>>(FILE_TRUTH_CHANNELS.recover, isFileTruthRequestV1,
     () => activeStore().recover());
   register<FileTruthRequestV1, ReturnType<FileTruthStoreV1['diagnostics']>>(FILE_TRUTH_CHANNELS.diagnostics, isFileTruthRequestV1,

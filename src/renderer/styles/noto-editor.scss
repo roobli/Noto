@@ -1673,6 +1673,77 @@
   box-shadow: 0 0 0 2px color-mix(in srgb, var(--accent) 24%, transparent);
 }
 
+/*
+ * Git marks: what changed in the notes since the last commit.
+ *
+ * One quiet mark per row, at the row's far end where it never moves a name.
+ * A filled dot for a note, in the status tokens rather than the accent, which
+ * stays the current file's alone: --warning when the note differs from the
+ * commit, --success when the commit does not have it. A ring in the muted
+ * tier for a folder holding a change, so a folder says "look inside" without
+ * outweighing the notes that changed. Both clear 3:1 against the panel and
+ * the active row in either theme, which is what a mark that carries meaning
+ * must (WCAG 1.4.11); the meaning is also in the row's hidden words and its
+ * hover, so colour is never the only way to tell.
+ *
+ * Not a target: the mark takes no press and sits inside the row's own 32px
+ * height, so the row's hit area is unchanged. No transition: a status that
+ * updates should not draw the eye by moving.
+ */
+.tree-git {
+  position: relative;
+  flex: 0 0 auto;
+  width: 6px;
+  height: 6px;
+  margin-left: auto;
+  /* Clear of the rail's edge and of a long name's last letter. */
+  margin-right: 2px;
+  border-radius: 50%;
+  pointer-events: none;
+}
+
+/* At least 8px between a long name and its mark, with the row's 4px gap. */
+.tree-row:has(> .tree-git) > .tree-name { margin-right: 4px; }
+
+.tree-git-modified { background: var(--git-changed); }
+.tree-git-folder {
+  box-shadow: inset 0 0 0 1.5px var(--muted);
+}
+
+/* New is a shape as well as a colour, so it never rests on telling green
+   from amber. A 7px plus, half a pixel narrower in margin than the dot is
+   wide, so its centre falls exactly where the dot's does. */
+.tree-git-new {
+  width: 7px;
+  height: 7px;
+  margin-right: 1.5px;
+  border-radius: 0;
+  color: var(--success);
+
+  svg {
+    display: block;
+    width: 7px;
+    height: 7px;
+    fill: none;
+    stroke: currentcolor;
+    stroke-width: 1.5;
+    stroke-linecap: round;
+  }
+}
+
+/* Visually hidden, read with the row's name. */
+.tree-git-words {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  margin: -1px;
+  padding: 0;
+  overflow: hidden;
+  clip-path: inset(50%);
+  white-space: nowrap;
+  border: 0;
+}
+
 /* The one place the accent appears in the tree, and exactly as the theme has
    it: `box-shadow: inset 2px 0 0` on the row, which is a 2px bar the full
    height of the row with square ends. The row is square too, because a bar

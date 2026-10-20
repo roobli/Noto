@@ -183,6 +183,9 @@ function createApplicationWindow(preloadPath: string, theme: NotoTheme = 'system
   });
   if (windowAlwaysOnTop) editorWindow.setAlwaysOnTop(true);
   editorWindow.on('closed', () => { editorWindow = null; });
+  // Back from another program, which may have been a terminal that committed
+  // or an editor that wrote a note. Not a poll: once per return, debounced.
+  editorWindow.on('focus', () => session?.refreshGitMarks());
   return editorWindow;
 }
 

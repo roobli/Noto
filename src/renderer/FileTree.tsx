@@ -11,7 +11,7 @@
  */
 
 import { useCallback, useEffect, useRef, useState, type ReactNode } from 'react';
-import type { WorkspaceEntryV1 } from '../shared/workspace/v1/contracts';
+import type { WorkspaceEntryV1, WorkspaceGitChangeV1 } from '../shared/workspace/v1/contracts';
 import { branchToCurrentFile, sizeTreeGuides, startTreeGuides } from './tree-guides';
 
 export interface FileTreeProps {
@@ -50,6 +50,46 @@ export interface FileTreeProps {
   readonly reloadToken?: number;
   /** Bumped to shut every folder, which is Typora's Collapse All. */
   readonly collapseToken?: number;
+  /**
+   * Which notes differ from the last commit, when the folder is in a git
+   * repository; null when it is not. See `TreeGitMarks`.
+   */
+  readonly gitMarks?: TreeGitMarks | null;
+}
+
+/** The git marks keyed for lookup by row path. */
+export interface TreeGitMarks {
+  readonly files: ReadonlyMap<string, WorkspaceGitChangeV1>;
+  readonly folders: ReadonlySet<string>;
+}
+
+/** What a mark means, said once for the hover and the screen reader alike. */
+const GIT_WORDS: Readonly<Record<WorkspaceGitChangeV1 | 'folder', string>> = {
+  modified: 'Changed',
+  new: 'New',
+  deleted: 'Deleted',
+  folder: 'Contains changes',
+};
+
+/**
+ * One quiet mark at the end of a row.
+ *
+ * A filled dot for a note that differs from the last commit, a plus for one
+ * the commit does not have, a ring in the muted tier for a folder holding a
+ * change, so a folder says "look inside" without competing with the notes
+ * that actually changed. Three shapes, so colour is never the only way to
+ * tell. A deleted note has no row; its folders carry the ring. The words
+ * travel with the mark as hidden text, so the row reads "edited.md, Changed".
+ */
+function GitMark({ kind }: { kind: WorkspaceGitChangeV1 | 'folder' }) {
+  return (
+    <span className={`tree-git tree-git-${kind}`} data-testid="tree-git-mark" data-git={kind}>
+      {kind === 'new' && (
+        <svg viewBox="0 0 7 7" aria-hidden="true"><path d="M3.5 0.75v5.5M0.75 3.5h5.5" /></svg>
+      )}
+      <span className="tree-git-words">, {GIT_WORDS[kind]}</span>
+    </span>
+  );
 }
 
 /**
@@ -115,7 +155,7 @@ export const TREE_ROW_HEIGHT = 32;
 
 export function FileTree({
   root, rootName, activePath, list, onOpenFile, onRowMenu, onChooseFolder, onMoveEntry, vaultMenu,
-  editing = null, onEditingDone, reloadToken = 0, collapseToken = 0,
+  editing = null, onEditingDone, reloadToken = 0, collapseToken = 0, gitMarks = null,
 }: FileTreeProps) {
   const [children, setChildren] = useState<ReadonlyMap<string, readonly WorkspaceEntryV1[]>>(new Map());
   const [expanded, setExpanded] = useState<ReadonlySet<string>>(new Set());
@@ -336,6 +376,7 @@ export function FileTree({
             // place at the top of the rail while its contents scroll.
             const onPath = activePath !== null
               && (activePath.startsWith(`${entry.path}/`) || activePath.startsWith(`${entry.path}\\`));
+            const holdsChanges = gitMarks?.folders.has(entry.path) ?? false;
             return (
               <div className="tree-node" key={entry.path}>
                 <button
@@ -343,7 +384,7 @@ export function FileTree({
                   className={`${onPath ? 'tree-row tree-directory tree-on-path' : 'tree-row tree-directory'}${dropClass(entry.path)}`}
                   data-testid="tree-directory"
                   data-depth={depth}
-                  title={entry.name}
+                  title={holdsChanges ? `${entry.name}, ${GIT_WORDS.folder}` : entry.name}
                   aria-expanded={isOpen}
                   {...dragProps(entry.path)}
                   {...dropProps(entry.path)}
@@ -355,6 +396,7 @@ export function FileTree({
                   {editing?.intent === 'rename' && editing.path === entry.path
                     ? <NameField initial={entry.name} onDone={commitEdit} />
                     : <span className="tree-name">{entry.name}</span>}
+                  {holdsChanges && <GitMark kind="folder" />}
                 </button>
                 {editing?.intent === 'new-folder' && editing.path === entry.path && (
                   <div className="tree-level" style={{ '--tree-depth': depth + 1 } as React.CSSProperties}>
@@ -373,6 +415,7 @@ export function FileTree({
           }
 
           const isActive = entry.path === activePath;
+          const change = gitMarks?.files.get(entry.path);
           return (
             <div className={isActive ? 'tree-node tree-node-active' : 'tree-node'} key={entry.path}>
               <button
@@ -380,7 +423,7 @@ export function FileTree({
                 className={isActive ? 'tree-row tree-file tree-file-active' : 'tree-row tree-file'}
                 data-testid="tree-file"
                 data-path={entry.path}
-                title={entry.name}
+                title={change ? `${entry.name}, ${GIT_WORDS[change]}` : entry.name}
                 aria-current={isActive ? 'true' : undefined}
                 {...dragProps(entry.path)}
                 onClick={() => onOpenFile(entry.path)}
@@ -391,6 +434,7 @@ export function FileTree({
                 {editing?.intent === 'rename' && editing.path === entry.path
                   ? <NameField initial={entry.name} onDone={commitEdit} />
                   : <span className="tree-name">{entry.name}</span>}
+                {change && <GitMark kind={change} />}
               </button>
             </div>
           );

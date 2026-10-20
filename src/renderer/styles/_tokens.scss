@@ -39,6 +39,13 @@
   --muted: #6F6B66;
   --success: #496B52;
   --warning: #8A642D;
+  /* The git mark for a changed note. Its own token rather than --warning:
+     beside the rust accent bar on the active row, the warning brown read as
+     the same colour, so the mark is shifted toward yellow. --warning itself
+     stays, since it is also text (quick open's truncation note) and this
+     clears 3:1 for a mark, not 4.5:1 for text. 3.9:1 on the panel, 3.6:1 on
+     the active row. */
+  --git-changed: #A86A00;
   --danger: #93443F;
   --focus: #A85D3B;
   /* A scrim always pushes the page back, so it is not derived from --ink: in
@@ -100,6 +107,8 @@
   --muted: #97928B;
   --success: #8BB697;
   --warning: #D0A45F;
+  /* At night the warning amber already reads apart from the peach accent. */
+  --git-changed: #D0A45F;
   --danger: #D88780;
   --focus: #E0A07A;
   --scrim: rgb(0 0 0 / 0.52);

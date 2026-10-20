@@ -72,6 +72,7 @@ import {
   renamedFileName,
 } from '../../shared/workspace/v1/entry-names';
 import { buildFileIndex } from './file-index';
+import { GitMarks } from './git-marks';
 import { searchContent } from './content-search';
 
 const MARKDOWN_FILTERS = [
@@ -127,6 +128,17 @@ export class WorkspaceSession {
    */
   private folderChosen = false;
   private indexCache: { root: string; reply: WorkspaceIndexReplyV1 } | null = null;
+  /**
+   * Which notes differ from the last commit, when the folder is in a git
+   * repository. Read-only, and absent rather than an error everywhere else.
+   * Only the files the editor opens count: Noto shows what changed in your
+   * notes, not a repository's every file.
+   */
+  private readonly git = new GitMarks({
+    publish: (event) => this.send(WORKSPACE_CHANNELS.gitMarksChanged, event),
+    keep: isEditableFile,
+    log: (event, fields) => this.logger.log(event, fields ?? {}),
+  });
   private tagIndexCache: { root: string; index: TagIndex } | null = null;
 
   constructor(
@@ -244,6 +256,8 @@ export class WorkspaceSession {
     }
 
     store.onExternalChange = (event) => {
+      // Another program wrote the note; git may see it differently now.
+      this.git.refresh();
       this.send(FILE_TRUTH_CHANNELS.externalChange, {
         version: 1,
         documentId: opened.document.documentId,
@@ -395,6 +409,7 @@ export class WorkspaceSession {
 
   /** Release every store, for shutdown. */
   closeAll(): void {
+    this.git.close();
     for (const document of this.documents.values()) document.store.close();
     this.documents.clear();
     this.activePath = null;
@@ -462,6 +477,8 @@ export class WorkspaceSession {
     // A new folder invalidates the old index rather than serving it stale.
     this.indexCache = null;
     this.tagIndexCache = null;
+    // Not awaited: a status is a background read, and the folder shows without it.
+    void this.git.open(root);
     await this.recentFolders?.remember(root);
     this.logger.log('workspace_folder_opened', {});
     const event = this.folderEvent();
@@ -603,6 +620,7 @@ export class WorkspaceSession {
 
   private done(target: string): WorkspaceEntryReplyV1 {
     this.send(WORKSPACE_CHANNELS.treeChanged, { version: NOTO_WORKSPACE_VERSION });
+    this.git.refresh();
     return { version: NOTO_WORKSPACE_VERSION, done: true, path: target };
   }
 
@@ -992,6 +1010,7 @@ export class WorkspaceSession {
       this.logger.log('document_imported', {});
       await this.openPath(outcome.path);
       this.send(WORKSPACE_CHANNELS.treeChanged, { version: NOTO_WORKSPACE_VERSION });
+      this.git.refresh();
     } else {
       this.logger.log('document_import_refused', { reason: outcome.reason });
     }
@@ -1024,6 +1043,7 @@ export class WorkspaceSession {
         throw cause;
       }
       await this.openPath(target);
+      this.git.refresh();
       this.logger.log('workspace_note_created', {});
       return { version: NOTO_WORKSPACE_VERSION, created: true, path: target };
     }
@@ -1108,6 +1128,22 @@ export class WorkspaceSession {
     // next Browse Tags sees the vault as it is now.
     this.tagIndexCache = null;
     this.send(WORKSPACE_CHANNELS.treeChanged, { version: NOTO_WORKSPACE_VERSION });
+    // A rename, a trash or a new note changes what git reports.
+    this.git.refresh();
+  }
+
+  /** The git marks as main holds them. Never runs git itself. */
+  gitMarks() {
+    return this.git.current();
+  }
+
+  /**
+   * Something on disk may differ from what git last said: a save landed, or
+   * the window came back from another program that may have committed.
+   * Debounced inside, so callers need not be careful how often they say so.
+   */
+  refreshGitMarks(): void {
+    this.git.refresh();
   }
 
 
@@ -1281,6 +1317,7 @@ export class WorkspaceSession {
     if (current) this.publish(current);
     this.publishTabs();
     if (this.folderRoot) this.send(WORKSPACE_CHANNELS.folderChanged, this.folderEvent());
+    if (this.git.current().files.length > 0) this.send(WORKSPACE_CHANNELS.gitMarksChanged, this.git.current());
   }
 
   private openOptions() {
