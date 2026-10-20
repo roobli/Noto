@@ -6,7 +6,7 @@
  * choices can never reach the rest of the file.
  */
 
-import type { Node as ProseNode } from 'prosemirror-model';
+import type { Mark, Node as ProseNode } from 'prosemirror-model';
 import type {
   BlockContent,
   DefinitionContent,
@@ -28,6 +28,78 @@ function textOf(node: ProseNode): string {
   return value;
 }
 
+/** Marks that become mdast parents; code is a leaf, not a wrapper. */
+const WRAPPING_MARKS: ReadonlySet<string> = new Set(['emphasis', 'strong', 'strikethrough', 'link']);
+
+/** A phrasing leaf and the marks still to be wrapped around it. */
+interface MarkedLeaf {
+  content: PhrasingContent;
+  marks: readonly Mark[];
+}
+
+function wrapIn(mark: Mark, children: PhrasingContent[]): PhrasingContent {
+  switch (mark.type.name) {
+    case 'emphasis':
+      return { type: 'emphasis', children };
+    case 'strong':
+      return { type: 'strong', children };
+    case 'strikethrough':
+      return { type: 'delete', children };
+    default:
+      return mark.attrs.referenceType
+        ? {
+            type: 'linkReference',
+            referenceType: mark.attrs.referenceType,
+            identifier: mark.attrs.identifier,
+            label: mark.attrs.label || mark.attrs.identifier,
+            children,
+          }
+        : { type: 'link', url: mark.attrs.href, title: mark.attrs.title ?? null, children };
+  }
+}
+
+/**
+ * Nest flat marks the way the text runs them: the mark that runs furthest
+ * from a leaf is the outer one, and wraps everything it covers.
+ *
+ * ProseMirror orders a node's marks by schema, not by extent. Wrapping in
+ * that order put `strong` outside `emphasis` for the bold word in
+ * `*a **b** c*`, so the emphasis split into three and was written as
+ * `*a&#x20;****b****&#x20;c*`, which reads back as something else. A mark
+ * that runs no further than another is wrapped inside it in the schema's
+ * order, so `***both***` keeps its shape.
+ */
+function nestByRun(leaves: readonly MarkedLeaf[]): PhrasingContent[] {
+  const output: PhrasingContent[] = [];
+  let at = 0;
+  while (at < leaves.length) {
+    const { content, marks } = leaves[at]!;
+    if (marks.length === 0) {
+      output.push(content);
+      at += 1;
+      continue;
+    }
+    let outer = marks[0]!;
+    let end = at + 1;
+    for (const mark of marks) {
+      let reach = at + 1;
+      while (reach < leaves.length && mark.isInSet(leaves[reach]!.marks)) reach += 1;
+      // Ties go to the later mark, which the schema order puts outside.
+      if (reach >= end) {
+        outer = mark;
+        end = reach;
+      }
+    }
+    const inside = leaves.slice(at, end).map((leaf) => ({
+      content: leaf.content,
+      marks: outer.removeFromSet(leaf.marks),
+    }));
+    output.push(wrapIn(outer, mergeAdjacent(nestByRun(inside))));
+    at = end;
+  }
+  return output;
+}
+
 /**
  * Rebuild mdast phrasing from a ProseMirror inline fragment.
  *
@@ -35,26 +107,29 @@ function textOf(node: ProseNode): string {
  * adjacent text sharing a mark has to be regrouped into a single nested node.
  */
 function phrasingFrom(node: ProseNode): PhrasingContent[] {
-  const output: PhrasingContent[] = [];
+  const leaves: MarkedLeaf[] = [];
+  const push = (content: PhrasingContent, marks: readonly Mark[] = []): void => {
+    leaves.push({ content, marks });
+  };
 
   node.forEach((child) => {
     if (child.type.name === 'hard_break') {
-      output.push({ type: 'break' });
+      push({ type: 'break' });
       return;
     }
     if (child.type.name === 'image') {
       const { src, alt, title, referenceType, identifier, label } = child.attrs;
-      output.push(referenceType
+      push(referenceType
         ? { type: 'imageReference', alt: alt || null, referenceType, identifier, label: label || identifier }
         : { type: 'image', url: src, alt: alt || null, title: title ?? null });
       return;
     }
     if (child.type.name === 'math_inline') {
-      output.push({ type: 'inlineMath', value: textOf(child) });
+      push({ type: 'inlineMath', value: textOf(child) });
       return;
     }
     if (child.type.name === 'footnote_reference') {
-      output.push({
+      push({
         type: 'footnoteReference',
         identifier: child.attrs.identifier,
         label: child.attrs.label || child.attrs.identifier,
@@ -62,7 +137,7 @@ function phrasingFrom(node: ProseNode): PhrasingContent[] {
       return;
     }
     if (child.type.name === 'inline_html') {
-      output.push({ type: 'html', value: child.attrs.value });
+      push({ type: 'html', value: child.attrs.value });
       return;
     }
     const reference = child.type.name === 'character_reference';
@@ -74,43 +149,15 @@ function phrasingFrom(node: ProseNode): PhrasingContent[] {
     // A reference is wrapped in its marks like text, so `**Tom &amp; Jerry**`
     // stays one run. Inside code nothing is a reference: the character the
     // reader sees is the code's text.
-    let leaf: PhrasingContent = codeMark
+    const leaf: PhrasingContent = codeMark
       ? { type: 'inlineCode', value }
       : reference
         ? { type: 'characterReference', source: child.attrs.source, value }
         : { type: 'text', value };
-
-    // Wrap outward so the innermost mark ends up closest to the text.
-    for (const mark of child.marks) {
-      switch (mark.type.name) {
-        case 'emphasis':
-          leaf = { type: 'emphasis', children: [leaf] };
-          break;
-        case 'strong':
-          leaf = { type: 'strong', children: [leaf] };
-          break;
-        case 'strikethrough':
-          leaf = { type: 'delete', children: [leaf] };
-          break;
-        case 'link':
-          leaf = mark.attrs.referenceType
-            ? {
-                type: 'linkReference',
-                referenceType: mark.attrs.referenceType,
-                identifier: mark.attrs.identifier,
-                label: mark.attrs.label || mark.attrs.identifier,
-                children: [leaf],
-              }
-            : { type: 'link', url: mark.attrs.href, title: mark.attrs.title ?? null, children: [leaf] };
-          break;
-        default:
-          break;
-      }
-    }
-    output.push(leaf);
+    push(leaf, child.marks.filter((mark) => WRAPPING_MARKS.has(mark.type.name)));
   });
 
-  return trimLeadingSpace(trimTrailingSpace(mergeAdjacent(output)));
+  return trimLeadingSpace(trimTrailingSpace(mergeAdjacent(nestByRun(leaves))));
 }
 
 /**

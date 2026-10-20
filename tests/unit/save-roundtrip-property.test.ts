@@ -542,6 +542,20 @@ describe('emphasis nested in emphasis', () => {
     insertAtBlockStart(h, 0, 'z');
     expect(save(h)).toBe('*zone* and **two *three***\n');
   });
+
+  it('keeps one emphasis around the bold words inside it', () => {
+    const h = openTracked('*see (**bold**), ~~gone~~ and [a link](u) here*\n');
+    insertAtBlockStart(h, 0, 'z');
+    expect(save(h)).toBe('*zsee (**bold**), ~~gone~~ and [a link](u) here*\n');
+    expectSavedMatchesEditor(h, 'marks inside emphasis');
+  });
+
+  it('closes emphasis that ends on a bold word in one run', () => {
+    const h = openTracked('*note: **important***\n');
+    insertAtBlockStart(h, 0, 'z');
+    expect(save(h)).toBe('*znote: **important***\n');
+    expectSavedMatchesEditor(h, 'emphasis ending in bold');
+  });
 });
 
 describe('two lists the editor leaves adjacent', () => {
