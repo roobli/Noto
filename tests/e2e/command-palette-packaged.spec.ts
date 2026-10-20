@@ -20,12 +20,13 @@ async function invokeMenu(app: ElectronApplication, id: string): Promise<void> {
 }
 
 /*
- * The palette is a modal dialog: the keyboard goes into it, Escape leaves it,
- * and leaving gives the keyboard back to the note. It used to open with the
- * focus still in the document, so keys typed into the note behind it and
- * Escape did nothing at all.
+ * The palette is a modal dialog with a filter field: the keyboard goes into
+ * the field, the words typed narrow the list, Up and Down pick a row, Tab
+ * stays inside, and Escape, Close or a press outside leave it and give the
+ * keyboard back to the note. Running a command with Enter is covered by the
+ * plugin center spec, which runs a real plugin's command that way.
  */
-test('the command palette takes the keyboard, and Escape gives it back', async () => {
+test('the command palette filters, moves, traps the focus, and gives it back', async () => {
   const workspace = path.join(process.cwd(), 'test-results', 'command-palette');
   await rm(workspace, { recursive: true, force: true });
   const userData = path.join(workspace, 'user-data');
@@ -54,21 +55,62 @@ test('the command palette takes the keyboard, and Escape gives it back', async (
 
     await invokeMenu(app, 'command-palette');
     const palette = page.getByTestId('command-palette');
+    const field = page.getByTestId('palette-input');
+    const options = palette.getByRole('option');
     await expect(palette).toBeVisible();
-    await expect.poll(focusInPalette).toBe(true);
+    await expect(field).toBeFocused();
+    const all = await options.count();
+    expect(all).toBeGreaterThan(3);
 
-    // A key pressed now is the palette's, not the note's.
-    await page.keyboard.type('x');
+    // The first row is current, and the field says so.
+    const activeId = () => field.getAttribute('aria-activedescendant');
+    await expect(options.first()).toHaveAttribute('aria-selected', 'true');
+    expect(await activeId()).toBe(await options.first().getAttribute('id'));
+
+    // Down and Up walk the rows; Up from the top wraps to the bottom.
+    await page.keyboard.press('ArrowDown');
+    await expect(options.nth(1)).toHaveAttribute('aria-selected', 'true');
+    expect(await activeId()).toBe(await options.nth(1).getAttribute('id'));
+    await page.keyboard.press('ArrowUp');
+    await page.keyboard.press('ArrowUp');
+    await expect(options.last()).toHaveAttribute('aria-selected', 'true');
+
+    // Words narrow the list, in any order, and the first match is current.
+    await page.keyboard.type('pdf export');
+    await expect(options).toHaveCount(1);
+    await expect(options.first()).toContainText('Export PDF');
+    await expect(options.first()).toHaveAttribute('aria-selected', 'true');
+    await field.fill('nothing like this');
+    await expect(options).toHaveCount(0);
+    await expect(palette.getByText('No command matches that.')).toBeVisible();
+    await field.fill('');
+    await expect(options).toHaveCount(all);
+
+    // None of that reached the note.
     await expect(editor.locator('p')).toHaveText('Body text.');
+
+    // Tab goes round the field and Close, and never out of the dialog.
+    for (let step = 0; step < 4; step += 1) {
+      await page.keyboard.press(step % 2 === 0 ? 'Tab' : 'Shift+Tab');
+      await page.keyboard.press('Tab');
+      expect(await focusInPalette()).toBe(true);
+    }
 
     await page.keyboard.press('Escape');
     await expect(palette).toHaveCount(0);
     await expect.poll(focusInEditor).toBe(true);
 
-    // The Close button hands the keyboard back the same way.
+    // Close hands the keyboard back the same way.
     await invokeMenu(app, 'command-palette');
-    await expect.poll(focusInPalette).toBe(true);
+    await expect(field).toBeFocused();
     await palette.getByRole('button', { name: 'Close' }).click();
+    await expect(palette).toHaveCount(0);
+    await expect.poll(focusInEditor).toBe(true);
+
+    // So does a press outside it.
+    await invokeMenu(app, 'command-palette');
+    await expect(field).toBeFocused();
+    await page.mouse.click(30, 860);
     await expect(palette).toHaveCount(0);
     await expect.poll(focusInEditor).toBe(true);
 
