@@ -45,6 +45,9 @@
      the dark theme ink is nearly white and a wash of it lifts the background
      instead of dimming it. */
   --scrim: rgb(32 30 28 / 0.30);
+  /* What a shadow is drawn in. By day it is the ink, the colour every
+     floating surface was already shadowed with. */
+  --shadow: #34312E;
   /* Tree connectors. Low enough that a deep tree reads as texture rather than
      as a diagram, which is the difference between a guide and a grid. */
   /* Typora's own tree line, to the byte. Ours was a warmer base at a heavier
@@ -98,6 +101,12 @@
   --danger: #D88780;
   --focus: #E0A07A;
   --scrim: rgb(0 0 0 / 0.52);
+  /* The scrim's reasoning, for shadows. They were mixed from the ink, which
+     at night is nearly white, so every floating panel, quick open, the
+     palette, the dialogs, stood in a pale glow instead of casting a shadow:
+     lit from behind rather than lifted. A shadow is always darker than what
+     it falls on. */
+  --shadow: #000;
   --tree-line: rgb(241 238 232 / 0.11);
   --ink-strong: #F1EEE8;
   /* A clear step above the dark hairline, or the table's outer rules vanish
