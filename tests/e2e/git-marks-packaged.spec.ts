@@ -71,13 +71,21 @@ async function launch(
   writeFileSync(path.join(userData, 'settings.json'), JSON.stringify({ theme: options.theme ?? 'light' }));
   const app = await electron.launch({
     executablePath: packagedExecutable(),
-    args: [`--user-data-dir=${userData}`, folder],
+    // Screenshots for review are taken at 2x, so a 6px mark can be judged.
+    args: [`--user-data-dir=${userData}`, ...(SHOTS ? ['--force-device-scale-factor=2'] : []), folder],
     env: { ...process.env, ...options.env } as Record<string, string>,
   });
   const page = await app.firstWindow();
   await page.setViewportSize({ width: 1100, height: 640 });
   await page.waitForSelector('[data-testid="file-tree"]', { state: 'visible', timeout: 30_000 });
   return { app, page };
+}
+
+/** The window at its device pixels, which `page.screenshot` does not give under Electron. */
+async function capture(app: ElectronApplication, file: string): Promise<void> {
+  const png = await app.evaluate(async ({ BrowserWindow }) =>
+    (await BrowserWindow.getAllWindows()[0].webContents.capturePage()).toPNG().toString('base64'));
+  writeFileSync(file, Buffer.from(png, 'base64'));
 }
 
 const fileRow = (page: Page, name: string) => page.getByTestId('tree-file').filter({ hasText: name });
@@ -117,7 +125,12 @@ test.describe('git changes in the tree', () => {
       if (SHOTS) {
         await fileRow(page, 'edited.md').click();
         await page.waitForSelector('[data-testid="noto-editor"]', { state: 'visible' });
-        await page.screenshot({ path: path.join(SHOTS, 'git-marks-light.png') });
+        // The changed note on the active row, beside the accent bar, with no hover anywhere.
+        await expect(fileRow(page, 'edited.md')).toHaveAttribute('aria-current', 'true');
+        await page.mouse.move(120, 560);
+        await page.mouse.move(700, 400);
+        await page.waitForTimeout(300);
+        await capture(app, path.join(SHOTS, 'git-marks-light.png'));
       }
     } finally {
       await app.close();
@@ -202,7 +215,12 @@ test.describe('git changes in the tree', () => {
       if (SHOTS) {
         await fileRow(page, 'edited.md').click();
         await page.waitForSelector('[data-testid="noto-editor"]', { state: 'visible' });
-        await page.screenshot({ path: path.join(SHOTS, 'git-marks-dark.png') });
+        // The changed note on the active row, beside the accent bar, with no hover anywhere.
+        await expect(fileRow(page, 'edited.md')).toHaveAttribute('aria-current', 'true');
+        await page.mouse.move(120, 560);
+        await page.mouse.move(700, 400);
+        await page.waitForTimeout(300);
+        await capture(app, path.join(SHOTS, 'git-marks-dark.png'));
       }
     } finally {
       await app.close();
