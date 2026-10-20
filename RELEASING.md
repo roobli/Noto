@@ -28,9 +28,11 @@ particular none exists only to raise the nesting cap.
    one for Intel, both listed in a single `latest-mac.yml` so each Mac's
    updater takes its own. The benchmark workflow runs on the same tag and
    reports open, keystroke, post-type idle lag and save for the packaged build.
-5. Edit the release body: the changelog entry, then the first-open blurb from
-   [docs/install.md](docs/install.md#blurb-for-github-releases), which stays
-   until builds are notarized and signed.
+5. The workflow writes the release body from that version's changelog
+   section, with relative links pointed at the files as of the tag. While
+   builds are unsigned it appends the first-open blurb from
+   [docs/install.md](docs/install.md#blurb-for-github-releases) when the
+   section has no first-open steps of its own. Nobody edits the body by hand.
 6. If the set of downloads changed, update the table in the README. The docs
    site's download page follows the release on its own.
 
@@ -48,8 +50,9 @@ to a later release, not dropped.
 What "unsigned" means for `0.0.3`:
 
 - **macOS:** ad-hoc signed after packaging, as every alpha has been, and not
-  notarized. The first open needs Right-click → Open (or
-  `xattr -cr Noto.app`), as written in [docs/install.md](docs/install.md).
+  notarized. The first open needs **Privacy & Security → Open Anyway** on
+  macOS 15 and later, Right-click → Open on macOS 14 and older, or
+  `xattr -cr Noto.app`, as written in [docs/install.md](docs/install.md).
 - **Windows:** the installer is not code-signed; SmartScreen asks once, and
   *More info → Run anyway* proceeds.
 - Linux packages are unaffected.
@@ -76,6 +79,8 @@ Deferred to the first signed release:
 - [ ] macOS builds are signed with a Developer ID, notarized, stapled, and
       launch from quarantine on a clean machine with no warning.
 - [ ] Windows builds are code-signed.
+- [ ] In-app install is turned back on (`SIGNED_BUILD_AUTO_INSTALL` in
+      `src/main/updates/install-policy.ts`, #329) once both of the above hold.
 - [ ] The comparison with Typora is repeated with the current engine, on a
       Mac that has Typora installed.
 

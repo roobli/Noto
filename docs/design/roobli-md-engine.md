@@ -119,26 +119,23 @@ kept out of the strict directory; silent divergence fails the gate loudly
 # golden gates only
 pnpm exec vitest run tests/unit/markdown-golden-gates.test.ts
 
-# full unit suite (product default = @roobli/md)
+# full unit suite
 pnpm test
-
-# force legacy micromark locally
-NOTO_MARKDOWN_ENGINE=micromark pnpm start
 ```
 
 ### What “green gates” mean
 
-Green means every fixture in `markdown-golden/` matches on split boundaries,
-identity serialize, and multi-block insert/delete/multi-dirty serialize under
-both engines. Product default is now `@roobli/md`; keep expanding the fixture
-set and document any intentional diffs. Escape hatch:
-`NOTO_MARKDOWN_ENGINE=micromark`.
+Green means every fixture in `markdown-golden/` matches on split boundaries
+and identity serialize, and that multi-block insert/delete/multi-dirty saves
+parse back to exactly the requested blocks (`tests/unit/serialize-oracle.ts`,
+which replaced the A/B comparison with the removed serializer in #332). Keep
+expanding the fixture set and document any intentional diffs.
 
 
 ## Default-on (landed)
 
-**Product default is `@roobli/md`** (see `engine-flag.ts`). Escape hatch:
-`NOTO_MARKDOWN_ENGINE=micromark`. Intentional leftover dialect:
+**`@roobli/md` is the only engine** (default since #282, switch removed in
+#332). Intentional leftover dialect:
 **thirty-eight+ nests** (`MAX_MARK_NEST`=37) and **nested-bracket image alts** /
 exotic inline refuses. Host serialize still runs a
 reparse proof so unterminated fences that would swallow neighbours are refused

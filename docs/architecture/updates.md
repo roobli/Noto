@@ -27,9 +27,9 @@ to `v0.0.2-alpha.109` until this rule and the integrity workflow below landed.
 
 - **Check on launch** (off by default): quiet. When nothing is new, nothing is
   shown. Status lives in Settings.
-- **Download automatically** (off by default): when a check finds a build on the
-  chosen channel, fetch it without a prompt. Install still waits for Restart
-  (or quit).
+- **Download automatically** (off by default, and hidden while builds are
+  unsigned): when a check finds a build on the chosen channel, fetch it
+  without a prompt. Install still waits for Restart (or quit).
 - **Check now** / Help → **Check for Updates…**: same check, status in Settings.
 - No toast wall, no modal on every launch.
 
@@ -41,6 +41,8 @@ to `v0.0.2-alpha.109` until this rule and the integrity workflow below landed.
 > `src/main/updates/install-policy.ts`). Found updates open the matching
 > download on the release page, and the "Download automatically" setting is
 > hidden.
+> `v0.0.3` predates this gate: on macOS and Windows it can still download and
+> install an update itself. The gate ships in the first release after it.
 > The table below describes behaviour once that flag is turned on for a
 > signed release.
 

@@ -68,18 +68,21 @@ double-click on the first open; on Windows, SmartScreen asks once (*More info �
 Run anyway*). Follow [`docs/install.md`](docs/install.md) (short, per
 platform).
 
-macOS one-liner after unzip (from the folder that contains `Noto.app`):
+On macOS 15 Sequoia and later, double-click `Noto.app` once, click **Done**,
+then open **System Settings → Privacy & Security** and click **Open Anyway**.
+Or, from the folder that contains `Noto.app`:
 
 ```sh
 xattr -cr Noto.app && open Noto.app
 ```
 
-Or Right-click → Open. Prefer that over double-click the first time.
+Right-click → Open still works on macOS 14 and older.
 
 Packaged builds can check GitHub Releases from **Settings → Updates**. Stable
 (default) follows formal releases only; Testing includes alphas. Until builds
 are signed, a found update opens its download on the releases page instead of
-installing itself (#329). See `docs/architecture/updates.md`.
+installing itself, from the first release after `v0.0.3` (#329). See
+[`docs/architecture/updates.md`](docs/architecture/updates.md).
 
 | Platform | Download |
 | --- | --- |
