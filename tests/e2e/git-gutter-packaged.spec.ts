@@ -170,14 +170,11 @@ test.describe('git gutter', () => {
       expect(await beside(page, block(page, 'has not changed since'))).toBeNull();
       expect(await beside(page, block(page, 'The last paragraph'))).toBeNull();
       await expect(deletedMarks(page)).toHaveCount(1);
-      // The marker sits where the deleted block was: between the changed paragraph and the list.
-      const markBox = (await deletedMarks(page).boundingBox())!;
-      const middle = markBox.y + markBox.height / 2;
-      expect(middle).toBeGreaterThan((await changed.boundingBox())!.y + (await changed.boundingBox())!.height - 2);
-      expect(middle).toBeLessThan((await editor(page).locator('ul').boundingBox())!.y + 2);
       // Not part of the document: nothing in ProseMirror's DOM changed for it.
       await expect(editor(page).locator('[data-testid="git-line"], [data-testid="git-deleted-mark"]')).toHaveCount(0);
-      // A line, in the gutter, in the tree's colour for a change and success for new.
+
+      // The bars: in the tree's colours, changed solid and new dashed (3 on, 2
+      // off, from the block's top), 2px wide, 8px from the text.
       const tokens = await page.evaluate(() => {
         const probe = document.createElement('i');
         document.body.append(probe);
@@ -188,16 +185,61 @@ test.describe('git gutter', () => {
         probe.remove();
         return { changedColour, success };
       });
-      const image = (kind: string) => gutter(page).locator(`[data-git-mark="${kind}"]`).evaluate((element) => getComputedStyle(element).backgroundImage);
-      expect(await image('modified')).toContain(tokens.changedColour);
-      expect(await image('added')).toContain(tokens.success);
-      const lineBox = (await lines(page).first().boundingBox())!;
-      expect(lineBox.x + lineBox.width).toBeLessThanOrEqual((await changed.boundingBox())!.x);
+      const bar = (kind: string) => gutter(page).locator(`[data-git-mark="${kind}"]`).evaluate((element) => {
+        const style = getComputedStyle(element, '::before');
+        const box = element.getBoundingClientRect();
+        const right = box.right - parseFloat(style.right);
+        return {
+          colour: style.backgroundColor, image: style.backgroundImage, width: parseFloat(style.width),
+          left: right - parseFloat(style.width), right, top: box.top, bottom: box.bottom,
+        };
+      });
+      const solid = await bar('modified');
+      expect(solid.colour).toBe(tokens.changedColour);
+      expect(solid.image).toBe('none');
+      expect(solid.width).toBe(2);
+      const dashed = await bar('added');
+      expect(dashed.image).toContain('repeating-linear-gradient');
+      expect(dashed.image).toContain(tokens.success);
+      expect(dashed.image).toMatch(/ 0px, [^)]+\) 3px, rgba\(0, 0, 0, 0\) 3px, rgba\(0, 0, 0, 0\) 5px\)$/);
+      expect(dashed.width).toBe(2);
+      const changedBox = (await changed.boundingBox())!;
+      expect(changedBox.x - solid.right).toBeCloseTo(8, 0);
+      expect((await added.boundingBox())!.x - dashed.right).toBeCloseTo(8, 0);
+
+      // Hover widens the bar to 4px away from the text: the 8px gap holds and nothing else moves.
+      const textBefore = changedBox.x;
+      await page.mouse.move(solid.right - 1, (solid.top + solid.bottom) / 2);
+      await expect.poll(async () => (await bar('modified')).width).toBe(4);
+      const hovered = await bar('modified');
+      expect(hovered.right).toBeCloseTo(solid.right, 1);
+      expect(hovered.left).toBeCloseTo(solid.left - 2, 1);
+      expect((await changed.boundingBox())!.x).toBe(textBefore);
+      await page.mouse.move(700, 650);
+      await expect.poll(async () => (await bar('modified')).width).toBe(2);
+
+      // The triangle: centred in the gap where the deleted block was, its point
+      // on the bars' centre line, and at least 4px clear of the bar above it.
+      await expect(deletedMarks(page)).toHaveCount(1);
+      const triangle = await deletedMarks(page).evaluate((element) => {
+        const style = getComputedStyle(element, '::before');
+        const box = element.getBoundingClientRect();
+        const left = box.left + parseFloat(style.left);
+        const top = box.top + parseFloat(style.top);
+        const height = parseFloat(style.borderTopWidth) + parseFloat(style.borderBottomWidth);
+        return { point: left + parseFloat(style.borderLeftWidth), top, bottom: top + height, width: parseFloat(style.borderLeftWidth), height };
+      });
+      expect(triangle).toMatchObject({ width: 6, height: 8 });
+      const listBox = (await editor(page).locator('ul').boundingBox())!;
+      const gapMiddle = (changedBox.y + changedBox.height + listBox.y) / 2;
+      expect(Math.abs((triangle.top + triangle.bottom) / 2 - gapMiddle)).toBeLessThanOrEqual(1);
+      expect(Math.abs(triangle.point - (solid.left + solid.right) / 2)).toBeLessThanOrEqual(0.5);
+      expect(triangle.top - solid.bottom).toBeGreaterThanOrEqual(4);
 
       if (SHOTS) {
         await page.mouse.move(700, 650);
         await page.waitForTimeout(300);
-        await capture(app, path.join(SHOTS, 'pr2-light.png'));
+        await capture(app, path.join(SHOTS, 'pr2-v2-light.png'));
       }
 
       // The pointer: the line opens the block as committed.
@@ -211,7 +253,7 @@ test.describe('git gutter', () => {
       await expect(popover.locator('[contenteditable="true"], textarea, input')).toHaveCount(0);
       if (SHOTS) {
         await settle(page);
-        await capture(app, path.join(SHOTS, 'pr2-light-popover.png'));
+        await capture(app, path.join(SHOTS, 'pr2-v2-light-popover.png'));
       }
       await page.keyboard.press('Escape');
       await expect(popover).toHaveCount(0);
@@ -221,6 +263,7 @@ test.describe('git gutter', () => {
       await pressGutter(page, added);
       await expect(popover.getByRole('heading')).toHaveText('New since the last commit');
       await expect(page.getByTestId('git-popover-text')).toHaveCount(0);
+      await expect(page.getByTestId('git-popover-empty')).toHaveText('The last commit does not have this block.');
       await page.getByTestId('git-popover-close').click();
       await expect(popover).toHaveCount(0);
 
@@ -228,6 +271,19 @@ test.describe('git gutter', () => {
       await deletedMarks(page).click();
       await expect(popover.getByRole('heading')).toHaveText('Deleted since the last commit');
       await expect(page.getByTestId('git-popover-text')).toHaveText('A third paragraph that has since been deleted.');
+      // One structure for all three: a title over the same mono panel.
+      const panel = (testId: string) => page.getByTestId(testId).evaluate((element) => ({
+        tag: element.tagName, font: getComputedStyle(element).fontFamily, background: getComputedStyle(element).backgroundColor,
+        afterTitle: element.previousElementSibling?.querySelector('h2') !== null,
+      }));
+      const deletedPanel = await panel('git-popover-text');
+      expect(deletedPanel.tag).toBe('PRE');
+      expect(deletedPanel.afterTitle).toBe(true);
+      expect(deletedPanel.font).toMatch(/mono/i);
+      if (SHOTS) {
+        await settle(page);
+        await capture(app, path.join(SHOTS, 'pr2-v2-deleted-popover.png'));
+      }
       await page.keyboard.press('Escape');
       await expect(popover).toHaveCount(0);
 
@@ -321,13 +377,13 @@ test.describe('git gutter', () => {
       if (SHOTS) {
         await page.mouse.move(700, 650);
         await page.waitForTimeout(300);
-        await capture(app, path.join(SHOTS, 'pr2-dark.png'));
+        await capture(app, path.join(SHOTS, 'pr2-v2-dark.png'));
         await pressGutter(page, block(page, 'rewritten after the commit'));
         await expect(page.getByTestId('git-popover')).toBeVisible();
         await expect(page.getByTestId('git-popover-text')).toBeFocused();
         await settle(page);
         await page.waitForTimeout(1_000);
-        await capture(app, path.join(SHOTS, 'pr2-dark-popover.png'));
+        await capture(app, path.join(SHOTS, 'pr2-v2-dark-popover.png'));
       }
     } finally {
       await app.close();

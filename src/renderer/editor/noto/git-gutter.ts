@@ -149,11 +149,21 @@ export function showCommittedAtSelection(view: EditorView): boolean {
 }
 
 /**
- * A mark's box starts this far left of the block's edge and is 14px wide,
- * the whole of the column's gutter less a pixel before the text; the 2px line
- * is drawn 7px into it (noto-editor.scss), 8px left of the text.
+ * Geometry, against the block's left edge (where its text starts):
+ *
+ * - A line's box is the column's 14px gutter, ending at the text. The bar is
+ *   drawn against its right side, 8px from the text (noto-editor.scss), so
+ *   at 2px its centre is 9px left of the text, and on hover it widens to 4px
+ *   leftward, away from the text, with the 8px gap unchanged.
+ * - The deleted triangle is 6px wide and 8px tall, its point on that 9px
+ *   centre; its box is 16px square around it, centred in the gap.
+ * - A bar beside the triangle stops 4px short of it.
  */
-const MARK_LEFT = 15;
+const LINE_BOX = 14;
+const BAR_CENTRE = 9;
+const TRIANGLE_HALF_HEIGHT = 4;
+const TRIANGLE_CLEARANCE = 4;
+const DELETED_BOX = 16;
 
 /**
  * The layer: absolutely placed elements in a zero-height box just before the
@@ -296,26 +306,42 @@ class GutterLayer {
       children.push(element);
       return element;
     };
-    for (const line of lines) {
-      const block = elements.get(line.index);
-      if (!block) continue;
-      const rect = block.getBoundingClientRect();
-      const element = take(line.index, line.change);
-      element.title = GIT_BLOCK_WORDS[line.change];
-      place(element, rect.left - origin.left - MARK_LEFT, rect.top - origin.top, rect.height);
-    }
+    // Triangles first: where they sit decides where the bars beside them stop.
+    const triangles: Array<{ before: number; head: string; left: number; y: number }> = [];
     for (const run of deleted) {
       const next = elements.get(run.before)?.getBoundingClientRect();
       const previous = elements.get(run.before - 1)?.getBoundingClientRect();
       const reference = next ?? previous;
       if (!reference) continue;
-      // Half way across the gap the deleted blocks left, or just past the last block.
+      // Centred in the gap the deleted blocks left; above the first block or
+      // below the last, as far out as it would be clear of a bar.
+      const away = TRIANGLE_HALF_HEIGHT + TRIANGLE_CLEARANCE;
       const y = next && previous ? (previous.bottom + next.top) / 2
-        : next ? next.top - 4
-        : reference.bottom + 6;
-      const element = take(run.before, 'deleted');
+        : next ? next.top - away
+        : reference.bottom + away;
+      triangles.push({ before: run.before, head: run.head, left: reference.left, y });
+    }
+    for (const line of lines) {
+      const block = elements.get(line.index);
+      if (!block) continue;
+      const rect = block.getBoundingClientRect();
+      let top = rect.top;
+      let bottom = rect.bottom;
+      for (const triangle of triangles) {
+        const clear = TRIANGLE_HALF_HEIGHT + TRIANGLE_CLEARANCE;
+        if (triangle.before === line.index) top = Math.max(top, triangle.y + clear);
+        if (triangle.before === line.index + 1) bottom = Math.min(bottom, triangle.y - clear);
+      }
+      if (bottom - top < 2) continue;
+      const element = take(line.index, line.change);
+      element.title = GIT_BLOCK_WORDS[line.change];
+      place(element, rect.left - origin.left - LINE_BOX, top - origin.top, bottom - top);
+    }
+    for (const triangle of triangles) {
+      const element = take(triangle.before, 'deleted');
       element.title = GIT_BLOCK_WORDS.deleted;
-      place(element, reference.left - origin.left - MARK_LEFT, y - origin.top - 8, 16);
+      // The box is centred on the point, the bar's centre line.
+      place(element, triangle.left - origin.left - BAR_CENTRE - DELETED_BOX / 2, triangle.y - origin.top - DELETED_BOX / 2, DELETED_BOX);
     }
     while (existing.length > children.length) existing[existing.length - 1]!.remove();
     for (const element of children) if (element.parentElement !== this.layer) this.layer.append(element);

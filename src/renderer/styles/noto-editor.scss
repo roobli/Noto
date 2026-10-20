@@ -2761,30 +2761,45 @@
   height: 0;
   z-index: 1;
 }
+/* The press target: the 14px gutter, beside the block, ending at its text. */
 .noto-git-mark {
   --git-line: var(--git-changed);
   position: absolute;
   width: 14px;
   cursor: pointer;
-  background: linear-gradient(to right, transparent 7px, var(--git-line) 7px 9px, transparent 9px);
-  border-radius: 1px;
 }
 .noto-git-added { --git-line: var(--success); }
-/* The line answers a hover, as a control does, without a new colour. */
-.noto-git-mark:not(.noto-git-deleted):hover {
-  background: linear-gradient(to right, transparent 6px, var(--git-line) 6px 10px, transparent 10px);
+/* The bar: 8px from the text, always. Changed is solid; new is dashed, 3px on
+   and 2px off, starting at the block's top, so even a one-line block shows a
+   gap and the two never rely on colour alone. */
+.noto-git-mark:not(.noto-git-deleted)::before {
+  content: '';
+  position: absolute;
+  top: 0;
+  bottom: 0;
+  right: 8px;
+  width: 2px;
+  background: var(--git-line);
 }
-.noto-git-deleted { background: none; }
+.noto-git-mark.noto-git-added:not(.noto-git-deleted)::before {
+  background: repeating-linear-gradient(to bottom, var(--git-line) 0 3px, transparent 3px 5px);
+}
+/* A hover widens the bar to 4px away from the text; the gap stays 8px and
+   nothing moves. */
+.noto-git-mark:not(.noto-git-deleted):hover::before { width: 4px; }
+
+/* The deleted triangle: 6px wide, 8px tall, pointing into the text with its
+   point on the bars' centre line, in a 16px box centred in the gap. */
+.noto-git-deleted { width: 16px; }
 .noto-git-deleted::before {
   content: '';
   position: absolute;
   top: 4px;
-  left: 6px;
+  left: 2px;
   border-top: 4px solid transparent;
   border-bottom: 4px solid transparent;
   border-left: 6px solid var(--danger);
 }
-.noto-git-deleted:hover::before { border-left-width: 7px; }
 
 /* Focus mode dims what is not being written; the gutter dims with it. */
 :root[data-focus-mode='on'] .noto-git-gutter { opacity: 0.32; }
