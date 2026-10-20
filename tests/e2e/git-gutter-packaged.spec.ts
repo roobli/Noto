@@ -120,11 +120,11 @@ test.describe('git gutter', () => {
     try {
       await open(page, 'note.md');
       const changed = block(page, 'rewritten after the commit');
-      const added = block(page, 'written after the commit.');
+      const added = block(page, 'A paragraph written after');
       await expect(changed).toHaveClass(/noto-git-modified/, { timeout: 15_000 });
       await expect(added).toHaveClass(/noto-git-added/);
       await expect(editor(page).locator('.noto-git-block')).toHaveCount(2);
-      await expect(page.getByTestId('git-deleted-mark')).toHaveCount(1);
+      await expect(editor(page).getByTestId('git-deleted-mark')).toHaveCount(1);
       // The marker sits where the deleted block was: before the list.
       await expect(page.locator('.noto-git-deleted + ul')).toHaveCount(1);
       // A line, in the gutter, in the tree's colour for a change and success for new.
@@ -178,7 +178,7 @@ test.describe('git gutter', () => {
       await expect(popover).toHaveCount(0);
 
       // The deleted marker is a button: what was there.
-      await page.getByTestId('git-deleted-mark').click();
+      await editor(page).getByTestId('git-deleted-mark').click();
       await expect(popover.getByRole('heading')).toHaveText('Deleted since the last commit');
       await expect(page.getByTestId('git-popover-text')).toHaveText('A third paragraph that has since been deleted.');
       await page.keyboard.press('Escape');
@@ -217,7 +217,7 @@ test.describe('git gutter', () => {
       git(repo, 'add', '-A');
       git(repo, 'commit', '-q', '-m', 'second');
       await expect(editor(page).locator('.noto-git-block')).toHaveCount(0, { timeout: 15_000 });
-      await expect(page.getByTestId('git-deleted-mark')).toHaveCount(0);
+      await expect(editor(page).getByTestId('git-deleted-mark')).toHaveCount(0);
     } finally {
       await app.close();
     }
@@ -234,7 +234,7 @@ test.describe('git gutter', () => {
       await expect(block(page, 'Never committed')).toBeVisible();
       await page.waitForTimeout(1_000);
       await expect(editor(page).locator('.noto-git-block')).toHaveCount(0);
-      await expect(page.getByTestId('git-deleted-mark')).toHaveCount(0);
+      await expect(editor(page).getByTestId('git-deleted-mark')).toHaveCount(0);
     } finally {
       await app.close();
     }
@@ -248,7 +248,7 @@ test.describe('git gutter', () => {
       await open(page, 'note.md');
       await page.waitForTimeout(1_500);
       await expect(editor(page).locator('.noto-git-block')).toHaveCount(0);
-      await expect(page.getByTestId('git-deleted-mark')).toHaveCount(0);
+      await expect(editor(page).getByTestId('git-deleted-mark')).toHaveCount(0);
       await expect(page.locator('[role="alert"]')).toHaveCount(0);
     } finally {
       await app.close();

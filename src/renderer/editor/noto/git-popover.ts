@@ -118,7 +118,9 @@ export function openGitPopover(view: EditorView, anchor: HTMLElement, content: G
   window.addEventListener('resize', onScroll);
   view.dom.closest('.canvas-scroll')?.addEventListener('scroll', onScroll, true);
   open = { close: finish };
-  popover.focus();
+  // The committed text first, so a screen reader reads it and the arrows
+  // scroll it; the close button when there is no text.
+  (popover.querySelector<HTMLElement>('pre[tabindex="0"]') ?? close).focus();
 }
 
 /**
