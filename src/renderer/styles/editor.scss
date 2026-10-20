@@ -276,10 +276,13 @@
 .noto-opaque-unavailable { color: var(--danger); font: 12px/1.4 tokens.$ui; }
 
 /* A phone-width window spends its pixels on text: the gutter drops to a
-   fixed 16px, as in the plugin below 1024, and the modes all resolve to the
+   fixed width, as in the plugin below 1024, and the modes all resolve to the
    same column because none of the caps fit. */
 @media (max-width: 760px) {
-  :root { --canvas-gutter: 16px; }
+  /* 24 rather than 16: with the page's own 14px that is the 38 the heading
+     badge needs to stand in the margin whole, 12px off the heading as it is at
+     every other width, instead of being cut by the window's edge. */
+  :root { --canvas-gutter: 24px; }
   .noto-editor-host { padding-top: 20px; }
 }
 
