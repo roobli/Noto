@@ -28,9 +28,15 @@ Downloads, guides and the project's direction live at
 
 ## Project status
 
-Noto is usable and under active development. The current line is
-0.0.2-alpha; 0.0.1 was the first release with downloadable builds. The honest
-summary of where it stands is worth reading before you depend on it.
+Noto is usable and under active development. The current formal release is
+`v0.0.3` (17 October 2026), the first release outside alpha, on the Stable
+channel. It is unsigned by choice: macOS builds are ad-hoc signed and not
+notarized, the Windows installer is not code-signed, and there is no dmg.
+Signing comes in a later release: an Apple Developer ID with notarization on
+macOS and a code-signing certificate on Windows, and only then is in-app
+install turned back on. See [RELEASING.md](RELEASING.md).
+The honest summary of where it stands is worth reading before you depend on
+it.
 
 All three platforms are now verified the same way: the packaged application is
 built and then driven through its real interface, and the whole suite of 237
@@ -53,11 +59,14 @@ numbers are below.
 
 Builds for macOS, Windows and Linux are on the
 [releases page](https://github.com/roobli/Noto/releases). Each release carries
-the downloads listed below, as of `v0.0.2-alpha.114`.
+the downloads listed below, as of `v0.0.3`. macOS ships as zips; there is no
+dmg.
 
-**First open:** until we ship Apple notarization and a Windows code-signing
-certificate, each OS warns once on a fresh download. That is expected — not a
-broken build. Follow [`docs/install.md`](docs/install.md) (short, per platform).
+**First open:** `v0.0.3` is unsigned, so each OS warns once on a fresh
+download. That is expected, not a broken build. On macOS, Gatekeeper blocks a
+double-click on the first open; on Windows, SmartScreen asks once (*More info →
+Run anyway*). Follow [`docs/install.md`](docs/install.md) (short, per
+platform).
 
 macOS one-liner after unzip (from the folder that contains `Noto.app`):
 
@@ -68,8 +77,9 @@ xattr -cr Noto.app && open Noto.app
 Or Right-click → Open. Prefer that over double-click the first time.
 
 Packaged builds can check GitHub Releases from **Settings → Updates**. Stable
-(default) follows formal releases only; Testing includes alphas. See
-`docs/architecture/updates.md`.
+(default) follows formal releases only; Testing includes alphas. Until builds
+are signed, a found update opens its download on the releases page instead of
+installing itself (#329). See `docs/architecture/updates.md`.
 
 | Platform | Download |
 | --- | --- |
