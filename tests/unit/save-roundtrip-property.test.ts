@@ -59,7 +59,6 @@ const BLOCKS: readonly ((i: number) => string)[] = [
   (i) => `> quote ${i} with a list\n>\n> - a\n> - **b** *c*`,
   (i) => `- item ${i}\n\n  \`\`\`\n  code ${i}\n  \`\`\`\n\n- after`,
   (i) => `[^m${i}]: first para ${i}\n\n    second para ${i}`,
-  // Emphasis nested inside strong+emphasis is left out: known issue below.
   (i) => `***both ${i}*** with \\*escaped\\* and H~2~O`,
 ];
 
@@ -519,16 +518,29 @@ describe('background enrichment after a save', () => {
   });
 });
 
-describe('known issue (not a save bug)', () => {
-  // `***a _b_ c***` with an edit inside re-serializes ambiguously and reads
-  // back as different emphasis (seen with seed 4: "nested" -> "neste").
-  it.fails('nested emphasis inside strong emphasis survives an edit', () => {
+describe('emphasis nested in emphasis', () => {
+  // Written with one marker throughout, `***nested*em 1* strong***`: the star
+  // between two letters closed the outer run, and it read back as different
+  // emphasis with a stray `**` (seen with seed 4: "nested" -> "neste").
+  it('survives an edit that glues the inner run to a word', () => {
     const h = openTracked('***nested _em 1_ strong*** tail\n');
-    insertAtBlockStart(h, 0, '');
     const v = view(h);
     v.dispatch(v.state.tr.delete(7, 8));
-    save(h);
+    expect(save(h)).toBe('**_nested*em 1* strong_** tail\n');
     expectSavedMatchesEditor(h, 'nested emphasis');
+  });
+
+  it('keeps the underscore the file wrote for the inner run', () => {
+    const h = openTracked('***nested _em 1_ strong*** tail\n');
+    insertAtBlockStart(h, 0, 'z');
+    expect(save(h)).toBe('***znested _em 1_ strong*** tail\n');
+    expectSavedMatchesEditor(h, 'nested emphasis kept');
+  });
+
+  it('leaves emphasis without emphasis inside on stars', () => {
+    const h = openTracked('*one* and **two *three***\n');
+    insertAtBlockStart(h, 0, 'z');
+    expect(save(h)).toBe('*zone* and **two *three***\n');
   });
 });
 
