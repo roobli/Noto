@@ -8,7 +8,7 @@
  */
 
 import { fromMarkdown, type CompileContext, type Extension as FromMarkdownExtension, type Token } from 'mdast-util-from-markdown';
-import { defaultHandlers, toMarkdown, type Options as ToMarkdownOptions } from 'mdast-util-to-markdown';
+import { defaultHandlers, toMarkdown, type Handle, type Options as ToMarkdownOptions, type State } from 'mdast-util-to-markdown';
 import { gfm } from 'micromark-extension-gfm';
 import { cjkFriendlyExtension } from 'micromark-extension-cjk-friendly';
 import { cjkFriendlyToMarkdown } from 'mdast-util-to-markdown-cjk-friendly';
@@ -17,7 +17,7 @@ import { math } from 'micromark-extension-math';
 import { mathFromMarkdown, mathToMarkdown } from 'mdast-util-math';
 import { frontmatter } from 'micromark-extension-frontmatter';
 import { frontmatterFromMarkdown, frontmatterToMarkdown } from 'mdast-util-frontmatter';
-import type { Literal, Nodes, Root, RootContent } from 'mdast';
+import type { Emphasis, Literal, Nodes, Parents, PhrasingContent, Root, RootContent } from 'mdast';
 
 /**
  * A character reference, `&amp;` or `&#35;`, as one node of its own.
@@ -610,6 +610,96 @@ export const INLINE_DELIMITERS = {
   inline_code: '`',
 } as const;
 
+/**
+ * Emphasis inside emphasis, written so it reads back as what it is.
+ *
+ * Every emphasis is written with a star, so `***nested _em_ strong***` with
+ * the space before `em` deleted was saved as `***nested*em 1* strong***`. A
+ * star between two letters can close as well as open, and that one closed the
+ * outer run after `nested`: the paragraph came back as different emphasis
+ * with a stray `**` at the end. Two runs of one marker nested in each other
+ * only read back when the inner one sits where it cannot be taken for the
+ * outer one's closer, and an edit decides where it sits.
+ *
+ * So a nested run takes the other marker. Inside a starred run it is written
+ * with an underscore, which is how the file above already wrote it. Where an
+ * underscore cannot open or close, against a letter, the inner run keeps its
+ * star and the outer run takes the underscore instead, which gives
+ * `**_nested*em 1* strong_**`. A run with no emphasis inside keeps the star.
+ * Three runs nested in each other and glued to letters at every level have no
+ * form in two markers at all; those are written as before.
+ *
+ * An underscore is only used with whitespace, ASCII punctuation or the edge of
+ * the block on its outside. Other Unicode punctuation is left out on purpose,
+ * as for `bareStarStaysLiteral`, because the CJK-friendly flanking rules treat
+ * it differently for the two markers.
+ */
+const emphasisMarkers = new WeakMap<State, ('*' | '_')[]>();
+
+/** Nodes written with punctuation on both edges: delimiters, brackets, a tag. */
+const PUNCTUATION_EDGED = new Set([
+  'emphasis', 'strong', 'delete', 'inlineCode', 'link', 'linkReference', 'image', 'imageReference',
+  'html', 'break', 'characterReference', 'inlineMath', 'footnoteReference',
+]);
+
+function underscoreSideFits(sibling: RootContent | undefined, edge: 'first' | 'last'): boolean {
+  // No sibling: the parent's own delimiter or the edge of the block.
+  if (!sibling) return true;
+  if (sibling.type === 'text') {
+    const character = edge === 'first' ? sibling.value.charAt(0) : sibling.value.charAt(sibling.value.length - 1);
+    return character === '' || /[\s!-\/:-@\[-`{-~]/.test(character);
+  }
+  return PUNCTUATION_EDGED.has(sibling.type);
+}
+
+function underscoreFits(node: Emphasis, parent: Parents | undefined): boolean {
+  if (!parent) return true;
+  const siblings = parent.children as RootContent[];
+  const index = siblings.indexOf(node);
+  return underscoreSideFits(siblings[index - 1], 'last') && underscoreSideFits(siblings[index + 1], 'first');
+}
+
+/** The closest emphasis runs inside `node`, each with its parent. */
+function innerEmphasis(node: Parents, found: { node: Emphasis; parent: Parents }[] = []): { node: Emphasis; parent: Parents }[] {
+  for (const child of node.children as PhrasingContent[]) {
+    if (child.type === 'emphasis') found.push({ node: child, parent: node });
+    else if ('children' in child) innerEmphasis(child, found);
+  }
+  return found;
+}
+
+function emphasisMarker(node: Emphasis, parent: Parents | undefined, state: State): '*' | '_' {
+  const enclosing = emphasisMarkers.get(state)?.at(-1);
+  if (enclosing === '_') return '*';
+  const wantsUnderscore = enclosing === '*'
+    || innerEmphasis(node).some((inner) => !underscoreFits(inner.node, inner.parent));
+  return wantsUnderscore && underscoreFits(node, parent) ? '_' : '*';
+}
+
+/** The CJK-friendly emphasis handler, writing each run with its own marker. */
+function nestedEmphasisAlternates(extension: ToMarkdownOptions): ToMarkdownOptions {
+  const write = extension.handlers?.emphasis;
+  if (typeof write !== 'function') throw new Error('expected an emphasis handler to wrap');
+  const handle: Handle = (node: Emphasis, parent, state, info) => {
+    const marker = emphasisMarker(node, parent, state);
+    const stack = emphasisMarkers.get(state) ?? [];
+    emphasisMarkers.set(state, stack);
+    const previous = state.options.emphasis;
+    state.options.emphasis = marker;
+    stack.push(marker);
+    try {
+      return write(node, parent, state, info);
+    } finally {
+      stack.pop();
+      state.options.emphasis = previous;
+    }
+  };
+  // Peeked by the sibling before this run, with the same enclosing runs open.
+  const peek = (node: Emphasis, parent: Parents | undefined, state: State): string => emphasisMarker(node, parent, state);
+  const emphasis = Object.assign(handle, { peek });
+  return { ...extension, handlers: { ...extension.handlers, emphasis } };
+}
+
 const serializerOptions: ToMarkdownOptions = {
   bullet: '-',
   emphasis: EMPHASIS_MARKER,
@@ -624,7 +714,7 @@ const serializerOptions: ToMarkdownOptions = {
     // The writing half of the CJK amendment. Without it the serializer keeps
     // CommonMark's own flanking rules and, believing the run cannot close,
     // escapes the Chinese character after it into a numeric reference.
-    cjkFriendlyToMarkdown(),
+    nestedEmphasisAlternates(cjkFriendlyToMarkdown()),
     tablesAsTheVaultWritesThem(tildeOnlyInPairs(gfmToMarkdown({ tablePipeAlign: false }))), mathToMarkdown(), frontmatterToMarkdown(), characterReferenceVerbatim, verbatimRunsInText, listMarkerFromNode, bareAutolink, hardBreakAsTwoSpaces],
 };
 
