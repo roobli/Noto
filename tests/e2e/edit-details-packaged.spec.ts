@@ -46,10 +46,18 @@ test("Typora's small things: the heading badge, the footnote on hover, the selec
       const style = getComputedStyle(node, '::before');
       return { content: style.content, opacity: style.opacity };
     });
+    // And reads as one word: a badge with no room beside the heading used to
+    // break between its characters, `h` stacked over `1`, two lines tall.
+    const badgeLines = (selector: string) => editor.locator(selector).evaluate((node) => {
+      const style = getComputedStyle(node, '::before');
+      return Math.round(parseFloat(style.height) / parseFloat(style.lineHeight));
+    });
     await editor.locator('h2').click();
     await expect(editor.locator('h2')).toHaveClass(/noto-active-block/);
     await expect.poll(() => badge('h2')).toEqual({ content: '"h2"', opacity: '1' });
     expect(await badge('h1')).toEqual({ content: '"h1"', opacity: '0' });
+    expect(await badgeLines('h1')).toBe(1);
+    expect(await badgeLines('h2')).toBe(1);
 
     // The footnote's words ride on its number.
     await expect(editor.locator('.noto-footnote-reference').first()).toHaveAttribute('title', 'The footnote says this.');

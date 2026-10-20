@@ -692,6 +692,11 @@
   font-weight: 500;
   line-height: 16px;
   letter-spacing: 0.02em;
+  /* On one line, always. Positioned off the heading's right edge, the badge
+     has no room of its own and shrinks to its narrowest, and the heading's
+     `overflow-wrap: anywhere` is inherited, so `h1` broke between its two
+     characters and stood in the margin as a column of `h` over `1`. */
+  white-space: nowrap;
   opacity: 0;
   transition: opacity var(--motion-micro) var(--ease-out);
   pointer-events: none;
