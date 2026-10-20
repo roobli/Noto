@@ -137,6 +137,10 @@ export function registerWorkspaceHandlers(deps: {
   register(WORKSPACE_CHANNELS.manageEntry, isWorkspaceEntryRequestV1,
     (request: WorkspaceEntryRequestV1) => deps.session.manageEntry(request));
 
+  // Read-only and cheap: the marks main already holds, never a fresh status.
+  register(WORKSPACE_CHANNELS.gitMarks, isWorkspaceRequestV1,
+    () => deps.session.gitMarks());
+
   register(WORKSPACE_CHANNELS.exportRendered, isWorkspaceExportRequestV1,
     (request: WorkspaceExportRequestV1) => deps.session.exportRendered(request));
 

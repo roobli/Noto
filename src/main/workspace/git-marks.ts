@@ -25,17 +25,11 @@ import {
   parsePorcelainV2,
   scopeToVault,
   vaultPathspec,
-  type GitChangeV1,
 } from './git-status';
+import { MAX_GIT_MARKS, type WorkspaceGitMarksV1 } from '../../shared/workspace/v1/contracts';
 
 /** What the renderer is sent: absolute paths, as the tree's rows carry them. */
-export interface GitMarksEventV1 {
-  readonly version: 1;
-  /** The folder these marks are for, so a late answer for another is dropped. */
-  readonly root: string | null;
-  readonly files: ReadonlyArray<readonly [string, GitChangeV1]>;
-  readonly folders: readonly string[];
-}
+export type GitMarksEventV1 = WorkspaceGitMarksV1;
 
 /** Runs git with arguments, in a directory, and resolves with its stdout. */
 export type GitRunner = (args: readonly string[], cwd: string, timeoutMs: number) => Promise<string>;
@@ -51,8 +45,6 @@ const DISCOVER_TIMEOUT_MS = 2_000;
 const STATUS_TIMEOUT_MS = 3_000;
 /** Enough for tens of thousands of paths; more than that is a repository too big to mark. */
 const MAX_OUTPUT_BYTES = 8 * 1024 * 1024;
-/** Past this many changed notes the marks stop being information. */
-const MAX_MARKED = 20_000;
 const DEBOUNCE_MS = 300;
 
 /**
@@ -334,7 +326,7 @@ export class GitMarks {
     }
     if (generation !== this.generation) return;
     const scoped = scopeToVault(parsePorcelainV2(output), location.prefix, this.options.keep);
-    if (scoped.length > MAX_MARKED) {
+    if (scoped.length > MAX_GIT_MARKS) {
       this.options.log?.('git_status_unavailable', { reason: 'too-many' });
       this.close();
       this.emit({ ...EMPTY, root });

@@ -137,6 +137,7 @@ import type {
   WorkspaceExportReplyV1,
   WorkspaceExportRequestV1,
   WorkspaceRenameRowEventV1,
+  WorkspaceGitMarksV1,
   WorkspaceRevealReplyV1,
   WorkspaceNewFileReplyV1,
   WorkspaceTreeMenuReplyV1,
@@ -176,6 +177,8 @@ import {
   isWorkspaceExportRequestV1,
   isWorkspaceExportResultV1,
   isWorkspaceRenameRowEventV1,
+  isWorkspaceGitMarksV1,
+  isWorkspaceGitMarksResultV1,
   isWorkspaceContentResultV1,
   isWorkspaceTagIndexResultV1,
   isWorkspaceNotesByTagRequestV1,
@@ -512,6 +515,11 @@ const workspaceApi: NotoWorkspaceApiV1 = Object.freeze({
     : Promise.resolve(rejectedWorkspace<WorkspaceExportReplyV1>('invalid', 'Invalid export request')),
   onRenameRow: (listener: (event: WorkspaceRenameRowEventV1) => void) =>
     subscribe(WORKSPACE_CHANNELS.renameRow, isWorkspaceRenameRowEventV1, listener),
+  gitMarks: (request: WorkspaceRequestV1) => isWorkspaceRequestV1(request)
+    ? invokeWorkspace<WorkspaceGitMarksV1>(WORKSPACE_CHANNELS.gitMarks, request, request.requestId, isWorkspaceGitMarksResultV1)
+    : Promise.resolve(rejectedWorkspace<WorkspaceGitMarksV1>('invalid', 'Invalid git marks request')),
+  onGitMarksChanged: (listener: (event: WorkspaceGitMarksV1) => void) =>
+    subscribe(WORKSPACE_CHANNELS.gitMarksChanged, isWorkspaceGitMarksV1, listener),
 });
 
 const settingsApi: NotoSettingsApiV1 = Object.freeze({

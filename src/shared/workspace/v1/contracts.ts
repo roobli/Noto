@@ -66,6 +66,10 @@ export const WORKSPACE_CHANNELS = {
   renameRow: 'noto:v1:workspace:rename-row',
   /** The renderer hands over the drawn document so main can write or print it. */
   exportRendered: 'noto:v1:workspace:export-rendered',
+  /** The git marks for the open folder as they stand, for a renderer that has just subscribed. */
+  gitMarks: 'noto:v1:workspace:git-marks',
+  /** Push: which notes differ from the last commit changed. See `WorkspaceGitMarksV1`. */
+  gitMarksChanged: 'noto:v1:workspace:git-marks-changed',
 } as const;
 
 /** One entry in the workspace tree. */
@@ -487,6 +491,31 @@ export type WorkspaceEntryReplyV1 =
  * where the reader is looking and a dialog would hide the neighbours whose
  * names are the reason they are renaming this one.
  */
+/** How a note differs from the last commit. Staged or not is git's distinction, not a reader's. */
+export type WorkspaceGitChangeV1 = 'modified' | 'new' | 'deleted';
+
+export const GIT_CHANGES: readonly WorkspaceGitChangeV1[] = ['modified', 'new', 'deleted'];
+
+/** More marks than this and main sends none: the repository is too big to mark. */
+export const MAX_GIT_MARKS = 20_000;
+
+/**
+ * Which notes in the open folder differ from the last commit, when the folder
+ * is in a git repository. Empty when it is not, when git is missing, or when
+ * the repository is too big to read quickly: absent, never an error.
+ *
+ * Paths are absolute, as the tree's rows carry them. A deleted note has no
+ * row; it is listed so its folders can say something inside changed.
+ */
+export interface WorkspaceGitMarksV1 {
+  readonly version: typeof NOTO_WORKSPACE_VERSION;
+  /** The folder these are for, so a late answer for another folder is dropped. */
+  readonly root: string | null;
+  readonly files: ReadonlyArray<readonly [string, WorkspaceGitChangeV1]>;
+  /** Folders, below the open one, holding a change somewhere inside. */
+  readonly folders: readonly string[];
+}
+
 export interface WorkspaceRenameRowEventV1 {
   readonly version: typeof NOTO_WORKSPACE_VERSION;
   /** For `rename`, the row to rename. For `new-folder`, the folder to make one in. */
@@ -776,5 +805,7 @@ export interface NotoWorkspaceApiV1 {
   manageEntry(request: WorkspaceEntryRequestV1): Promise<WorkspaceResultV1<WorkspaceEntryReplyV1>>;
   exportRendered(request: WorkspaceExportRequestV1): Promise<WorkspaceResultV1<WorkspaceExportReplyV1>>;
   onTreeChanged(listener: () => void): () => void;
+  gitMarks(request: WorkspaceRequestV1): Promise<WorkspaceResultV1<WorkspaceGitMarksV1>>;
+  onGitMarksChanged(listener: (event: WorkspaceGitMarksV1) => void): () => void;
   onRenameRow(listener: (event: WorkspaceRenameRowEventV1) => void): () => void;
 }

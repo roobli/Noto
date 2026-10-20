@@ -12,8 +12,10 @@
  * does not. Staged or not is git's distinction, not a reader's.
  */
 
+import type { WorkspaceGitChangeV1 } from '../../shared/workspace/v1/contracts';
+
 /** How a note differs from the last commit. */
-export type GitChangeV1 = 'modified' | 'new' | 'deleted';
+export type GitChangeV1 = WorkspaceGitChangeV1;
 
 /** One path as git reported it, relative to the repository's top level. */
 export interface GitStatusEntryV1 {

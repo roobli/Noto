@@ -16,6 +16,9 @@ import {
   type WorkspaceEntryReplyV1,
   type WorkspaceEntryRequestV1,
   type WorkspaceRenameRowEventV1,
+  type WorkspaceGitMarksV1,
+  GIT_CHANGES,
+  MAX_GIT_MARKS,
   type WorkspaceExportReplyV1,
   type WorkspaceExportRequestV1,
   EXPORT_KINDS,
@@ -513,6 +516,23 @@ export function isWorkspaceRenameRowEventV1(value: unknown): value is WorkspaceR
     && typeof value.path === 'string' && value.path.length > 0 && value.path.length <= 4096
     && (value.intent === 'rename' || value.intent === 'new-folder');
 }
+
+const isMarkPath = (value: unknown): value is string =>
+  typeof value === 'string' && value.length > 0 && value.length <= 4096;
+
+export function isWorkspaceGitMarksV1(value: unknown): value is WorkspaceGitMarksV1 {
+  return record(value) && exact(value, ['version', 'root', 'files', 'folders'])
+    && value.version === NOTO_WORKSPACE_VERSION
+    && (value.root === null || isMarkPath(value.root))
+    && Array.isArray(value.files) && value.files.length <= MAX_GIT_MARKS
+    && value.files.every((entry: unknown) => Array.isArray(entry) && entry.length === 2
+      && isMarkPath(entry[0]) && GIT_CHANGES.includes(entry[1]))
+    && Array.isArray(value.folders) && value.folders.length <= MAX_GIT_MARKS
+    && value.folders.every(isMarkPath);
+}
+
+export const isWorkspaceGitMarksResultV1 = (value: unknown, id: string): value is WorkspaceResultV1<WorkspaceGitMarksV1> =>
+  isResult(value, id, isWorkspaceGitMarksV1);
 
 export function isWorkspaceExportRequestV1(value: unknown): value is WorkspaceExportRequestV1 {
   return record(value) && exact(value, ['version', 'requestId', 'target', 'html', 'title', 'dirty'])
