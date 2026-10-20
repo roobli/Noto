@@ -9,7 +9,24 @@ How releases are made, and what each channel receives, is in
 
 ## [Unreleased]
 
+### Changed
+- **Updates no longer install themselves while builds are unsigned.** On
+  every platform, an update Noto finds opens its download on the release
+  page, and the setting to download updates automatically is hidden. In-app
+  install returns with signed builds. `0.0.3` itself can still install an
+  update on macOS and Windows.
+
+### Removed
+- The `NOTO_MARKDOWN_ENGINE=micromark` switch and the old Markdown pipelines
+  behind it. `@roobli/md` has been the default since `0.0.2-alpha.112` and is
+  now the only engine.
+
 ### Fixed
+- A long note no longer counts as unsaved as soon as it opens. That also
+  stopped the rest of the note from finishing loading.
+- Emptying a paragraph no longer makes the whole save fail.
+- Deleting the first word of a paragraph, or leaving a space at the edge of
+  bold or italic text, no longer saves a `&#x20;` that then shows in the text.
 - A reference link (`[text][label]`) or footnote reference (`[^label]`) whose
   definition is elsewhere in the note no longer opens as literal brackets in
   paragraphs that also use less common syntax.
@@ -46,7 +63,8 @@ notarized, and on Windows the installer is not code-signed. That is
 expected, not a broken download; signed and notarized builds will follow in
 a later release. First open:
 
-- **macOS:** unzip, then Right-click → Open, or run
+- **macOS:** unzip and open `Noto.app` once, then System Settings → Privacy
+  & Security → Open Anyway (Right-click → Open on macOS 14 and older), or run
   `xattr -cr Noto.app && open Noto.app`.
 - **Windows:** when SmartScreen appears, choose *More info → Run anyway*.
 
