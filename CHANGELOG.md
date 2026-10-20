@@ -52,6 +52,11 @@ How releases are made, and what each channel receives, is in
   breaks apart when its paragraph is edited and saved. It used to be written
   as `*see&#x20;****this****&#x20;here*`, which reopened with the bold lost or
   doubled. Strikethrough and links inside italic are written plainly too.
+- Striking through, or making italic or bold, a selection that ends in a
+  space, or deleting the last word of a styled phrase, now saves the space just
+  outside the style (`~~done~~ now`). A strikethrough written that way used to
+  reopen as literal tildes, and italic or bold wrote character references into
+  the file, `*done&#x20;*&#x6E;ow`, that stayed there.
 
 ## [0.0.3] - 2026-10-17
 
