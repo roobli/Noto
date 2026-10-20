@@ -72,7 +72,9 @@ import {
   renamedFileName,
 } from '../../shared/workspace/v1/entry-names';
 import { buildFileIndex } from './file-index';
-import { GitMarks } from './git-marks';
+import { GitMarks, defaultGitRunner } from './git-marks';
+import { gitBlockDiff } from './git-blocks';
+import type { WorkspaceGitBlocksV1 } from '../../shared/workspace/v1/contracts';
 import { searchContent } from './content-search';
 
 const MARKDOWN_FILTERS = [
@@ -138,7 +140,13 @@ export class WorkspaceSession {
     publish: (event) => this.send(WORKSPACE_CHANNELS.gitMarksChanged, event),
     keep: isEditableFile,
     log: (event, fields) => this.logger.log(event, fields ?? {}),
+    // Whatever made the tree's marks stale made the gutter stale too.
+    onRefresh: () => this.scheduleGutter(),
   });
+  private gutterTimer: ReturnType<typeof setTimeout> | null = null;
+  /** Rises per gutter run, so an answer for a note no longer in front is dropped. */
+  private gutterRun = 0;
+  private lastGutter: WorkspaceGitBlocksV1 | null = null;
   private tagIndexCache: { root: string; index: TagIndex } | null = null;
 
   constructor(
@@ -410,6 +418,7 @@ export class WorkspaceSession {
   /** Release every store, for shutdown. */
   closeAll(): void {
     this.git.close();
+    if (this.gutterTimer !== null) clearTimeout(this.gutterTimer);
     for (const document of this.documents.values()) document.store.close();
     this.documents.clear();
     this.activePath = null;
@@ -1318,6 +1327,7 @@ export class WorkspaceSession {
     this.publishTabs();
     if (this.folderRoot) this.send(WORKSPACE_CHANNELS.folderChanged, this.folderEvent());
     if (this.git.current().files.length > 0) this.send(WORKSPACE_CHANNELS.gitMarksChanged, this.git.current());
+    if (this.lastGutter) this.send(WORKSPACE_CHANNELS.gitBlocksChanged, this.lastGutter);
   }
 
   private openOptions() {
@@ -1341,6 +1351,52 @@ export class WorkspaceSession {
       version: NOTO_WORKSPACE_VERSION,
       opened,
     });
+    this.scheduleGutter();
+  }
+
+  /**
+   * Compare the note in front with its committed version, once things settle.
+   *
+   * Debounced with the tree's refreshes and run after the note is on screen,
+   * never on the open's own path: git and the diff are a background read.
+   */
+  private scheduleGutter(): void {
+    if (this.gutterTimer !== null) clearTimeout(this.gutterTimer);
+    this.gutterTimer = setTimeout(() => {
+      this.gutterTimer = null;
+      void this.updateGutter().catch(() => { /* Absent, quietly. */ });
+    }, 300);
+  }
+
+  private async updateGutter(): Promise<void> {
+    const run = ++this.gutterRun;
+    const filePath = this.activePath;
+    const store = filePath ? this.documents.get(filePath)?.store ?? null : null;
+    const accepted = store?.acceptedBlocks ?? null;
+    if (!filePath || !accepted) return;
+    const git = await defaultGitRunner();
+    const diff = git === null ? null : await gitBlockDiff(
+      git, filePath, accepted.blocks.map((block) => block.markdown), accepted.byteLength,
+    );
+    // A save, a switch of tab or a newer run while git was answering.
+    if (run !== this.gutterRun || store?.acceptedBlocks?.documentId !== accepted.documentId
+      || store.acceptedBlocks.blocks !== accepted.blocks) return;
+    const event: WorkspaceGitBlocksV1 = {
+      version: NOTO_WORKSPACE_VERSION,
+      documentId: accepted.documentId,
+      blocks: (diff?.changed ?? []).map((entry) => ({
+        blockId: accepted.blocks[entry.ordinal]!.id, change: entry.change, head: entry.head,
+      })),
+      deleted: (diff?.deleted ?? []).map((entry) => ({
+        beforeBlockId: accepted.blocks[entry.before]?.id ?? null, head: entry.head,
+      })),
+    };
+    const previous = this.lastGutter;
+    this.lastGutter = event;
+    // Nothing to draw and nothing drawn: not news.
+    if (event.blocks.length === 0 && event.deleted.length === 0
+      && (previous === null || (previous.blocks.length === 0 && previous.deleted.length === 0))) return;
+    this.send(WORKSPACE_CHANNELS.gitBlocksChanged, event);
   }
 
   private publishClosed(): void {

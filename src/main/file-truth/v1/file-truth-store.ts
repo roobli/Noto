@@ -139,6 +139,20 @@ export class FileTruthStoreV1 {
     });
   }
 
+  /**
+   * The accepted revision's blocks, for reading only: what the git gutter
+   * compares with the committed note. Null before the first open.
+   */
+  get acceptedBlocks(): {
+    readonly documentId: string;
+    readonly byteLength: number;
+    readonly blocks: readonly { readonly id: string; readonly markdown: string }[];
+  } | null {
+    const document = this.document;
+    if (!document) return null;
+    return { documentId: document.documentId, byteLength: document.envelope.byteLength, blocks: document.blocks };
+  }
+
   /** The document currently open, or null before the first successful open. */
   get openPath(): string | null {
     return this.acceptedPath;

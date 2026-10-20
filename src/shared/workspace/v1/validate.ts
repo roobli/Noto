@@ -17,6 +17,9 @@ import {
   type WorkspaceEntryRequestV1,
   type WorkspaceRenameRowEventV1,
   type WorkspaceGitMarksV1,
+  type WorkspaceGitBlocksV1,
+  MAX_GIT_BLOCKS,
+  MAX_GIT_BLOCK_TEXT,
   GIT_CHANGES,
   MAX_GIT_MARKS,
   type WorkspaceExportReplyV1,
@@ -529,6 +532,24 @@ export function isWorkspaceGitMarksV1(value: unknown): value is WorkspaceGitMark
       && isMarkPath(entry[0]) && GIT_CHANGES.includes(entry[1]))
     && Array.isArray(value.folders) && value.folders.length <= MAX_GIT_MARKS
     && value.folders.every(isMarkPath);
+}
+
+const isBlockId = (value: unknown): value is string =>
+  typeof value === 'string' && value.length > 0 && value.length <= 256;
+const isBlockText = (value: unknown): value is string =>
+  typeof value === 'string' && value.length <= MAX_GIT_BLOCK_TEXT;
+
+export function isWorkspaceGitBlocksV1(value: unknown): value is WorkspaceGitBlocksV1 {
+  return record(value) && exact(value, ['version', 'documentId', 'blocks', 'deleted'])
+    && value.version === NOTO_WORKSPACE_VERSION
+    && typeof value.documentId === 'string' && value.documentId.length > 0 && value.documentId.length <= 256
+    && Array.isArray(value.blocks) && value.blocks.length <= MAX_GIT_BLOCKS
+    && value.blocks.every((block: unknown) => record(block) && exact(block, ['blockId', 'change', 'head'])
+      && isBlockId(block.blockId)
+      && ((block.change === 'modified' && isBlockText(block.head)) || (block.change === 'added' && block.head === null)))
+    && Array.isArray(value.deleted) && value.deleted.length <= MAX_GIT_BLOCKS
+    && value.deleted.every((run: unknown) => record(run) && exact(run, ['beforeBlockId', 'head'])
+      && (run.beforeBlockId === null || isBlockId(run.beforeBlockId)) && isBlockText(run.head));
 }
 
 export const isWorkspaceGitMarksResultV1 = (value: unknown, id: string): value is WorkspaceResultV1<WorkspaceGitMarksV1> =>
