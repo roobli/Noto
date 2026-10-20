@@ -263,7 +263,8 @@ export function WorkspaceRail({
         aria-label="Rail view"
         style={{
           '--rail-indicator-left': INDICATOR[view].left,
-          '--rail-indicator-width': INDICATOR[view].width,
+          // The rule is drawn 100px wide and scaled to the label's width.
+          '--rail-indicator-scale': String(parseFloat(INDICATOR[view].width) / 100),
         } as CSSProperties}
       >
         <Tab id="files" current={view} onSelect={onView} testId="rail-files">Files</Tab>

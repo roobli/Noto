@@ -69,3 +69,34 @@ arrivals all resolve to their final state on the first frame.
   medium, so it is arithmetic rather than a measurement and its first frame
   is never in the wrong place.
 - The tree's twisty turns at default; the fence's tools fade in at micro.
+
+## Amendment, 2026-10-20
+
+Decided by cdcd. The two rules above that this changes are left as they were
+written. Where they disagree with this section, this section holds.
+
+**Keyboard-summoned overlays appear at once.** An overlay summoned from the
+keyboard (quick open, the command palette, Settings, the shortcuts sheet, the
+vault menu, the table and reload dialogs, and their scrims) is in place on the
+frame the key goes down, with no `noto-arrive` and no fade. The same overlay
+summoned by a press keeps its arrival at the default duration, because there
+the eye is travelling with the pointer and the breath of scale says where the
+surface came from. From a shortcut, used a hundred times a day, the arrival is
+only a delay. The renderer keeps the hand last used on the root as
+`data-input="keyboard" | "pointer"` (`src/renderer/input-modality.ts`). A
+shortcut reaches the renderer as the menu's command, but its modifier keydown
+comes first.
+
+**Reduced motion is gentler, not none.** Under `prefers-reduced-motion`,
+movement stops and fades stay. `noto-arrive`, `noto-rail-in` and `noto-rise`
+are redefined inside the media query to fade only. Every transition is limited
+to opacity and colour (background, border, outline, text decoration, fill,
+stroke), so a press no longer scales, the twisty turns on the frame, and the
+rail's rule jumps. A hover fill and a surface coming up still ease, because
+they are how the eye learns what changed. Scroll behaviour is still instant.
+
+**No layout property is animated.** Quick open no longer eases its width when
+⌘[ and ⌘] resize it, and a diagram's frame takes its measured height at once
+rather than moving every line below it for 140ms. The rail's rule moves by
+`transform` (translate to the label, scale to its width) instead of `left` and
+`width`. It is still arithmetic on a custom property and never a measurement.

@@ -371,7 +371,7 @@ button:disabled { color: var(--muted); opacity: 0.7; }
    the second heaviest thing in the rail. Two words and a rule that slides
    between them says the same thing and stays out of the way. The rule moves
    because moving is what tells you the two are one control and that you went
-   from one to the other; it is 180ms, which is long enough to read as travel
+   from one to the other; it is the medium step, 140ms, long enough to read as travel
    and short enough that a fast switch never queues. */
 .rail-tabs {
   position: relative;
@@ -410,13 +410,18 @@ button:disabled { color: var(--muted); opacity: 0.7; }
 .rail-tabs::after {
   content: '';
   position: absolute;
-  left: var(--rail-indicator-left, 0);
+  left: 0;
   bottom: 0;
-  width: var(--rail-indicator-width, 0);
+  /* Moved and sized by transform, so the slide is composited rather than a
+     layout on every frame: a 100px rule, scaled to the label's width from its
+     left end and carried along to the label's start. */
+  width: 100px;
   height: 1.5px;
   border-radius: 1px;
   background: var(--ink);
-  transition-property: left, width;
+  transform-origin: 0 50%;
+  transform: translateX(var(--rail-indicator-left, 0)) scaleX(var(--rail-indicator-scale, 0));
+  transition-property: transform;
   transition-duration: var(--motion-medium);
   transition-timing-function: var(--ease-out);
 }
@@ -1728,7 +1733,8 @@ button:disabled { color: var(--muted); opacity: 0.7; }
   flex-direction: column;
   width: min(740px, calc(100vw - 48px));
   max-height: 62vh;
-  transition: width var(--motion-default) var(--ease-out);
+  /* No transition on the width: it changes on ⌘[ and ⌘], from the keyboard,
+     and a width that eases reflows every row on every frame of it. */
   overflow: hidden;
   border: 1px solid var(--hairline);
   border-radius: 10px;
@@ -1952,11 +1958,33 @@ button:disabled { color: var(--muted); opacity: 0.7; }
   .icon-button { width: 44px; min-width: 44px; }
 }
 
+/* Keyboard-summoned overlays appear on the frame the key is pressed. The
+   100ms arrival is for a press, where the eye is following the pointer to the
+   control; from a shortcut, used a hundred times a day, it is only a delay
+   (docs/design/motion.md, amendment of 2026-10-20). `data-input` is the hand
+   last used, kept on the root by input-modality.ts. */
+:root[data-input='keyboard'] :is(
+  .vault-menu-list, .pref-scrim, .settings-shell, .command-palette,
+  .command-palette-scrim, .quick-scrim, .quick-open, .table-dialog-scrim,
+  .table-dialog, .reload-confirm-scrim, .reload-confirm, .shortcuts
+) {
+  animation: none;
+}
+
+/* Reduced motion is gentler, not none (amendment of 2026-10-20). What moves
+   stops moving: the arrivals, the rail's slide and the notice's rise keep only
+   their fade, and a transition carries only opacity and colour, so a press no
+   longer scales, the twisty turns at once and the rail's rule jumps. Fades
+   stay, because a hover fill or a surface coming up is how the eye learns
+   what changed. */
 @media (prefers-reduced-motion: reduce) {
+  @keyframes noto-arrive { from { opacity: 0; } }
+  @keyframes noto-rail-in { from { opacity: 0; } }
+  @keyframes noto-rise { from { opacity: 0; } }
+
   *, *::before, *::after {
     scroll-behavior: auto !important;
-    transition: none !important;
-    animation: none !important;
+    transition-property: opacity, color, background-color, border-color, outline-color, text-decoration-color, fill, stroke !important;
   }
 }
 
