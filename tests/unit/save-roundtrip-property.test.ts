@@ -530,16 +530,53 @@ describe('known issue (not a save bug)', () => {
     save(h);
     expectSavedMatchesEditor(h, 'nested emphasis');
   });
+});
 
-  // Dropping an emptied paragraph that separated two lists of the same type
-  // leaves them adjacent, so they re-read as one (loose) list.
-  it.fails('an emptied paragraph between two lists keeps them separate on reopen', { timeout: 60_000 }, () => {
-    const h = openTracked('- a\n\nx\n\n- b\n');
+describe('two lists the editor leaves adjacent', () => {
+  // With only blank lines between them, two lists of one family and marker
+  // read back as one loose list. The later one is written with the other marker.
+  function emptyBlock(h: Harness, index: number): void {
     const v = view(h);
-    const at = blockStart(v.state.doc, 1);
-    v.dispatch(v.state.tr.delete(at + 1, at + 2));
-    save(h);
+    const at = blockStart(v.state.doc, index);
+    v.dispatch(v.state.tr.delete(at + 1, at + v.state.doc.child(index).nodeSize - 1));
+  }
+
+  function deleteBlock(h: Harness, index: number): void {
+    const v = view(h);
+    const at = blockStart(v.state.doc, index);
+    v.dispatch(v.state.tr.delete(at, at + v.state.doc.child(index).nodeSize));
+  }
+
+  it('an emptied paragraph between two bullet lists keeps them separate on reopen', () => {
+    const h = openTracked('- a\n\nx\n\n- b\n');
+    emptyBlock(h, 1);
+    expect(save(h)).toBe('- a\n\n* b\n');
     expect(fullDoc(h.saved).childCount).toBe(2);
+    // The next save reuses what was written rather than flipping it back.
+    insertAtBlockStart(h, 0, 'z');
+    expect(save(h)).toBe('- za\n\n* b\n');
+  });
+
+  it('a deleted paragraph between two ordered lists keeps them separate on reopen', () => {
+    const h = openTracked('1. a\n\nx\n\n1. b\n');
+    deleteBlock(h, 1);
+    expect(save(h)).toBe('1. a\n\n1) b\n');
+    expect(fullDoc(h.saved).childCount).toBe(2);
+  });
+
+  it('a third list compares with the marker the second was written with', () => {
+    const h = openTracked('- a\n\nx\n\n- b\n\ny\n\n- c\n');
+    emptyBlock(h, 3);
+    emptyBlock(h, 1);
+    expect(save(h)).toBe('- a\n\n* b\n\n- c\n');
+    expect(fullDoc(h.saved).childCount).toBe(3);
+  });
+
+  it('leaves lists alone that cannot join', () => {
+    const h = openTracked('- a\n\nx\n\n1. b\n\ny\n\n* c\n');
+    emptyBlock(h, 3);
+    emptyBlock(h, 1);
+    expect(save(h)).toBe('- a\n\n1. b\n\n* c\n');
   });
 });
 

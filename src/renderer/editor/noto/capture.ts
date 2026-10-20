@@ -81,6 +81,47 @@ function markdownFor(
 }
 
 /**
+ * The family and marker a top-level list is written with.
+ *
+ * Two lists of one family written with the same marker read back as a single
+ * list when only blank lines part them (CommonMark 5.3): `- a` then `- b` is
+ * one loose list however many blank lines lie between. The editor reaches that
+ * whenever the block between two lists goes: an emptied paragraph is left out
+ * of the save, and a deleted one leaves the lists adjacent. Changing the bullet
+ * character or the ordered delimiter is what starts a new list, so the later
+ * list is written with the other one.
+ *
+ * A reused block is written as its accepted source, which can differ from the
+ * node's attribute (an earlier save may have changed it), so the marker comes
+ * from the text when there is text and from the node otherwise.
+ */
+interface ListMarker {
+  readonly ordered: boolean;
+  readonly marker: string;
+}
+
+function writtenListMarker(node: ProseNode, markdown: string | null): ListMarker | null {
+  const ordered = node.type.name === 'ordered_list';
+  if (!ordered && node.type.name !== 'bullet_list') return null;
+  const lead = markdown?.match(/^ {0,3}(?:([-*+])|\d{1,9}([.)]))/);
+  const written = ordered ? lead?.[2] : lead?.[1];
+  return { ordered, marker: written ?? String(ordered ? node.attrs.delimiter : node.attrs.bullet) };
+}
+
+function continuesList(previous: ListMarker | null, current: ListMarker | null): previous is ListMarker {
+  return previous !== null && current !== null
+    && previous.ordered === current.ordered && previous.marker === current.marker;
+}
+
+/** The same list with a marker that cannot continue `previous`. */
+function withOtherMarker(node: ProseNode, previous: ListMarker): ProseNode {
+  const attrs = previous.ordered
+    ? { ...node.attrs, delimiter: previous.marker === '.' ? ')' : '.' }
+    : { ...node.attrs, bullet: previous.marker === '-' ? '*' : '-' };
+  return node.type.create(attrs, node.content, node.marks);
+}
+
+/**
  * The markdown a unit stands for, resolving an unchanged unit to its origin.
  *
  * Callers that want the document as text (a plugin transform, the outline) need
@@ -103,11 +144,19 @@ export function captureUnits(input: CaptureInput): { units: NotoUnit[]; stats: C
   const units: NotoUnit[] = [];
   let reused = 0;
   let serialized = 0;
+  let previousList: ListMarker | null = null;
 
   input.doc.forEach((node, _offset, index) => {
     const origin = input.origins[index] ?? null;
     if (isUnwritableBlock(node)) return;
-    const result = markdownFor(node, origin, input.pristine);
+    let result = markdownFor(node, origin, input.pristine);
+    let list = writtenListMarker(node, result.markdown);
+    if (continuesList(previousList, list)) {
+      const separate = withOtherMarker(node, previousList);
+      result = { markdown: blockToMarkdown(separate), reused: false };
+      list = writtenListMarker(separate, result.markdown);
+    }
+    previousList = list;
     if (result.reused) reused += 1;
     else serialized += 1;
     // A reused block sends no text. Main already holds its bytes, so repeating
@@ -167,12 +216,13 @@ export function captureStableWire(
   let reused = 0;
   let serialized = 0;
   const baseOrigins = input.document.origins;
+  let previousList: ListMarker | null = null;
 
   for (let index = 0; index < doc.childCount; index += 1) {
     const node = doc.child(index);
     const origin = input.origins[index] ?? null;
+    // Not written, so not counted either: the same as the full walk.
     if (isUnwritableBlock(node)) {
-      serialized += 1;
       run = null;
       continue;
     }
@@ -181,6 +231,19 @@ export function captureStableWire(
       const previous = input.pristine.get(origin.blockId);
       unchanged = !!previous && (node === previous.node || node.eq(previous.node));
     }
+    const list = writtenListMarker(
+      node,
+      unchanged && origin ? input.pristine.get(origin.blockId)?.markdown ?? null : null,
+    );
+    if (continuesList(previousList, list)) {
+      const separate = withOtherMarker(node, previousList);
+      previousList = writtenListMarker(separate, null);
+      serialized += 1;
+      run = null;
+      units.push({ origin, markdown: blockToMarkdown(separate) });
+      continue;
+    }
+    previousList = list;
     const base = origin ? baseOrigins[origin.ordinal] : undefined;
     if (unchanged && origin && base && sameOrigin(origin, base)) {
       reused += 1;

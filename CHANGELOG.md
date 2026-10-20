@@ -27,6 +27,10 @@ How releases are made, and what each channel receives, is in
 - An `&` that cannot start a character reference (`Q&A`, or the `&` between a
   link's query parameters) is no longer saved as `\&` when its paragraph is
   edited.
+- Two lists that end up next to each other, because the paragraph between them
+  was emptied or deleted, no longer reopen as one list. The second is saved
+  with the other marker (`*` after `-`, `1)` after `1.`), which is what keeps
+  them apart in Markdown.
 
 ## [0.0.3] - 2026-10-17
 

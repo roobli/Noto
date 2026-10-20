@@ -127,4 +127,19 @@ describe('capture stable wire', () => {
     if (stable.transaction.mode !== 'blocks') throw new Error('expected blocks');
     expect(stable.transaction.units).toHaveLength(3);
   });
+
+  it('matches the full capture when an emptied paragraph leaves two lists adjacent', () => {
+    const context = editorFrom(documentOf('- a\n\nx\n\n- b\n\ny\n\n- c\n'));
+    const doc = context.state.doc;
+    const first = positionInBlock(doc, 1);
+    const second = positionInBlock(doc, 3);
+    let state = context.state.apply(context.state.tr.delete(second, second + 1));
+    state = state.apply(state.tr.delete(first, first + 1));
+    const full = expectSameSave(context, state);
+    expect(full.stats).toEqual({ reused: 2, serialized: 1 });
+    if (full.transaction.mode !== 'blocks') throw new Error('expected blocks');
+    const result = serializeDocument(context.document, full.transaction);
+    if (result.status !== 'serialized') throw new Error('expected serialized');
+    expect(new TextDecoder().decode(result.outputBytes)).toBe('- a\n\n* b\n\n- c\n');
+  });
 });
