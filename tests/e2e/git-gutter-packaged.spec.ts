@@ -90,8 +90,15 @@ async function launch(
 }
 
 async function capture(app: ElectronApplication, file: string): Promise<void> {
-  const png = await app.evaluate(async ({ BrowserWindow }) =>
-    (await BrowserWindow.getAllWindows()[0].webContents.capturePage()).toPNG().toString('base64'));
+  // A fresh frame first: without one, a capture can return the last frame drawn.
+  const png = await app.evaluate(async ({ BrowserWindow }) => {
+    const contents = BrowserWindow.getAllWindows()[0].webContents;
+    for (let frame = 0; frame < 3; frame += 1) {
+      contents.invalidate();
+      await new Promise((resolve) => setTimeout(resolve, 200));
+    }
+    return (await contents.capturePage()).toPNG().toString('base64');
+  });
   writeFileSync(file, Buffer.from(png, 'base64'));
 }
 
@@ -109,6 +116,18 @@ async function pressGutter(page: Page, target: ReturnType<typeof block>): Promis
   const box = await target.boundingBox();
   if (!box) throw new Error('block has no box');
   await page.mouse.click(box.x - 8, box.y + box.height / 2);
+}
+
+/**
+ * The arrival animation at its end. Under a virtual display the window's
+ * animation clock does not advance between frames nobody asked for, so a
+ * capture would catch the popover at opacity 0.
+ */
+async function settle(page: Page): Promise<void> {
+  await page.evaluate(() => {
+    for (const animation of document.getAnimations()) animation.finish();
+    document.querySelector<HTMLElement>('.noto-git-popover')?.style.setProperty('animation', 'none');
+  });
 }
 
 const focusInEditor = (page: Page) => page.evaluate(() => document.activeElement?.closest('.ProseMirror') !== null);
@@ -163,7 +182,7 @@ test.describe('git gutter', () => {
       // Read-only: nothing in it edits, and the note is untouched by opening it.
       await expect(popover.locator('[contenteditable="true"], textarea, input')).toHaveCount(0);
       if (SHOTS) {
-        await page.waitForTimeout(300);
+        await settle(page);
         await capture(app, path.join(SHOTS, 'pr2-light-popover.png'));
       }
       await page.keyboard.press('Escape');
@@ -267,7 +286,9 @@ test.describe('git gutter', () => {
         await capture(app, path.join(SHOTS, 'pr2-dark.png'));
         await pressGutter(page, block(page, 'rewritten after the commit'));
         await expect(page.getByTestId('git-popover')).toBeVisible();
-        await page.waitForTimeout(300);
+        await expect(page.getByTestId('git-popover-text')).toBeFocused();
+        await settle(page);
+        await page.waitForTimeout(1_000);
         await capture(app, path.join(SHOTS, 'pr2-dark-popover.png'));
       }
     } finally {
