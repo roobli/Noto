@@ -65,7 +65,7 @@
   --quote-ink: #575754;
   --quote-line: #C7C5BF;
   --code-text: #2B2926;
-  --code-muted: #77716A;
+  --code-muted: #6E6861;
   --code-keyword: #6F4E83;
   --code-string: #4F7352;
   --code-number: #A35E35;
@@ -94,8 +94,10 @@
   --accent: #E0A07A;
   /* Steps back from ink by roughly the same ratio as the light theme's muted
      tier does, so secondary text recedes at night as much as it does by day.
-     Still clears 4.5:1 on both paper and panel. */
-  --muted: #8B8781;
+     Lifted on 2026-10-20 from #8B8781, which cleared 4.5:1 on paper and panel
+     but not on the raised and overlay surfaces quick open, the find bar and
+     the shortcuts sit on; this clears it on all four. */
+  --muted: #97928B;
   --success: #8BB697;
   --warning: #D0A45F;
   --danger: #D88780;
@@ -116,7 +118,7 @@
   --quote-ink: #A6A199;
   --quote-line: #4A4740;
   --code-text: #D7D4CF;
-  --code-muted: #8A847B;
+  --code-muted: #979087;
   --code-keyword: #C0A0D8;
   --code-string: #8FBE95;
   --code-number: #D9A06A;

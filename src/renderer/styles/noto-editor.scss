@@ -737,10 +737,11 @@
      their lines. */
   padding: 1em 0.7em 0.94em 0.8em;
   border-right: 1px solid var(--hairline);
-  color: var(--muted);
+  /* A step under the muted ink, mixed rather than faded, so the numbers
+     recede from the code and still clear 3:1 on the fence. */
+  color: color-mix(in srgb, var(--muted) 80%, var(--paper));
   text-align: right;
   white-space: pre;
-  opacity: 0.7;
   user-select: none;
   cursor: default;
 }
@@ -1568,6 +1569,10 @@
 }
 
 .tree-directory { color: var(--muted); }
+/* Under the pointer a folder brightens to ink, as the chrome's icons do: the
+   muted ink on the hover's accent wash came to 4.25:1, under what a name has
+   to clear to be read. */
+.tree-directory.tree-row:hover { color: var(--ink); }
 
 /* A CSS triangle rather than an icon font, so it inherits colour and needs no
    asset. */
