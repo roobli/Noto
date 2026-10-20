@@ -1,4 +1,5 @@
 @use 'tokens';
+@use 'hit-area';
 
 /*
  * Styling for the node types the Milkdown CommonMark preset could not represent
@@ -2328,7 +2329,11 @@
 }
 .noto-table-frame.noto-active-block > .noto-table-tools { opacity: 1; pointer-events: auto; }
 
+/* 24 by 22 drawn; 24 square to the pointer. Only the height grows, a pixel
+   above and below into the toolbar's own 2px padding, so neighbouring tools,
+   a pixel apart, never share a press. */
 .noto-table-tool {
+  @include hit-area.extend;
   appearance: none;
   display: grid;
   place-items: center;

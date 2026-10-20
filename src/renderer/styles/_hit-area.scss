@@ -1,0 +1,26 @@
+/*
+ * A hit area larger than what is drawn.
+ *
+ * Some controls are drawn small on purpose, a 20px ellipsis on a tree row, an
+ * 11px label in the rail, and were as small to the pointer as they look: under
+ * the 24px that WCAG 2.5.8 asks of a target. An invisible box around the
+ * control takes the press instead, centred on it and never smaller than the
+ * control itself, so nothing moves, nothing is drawn, and the layout is the
+ * same to the pixel. A press on the box is a press on the control, because the
+ * box is the control's own pseudo-element.
+ *
+ * Only for controls whose neighbours are far enough away that two boxes never
+ * overlap; the callers say why each one is.
+ */
+@mixin extend($size: 24px) {
+  position: relative;
+
+  &::after {
+    content: '';
+    position: absolute;
+    top: min(0px, calc((100% - #{$size}) / 2));
+    bottom: min(0px, calc((100% - #{$size}) / 2));
+    left: min(0px, calc((100% - #{$size}) / 2));
+    right: min(0px, calc((100% - #{$size}) / 2));
+  }
+}
