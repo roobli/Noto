@@ -9,6 +9,7 @@
 
 import { fromLf } from '../shared/markdown/v3/line-endings';
 import { sourceModeText } from './source-mode-text';
+import { CommandPalette } from './CommandPalette';
 import { PLAIN_FLAGS, type SearchFlags } from '../shared/search/pattern';
 import { useCallback, useEffect, useMemo, useRef, useState, type CSSProperties } from 'react';
 import type {
@@ -308,7 +309,6 @@ function NotoWorkspace({ platform }: { platform: NotoPlatform }) {
   };
   const [pluginAvailability, setPluginAvailability] = useState<PluginSnapshotAvailability>('loading');
   const [paletteOpen, setPaletteOpen] = useState(false);
-  const paletteRef = useRef<HTMLDivElement>(null);
   const paletteWasOpen = useRef(false);
   const [recent, setRecent] = useState<readonly RecentFileV1[]>([]);
   useEffect(() => {
@@ -746,39 +746,18 @@ function NotoWorkspace({ platform }: { platform: NotoPlatform }) {
   }, []);
 
   /*
-   * The palette is a modal dialog, and behaves as one.
-   *
-   * It said so, `role="dialog"` and `aria-modal`, and did nothing about it: it
-   * opened with the focus still in the document, so the keyboard typed into
-   * the note behind it, and Escape went there too, so the only way out was the
-   * pointer or the shortcut again. Opening now moves the focus onto the
-   * dialog, as Settings does, without drawing a ring on the first command;
-   * Escape closes it from anywhere; and closing hands the focus back to the
-   * document unless something else, an export's save dialog or a plugin, has
-   * already taken it.
+   * The palette owns the keyboard while it is open (`CommandPalette`); closing
+   * it, by any route, hands the focus back to the document unless something
+   * else, an export's save dialog or a plugin, has already taken it.
    */
   useEffect(() => {
-    if (paletteOpen) {
-      paletteWasOpen.current = true;
-      queueMicrotask(() => paletteRef.current?.focus({ preventScroll: true }));
-      return;
-    }
+    if (paletteOpen) { paletteWasOpen.current = true; return; }
     if (!paletteWasOpen.current) return;
     paletteWasOpen.current = false;
     const active = globalThis.document.activeElement;
     if (active === null || active === globalThis.document.body) editorRef.current?.focus();
   }, [paletteOpen]);
-
-  useEffect(() => {
-    if (!paletteOpen) return;
-    const onKey = (event: KeyboardEvent) => {
-      if (event.key !== 'Escape') return;
-      event.preventDefault();
-      setPaletteOpen(false);
-    };
-    window.addEventListener('keydown', onKey, true);
-    return () => window.removeEventListener('keydown', onKey, true);
-  }, [paletteOpen]);
+  const closePalette = useCallback(() => setPaletteOpen(false), []);
 
   const executePluginCommand = useCallback((pluginId: string, commandId: string) => {
     void window.notoDesktop.plugins.executeCommand({
@@ -2108,6 +2087,8 @@ function NotoWorkspace({ platform }: { platform: NotoPlatform }) {
    */
   const paletteCommands = useMemo(() => {
     const builtin = EXPORT_PALETTE_COMMANDS.map((command) => ({
+      key: `export:${command.target}`,
+      testId: `palette-export-${command.target}`,
       kind: 'export' as const,
       target: command.target,
       title: command.title,
@@ -2118,6 +2099,8 @@ function NotoWorkspace({ platform }: { platform: NotoPlatform }) {
       .flatMap((snapshot) => {
         const manifest = bundledManifests.get(snapshot.id);
         return (manifest?.commands ?? []).map((command) => ({
+          key: `${snapshot.id}:${command.id}`,
+          testId: undefined,
           kind: 'plugin' as const,
           pluginId: snapshot.id,
           commandId: command.id,
@@ -2127,6 +2110,10 @@ function NotoWorkspace({ platform }: { platform: NotoPlatform }) {
       });
     return [...builtin, ...plugins];
   }, [pluginSnapshots]);
+  const paletteCommandByKey = useMemo(
+    () => new Map(paletteCommands.map((command) => [command.key, command])),
+    [paletteCommands],
+  );
 
   const outline = useMemo(() => (document ? outlineFromDocument(document) : []), [document]);
   /**
@@ -2566,28 +2553,17 @@ function NotoWorkspace({ platform }: { platform: NotoPlatform }) {
       />
 
       {paletteOpen && (
-        <div className="command-palette" role="dialog" aria-modal="true" aria-label="Commands"
-          ref={paletteRef} tabIndex={-1} data-testid="command-palette">
-          <div className="dialog-heading">
-            <strong>Commands</strong>
-            <button type="button" onClick={() => setPaletteOpen(false)}>Close</button>
-          </div>
-          {paletteCommands.map((command) => (
-            <button
-              key={command.kind === 'export' ? `export:${command.target}` : `${command.pluginId}:${command.commandId}`}
-              type="button"
-              className="palette-result"
-              data-testid={command.kind === 'export' ? `palette-export-${command.target}` : undefined}
-              onClick={() => {
-                setPaletteOpen(false);
-                if (command.kind === 'export') exportNote(command.target);
-                else executePluginCommand(command.pluginId, command.commandId);
-              }}>
-              <strong>{command.title}</strong>
-              <span>{command.source}</span>
-            </button>
-          ))}
-        </div>
+        <CommandPalette
+          commands={paletteCommands}
+          onClose={closePalette}
+          onRun={(command) => {
+            const chosen = paletteCommandByKey.get(command.key);
+            setPaletteOpen(false);
+            if (!chosen) return;
+            if (chosen.kind === 'export') exportNote(chosen.target);
+            else executePluginCommand(chosen.pluginId, chosen.commandId);
+          }}
+        />
       )}
 
       {alert && (

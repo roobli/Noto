@@ -1,4 +1,5 @@
 @use 'tokens';
+@use 'hit-area';
 
 /*
  * Styling for the node types the Milkdown CommonMark preset could not represent
@@ -1069,13 +1070,6 @@
 .outline-entry.is-closed .outline-twisty { opacity: 1; }
 .outline-entry.is-closed { color: var(--ink); }
 .tree-level.is-root > .tree-node > .outline-entry { color: var(--ink); font-weight: 600; }
-
-.palette-empty {
-  margin: 0;
-  padding: 8px 4px;
-  color: var(--muted);
-  font: 13px tokens.$ui;
-}
 
 @media (max-width: 900px) {
   /* The document wins the narrow window. The rail is reachable from the View
@@ -2330,7 +2324,11 @@
 }
 .noto-table-frame.noto-active-block > .noto-table-tools { opacity: 1; pointer-events: auto; }
 
+/* 24 by 22 drawn; 24 square to the pointer. Only the height grows, a pixel
+   above and below into the toolbar's own 2px padding, so neighbouring tools,
+   a pixel apart, never share a press. */
 .noto-table-tool {
+  @include hit-area.extend;
   appearance: none;
   display: grid;
   place-items: center;
