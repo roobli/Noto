@@ -1138,7 +1138,10 @@ button:disabled { color: var(--muted); opacity: 0.7; }
   text-align: left;
   font: inherit;
   cursor: default;
-  transition: border-color 120ms ease, background 120ms ease;
+  /* A hover fill, so micro, like every other hover in the chrome. */
+  transition-property: border-color, background-color;
+  transition-duration: var(--motion-micro);
+  transition-timing-function: var(--ease-out);
 }
 
 .pref-card:hover {
