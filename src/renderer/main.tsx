@@ -1,6 +1,7 @@
 import { StrictMode } from 'react';
 import { createRoot } from 'react-dom/client';
 import { App } from './App';
+import { trackInputModality } from './input-modality';
 // ProseMirror's own base rules. Milkdown used to bundle these; owning the
 // editor means importing them directly.
 import 'prosemirror-view/style/prosemirror.css';
@@ -14,6 +15,8 @@ import './styles/noto-editor.scss';
 
 const root = document.getElementById('root');
 if (!root) throw new Error('Application root is missing');
+
+trackInputModality();
 
 createRoot(root).render(
   <StrictMode>

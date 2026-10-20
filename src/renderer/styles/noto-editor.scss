@@ -2155,7 +2155,9 @@
   color-scheme: normal;
   /* A press on the drawing is a press on the fence. */
   pointer-events: none;
-  transition: height var(--motion-medium) var(--ease-out);
+  /* The height is set once the drawing is measured, and set at once: easing
+     it moved every line below the diagram through 140ms of layout, on the
+     document, which does not move. */
 }
 .ProseMirror pre .noto-diagram[data-state='rendering'] .noto-diagram-frame { opacity: 0.5; }
 .ProseMirror pre .noto-diagram-status {
