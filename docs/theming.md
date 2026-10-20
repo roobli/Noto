@@ -61,6 +61,7 @@ distinguished by `data-theme="light"` and `data-theme="dark"` on the root.
 | `--success`, `--warning`, `--danger` | Status only |
 | `--focus` | Keyboard focus rings |
 | `--scrim` | The wash behind Settings and quick open |
+| `--shadow` | What floating surfaces cast their shadow in: the ink by day, black at night, so a shadow always darkens what it falls on |
 | `--tree-line` | The connector lines in the file tree and outline |
 
 Set light values on `:root` and dark values on `:root[data-theme='dark']`. A
