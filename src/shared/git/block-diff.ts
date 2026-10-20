@@ -180,13 +180,78 @@ function uniqueAnchors(
   return anchors.reverse();
 }
 
+/** Runs longer than this on either side pair up in order, without similarity. */
+const MAX_SIMILARITY_RUN = 64;
+
+/** Below this, two blocks are different blocks rather than one block edited. */
+const SIMILAR = 0.3;
+
+function words(block: string): Set<string> {
+  return new Set(block.toLowerCase().match(/[\p{L}\p{N}]+/gu) ?? []);
+}
+
+/** Dice coefficient over the blocks' word sets: 1 for the same words, 0 for none shared. */
+function similarity(left: Set<string>, right: Set<string>): number {
+  if (left.size === 0 && right.size === 0) return 1;
+  let shared = 0;
+  for (const word of left) if (right.has(word)) shared += 1;
+  return (2 * shared) / (left.size + right.size);
+}
+
+/**
+ * Inside an unmatched stretch, which committed block each current block is
+ * an edit of: the in-order pairing with the most similarity, counting only
+ * pairs that share enough words. A paragraph inserted above an edited one is
+ * then new rather than an edit of the paragraph it pushed down.
+ */
+function similarPairs(head: readonly string[], current: readonly string[]): Array<[number, number]> {
+  const rows = head.length;
+  const columns = current.length;
+  const headWords = head.map(words);
+  const currentWords = current.map(words);
+  const width = columns + 1;
+  const best = new Float64Array((rows + 1) * width);
+  const score = (i: number, j: number) => {
+    const value = similarity(headWords[i], currentWords[j]);
+    return value >= SIMILAR ? value : 0;
+  };
+  for (let i = rows - 1; i >= 0; i -= 1) {
+    for (let j = columns - 1; j >= 0; j -= 1) {
+      const pair = score(i, j);
+      best[i * width + j] = Math.max(
+        pair > 0 ? best[(i + 1) * width + j + 1] + pair : 0,
+        best[(i + 1) * width + j],
+        best[i * width + j + 1],
+      );
+    }
+  }
+  const pairs: Array<[number, number]> = [];
+  let i = 0;
+  let j = 0;
+  while (i < rows && j < columns) {
+    const pair = score(i, j);
+    if (pair > 0 && best[i * width + j] === best[(i + 1) * width + j + 1] + pair) {
+      pairs.push([i, j]);
+      i += 1;
+      j += 1;
+    } else if (best[(i + 1) * width + j] >= best[i * width + j + 1]) {
+      i += 1;
+    } else {
+      j += 1;
+    }
+  }
+  return pairs;
+}
+
 /**
  * Diff two notes given as their blocks' markdown, line endings already LF.
  *
  * Between two matched blocks lie a run of committed blocks and a run of
- * current ones. They pair up in order, each pair a modified block; current
- * blocks left over are added; committed blocks left over are deleted, marked
- * before the next current block.
+ * current ones. Blocks in them that share enough words pair up as modified;
+ * what is left between those pairs pairs up in order, each pair also a
+ * modified block (a paragraph rewritten in place is still that paragraph);
+ * current blocks left over are added; committed blocks left over are
+ * deleted, marked before the next current block.
  */
 export function diffBlocks(
   head: readonly string[],
@@ -196,20 +261,38 @@ export function diffBlocks(
   const changed: GitChangedBlockV1[] = [];
   const deleted: GitDeletedBlocksV1[] = [];
   const pairs = alignment(head, current, maxCells);
+  const positional = (headFrom: number, headTo: number, currentFrom: number, currentTo: number) => {
+    const headRun = headTo - headFrom;
+    const currentRun = currentTo - currentFrom;
+    const paired = Math.min(headRun, currentRun);
+    for (let offset = 0; offset < paired; offset += 1) {
+      changed.push({ ordinal: currentFrom + offset, change: 'modified', head: head[headFrom + offset] });
+    }
+    for (let offset = paired; offset < currentRun; offset += 1) {
+      changed.push({ ordinal: currentFrom + offset, change: 'added', head: null });
+    }
+    if (headRun > paired) {
+      deleted.push({ before: currentTo, head: head.slice(headFrom + paired, headTo).map((block) => block.replace(/\n+$/, '')).join('\n\n') });
+    }
+  };
   let headAt = 0;
   let currentAt = 0;
   const settle = (headTo: number, currentTo: number) => {
     const headRun = headTo - headAt;
     const currentRun = currentTo - currentAt;
-    const paired = Math.min(headRun, currentRun);
-    for (let offset = 0; offset < paired; offset += 1) {
-      changed.push({ ordinal: currentAt + offset, change: 'modified', head: head[headAt + offset] });
-    }
-    for (let offset = paired; offset < currentRun; offset += 1) {
-      changed.push({ ordinal: currentAt + offset, change: 'added', head: null });
-    }
-    if (headRun > paired) {
-      deleted.push({ before: currentTo, head: head.slice(headAt + paired, headTo).map((block) => block.replace(/\n+$/, '')).join('\n\n') });
+    if (headRun > 0 && currentRun > 0 && headRun + currentRun > 2
+      && headRun <= MAX_SIMILARITY_RUN && currentRun <= MAX_SIMILARITY_RUN) {
+      let headFrom = headAt;
+      let currentFrom = currentAt;
+      for (const [i, j] of similarPairs(head.slice(headAt, headTo), current.slice(currentAt, currentTo))) {
+        positional(headFrom, headAt + i, currentFrom, currentAt + j);
+        changed.push({ ordinal: currentAt + j, change: 'modified', head: head[headAt + i] });
+        headFrom = headAt + i + 1;
+        currentFrom = currentAt + j + 1;
+      }
+      positional(headFrom, headTo, currentFrom, currentTo);
+    } else {
+      positional(headAt, headTo, currentAt, currentTo);
     }
   };
   for (const [headIndex, currentIndex] of pairs) {

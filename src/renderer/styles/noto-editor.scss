@@ -2747,81 +2747,51 @@
 /*
  * A thin read-only line in the document's left gutter beside each block that
  * differs from the last commit: `--git-changed` for a changed block, the same
- * token as the file tree's mark, `--success` for a new one. It is the block's
- * own `::after` (a heading's `::before` is its level badge), so it sits in the
- * 14px padding the column already keeps on the left, and the press that lands
- * on it reaches the block (git-gutter.ts opens the popover). The visible line
- * is 2px; the box around it is 20px wide so it is not a pixel hunt.
+ * token as the file tree's mark, `--success` for a new one; and a small
+ * `--danger` triangle, pointing into the text, on the boundary where committed
+ * blocks were deleted. They sit in the 14px the column already keeps on the
+ * left, in a layer beside the document rather than inside it (git-gutter.ts
+ * says why), so nothing here touches the blocks' own layout or containment.
  *
- * Blocks are paint-contained (`content-visibility: auto`, below), which would
- * clip anything drawn outside them; `overflow-clip-margin` widens that clip
- * just enough to keep the gutter.
+ * Each mark is a 14px-wide press target drawing 2px; pressing it shows the
+ * block as committed. The keyboard's way is the palette.
  */
-.ProseMirror > .noto-git-block {
-  --git-line: var(--git-changed);
-  overflow-clip-margin: 24px;
-}
-.ProseMirror > .noto-git-added { --git-line: var(--success); }
-
-.ProseMirror > .noto-git-block::after {
-  content: '';
-  position: absolute;
-  top: 0;
-  bottom: 0;
-  left: -22px;
-  width: 16px;
-  border-radius: 1px;
-  background: linear-gradient(to right, transparent 12px, var(--git-line) 12px 14px, transparent 14px);
-  cursor: pointer;
-  pointer-events: auto;
-}
-/* The line answers a hover, as a control does, without a new colour. */
-.ProseMirror > .noto-git-block:hover::after {
-  background: linear-gradient(to right, transparent 11px, var(--git-line) 11px 15px, transparent 15px);
-}
-
-/*
- * A deleted block has no node to sit beside, so a small marker sits on the
- * boundary where it was, in `--danger`: a triangle pointing into the text, at
- * the gutter's inner edge. The holder has no height, so the blocks around it
- * keep their distance.
- */
-.ProseMirror > .noto-git-deleted {
-  display: block;
+.noto-git-gutter {
   position: relative;
   height: 0;
-  margin: 0;
-  contain: none;
-  content-visibility: visible;
-  /* Sits in the gap between the blocks rather than on either one. */
-  top: calc(-0.37 * var(--doc-font-size));
+  z-index: 1;
 }
-.ProseMirror > .noto-git-deleted:first-child { top: 0; }
-.noto-git-deleted-mark {
+.noto-git-mark {
+  --git-line: var(--git-changed);
   position: absolute;
-  top: -8px;
-  left: -22px;
-  width: 20px;
-  height: 16px;
-  padding: 0;
-  margin: 0;
-  border: 0;
-  border-radius: 3px;
-  background: transparent;
+  width: 14px;
   cursor: pointer;
+  background: linear-gradient(to right, transparent 7px, var(--git-line) 7px 9px, transparent 9px);
+  border-radius: 1px;
 }
-.noto-git-deleted-mark::before {
+.noto-git-added { --git-line: var(--success); }
+/* The line answers a hover, as a control does, without a new colour. */
+.noto-git-mark:not(.noto-git-deleted):hover {
+  background: linear-gradient(to right, transparent 6px, var(--git-line) 6px 10px, transparent 10px);
+}
+.noto-git-deleted { background: none; }
+.noto-git-deleted::before {
   content: '';
   position: absolute;
   top: 4px;
-  left: 10px;
+  left: 6px;
   border-top: 4px solid transparent;
   border-bottom: 4px solid transparent;
   border-left: 6px solid var(--danger);
 }
-.noto-git-deleted-mark:focus-visible {
-  outline: 2px solid var(--focus);
-  outline-offset: 0;
+.noto-git-deleted:hover::before { border-left-width: 7px; }
+
+/* Focus mode dims what is not being written; the gutter dims with it. */
+:root[data-focus-mode='on'] .noto-git-gutter { opacity: 0.32; }
+
+@media (forced-colors: active) {
+  .noto-git-mark { forced-color-adjust: none; --git-line: CanvasText; }
+  .noto-git-deleted::before { border-left-color: CanvasText; }
 }
 
 /*
@@ -2900,7 +2870,3 @@
   line-height: 1.45;
 }
 
-@media (forced-colors: active) {
-  .ProseMirror > .noto-git-block::after { background: linear-gradient(to right, transparent 12px, CanvasText 12px 14px, transparent 14px); forced-color-adjust: none; }
-  .noto-git-deleted-mark::before { border-left-color: CanvasText; }
-}

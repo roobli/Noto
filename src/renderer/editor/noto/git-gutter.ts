@@ -4,18 +4,23 @@
  * blocks were deleted.
  *
  * Read-only. Main works out which blocks changed (`git-blocks.ts`) and sends
- * their block ids; this lands each on the top-level node whose origin is that
+ * their block ids; each lands on the top-level node whose origin is that
  * block, so the line stays beside the block it is about however much has been
  * typed elsewhere. Pressing the line shows the block as committed.
  *
- * Costs nothing while typing. An edit inside one block keeps every origin
- * where it was, and the decorations are only mapped through it; they are
- * rebuilt from the origins when blocks are split, joined, added or removed,
- * which is when the origin plugin already walks the top level itself.
+ * Drawn as a layer beside the document, not as decorations in it. A node
+ * decoration per changed block costs ProseMirror a scan of the top level for
+ * every one of them on every keystroke (`NodeType.valid`), which on a long
+ * note rewritten all over is tens of milliseconds a key. The layer costs
+ * nothing while typing: the plugin state does not change for an edit inside a
+ * block (the origin plugin keeps the same origins), and the layer is laid out
+ * again, at most once a frame, only when the gutter changes, blocks come or go, or
+ * the document's height changes (a ResizeObserver), which is when a line
+ * could have moved.
  */
 
 import { Plugin, PluginKey, type EditorState, type Transaction } from 'prosemirror-state';
-import { Decoration, DecorationSet, type EditorView } from 'prosemirror-view';
+import type { EditorView } from 'prosemirror-view';
 import type { NotoBlockOrigin } from '../../../shared/markdown/v3/contracts';
 import type { WorkspaceGitBlocksV1 } from '../../../shared/workspace/v1/contracts';
 import { originKey } from './origin-plugin';
@@ -31,81 +36,53 @@ interface GitGutterState {
   /** Keyed by the block the deleted ones stood before; `''` for the end. */
   readonly deleted: ReadonlyMap<string, string>;
   readonly origins: readonly (NotoBlockOrigin | null)[] | null;
-  readonly decorations: DecorationSet;
+}
+
+/** Where the gutter's marks sit, by top-level index. */
+export interface GitGutterMarks {
+  readonly lines: ReadonlyArray<{ readonly index: number } & GitGutterEntry>;
+  /** `before` is the block count for a run deleted from the end. */
+  readonly deleted: ReadonlyArray<{ readonly before: number; readonly head: string }>;
 }
 
 export const gitGutterKey = new PluginKey<GitGutterState>('noto-git-gutter');
 
 const END = '';
 
-const EMPTY: GitGutterState = {
-  blocks: new Map(), deleted: new Map(), origins: null, decorations: DecorationSet.empty,
-};
-
+const EMPTY: GitGutterState = { blocks: new Map(), deleted: new Map(), origins: null };
 
 function originsOf(state: EditorState): readonly (NotoBlockOrigin | null)[] | null {
   return originKey.getState(state)?.origins ?? null;
 }
 
-function deletedWidget(head: string, key: string) {
-  return (view: EditorView) => {
-    const holder = document.createElement('div');
-    holder.className = 'noto-git-deleted';
-    holder.contentEditable = 'false';
-    const mark = document.createElement('button');
-    mark.type = 'button';
-    mark.className = 'noto-git-deleted-mark';
-    mark.dataset.testid = 'git-deleted-mark';
-    mark.title = GIT_BLOCK_WORDS.deleted;
-    mark.setAttribute('aria-label', `${GIT_BLOCK_WORDS.deleted}: show what was here`);
-    mark.addEventListener('mousedown', (event) => event.preventDefault());
-    mark.addEventListener('click', (event) => {
-      event.preventDefault();
-      openGitPopover(view, mark, { kind: 'deleted', text: head });
-    });
-    holder.dataset.gitDeleted = key;
-    holder.append(mark);
-    return holder;
-  };
-}
-
-function build(state: EditorState, blocks: GitGutterState['blocks'], deleted: GitGutterState['deleted'], origins: GitGutterState['origins']): DecorationSet {
-  if ((blocks.size === 0 && deleted.size === 0) || origins === null) return DecorationSet.empty;
-  const decorations: Decoration[] = [];
-  let pos = 0;
-  const doc = state.doc;
-  for (let index = 0; index < doc.childCount; index += 1) {
-    const node = doc.child(index);
-    const origin = origins[index] ?? null;
-    if (origin) {
-      const removed = deleted.get(origin.blockId);
-      if (removed !== undefined) {
-        decorations.push(Decoration.widget(pos, deletedWidget(removed, origin.blockId), {
-          side: -1, key: `git-deleted-${origin.blockId}`, ignoreSelection: true, stopEvent: () => true,
-        }));
-      }
-      const entry = blocks.get(origin.blockId);
-      if (entry) {
-        decorations.push(Decoration.node(pos, pos + node.nodeSize, {
-          class: `noto-git-block noto-git-${entry.change}`,
-          'data-git-block': entry.change,
-        }));
-      }
-    }
-    pos += node.nodeSize;
-  }
-  const atEnd = deleted.get(END);
-  if (atEnd !== undefined) {
-    decorations.push(Decoration.widget(doc.content.size, deletedWidget(atEnd, 'end'), {
-      side: 1, key: 'git-deleted-end', ignoreSelection: true, stopEvent: () => true,
-    }));
-  }
-  return DecorationSet.create(doc, decorations);
+function isEmpty(gutter: GitGutterState | undefined): boolean {
+  return !gutter || (gutter.blocks.size === 0 && gutter.deleted.size === 0);
 }
 
 /** The meta that replaces what the gutter shows. */
 export function setGitBlocks(tr: Transaction, event: WorkspaceGitBlocksV1 | null): Transaction {
   return tr.setMeta(gitGutterKey, event).setMeta('addToHistory', false);
+}
+
+/** Every mark, by the top-level node it belongs to. One pass over the top level. */
+export function gitGutterMarks(state: EditorState): GitGutterMarks {
+  const gutter = gitGutterKey.getState(state);
+  const origins = originsOf(state);
+  if (isEmpty(gutter) || !gutter || !origins) return { lines: [], deleted: [] };
+  const lines: Array<{ index: number } & GitGutterEntry> = [];
+  const deleted: Array<{ before: number; head: string }> = [];
+  const count = state.doc.childCount;
+  for (let index = 0; index < count; index += 1) {
+    const origin = origins[index];
+    if (!origin) continue;
+    const removed = gutter.deleted.get(origin.blockId);
+    if (removed !== undefined) deleted.push({ before: index, head: removed });
+    const entry = gutter.blocks.get(origin.blockId);
+    if (entry) lines.push({ index, ...entry });
+  }
+  const atEnd = gutter.deleted.get(END);
+  if (atEnd !== undefined) deleted.push({ before: count, head: atEnd });
+  return { lines, deleted };
 }
 
 /** What the gutter says about the top-level block at `index`, if anything. */
@@ -120,39 +97,199 @@ export function gitEntryAt(state: EditorState, index: number): GitGutterEntry | 
 export function gitDeletedBefore(state: EditorState, index: number): string | null {
   const gutter = gitGutterKey.getState(state);
   if (!gutter) return null;
-  const origin = originsOf(state)?.[index] ?? null;
   if (index >= state.doc.childCount) return gutter.deleted.get(END) ?? null;
+  const origin = originsOf(state)?.[index] ?? null;
   return origin ? gutter.deleted.get(origin.blockId) ?? null : null;
-}
-
-/**
- * Open the popover for the block holding the caret, for the keyboard.
- * False when the gutter has nothing to say there.
- */
-export function showCommittedAtSelection(view: EditorView): boolean {
-  const { state } = view;
-  const index = state.selection.$from.index(0);
-  const entry = gitEntryAt(state, index);
-  const anchor = view.nodeDOM(posOfChild(state, index)) as HTMLElement | null;
-  if (!anchor) return false;
-  if (entry) {
-    openGitPopover(view, anchor, entry.change === 'modified'
-      ? { kind: 'modified', text: entry.head ?? '' }
-      : { kind: 'added', text: null });
-    return true;
-  }
-  const removed = gitDeletedBefore(state, index) ?? gitDeletedBefore(state, index + 1);
-  if (removed !== null) {
-    openGitPopover(view, anchor, { kind: 'deleted', text: removed });
-    return true;
-  }
-  return false;
 }
 
 function posOfChild(state: EditorState, index: number): number {
   let pos = 0;
   for (let child = 0; child < index; child += 1) pos += state.doc.child(child).nodeSize;
   return pos;
+}
+
+function blockElement(view: EditorView, index: number): HTMLElement | null {
+  if (index < 0 || index >= view.state.doc.childCount) return null;
+  const node = view.nodeDOM(posOfChild(view.state, index));
+  return node instanceof HTMLElement ? node : null;
+}
+
+function openFor(view: EditorView, index: number, entry: GitGutterEntry): boolean {
+  const anchor = blockElement(view, index);
+  if (!anchor) return false;
+  openGitPopover(view, anchor, entry.change === 'modified'
+    ? { kind: 'modified', text: entry.head ?? '' }
+    : { kind: 'added', text: null });
+  return true;
+}
+
+function openDeleted(view: EditorView, before: number, head: string): boolean {
+  const count = view.state.doc.childCount;
+  const anchor = blockElement(view, before < count ? before : count - 1);
+  if (!anchor) return false;
+  openGitPopover(view, anchor, { kind: 'deleted', text: head });
+  return true;
+}
+
+/**
+ * Open the popover for the block holding the caret, for the keyboard: its
+ * committed text, or the blocks deleted just before or after it. False when
+ * the gutter has nothing to say there.
+ */
+export function showCommittedAtSelection(view: EditorView): boolean {
+  const { state } = view;
+  const index = state.selection.$from.index(0);
+  const entry = gitEntryAt(state, index);
+  if (entry) return openFor(view, index, entry);
+  const before = gitDeletedBefore(state, index);
+  if (before !== null) return openDeleted(view, index, before);
+  const after = gitDeletedBefore(state, index + 1);
+  if (after !== null) return openDeleted(view, index + 1, after);
+  return false;
+}
+
+/**
+ * A mark's box starts this far left of the block's edge and is 14px wide,
+ * the whole of the column's gutter less a pixel before the text; the 2px line
+ * is drawn 7px into it (noto-editor.scss), 8px left of the text.
+ */
+const MARK_LEFT = 15;
+
+/**
+ * The layer: absolutely placed elements in a zero-height box just before the
+ * document, inside the editor host, so they scroll with it and never enter
+ * ProseMirror's DOM. Not in the tab order and hidden from assistive
+ * technology: the keyboard and screen reader route is the palette's "Show
+ * Block as Committed", which opens the same popover from the caret.
+ */
+class GutterLayer {
+  private readonly layer: HTMLDivElement;
+  private readonly resize: ResizeObserver | null;
+  private frame: ReturnType<typeof setTimeout> | null = null;
+  private marks: GitGutterMarks = { lines: [], deleted: [] };
+
+  constructor(private readonly view: EditorView) {
+    this.layer = document.createElement('div');
+    this.layer.className = 'noto-git-gutter';
+    this.layer.setAttribute('aria-hidden', 'true');
+    this.layer.dataset.testid = 'git-gutter';
+    view.dom.before(this.layer);
+    this.layer.addEventListener('mousedown', this.onPress);
+    this.resize = typeof ResizeObserver === 'function' ? new ResizeObserver(() => this.schedule()) : null;
+    this.resize?.observe(view.dom);
+    window.addEventListener('resize', this.schedule);
+    this.schedule();
+  }
+
+  update(view: EditorView, previous: EditorState): void {
+    if (gitGutterKey.getState(view.state) !== gitGutterKey.getState(previous)) this.schedule();
+  }
+
+  destroy(): void {
+    if (this.frame !== null) clearTimeout(this.frame);
+    this.resize?.disconnect();
+    window.removeEventListener('resize', this.schedule);
+    this.layer.remove();
+  }
+
+  /*
+   * A timer rather than an animation frame: a window that is not producing
+   * frames (hidden, occluded, or under a virtual display) would otherwise
+   * hold the lines where they were. One frame's worth of delay, so a burst of
+   * changes is one layout read.
+   */
+  private readonly schedule = (): void => {
+    if (this.frame !== null) return;
+    this.frame = setTimeout(() => {
+      this.frame = null;
+      this.draw();
+    }, 16);
+  };
+
+  private readonly onPress = (event: MouseEvent): void => {
+    const target = (event.target as HTMLElement | null)?.closest<HTMLElement>('[data-git-mark]');
+    if (!target || event.button !== 0) return;
+    // Keeps the caret and the focus where they were until the popover takes it.
+    event.preventDefault();
+    event.stopPropagation();
+    const at = Number(target.dataset.gitAt);
+    if (target.dataset.gitMark === 'deleted') {
+      const run = this.marks.deleted.find((entry) => entry.before === at);
+      if (run) openDeleted(this.view, run.before, run.head);
+    } else {
+      const line = this.marks.lines.find((entry) => entry.index === at);
+      if (line) openFor(this.view, line.index, line);
+    }
+  };
+
+  private draw(): void {
+    const { view } = this;
+    this.marks = gitGutterMarks(view.state);
+    const { lines, deleted } = this.marks;
+    if (lines.length === 0 && deleted.length === 0) {
+      this.layer.replaceChildren();
+      return;
+    }
+    // Element per top-level index, positions summed once.
+    const wanted = new Set<number>();
+    for (const line of lines) wanted.add(line.index);
+    for (const run of deleted) {
+      wanted.add(run.before);
+      wanted.add(run.before - 1);
+    }
+    const elements = new Map<number, HTMLElement>();
+    let pos = 0;
+    const count = view.state.doc.childCount;
+    for (let index = 0; index < count; index += 1) {
+      if (wanted.has(index)) {
+        const node = view.nodeDOM(pos);
+        if (node instanceof HTMLElement) elements.set(index, node);
+      }
+      pos += view.state.doc.child(index).nodeSize;
+    }
+    const origin = this.layer.getBoundingClientRect();
+    const children: HTMLElement[] = [];
+    const existing = this.layer.children;
+    const take = (at: number, kind: string): HTMLElement => {
+      const reused = existing[children.length] as HTMLElement | undefined;
+      const element = reused ?? document.createElement('div');
+      element.className = `noto-git-mark noto-git-${kind}`;
+      element.dataset.gitMark = kind;
+      element.dataset.gitAt = String(at);
+      element.dataset.testid = kind === 'deleted' ? 'git-deleted-mark' : 'git-line';
+      children.push(element);
+      return element;
+    };
+    for (const line of lines) {
+      const block = elements.get(line.index);
+      if (!block) continue;
+      const rect = block.getBoundingClientRect();
+      const element = take(line.index, line.change);
+      element.title = GIT_BLOCK_WORDS[line.change];
+      place(element, rect.left - origin.left - MARK_LEFT, rect.top - origin.top, rect.height);
+    }
+    for (const run of deleted) {
+      const next = elements.get(run.before)?.getBoundingClientRect();
+      const previous = elements.get(run.before - 1)?.getBoundingClientRect();
+      const reference = next ?? previous;
+      if (!reference) continue;
+      // Half way across the gap the deleted blocks left, or just past the last block.
+      const y = next && previous ? (previous.bottom + next.top) / 2
+        : next ? next.top - 4
+        : reference.bottom + 6;
+      const element = take(run.before, 'deleted');
+      element.title = GIT_BLOCK_WORDS.deleted;
+      place(element, reference.left - origin.left - MARK_LEFT, y - origin.top - 8, 16);
+    }
+    while (existing.length > children.length) existing[existing.length - 1]!.remove();
+    for (const element of children) if (element.parentElement !== this.layer) this.layer.append(element);
+  }
+}
+
+function place(element: HTMLElement, left: number, top: number, height: number): void {
+  element.style.left = `${Math.round(left)}px`;
+  element.style.top = `${Math.round(top)}px`;
+  element.style.height = `${Math.round(height)}px`;
 }
 
 export function gitGutterPlugin(): Plugin<GitGutterState> {
@@ -163,45 +300,17 @@ export function gitGutterPlugin(): Plugin<GitGutterState> {
       apply(tr, previous, _old, next) {
         const meta = tr.getMeta(gitGutterKey) as WorkspaceGitBlocksV1 | null | undefined;
         if (meta !== undefined) {
-          const blocks = new Map((meta?.blocks ?? []).map((block) => [block.blockId, { change: block.change, head: block.head }]));
-          const deleted = new Map((meta?.deleted ?? []).map((run) => [run.beforeBlockId ?? END, run.head]));
-          const origins = originsOf(next);
-          return { blocks, deleted, origins, decorations: build(next, blocks, deleted, origins) };
+          const blocks = new Map((meta?.blocks ?? []).map((block) => [block.blockId, { change: block.change, head: block.head }] as const));
+          const deleted = new Map((meta?.deleted ?? []).map((run) => [run.beforeBlockId ?? END, run.head] as const));
+          return { blocks, deleted, origins: originsOf(next) };
         }
-        if (!tr.docChanged || (previous.blocks.size === 0 && previous.deleted.size === 0)) return previous;
+        if (!tr.docChanged || isEmpty(previous)) return previous;
         const origins = originsOf(next);
-        // The same origins array is the origin plugin saying no block came or went.
-        if (origins === previous.origins) {
-          return { ...previous, decorations: previous.decorations.map(tr.mapping, tr.doc) };
-        }
-        return { ...previous, origins, decorations: build(next, previous.blocks, previous.deleted, origins) };
+        // The same origins array is the origin plugin saying no block came or
+        // went: nothing in the gutter moved, and the state stays the same object.
+        return origins === previous.origins ? previous : { ...previous, origins };
       },
     },
-    props: {
-      decorations: (state) => gitGutterKey.getState(state)?.decorations,
-      handleDOMEvents: {
-        /*
-         * The line is the block's own `::after`, drawn in the document's
-         * gutter, so a press on it arrives as a press on the block. Only a
-         * press left of the block's box counts; one on the text is typing.
-         */
-        mousedown(view, event) {
-          const gutter = gitGutterKey.getState(view.state);
-          if (!gutter || gutter.blocks.size === 0) return false;
-          const target = event.target as HTMLElement | null;
-          const block = target?.closest?.('.noto-git-block') as HTMLElement | null;
-          if (!block || block.parentElement !== view.dom) return false;
-          if (event.clientX >= block.getBoundingClientRect().left) return false;
-          const index = view.state.doc.resolve(view.posAtDOM(block, 0)).index(0);
-          const entry = gitEntryAt(view.state, index);
-          if (!entry) return false;
-          event.preventDefault();
-          openGitPopover(view, block, entry.change === 'modified'
-            ? { kind: 'modified', text: entry.head ?? '' }
-            : { kind: 'added', text: null });
-          return true;
-        },
-      },
-    },
+    view: (view) => new GutterLayer(view),
   });
 }

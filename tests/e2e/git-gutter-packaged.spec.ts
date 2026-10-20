@@ -111,6 +111,23 @@ async function open(page: Page, name: string): Promise<void> {
   await editor(page).waitFor({ state: 'visible' });
 }
 
+const gutter = (page: Page) => page.locator('.canvas-slot:not([hidden]) [data-testid="git-gutter"]');
+const lines = (page: Page) => gutter(page).getByTestId('git-line');
+const deletedMarks = (page: Page) => gutter(page).getByTestId('git-deleted-mark');
+
+/** The kind of line drawn beside a block, left of it and level with its middle, or null. */
+async function beside(page: Page, target: ReturnType<typeof block>): Promise<string | null> {
+  const box = await target.boundingBox();
+  if (!box) return null;
+  return page.evaluate(({ x, y }) => {
+    for (const line of document.querySelectorAll<HTMLElement>('.canvas-slot:not([hidden]) [data-testid="git-line"]')) {
+      const rect = line.getBoundingClientRect();
+      if (rect.right <= x && rect.right > x - 8 && rect.top <= y && rect.bottom >= y) return line.dataset.gitMark ?? null;
+    }
+    return null;
+  }, { x: box.x, y: box.y + box.height / 2 });
+}
+
 /** A press on the gutter line beside a block: 8px left of its box, half way down. */
 async function pressGutter(page: Page, target: ReturnType<typeof block>): Promise<void> {
   const box = await target.boundingBox();
@@ -140,19 +157,20 @@ test.describe('git gutter', () => {
       await open(page, 'note.md');
       const changed = block(page, 'rewritten after the commit');
       const added = block(page, 'A paragraph written after');
-      await expect(changed).toHaveClass(/noto-git-modified/, { timeout: 15_000 });
-      await expect(added).toHaveClass(/noto-git-added/);
-      await expect(editor(page).locator('.noto-git-block')).toHaveCount(2);
-      await expect(editor(page).getByTestId('git-deleted-mark')).toHaveCount(1);
-      // The marker sits where the deleted block was: before the list.
-      await expect(page.locator('.noto-git-deleted + ul')).toHaveCount(1);
+      await expect(lines(page)).toHaveCount(2, { timeout: 15_000 });
+      await expect.poll(() => beside(page, changed)).toBe('modified');
+      expect(await beside(page, added)).toBe('added');
+      expect(await beside(page, block(page, 'has not changed since'))).toBeNull();
+      expect(await beside(page, block(page, 'The last paragraph'))).toBeNull();
+      await expect(deletedMarks(page)).toHaveCount(1);
+      // The marker sits where the deleted block was: between the changed paragraph and the list.
+      const markBox = (await deletedMarks(page).boundingBox())!;
+      const middle = markBox.y + markBox.height / 2;
+      expect(middle).toBeGreaterThan((await changed.boundingBox())!.y + (await changed.boundingBox())!.height - 2);
+      expect(middle).toBeLessThan((await editor(page).locator('ul').boundingBox())!.y + 2);
+      // Not part of the document: nothing in ProseMirror's DOM changed for it.
+      await expect(editor(page).locator('[data-testid="git-line"], [data-testid="git-deleted-mark"]')).toHaveCount(0);
       // A line, in the gutter, in the tree's colour for a change and success for new.
-      const line = (target: ReturnType<typeof block>) => target.evaluate((element) => {
-        const style = getComputedStyle(element, '::after');
-        return { content: style.content, left: style.left, image: style.backgroundImage };
-      });
-      expect((await line(changed)).content).toBe('""');
-      expect(parseFloat((await line(changed)).left)).toBeLessThan(0);
       const tokens = await page.evaluate(() => {
         const probe = document.createElement('i');
         document.body.append(probe);
@@ -163,8 +181,11 @@ test.describe('git gutter', () => {
         probe.remove();
         return { changedColour, success };
       });
-      expect((await line(changed)).image).toContain(tokens.changedColour);
-      expect((await line(added)).image).toContain(tokens.success);
+      const image = (kind: string) => gutter(page).locator(`[data-git-mark="${kind}"]`).evaluate((element) => getComputedStyle(element).backgroundImage);
+      expect(await image('modified')).toContain(tokens.changedColour);
+      expect(await image('added')).toContain(tokens.success);
+      const lineBox = (await lines(page).first().boundingBox())!;
+      expect(lineBox.x + lineBox.width).toBeLessThanOrEqual((await changed.boundingBox())!.x);
 
       if (SHOTS) {
         await page.mouse.move(700, 650);
@@ -197,7 +218,7 @@ test.describe('git gutter', () => {
       await expect(popover).toHaveCount(0);
 
       // The deleted marker is a button: what was there.
-      await editor(page).getByTestId('git-deleted-mark').click();
+      await deletedMarks(page).click();
       await expect(popover.getByRole('heading')).toHaveText('Deleted since the last commit');
       await expect(page.getByTestId('git-popover-text')).toHaveText('A third paragraph that has since been deleted.');
       await page.keyboard.press('Escape');
@@ -222,21 +243,31 @@ test.describe('git gutter', () => {
       await expect(popover).toHaveCount(0);
       expect(await focusInEditor(page)).toBe(true);
 
+      // A block added above moves the lines down with their blocks.
+      await placeCaretAtEnd(page, editor(page).locator('h1'));
+      await page.keyboard.press('Enter');
+      await page.keyboard.type('Inserted above.');
+      await expect.poll(() => beside(page, changed)).toBe('modified');
+      expect(await beside(page, added)).toBe('added');
+      expect(await beside(page, block(page, 'Inserted above.'))).toBeNull();
+
       // Typing elsewhere moves nothing: the line stays on its block.
       await placeCaretAtEnd(page, block(page, 'has not changed since'));
       await page.keyboard.type(' Typed.');
-      await expect(editor(page).locator('.noto-git-block')).toHaveCount(2);
-      await expect(changed).toHaveClass(/noto-git-modified/);
+      await expect(lines(page)).toHaveCount(2);
+      expect(await beside(page, changed)).toBe('modified');
       // A save is what the gutter compares: the typed block is now changed.
       await page.getByTestId('save-button').click();
       await expect.poll(() => readFileSync(path.join(repo, 'note.md'), 'utf8')).toContain('Typed.');
-      await expect(block(page, 'has not changed since')).toHaveClass(/noto-git-modified/, { timeout: 15_000 });
+      await expect.poll(() => beside(page, block(page, 'has not changed since')), { timeout: 15_000 }).toBe('modified');
+      expect(await beside(page, block(page, 'Inserted above.'))).toBe('added');
+      await expect(lines(page)).toHaveCount(4);
 
       // A commit made elsewhere clears it.
       git(repo, 'add', '-A');
       git(repo, 'commit', '-q', '-m', 'second');
-      await expect(editor(page).locator('.noto-git-block')).toHaveCount(0, { timeout: 15_000 });
-      await expect(editor(page).getByTestId('git-deleted-mark')).toHaveCount(0);
+      await expect(lines(page)).toHaveCount(0, { timeout: 15_000 });
+      await expect(deletedMarks(page)).toHaveCount(0);
     } finally {
       await app.close();
     }
@@ -248,12 +279,12 @@ test.describe('git gutter', () => {
     try {
       // The tracked note gets its gutter, so one has had every chance to arrive.
       await open(page, 'note.md');
-      await expect(editor(page).locator('.noto-git-block')).toHaveCount(2, { timeout: 15_000 });
+      await expect(lines(page)).toHaveCount(2, { timeout: 15_000 });
       await open(page, 'untracked.md');
       await expect(block(page, 'Never committed')).toBeVisible();
       await page.waitForTimeout(1_000);
-      await expect(editor(page).locator('.noto-git-block')).toHaveCount(0);
-      await expect(editor(page).getByTestId('git-deleted-mark')).toHaveCount(0);
+      await expect(lines(page)).toHaveCount(0);
+      await expect(deletedMarks(page)).toHaveCount(0);
     } finally {
       await app.close();
     }
@@ -266,8 +297,8 @@ test.describe('git gutter', () => {
     try {
       await open(page, 'note.md');
       await page.waitForTimeout(1_500);
-      await expect(editor(page).locator('.noto-git-block')).toHaveCount(0);
-      await expect(editor(page).getByTestId('git-deleted-mark')).toHaveCount(0);
+      await expect(lines(page)).toHaveCount(0);
+      await expect(deletedMarks(page)).toHaveCount(0);
       await expect(page.locator('[role="alert"]')).toHaveCount(0);
     } finally {
       await app.close();
@@ -279,7 +310,7 @@ test.describe('git gutter', () => {
     const { app, page } = await launch(repo, { theme: 'dark' });
     try {
       await open(page, 'note.md');
-      await expect(block(page, 'rewritten after the commit')).toHaveClass(/noto-git-modified/, { timeout: 15_000 });
+      await expect.poll(() => beside(page, block(page, 'rewritten after the commit')), { timeout: 15_000 }).toBe('modified');
       if (SHOTS) {
         await page.mouse.move(700, 650);
         await page.waitForTimeout(300);

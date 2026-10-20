@@ -17,7 +17,7 @@ import { afterAll, describe, expect, it } from 'vitest';
 import { EditorState } from 'prosemirror-state';
 import { notoSchema } from '../../src/shared/markdown/v3/pm/schema';
 import { createOriginPlugin } from '../../src/renderer/editor/noto/origin-plugin';
-import { gitDeletedBefore, gitEntryAt, gitGutterKey, gitGutterPlugin, setGitBlocks } from '../../src/renderer/editor/noto/git-gutter';
+import { gitDeletedBefore, gitEntryAt, gitGutterKey, gitGutterMarks, gitGutterPlugin, setGitBlocks } from '../../src/renderer/editor/noto/git-gutter';
 import type { NotoBlockOrigin } from '../../src/shared/markdown/v3/contracts';
 import { diffBlocks } from '../../src/shared/git/block-diff';
 import { blocksOf, committedText, gitBlockDiff, GUTTER_MAX_BYTES, showArguments } from '../../src/main/workspace/git-blocks';
@@ -153,20 +153,9 @@ function stateWith(texts: string[], gutter: WorkspaceGitBlocksV1) {
   return state.apply(setGitBlocks(state.tr, gutter));
 }
 
-/** The top-level index each node decoration sits on, with its class. */
+/** The top-level index each line sits on, with its kind. */
 function decorated(state: EditorState): Array<[number, string]> {
-  const set = gitGutterKey.getState(state)!.decorations;
-  const out: Array<[number, string]> = [];
-  let pos = 0;
-  for (let index = 0; index < state.doc.childCount; index += 1) {
-    const node = state.doc.child(index);
-    for (const decoration of set.find(pos, pos + node.nodeSize)) {
-      const spec = (decoration as unknown as { type: { attrs?: { class?: string } } }).type.attrs;
-      if (decoration.from === pos && decoration.to === pos + node.nodeSize && spec?.class) out.push([index, spec.class]);
-    }
-    pos += node.nodeSize;
-  }
-  return out;
+  return gitGutterMarks(state).lines.map((line) => [line.index, line.change]);
 }
 
 describe('git gutter mapping', () => {
@@ -177,25 +166,24 @@ describe('git gutter mapping', () => {
       { blockId: id(1), change: 'modified', head: 'committed two' },
       { blockId: id(2), change: 'added', head: null },
     ]));
-    expect(decorated(state)).toEqual([[1, 'noto-git-block noto-git-modified'], [2, 'noto-git-block noto-git-added']]);
+    expect(decorated(state)).toEqual([[1, 'modified'], [2, 'added']]);
     expect(gitEntryAt(state, 1)).toEqual({ change: 'modified', head: 'committed two' });
     expect(gitEntryAt(state, 0)).toBeNull();
   });
 
-  it('maps through typing inside a block without rebuilding', () => {
+  it('does no work for typing inside a block: the state stays the same object', () => {
     const state = stateWith(['one', 'two', 'three'], event([{ blockId: id(2), change: 'modified', head: 'x' }]));
     const before = gitGutterKey.getState(state)!;
     const next = state.apply(state.tr.insertText('typed ', 2));
-    const after = gitGutterKey.getState(next)!;
-    expect(after.origins).toBe(before.origins);
-    expect(decorated(next)).toEqual([[2, 'noto-git-block noto-git-modified']]);
+    expect(gitGutterKey.getState(next)).toBe(before);
+    expect(decorated(next)).toEqual([[2, 'modified']]);
   });
 
   it('follows its block when a block is inserted above it', () => {
     const state = stateWith(['one', 'two', 'three'], event([{ blockId: id(2), change: 'modified', head: 'x' }]));
     const next = state.apply(state.tr.insert(0, para('new first')));
     expect(next.doc.childCount).toBe(4);
-    expect(decorated(next)).toEqual([[3, 'noto-git-block noto-git-modified']]);
+    expect(decorated(next)).toEqual([[3, 'modified']]);
   });
 
   it('keeps deleted runs on the block that follows them, and at the end', () => {
@@ -206,8 +194,7 @@ describe('git gutter mapping', () => {
     expect(gitDeletedBefore(state, 1)).toBe('gone');
     expect(gitDeletedBefore(state, 0)).toBeNull();
     expect(gitDeletedBefore(state, 2)).toBe('tail gone');
-    const widgets = gitGutterKey.getState(state)!.decorations.find().filter((decoration) => decoration.from === decoration.to);
-    expect(widgets.map((decoration) => decoration.from)).toEqual([5, state.doc.content.size]);
+    expect(gitGutterMarks(state).deleted).toEqual([{ before: 1, head: 'gone' }, { before: 2, head: 'tail gone' }]);
   });
 
   it('clears on a null event and stays out of undo history', () => {
@@ -293,5 +280,25 @@ describe('diffBlocks past the table limit', () => {
     expect(modified.every((entry) => now[entry.ordinal].endsWith(' Edited.'))).toBe(true);
     expect(modified).toHaveLength(Math.ceil(8000 / 7));
     expect(result.deleted).toEqual([]);
+  });
+});
+
+describe('diffBlocks inside an unmatched stretch', () => {
+  it('calls a paragraph inserted above edited ones new, not an edit of the one it pushed down', () => {
+    const head = ['# T', 'The first paragraph has not changed.', 'The second paragraph, as committed.', 'Gone.', 'End.'];
+    const now = ['# T', 'Inserted above.', 'The first paragraph has not changed. Typed.', 'The second paragraph, rewritten.', 'End.'];
+    expect(diffBlocks(head, now)).toEqual({
+      changed: [
+        { ordinal: 1, change: 'added', head: null },
+        { ordinal: 2, change: 'modified', head: 'The first paragraph has not changed.' },
+        { ordinal: 3, change: 'modified', head: 'The second paragraph, as committed.' },
+      ],
+      deleted: [{ before: 4, head: 'Gone.' }],
+    });
+  });
+
+  it('still calls a paragraph rewritten in place modified, sharing no words', () => {
+    expect(diffBlocks(['a', 'Old words here.', 'z'], ['a', 'Entirely different.', 'z']).changed)
+      .toEqual([{ ordinal: 1, change: 'modified', head: 'Old words here.' }]);
   });
 });
