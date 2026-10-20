@@ -279,7 +279,10 @@
   font-size: 0.72em;
   line-height: 1.6;
   opacity: 0.85;
-  transition: color 140ms ease, opacity 140ms ease;
+  /* Brightening under the pointer or the caret: micro, as an icon does. */
+  transition-property: color, opacity;
+  transition-duration: var(--motion-micro);
+  transition-timing-function: var(--ease-out);
 }
 
 .ProseMirror .noto-html-block[data-comment='true']:hover,
@@ -2364,7 +2367,10 @@
   background: color-mix(in srgb, var(--muted) 22%, transparent);
   opacity: 0;
   pointer-events: auto;
-  transition: opacity 110ms ease, background-color 110ms ease;
+  /* A tool coming up beside the table: micro, as the fence's tools do. */
+  transition-property: opacity, background-color;
+  transition-duration: var(--motion-micro);
+  transition-timing-function: var(--ease-out);
 }
 
 .noto-table-rail-rows .noto-table-handle {
