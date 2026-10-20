@@ -157,7 +157,59 @@ function phrasingFrom(node: ProseNode): PhrasingContent[] {
     push(leaf, child.marks.filter((mark) => WRAPPING_MARKS.has(mark.type.name)));
   });
 
-  return trimLeadingSpace(trimTrailingSpace(mergeAdjacent(nestByRun(leaves))));
+  return trimLeadingSpace(trimTrailingSpace(mergeAdjacent(spaceOutsideRuns(mergeAdjacent(nestByRun(leaves))))));
+}
+
+/** Runs that markdown writes with delimiters that must touch their text. */
+function isAttentionRun(node: PhrasingContent): node is Extract<PhrasingContent, { type: 'emphasis' | 'strong' | 'delete' }> {
+  return node.type === 'emphasis' || node.type === 'strong' || node.type === 'delete';
+}
+
+/**
+ * Move whitespace at the inside edges of emphasis, strong and strikethrough
+ * to just outside them.
+ *
+ * A delimiter run cannot open before whitespace or close after it, so an
+ * italic `word ` followed by `next` has no plain markdown form. The
+ * serializer wrote `*word&#x20;*&#x6E;ext`: a reference for the space and
+ * another for the letter after it, which stayed in the file as `&#x6E;` from
+ * then on. A strikethrough has no such escape at all, and `~~done ~~next`
+ * reopened as the literal tildes. Deleting the last word of an italic phrase,
+ * or styling a selection that took the space after a word, is all it took.
+ *
+ * Styled or not, a space looks the same, so it is written outside the run:
+ * `*word* next`, `~~done~~ next`. This is what ProseMirror's own markdown
+ * serializer does. A run that is nothing but whitespace becomes that
+ * whitespace. Links keep their spaces, which their brackets hold.
+ */
+function spaceOutsideRuns(nodes: PhrasingContent[]): PhrasingContent[] {
+  const output: PhrasingContent[] = [];
+  for (const node of nodes) {
+    if (!isAttentionRun(node)) {
+      output.push('children' in node ? { ...node, children: spaceOutsideRuns(node.children) } as PhrasingContent : node);
+      continue;
+    }
+    const lead = splitEdgeSpace(spaceOutsideRuns(node.children), 'start');
+    const tail = splitEdgeSpace(lead.rest, 'end');
+    if (lead.space) output.push({ type: 'text', value: lead.space });
+    if (tail.rest.length > 0) {
+      output.push({ ...node, children: tail.rest } as PhrasingContent);
+      if (tail.space) output.push({ type: 'text', value: tail.space });
+    }
+  }
+  return output;
+}
+
+/** Split the whitespace off one edge of a run's children. */
+function splitEdgeSpace(children: PhrasingContent[], edge: 'start' | 'end'): { space: string; rest: PhrasingContent[] } {
+  const node = edge === 'start' ? children[0] : children[children.length - 1];
+  if (node?.type !== 'text') return { space: '', rest: children };
+  const match = edge === 'start' ? /^\s+/.exec(node.value) : /\s+$/.exec(node.value);
+  if (!match) return { space: '', rest: children };
+  const value = edge === 'start' ? node.value.slice(match[0].length) : node.value.slice(0, match.index);
+  const others = edge === 'start' ? children.slice(1) : children.slice(0, -1);
+  const kept: PhrasingContent[] = value.length === 0 ? [] : [{ type: 'text', value }];
+  return { space: match[0], rest: edge === 'start' ? [...kept, ...others] : [...others, ...kept] };
 }
 
 /**
