@@ -48,3 +48,13 @@ accent bar on the active row beside it, so the mark is shifted toward yellow.
 | --- | --- | --- | --- |
 | `--git-changed` | light | `#A86A00` | 3.94:1 on panel, 3.63:1 on the active row (a mark needs 3:1) |
 | `--git-changed` | dark | `#D0A45F` (= `--warning`) | 7.8:1 on panel, 5.6:1 on the active row |
+
+The gutter beside the open note (PR 2) adds no token. Its line uses
+`--git-changed` for a changed block and `--success` for a new one, and the
+deleted marker uses `--danger`, all on `--paper`:
+
+| Token | Light on paper | Dark on paper |
+| --- | --- | --- |
+| `--git-changed` | 4.22:1 | 7.26:1 |
+| `--success` | 5.69:1 | 7.33:1 |
+| `--danger` | 6.35:1 | 6.11:1 |
