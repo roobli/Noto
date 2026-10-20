@@ -1,11 +1,7 @@
 import { mkdir, readFile, rm, writeFile } from 'node:fs/promises';
 import path from 'node:path';
 import { expect, test, _electron as electron, type ElectronApplication, type Page } from '@playwright/test';
-import { packagedExecutable, placeCaret } from './packaged-app';
-
-/** Clicking a paragraph leaves the caret where the pointer landed, so typing
- *  at a known position needs an explicit jump to the start of the line. */
-const LINE_START = process.platform === 'darwin' ? 'Meta+ArrowLeft' : 'Home';
+import { packagedExecutable, placeCaret, placeCaretAtStart } from './packaged-app';
 
 const resultRoot = path.join(process.cwd(), 'test-results', 'tabs');
 
@@ -97,8 +93,7 @@ test.describe('tabs', () => {
     const { app, page, second } = await launch('history');
     try {
       // Edit the first document, then open a second and come back.
-      await placeCaret(page, page.locator('.ProseMirror p').first());
-      await page.keyboard.press(LINE_START);
+      await placeCaretAtStart(page, page.locator('.ProseMirror p').first());
       await page.keyboard.type('EDITED ');
       await expect(page.locator('.ProseMirror:visible')).toContainText('EDITED Alpha body.');
 
@@ -139,8 +134,7 @@ test.describe('tabs', () => {
     const { app, page, first, second } = await launch('save');
     try {
       await openInTab(page, second);
-      await placeCaret(page, page.locator('.ProseMirror:visible p').first());
-      await page.keyboard.press(LINE_START);
+      await placeCaretAtStart(page, page.locator('.ProseMirror:visible p').first());
       await page.keyboard.type('CHANGED ');
       await page.getByTestId('save-button').click();
       await expect(page.getByTestId('file-state')).toHaveText('Saved', { timeout: 15_000 });
