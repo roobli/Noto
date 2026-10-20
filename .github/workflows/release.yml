@@ -91,6 +91,10 @@ jobs:
             on && /^## \[/ { exit }
             on { print }
           ' CHANGELOG.md > notes.md
+          # The changelog links to files by their path in the repository, which
+          # a release page cannot follow. Point each one at the file as it is
+          # at this tag. Links with a scheme, anchors and absolute paths stay.
+          perl -pi -e 's{\]\((?![A-Za-z][A-Za-z0-9+.-]*:|#|/)([^)\s]+)\)}{](https://github.com/$ENV{GITHUB_REPOSITORY}/blob/$ENV{TAG}/$1)}g' notes.md
           if [ "$UNSIGNED" = true ] && ! grep -qi "first open" notes.md; then
             { echo; awk '/^```markdown$/ { on = 1; next } on && /^```$/ { exit } on { print }' docs/install.md; } >> notes.md
           fi
