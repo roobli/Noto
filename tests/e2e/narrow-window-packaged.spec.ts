@@ -32,7 +32,10 @@ test('a 720px window keeps the rail toggle, lays the rail over the page, and has
     const toggle = page.getByTestId('sidebar-toggle');
     const rail = page.locator('.workspace-rail');
     await expect(toggle).toBeVisible();
-    if (!(await rail.isVisible())) await toggle.click();
+    // A folder named at launch opens the rail on its own, a moment after the
+    // window shows. Pressing the toggle when the rail was not drawn yet raced
+    // that, and on macOS the press landed after it and put the rail away.
+    await expect(toggle).toHaveAttribute('aria-pressed', 'true');
     await expect(rail).toBeVisible();
 
     // Lying over the page: out of flow, above it, and starting at the edge.
