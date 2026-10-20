@@ -29,6 +29,10 @@ How releases are made, and what each channel receives, is in
   now the only engine.
 
 ### Fixed
+- A dollar sign in text followed by a character that also needs escaping
+  (`$_GET`, `$[x]`, `$*`) no longer turns the text up to the next dollar into
+  math when its paragraph is edited and saved. Its escape was dropped
+  (`$\_GET`), so on reopen it opened math. It is now saved as `\$\_GET`.
 - Strikethrough no longer turns into literal tildes on save when it starts or
   ends with punctuation next to a letter (`.txt` struck in `notes.txt`), or
   starts or ends with a tilde (`~5 min` struck). The letter is written as a
