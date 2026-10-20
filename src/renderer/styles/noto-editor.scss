@@ -1078,11 +1078,20 @@
 }
 
 @media (max-width: 900px) {
-  /* The document wins the narrow window. The rail is reachable from the View
-     menu, and its own toggle goes with it rather than sitting there looking
-     live over a region that cannot open. */
-  .workspace-rail { display: none; }
-  [data-testid='sidebar-toggle'] { display: none; }
+  /* The document keeps the narrow window: the rail no longer takes a column
+     from it but lies over it, from the left edge under the title bar, and a
+     press anywhere else puts it away (App.tsx, RAIL_OVERLAY_MEDIA). So the
+     toggle stays where it always is; it used to vanish here, and with it the
+     only visible way to the files. Taken out of flow, the rail leaves its grid
+     column empty, and the column, sized to its content, closes to nothing. */
+  .app-shell > .workspace-rail {
+    position: absolute;
+    top: 0;
+    bottom: 0;
+    left: 0;
+    z-index: 25;
+    box-shadow: 0 10px 30px color-mix(in srgb, var(--shadow) 18%, transparent);
+  }
 }
 
 /* Find and replace

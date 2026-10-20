@@ -159,6 +159,9 @@ const externalStateMessages: Partial<Record<UiState, string>> = {
   'File removed': 'This file is no longer on disk. What is on screen is the only copy, and saving writes it back.',
 };
 
+/** Where the rail stops being a column and lies over the document instead. */
+export const RAIL_OVERLAY_MEDIA = '(max-width: 900px)';
+
 export function exceptionalAlertPresentation(
   recoveryBarrier: boolean,
   outcome: FileTruthSaveOutcomeV1 | null,
@@ -449,6 +452,22 @@ function NotoWorkspace({ platform }: { platform: NotoPlatform }) {
       ? { open: false, view }
       : { open: true, view }));
   }, []);
+  /* Below 900px the rail is an overlay on the document rather than a column
+     beside it (noto-editor.scss), so like any overlay it gives way to a press
+     anywhere else. The toggle is left out, so it can close the rail itself, and
+     so are dialogs and menus, which may have been opened from the rail. */
+  useEffect(() => {
+    if (!rail.open) return;
+    const narrow = window.matchMedia(RAIL_OVERLAY_MEDIA);
+    const onPointerDown = (event: PointerEvent) => {
+      if (!narrow.matches) return;
+      const target = event.target instanceof Element ? event.target : null;
+      if (target?.closest('.workspace-rail, [data-testid="sidebar-toggle"], [role="dialog"], [role="menu"]')) return;
+      setRail((current) => ({ ...current, open: false }));
+    };
+    window.addEventListener('pointerdown', onPointerDown, true);
+    return () => window.removeEventListener('pointerdown', onPointerDown, true);
+  }, [rail.open]);
   /* Links is opt-in: if the setting is off while that view is showing, leave it. */
   useEffect(() => {
     if (settings.railLinks) return;

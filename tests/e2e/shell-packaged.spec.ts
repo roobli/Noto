@@ -179,7 +179,7 @@ test.describe('Noto product shell', () => {
 
     const { app, page, issues } = await launch(workspace, file);
     try {
-      // The rail is hidden below 900px by design, so pin a width that shows it.
+      // Below 900px the rail lies over the document; pin a width where it is a column.
       await page.setViewportSize({ width: 1280, height: 860 });
       // Outline is a view inside the rail now, so the rail has to be showing
       // before its tab can be picked. The menu item opens both at once.
