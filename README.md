@@ -30,7 +30,7 @@ Downloads, guides and the project's direction live at
 
 Noto is usable and under active development. The current formal release is
 `v0.0.3` (17 October 2026), the first release outside alpha, on the Stable
-channel. It is unsigned on purpose: macOS builds are ad-hoc signed and not
+channel. It is unsigned by choice: macOS builds are ad-hoc signed and not
 notarized, the Windows installer is not code-signed, and there is no dmg.
 Signing comes in a later release: an Apple Developer ID with notarization on
 macOS and a code-signing certificate on Windows, and only then is in-app
