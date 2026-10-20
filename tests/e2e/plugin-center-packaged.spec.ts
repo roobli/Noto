@@ -169,7 +169,11 @@ test.describe('plugin center', () => {
 
       // Demote every heading through the command palette.
       await page.keyboard.press(`${process.platform === 'darwin' ? 'Meta' : 'Control'}+KeyK`);
-      await page.getByRole('button', { name: /demote a level/i }).click();
+      // Typed and run from the field, as the palette is meant to be used.
+      await expect(page.getByTestId('palette-input')).toBeFocused();
+      await page.keyboard.type('demote');
+      await expect(page.getByRole('option', { name: /demote a level/i })).toHaveAttribute('aria-selected', 'true');
+      await page.keyboard.press('Enter');
       // The plugin's own word for what it did, in the status line.
       await expect(page.getByTestId('status-notice')).toHaveText(/Headings demoted/);
 
@@ -209,7 +213,7 @@ test.describe('plugin center', () => {
       await section.locator('button.plugin-primary').click();
 
       await page.keyboard.press(`${process.platform === 'darwin' ? 'Meta' : 'Control'}+KeyK`);
-      await page.getByRole('button', { name: /CJK spacing/i }).click();
+      await page.getByRole('option', { name: /CJK spacing/i }).click();
 
       await expect(page.locator('.ProseMirror p').first())
         .toHaveText('这是中文 English 混排 text 测试。');

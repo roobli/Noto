@@ -1514,7 +1514,7 @@ button:disabled { color: var(--muted); opacity: 0.7; }
 }
 
 .search-field input,
-.command-palette input {
+.command-palette .palette-input {
   width: 100%;
   min-width: 0;
   border: 1px solid var(--hairline);
@@ -1622,18 +1622,27 @@ button:disabled { color: var(--muted); opacity: 0.7; }
 /* Command palette
    ------------------------------------------------------------------------- */
 
+.command-palette-scrim {
+  animation: noto-fade var(--motion-micro) var(--ease-out);
+  position: fixed;
+  z-index: 30;
+  inset: 0;
+  background: var(--scrim);
+}
+
 .command-palette {
   animation: noto-arrive var(--motion-default) var(--ease-out);
   position: fixed;
-  z-index: 30;
   top: 64px;
   left: 50%;
+  /* The field stays put and the list scrolls under it. */
+  display: flex;
+  flex-direction: column;
   width: min(620px, calc(100vw - 40px));
   max-width: 100%;
   max-height: calc(100vh - 112px);
   margin: 0;
-  overflow: auto;
-  overscroll-behavior: contain;
+  overflow: hidden;
   transform: translateX(-50%);
   border: 1px solid var(--hairline);
   border-radius: 8px;
@@ -1642,11 +1651,6 @@ button:disabled { color: var(--muted); opacity: 0.7; }
   color: var(--ink);
   box-shadow: 0 18px 48px -12px color-mix(in srgb, var(--shadow) 34%, transparent);
 }
-
-/* The dialog takes the focus so the keyboard is in it, but it is not a
-   control, so it draws no ring; the first Tab reaches a command. */
-.command-palette:focus,
-.command-palette:focus-visible { outline: none; }
 
 .dialog-heading {
   display: flex;
@@ -1657,16 +1661,28 @@ button:disabled { color: var(--muted); opacity: 0.7; }
   margin-bottom: 8px;
 }
 
-.palette-result {
-  display: grid;
-  width: 100%;
-  min-width: 0;
-  margin-top: 6px;
-  border-color: transparent;
-  background: transparent;
+.command-palette .palette-input { flex: 1 1 auto; }
+
+.palette-results {
+  min-height: 0;
+  overflow: auto;
+  overscroll-behavior: contain;
 }
 
-.palette-result.selected { background: var(--raised); }
+.palette-result {
+  display: grid;
+  min-width: 0;
+  min-height: 28px;
+  margin-top: 2px;
+  border-radius: 5px;
+  padding: 4px 10px;
+  cursor: default;
+}
+
+/* The row Enter would run, whether the keys or the pointer put it there: the
+   fill the tree gives the file that is open, which reads on the panel where
+   the hover fill, a step off it, did not. */
+.palette-result[aria-selected='true'] { background: var(--surface-active); }
 .palette-result strong,
 .palette-result span {
   min-width: 0;
@@ -1675,7 +1691,7 @@ button:disabled { color: var(--muted); opacity: 0.7; }
   white-space: nowrap;
 }
 .palette-result span { color: var(--muted); font-size: 12px; }
-.palette-empty { color: var(--muted); font-size: 12px; }
+.palette-empty { margin: 0; padding: 8px 10px; color: var(--muted); font-size: 12px; }
 
 /* Quick open
    -------------------------------------------------------------------------

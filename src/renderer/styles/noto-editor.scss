@@ -1067,13 +1067,6 @@
 .outline-entry.is-closed { color: var(--ink); }
 .tree-level.is-root > .tree-node > .outline-entry { color: var(--ink); font-weight: 600; }
 
-.palette-empty {
-  margin: 0;
-  padding: 8px 4px;
-  color: var(--muted);
-  font: 13px tokens.$ui;
-}
-
 @media (max-width: 900px) {
   /* The document wins the narrow window. The rail is reachable from the View
      menu, and its own toggle goes with it rather than sitting there looking
