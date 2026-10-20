@@ -113,7 +113,11 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        os: [macos-14, windows-latest, ubuntu-latest]
+        # ubuntu-24.04, not ubuntu-latest: latest moved to 26.04 on
+        # 2026-10-20, and its rpm 6 builds in a directory electron-installer-
+        # redhat's spec does not expect (`cp -r usr/*` finds nothing), so every
+        # .rpm failed. Unpin once the installer copes with rpm >= 4.20.
+        os: [macos-14, windows-latest, ubuntu-24.04]
     steps:
       - uses: actions/checkout@v4
       - uses: pnpm/action-setup@v4

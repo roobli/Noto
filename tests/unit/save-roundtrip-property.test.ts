@@ -193,9 +193,11 @@ function randomEdit(h: Harness, r: () => number): void {
 }
 
 /**
- * Documented save normalization: markdown cannot hold spaces at the edges of
- * a textblock, so the serializer drops them (to-mdast trimLeading/TrailingSpace).
- * Compare modulo exactly that and nothing else.
+ * Documented save normalizations, and nothing else:
+ * - markdown cannot hold spaces at the edges of a textblock, so the serializer
+ *   drops them (to-mdast trimLeading/TrailingSpace);
+ * - nor at the inside edges of emphasis, strong or strikethrough, so it writes
+ *   them just outside the run (to-mdast spaceOutsideRuns).
  */
 function normalized(node: ProseNode): unknown {
   const json = node.toJSON() as { type: string; content?: unknown[] };
@@ -218,6 +220,7 @@ function normalized(node: ProseNode): unknown {
       const marks = child.marks.filter((mark) => !(mark.type === 'link' && /^https?:\/\//.test(mark.attrs?.href ?? '') && child.text?.includes('://')));
       return marks.length === child.marks.length ? child : { ...child, marks: marks.length ? marks : undefined };
     });
+    content = content.flatMap((child) => spaceOutsideAttention(child));
     const merged: typeof content = [];
     for (const child of content) {
       const previous = merged[merged.length - 1];
@@ -241,6 +244,23 @@ function normalized(node: ProseNode): unknown {
     return { ...value, content };
   };
   return walk(json as never);
+}
+
+const ATTENTION = new Set(['emphasis', 'strong', 'strikethrough']);
+
+/** A text node's edge whitespace, without the marks a save writes it outside of. */
+function spaceOutsideAttention<T extends { type: string; text?: string; marks?: Array<{ type: string }> }>(child: T): T[] {
+  if (child.type !== 'text' || !child.marks?.some((mark) => ATTENTION.has(mark.type))) return [child];
+  const match = /^(\s*)([\s\S]*?)(\s*)$/.exec(child.text ?? '')!;
+  const [, lead, core, tail] = match;
+  if (!lead && !tail) return [child];
+  const plain = child.marks.filter((mark) => !ATTENTION.has(mark.type));
+  const space = (text: string): T => ({ ...child, text, marks: plain.length ? plain : undefined });
+  return [
+    ...(lead ? [space(lead)] : []),
+    ...(core ? [{ ...child, text: core }] : []),
+    ...(tail ? [space(tail)] : []),
+  ];
 }
 
 function sameBlock(a: ProseNode, b: ProseNode): boolean {
@@ -555,6 +575,53 @@ describe('emphasis nested in emphasis', () => {
     insertAtBlockStart(h, 0, 'z');
     expect(save(h)).toBe('*znote: **important***\n');
     expectSavedMatchesEditor(h, 'emphasis ending in bold');
+  });
+});
+
+describe('a space at the edge of a styled run', () => {
+  /** Apply `mark` to the first occurrence of `target` in block 0, as Cmd+B does to a selection. */
+  function style(h: Harness, target: string, mark: 'emphasis' | 'strong' | 'strikethrough'): void {
+    const v = view(h);
+    const from = blockStart(v.state.doc, 0) + 1 + v.state.doc.child(0).textContent.indexOf(target);
+    v.dispatch(v.state.tr.addMark(from, from + target.length, v.state.schema.marks[mark].create()));
+  }
+
+  // A strikethrough has no way to hold the space: `~~done ~~now` reopened as
+  // the literal tildes.
+  it('a struck selection that took the space after a word still strikes', () => {
+    const h = openTracked('Mark done now.\n');
+    style(h, 'done ', 'strikethrough');
+    expect(save(h)).toBe('Mark ~~done~~ now.\n');
+    expectSavedMatchesEditor(h, 'struck word and space');
+  });
+
+  // Emphasis was written `*done&#x20;*&#x6E;ow`, and the reference for the
+  // letter stayed in the file from then on.
+  it('italic and bold selections write no character references', () => {
+    const h = openTracked('Mark done now, then later.\n');
+    style(h, 'done ', 'emphasis');
+    style(h, ' then', 'strong');
+    expect(save(h)).toBe('Mark *done* now, **then** later.\n');
+    expectSavedMatchesEditor(h, 'styled word and space');
+  });
+
+  it('deleting the last word of an italic phrase keeps it italic', () => {
+    const h = openTracked('See *this word*, then go.\n');
+    const v = view(h);
+    const from = blockStart(v.state.doc, 0) + 1 + v.state.doc.child(0).textContent.indexOf('word');
+    v.dispatch(v.state.tr.delete(from, from + 'word'.length));
+    expect(save(h)).toBe('See *this* , then go.\n');
+    expectSavedMatchesEditor(h, 'emptied end of italic');
+  });
+
+  it('moves the space out through every run it ends, and a struck space alone is a space', () => {
+    const h = openTracked('Mark done now.\n');
+    style(h, 'done ', 'emphasis');
+    style(h, 'done ', 'strong');
+    // The first space, after `Mark`, and nothing else.
+    style(h, ' ', 'strikethrough');
+    expect(save(h)).toBe('Mark ***done*** now.\n');
+    expectSavedMatchesEditor(h, 'nested runs ending in a space');
   });
 });
 

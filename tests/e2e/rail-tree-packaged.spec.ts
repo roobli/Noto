@@ -354,7 +354,7 @@ test.describe('a note opened on its own', () => {
     }, id);
   }
 
-  test('keeps the rail under the title bar, and hides it when the window is too narrow', async () => {
+  test('keeps the rail under the title bar, and lays it over the page when the window is narrow', async () => {
     const { app, page } = await launchFile('narrow');
     try {
       // Claude-style shell: the title bar spans the window; the rail starts on
@@ -383,10 +383,15 @@ test.describe('a note opened on its own', () => {
       expect(geometry!.titleWidth).toBeGreaterThan(geometry!.shellWidth - 2);
       expect(geometry!.railTop).toBeGreaterThanOrEqual(geometry!.titleBottom - 1);
 
-      // Below 900 the rail is hidden and the document takes the window.
+      // Below 900 the rail stays open but lies over the document, out of the
+      // layout, and its toggle stays so it can be put away.
       await page.setViewportSize({ width: 640, height: 700 });
-      await expect(page.getByTestId('file-tree')).toBeHidden();
-      await expect(page.getByTestId('sidebar-toggle')).toBeHidden();
+      await expect(page.getByTestId('file-tree')).toBeVisible();
+      await expect(page.getByTestId('sidebar-toggle')).toBeVisible();
+      await expect.poll(() => page.evaluate(() => {
+        const rail = document.querySelector('.workspace-rail');
+        return rail ? getComputedStyle(rail).position : null;
+      })).toBe('absolute');
     } finally {
       await app.close();
     }
