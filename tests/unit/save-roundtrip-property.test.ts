@@ -662,6 +662,73 @@ describe('emphasis touching strong', () => {
   });
 });
 
+describe('a struck run against what sits beside it', () => {
+  function strike(h: Harness, target: string): void {
+    const v = view(h);
+    const from = blockStart(v.state.doc, 0) + 1 + v.state.doc.child(0).textContent.indexOf(target);
+    v.dispatch(v.state.tr.addMark(from, from + target.length, v.state.schema.marks.strikethrough.create()));
+  }
+
+  /**
+   * The saved paragraph reads back with the same text and the same text
+   * struck. The letter written as a reference reopens as a reference node,
+   * which `expectSavedMatchesEditor` would count as a different paragraph.
+   */
+  function expectStrikeReadsBack(h: Harness, text: string, struck: string): void {
+    const paragraph = fullDoc(h.saved).child(0);
+    let read = '';
+    paragraph.forEach((child) => {
+      if (child.marks.some((mark) => mark.type.name === 'strikethrough')) read += child.textContent;
+    });
+    expect(paragraph.textContent).toBe(text);
+    expect(read).toBe(struck);
+  }
+
+  // `notes~~.txt~~`: tildes between a letter and punctuation cannot open, so
+  // the strikethrough came back as literal tildes. The letter outside is
+  // written as a reference, as the emphasis handler already does.
+  it('strikes punctuation that follows a letter', () => {
+    const h = openTracked('See notes.txt today.\n');
+    strike(h, '.txt');
+    expect(save(h)).toBe('See note&#x73;~~.txt~~ today.\n');
+    expectStrikeReadsBack(h, 'See notes.txt today.', '.txt');
+  });
+
+  // `~~(x)~~y`: after punctuation and before a letter the closer cannot close.
+  it('strikes punctuation that precedes a letter', () => {
+    const h = openTracked('Call (x)y now.\n');
+    strike(h, '(x)');
+    expect(save(h)).toBe('Call ~~(x)~~&#x79; now.\n');
+    expectStrikeReadsBack(h, 'Call (x)y now.', '(x)');
+  });
+
+  // `~~~5 min~~`: a literal tilde against the opener makes a run of three,
+  // which strikes nothing.
+  it('strikes text that starts with a tilde', () => {
+    const h = openTracked('It takes ~5 min.\n');
+    strike(h, '~5 min');
+    expect(save(h)).toBe('It takes ~~\\~5 min~~.\n');
+    expectSavedMatchesEditor(h, 'struck text opening with a tilde');
+  });
+
+  it('keeps a literal tilde after the closer apart from it', () => {
+    const h = openTracked('Was 5~6 days.\n');
+    strike(h, '5');
+    expect(save(h)).toBe('Was ~~5~~\\~6 days.\n');
+    expectSavedMatchesEditor(h, 'tilde after struck text');
+  });
+
+  // Letters on both sides flank already, and CJK text is left as the file
+  // wrote it rather than filled with references.
+  it('leaves runs that read back alone', () => {
+    const h = openTracked('abc 这是「错」的\n');
+    strike(h, 'b');
+    strike(h, '「错」');
+    expect(save(h)).toBe('a~~b~~c 这是~~「错」~~的\n');
+    expectSavedMatchesEditor(h, 'runs that already flank');
+  });
+});
+
 describe('two lists the editor leaves adjacent', () => {
   // With only blank lines between them, two lists of one family and marker
   // read back as one loose list. The later one is written with the other marker.
