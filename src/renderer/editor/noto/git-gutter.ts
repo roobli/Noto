@@ -167,6 +167,8 @@ class GutterLayer {
   private readonly resize: ResizeObserver | null;
   private frame: ReturnType<typeof setTimeout> | null = null;
   private marks: GitGutterMarks = { lines: [], deleted: [] };
+  /** The top-level elements being watched for size, while there is a gutter. */
+  private readonly watched = new Set<Element>();
 
   constructor(private readonly view: EditorView) {
     this.layer = document.createElement('div');
@@ -188,6 +190,7 @@ class GutterLayer {
   destroy(): void {
     if (this.frame !== null) clearTimeout(this.frame);
     this.resize?.disconnect();
+    this.watched.clear();
     window.removeEventListener('resize', this.schedule);
     this.layer.remove();
   }
@@ -222,14 +225,47 @@ class GutterLayer {
     }
   };
 
+  /*
+   * Any block changing height can move the lines below it, and the document
+   * itself does not always change size when one does (its minimum height can
+   * hold it), so every top-level block is watched while there is a gutter.
+   * ResizeObserver does the comparing natively and calls back only on a
+   * change; this keeps the watched set to the blocks that are in the document.
+   */
+  private watch(on: boolean): void {
+    const resize = this.resize;
+    if (!resize) return;
+    if (!on) {
+      if (this.watched.size === 0) return;
+      for (const element of this.watched) resize.unobserve(element);
+      this.watched.clear();
+      resize.observe(this.view.dom);
+      return;
+    }
+    for (const element of this.watched) {
+      if (element.parentElement !== this.view.dom) {
+        resize.unobserve(element);
+        this.watched.delete(element);
+      }
+    }
+    for (const element of this.view.dom.children) {
+      if (!this.watched.has(element)) {
+        resize.observe(element);
+        this.watched.add(element);
+      }
+    }
+  }
+
   private draw(): void {
     const { view } = this;
     this.marks = gitGutterMarks(view.state);
     const { lines, deleted } = this.marks;
     if (lines.length === 0 && deleted.length === 0) {
       this.layer.replaceChildren();
+      this.watch(false);
       return;
     }
+    this.watch(true);
     // Element per top-level index, positions summed once.
     const wanted = new Set<number>();
     for (const line of lines) wanted.add(line.index);

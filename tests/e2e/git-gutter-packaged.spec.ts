@@ -90,6 +90,13 @@ async function launch(
 }
 
 async function capture(app: ElectronApplication, file: string): Promise<void> {
+  // The first capture can return a frame drawn before the last layout; the
+  // second is of the page as it is.
+  await captureOnce(app, file);
+  await captureOnce(app, file);
+}
+
+async function captureOnce(app: ElectronApplication, file: string): Promise<void> {
   // A fresh frame first: without one, a capture can return the last frame drawn.
   const png = await app.evaluate(async ({ BrowserWindow }) => {
     const contents = BrowserWindow.getAllWindows()[0].webContents;
