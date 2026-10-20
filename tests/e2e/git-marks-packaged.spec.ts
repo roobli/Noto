@@ -105,10 +105,14 @@ test.describe('git changes in the tree', () => {
       await expect(fileRow(page, 'gone.md')).toHaveCount(0);
 
       // Said in words as well as colour: the row's name and its hover.
-      await expect(fileRow(page, 'edited.md')).toHaveAccessibleName(/^edited\.md\s*, changed since the last commit$/);
-      await expect(fileRow(page, 'idea.md')).toHaveAttribute('title', /new since the last commit/);
+      await expect(fileRow(page, 'edited.md')).toHaveAccessibleName(/^edited\.md\s*, Changed$/);
+      await expect(fileRow(page, 'idea.md')).toHaveAttribute('title', 'idea.md, New');
       // A mark is never a target, so the row's hit area is the row's.
       await expect(mark(fileRow(page, 'edited.md'))).toHaveCSS('pointer-events', 'none');
+      await expect(folderRow(page, 'archive')).toHaveAttribute('title', 'archive, Contains changes');
+      // New is a shape, not only a colour.
+      await expect(mark(fileRow(page, 'idea.md')).locator('svg')).toHaveCount(1);
+      await expect(mark(fileRow(page, 'edited.md')).locator('svg')).toHaveCount(0);
 
       if (SHOTS) {
         await fileRow(page, 'edited.md').click();

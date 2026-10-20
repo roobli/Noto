@@ -11,7 +11,7 @@ How releases are made, and what each channel receives, is in
 
 ### Added
 - **The file tree shows what changed since the last commit** when the folder
-  is in a git repository: an amber dot on a changed note, a green dot on a new
+  is in a git repository: an amber dot on a changed note, a green plus on a new
   one, and a ring on folders holding a change, including a deleted note.
   Noto only reads git, through the `git` command already installed, and never
   writes to the repository. Without git or a repository nothing is shown.

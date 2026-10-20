@@ -34,3 +34,17 @@ The other source values are unchanged. Text that used to be faded below the
 muted tier with `opacity` (the breadcrumb folder, Settings' Remote and
 Plugins, the fence's line numbers) now takes a real colour instead, so its
 contrast is what it measures.
+
+## Amendment, 2026-10-20: git marks
+
+One token was added, not changed. `--git-changed` colours the tree's mark for
+a note that differs from the last commit. atelier's review of the encoding
+found the light theme's `--warning` (`#8A642D`) read as the same rust as the
+accent bar on the active row beside it, so the mark is shifted toward yellow.
+`--warning` itself is unchanged, because it is also set as text, where
+`#A86A00` would fall under 4.5:1.
+
+| Token | Theme | Value | Contrast |
+| --- | --- | --- | --- |
+| `--git-changed` | light | `#A86A00` | 3.94:1 on panel, 3.63:1 on the active row (a mark needs 3:1) |
+| `--git-changed` | dark | `#D0A45F` (= `--warning`) | 7.8:1 on panel, 5.6:1 on the active row |
