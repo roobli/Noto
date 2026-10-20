@@ -59,20 +59,22 @@ export function openGitPopover(view: EditorView, anchor: HTMLElement, content: G
   header.append(title, close);
   popover.append(header);
 
+  // One structure for all three: a title over one mono panel. The panel
+  // holds the committed source (the block as it was, or the blocks that were
+  // removed), or for a new block says there is none. Never a word diff.
+  const body = document.createElement('pre');
+  body.className = 'noto-git-popover-text';
   if (content.text !== null) {
-    const body = document.createElement('pre');
-    body.className = 'noto-git-popover-text';
     body.dataset.testid = 'git-popover-text';
-    // Scrolls on its own when long, and is reachable by Tab to scroll by key.
-    body.tabIndex = 0;
     body.textContent = content.text.replace(/\n+$/, '');
-    popover.append(body);
   } else {
-    const note = document.createElement('p');
-    note.className = 'noto-git-popover-note';
-    note.textContent = 'The last commit does not have this block.';
-    popover.append(note);
+    body.classList.add('noto-git-popover-empty');
+    body.dataset.testid = 'git-popover-empty';
+    body.textContent = 'The last commit does not have this block.';
   }
+  // Scrolls on its own when long, and is reachable by Tab to scroll by key.
+  body.tabIndex = 0;
+  popover.append(body);
 
   document.body.append(popover);
   place(popover, anchor);
@@ -118,9 +120,8 @@ export function openGitPopover(view: EditorView, anchor: HTMLElement, content: G
   window.addEventListener('resize', onScroll);
   view.dom.closest('.canvas-scroll')?.addEventListener('scroll', onScroll, true);
   open = { close: finish };
-  // The committed text first, so a screen reader reads it and the arrows
-  // scroll it; the close button when there is no text.
-  (popover.querySelector<HTMLElement>('pre[tabindex="0"]') ?? close).focus();
+  // The panel first, so a screen reader reads it and the arrows scroll it.
+  body.focus();
 }
 
 /**
