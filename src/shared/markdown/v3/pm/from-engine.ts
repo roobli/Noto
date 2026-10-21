@@ -97,6 +97,42 @@ export const ENGINE_LEAF_KINDS: ReadonlySet<NotoBlockKind> = new Set([
  * underscores are literal (CommonMark flanking).
  */
 const INLINE_DIALECT_RE = /[*_~`[\]<!$:\\@]|https?:\/\/|www\./iu;
+
+/**
+ * Shapes the fast reader hands to micromark instead of reading them itself.
+ *
+ * The fast reader is an optimization, never a dialect: it may only accept
+ * what it reads exactly as micromark with Noto's extensions does. Each entry
+ * here is a shape it was found to read differently (the fast-reader
+ * differential test finds them); declining is always safe, since micromark
+ * reads the block instead, and costs only speed on a shape notes rarely hold.
+ * A shape leaves this list only when profiling a real vault shows the handoff
+ * matters and the fast reader learns the rule exactly.
+ */
+const HANDED_TO_MICROMARK: readonly RegExp[] = [
+  // An escaped dollar right before another: in `x\$$y$` the `\$` is text and
+  // `$y$` a formula, but the scanner saw the escaped `$` as the start of a
+  // `$$` run.
+  /(?<!\\)(?:\\\\)*\\\$\$/u,
+  // Backticks inside a code span: `` `a``b` ``, `` ` ``" ` ``.
+  /``/u,
+  // Link text that starts with a caret: `[^x](u)` is a link, not a footnote
+  // call.
+  /\[\^[^\]\n]*\][([]/u,
+  // A run of three or more asterisks that both closes and opens: a letter or
+  // digit on both sides (`*a***b*c***`), or punctuation on both sides.
+  /[\p{L}\p{N}]\*{3,}[\p{L}\p{N}]|[^\s*\p{L}\p{N}]\*{3,}[^\s*\p{L}\p{N}]/u,
+];
+
+/** A backtick with no backslash escaping it. */
+const UNESCAPED_BACKTICK = /(?<!\\)(?:\\\\)*`/u;
+
+function handedToMicromark(md: string): boolean {
+  if (HANDED_TO_MICROMARK.some((shape) => shape.test(md))) return true;
+  // A backslash before a backtick is an escape in text but literal inside a
+  // code span (`` `` \` `` ``), so it is only safe with no code span around.
+  return md.includes('\\`') && UNESCAPED_BACKTICK.test(md);
+}
 /**
  * No remaining single-character "always dialect" gate: math (`$`) and simple
  * inline HTML are engine-owned. Multi-line / exotic HTML is refused in the
@@ -369,6 +405,7 @@ export function tryInlineNodesFromSource(
   if (!INLINE_DIALECT_RE.test(normalized)) {
     return inlineNodesFromPlainSource(normalized);
   }
+  if (handedToMicromark(normalized)) return null;
   return parseSimpleAsteriskTildeCode(normalized);
 }
 
