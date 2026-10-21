@@ -1,5 +1,5 @@
 {
-  "lockfileSha256": "f1b3ba2f488fffc54e036b00bbd943ec4ff7716a4e60af0cabcf7a7e5e29dfb9",
+  "lockfileSha256": "9c96a2cb4b9652c448e90d4d71bed510184074431e11b5fb302fec3bd3a492cd",
   "packages": [
     {
       "name": "@antfu/install-pkg",
@@ -646,7 +646,7 @@
     },
     {
       "name": "@roobli/md",
-      "version": "0.1.20",
+      "version": "0.1.21",
       "license": "MIT",
       "repository": "git+https://github.com/roobli/md.git",
       "noticeFiles": [
@@ -4136,6 +4136,24 @@
       "repository": "https://github.com/micromark/micromark/tree/main/packages/micromark-core-commonmark",
       "noticeFiles": [
         "license"
+      ]
+    },
+    {
+      "name": "micromark-extension-cjk-friendly-gfm-strikethrough",
+      "version": "1.2.3",
+      "license": "MIT",
+      "repository": "https://github.com/tats-u/markdown-cjk-friendly",
+      "noticeFiles": [
+        "LICENSE"
+      ]
+    },
+    {
+      "name": "micromark-extension-cjk-friendly-gfm-strikethrough",
+      "version": "2.0.1",
+      "license": "MIT",
+      "repository": "https://github.com/tats-u/markdown-cjk-friendly",
+      "noticeFiles": [
+        "LICENSE"
       ]
     },
     {

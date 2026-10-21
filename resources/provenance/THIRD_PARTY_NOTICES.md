@@ -2,9 +2,9 @@
 
 Generated from the installed dependency tree. Do not edit by hand.
 
-- Lockfile SHA-256: `f1b3ba2f488fffc54e036b00bbd943ec4ff7716a4e60af0cabcf7a7e5e29dfb9`
-- Unique resolved packages: 740
-- Packages with copied license or notice text: 711
+- Lockfile SHA-256: `9c96a2cb4b9652c448e90d4d71bed510184074431e11b5fb302fec3bd3a492cd`
+- Unique resolved packages: 742
+- Packages with copied license or notice text: 713
 - Packages without a root license or notice file: 29
 
 | Package | Declared license | License files | Repository |
@@ -81,7 +81,7 @@ Generated from the installed dependency tree. Do not edit by hand.
 | `@playwright/test@1.62.1` | Apache-2.0 | LICENSE, NOTICE | git+https://github.com/microsoft/playwright.git |
 | `@rolldown/binding-linux-x64-gnu@1.2.6` | MIT | none found | git+https://github.com/rolldown/rolldown.git |
 | `@rolldown/pluginutils@1.0.1` | MIT | LICENSE | git+https://github.com/rolldown/plugins.git |
-| `@roobli/md@0.1.20` | MIT | LICENSE | git+https://github.com/roobli/md.git |
+| `@roobli/md@0.1.21` | MIT | LICENSE | git+https://github.com/roobli/md.git |
 | `@sindresorhus/is@4.6.0` | MIT | license | sindresorhus/is |
 | `@standard-schema/spec@1.1.0` | MIT | LICENSE | https://github.com/standard-schema/standard-schema |
 | `@szmarczak/http-timer@4.0.6` | MIT | LICENSE | git+https://github.com/szmarczak/http-timer.git |
@@ -472,6 +472,8 @@ Generated from the installed dependency tree. Do not edit by hand.
 | `merge2@1.4.1` | MIT | LICENSE | git@github.com:teambition/merge2.git |
 | `mermaid@11.17.2` | MIT | LICENSE | https://github.com/mermaid-js/mermaid |
 | `micromark-core-commonmark@2.0.3` | MIT | license | https://github.com/micromark/micromark/tree/main/packages/micromark-core-commonmark |
+| `micromark-extension-cjk-friendly-gfm-strikethrough@1.2.3` | MIT | LICENSE | https://github.com/tats-u/markdown-cjk-friendly |
+| `micromark-extension-cjk-friendly-gfm-strikethrough@2.0.1` | MIT | LICENSE | https://github.com/tats-u/markdown-cjk-friendly |
 | `micromark-extension-cjk-friendly-util@2.1.1` | MIT | LICENSE | https://github.com/tats-u/markdown-cjk-friendly |
 | `micromark-extension-cjk-friendly-util@3.0.1` | MIT | LICENSE | https://github.com/tats-u/markdown-cjk-friendly |
 | `micromark-extension-cjk-friendly@1.2.3` | MIT | LICENSE | https://github.com/tats-u/markdown-cjk-friendly |
@@ -3367,7 +3369,7 @@ OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
 SOFTWARE.
 ```
 
-### @roobli/md@0.1.20
+### @roobli/md@0.1.21
 
 #### LICENSE
 
@@ -16295,6 +16297,76 @@ SOFTWARE.
 #### license
 
 ```text
+(The MIT License)
+
+Copyright (c) Titus Wormer <tituswormer@gmail.com>
+
+Permission is hereby granted, free of charge, to any person obtaining
+a copy of this software and associated documentation files (the
+'Software'), to deal in the Software without restriction, including
+without limitation the rights to use, copy, modify, merge, publish,
+distribute, sublicense, and/or sell copies of the Software, and to
+permit persons to whom the Software is furnished to do so, subject to
+the following conditions:
+
+The above copyright notice and this permission notice shall be
+included in all copies or substantial portions of the Software.
+
+THE SOFTWARE IS PROVIDED 'AS IS', WITHOUT WARRANTY OF ANY KIND,
+EXPRESS OR IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF
+MERCHANTABILITY, FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT.
+IN NO EVENT SHALL THE AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY
+CLAIM, DAMAGES OR OTHER LIABILITY, WHETHER IN AN ACTION OF CONTRACT,
+TORT OR OTHERWISE, ARISING FROM, OUT OF OR IN CONNECTION WITH THE
+SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
+```
+
+### micromark-extension-cjk-friendly-gfm-strikethrough@1.2.3
+
+#### LICENSE
+
+```text
+Copyright (c) 2025 Tatsunori Uchino <tats.u@live.jp>
+
+MIT LICENSE
+
+Based on micromark and micromark-core-commonmark & micromark-extension-gfm-strikethrough
+
+(The MIT License)
+
+Copyright (c) Titus Wormer <tituswormer@gmail.com>
+
+Permission is hereby granted, free of charge, to any person obtaining
+a copy of this software and associated documentation files (the
+'Software'), to deal in the Software without restriction, including
+without limitation the rights to use, copy, modify, merge, publish,
+distribute, sublicense, and/or sell copies of the Software, and to
+permit persons to whom the Software is furnished to do so, subject to
+the following conditions:
+
+The above copyright notice and this permission notice shall be
+included in all copies or substantial portions of the Software.
+
+THE SOFTWARE IS PROVIDED 'AS IS', WITHOUT WARRANTY OF ANY KIND,
+EXPRESS OR IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF
+MERCHANTABILITY, FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT.
+IN NO EVENT SHALL THE AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY
+CLAIM, DAMAGES OR OTHER LIABILITY, WHETHER IN AN ACTION OF CONTRACT,
+TORT OR OTHERWISE, ARISING FROM, OUT OF OR IN CONNECTION WITH THE
+SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
+```
+
+### micromark-extension-cjk-friendly-gfm-strikethrough@2.0.1
+
+#### LICENSE
+
+```text
+Copyright (c) 2025 Tatsunori Uchino <tats.u@live.jp>
+
+MIT LICENSE
+
+Based on micromark and micromark-core-commonmark & micromark-extension-gfm-strikethrough
+
 (The MIT License)
 
 Copyright (c) Titus Wormer <tituswormer@gmail.com>
