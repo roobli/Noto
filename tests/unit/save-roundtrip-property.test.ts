@@ -731,6 +731,46 @@ describe('a struck run against what sits beside it', () => {
   });
 });
 
+describe('a backslash before the letter a delimiter encodes', () => {
+  function mark(h: Harness, target: string, name: 'emphasis' | 'strikethrough'): void {
+    const v = view(h);
+    const from = blockStart(v.state.doc, 0) + 1 + v.state.doc.child(0).textContent.indexOf(target);
+    v.dispatch(v.state.tr.addMark(from, from + target.length, v.state.schema.marks[name].create()));
+  }
+
+  function readBack(h: Harness, name: string): { text: string; marked: string } {
+    const paragraph = fullDoc(h.saved).child(0);
+    let marked = '';
+    paragraph.forEach((child) => {
+      if (child.marks.some((m) => m.type.name === name)) marked += child.textContent;
+    });
+    return { text: paragraph.textContent, marked };
+  }
+
+  // `C:\&#x64;*(see)*`: the letter beside the run was encoded after the
+  // backslash in front of it had been written bare, so the backslash escaped
+  // the `&` and the file reopened with `&#x64;` as text.
+  it('keeps the letter when emphasis follows it', () => {
+    const h = openTracked('Under C:\\d(see) only.\n');
+    mark(h, '(see)', 'emphasis');
+    expect(save(h)).toBe('Under C:\\\\&#x64;*(see)* only.\n');
+    expect(readBack(h, 'emphasis')).toEqual({ text: 'Under C:\\d(see) only.', marked: '(see)' });
+  });
+
+  it('keeps the letter when a struck run follows it', () => {
+    const h = openTracked('Under C:\\d(see) only.\n');
+    mark(h, '(see)', 'strikethrough');
+    expect(save(h)).toBe('Under C:\\\\&#x64;~~(see)~~ only.\n');
+    expect(readBack(h, 'strikethrough')).toEqual({ text: 'Under C:\\d(see) only.', marked: '(see)' });
+  });
+
+  it('saves an escaped backslash in the source the same way', () => {
+    const h = openTracked('Under C:\\\\d(see) only.\n');
+    mark(h, '(see)', 'emphasis');
+    expect(save(h)).toBe('Under C:\\\\&#x64;*(see)* only.\n');
+  });
+});
+
 describe('a dollar sign in text', () => {
   function typeAtEnd(h: Harness, index: number, text: string): void {
     const v = view(h);
