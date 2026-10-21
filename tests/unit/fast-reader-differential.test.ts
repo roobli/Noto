@@ -161,13 +161,7 @@ function differences(source: string, text: string): Mismatch[] {
  * shape to micromark; each entry is removed with the change that does. Every
  * entry must still match a mismatch, so a fixed shape cannot linger here.
  */
-const EXPECTED_FAIL: Record<string, (markdown: string) => boolean> = {
-  // `[**a** ](u)`, `**< *b***`: a run's trailing space before `](` or a
-  // nested opener.
-  'space before a nested delimiter': (md) => /[ \t]\]\(|[^\s\w*_~][ \t]+[*_]/.test(md),
-  // `See \nNext`: one space before a soft line break, which micromark drops.
-  'space before a soft line break': (md) => /(?<! ) \n./.test(md),
-};
+const EXPECTED_FAIL: Record<string, (markdown: string) => boolean> = {};
 
 const FUZZ_SAMPLES = 20_000;
 const FUZZ_SEED = 12345;
