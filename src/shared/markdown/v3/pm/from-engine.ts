@@ -127,6 +127,18 @@ const HANDED_TO_MICROMARK: readonly RegExp[] = [
 /** A backtick with no backslash escaping it. */
 const UNESCAPED_BACKTICK = /(?<!\\)(?:\\\\)*`/u;
 
+/**
+ * Spaces or tabs before a soft line break (`See \nNext`), which micromark
+ * strips. Two or more spaces alone are a hard break, which the fast reader
+ * reads exactly.
+ */
+function hasStrippedLineEndSpace(md: string): boolean {
+  for (const match of md.matchAll(/[ \t]+\n/gu)) {
+    if (!/^ {2,}\n$/u.test(match[0])) return true;
+  }
+  return false;
+}
+
 function handedToMicromark(md: string): boolean {
   if (HANDED_TO_MICROMARK.some((shape) => shape.test(md))) return true;
   // A backslash before a backtick is an escape in text but literal inside a
@@ -402,11 +414,12 @@ export function tryInlineNodesFromSource(
       return [...prefixNodes, ...restNodes];
     }
   }
+  if (hasStrippedLineEndSpace(normalized)) return null;
   if (!INLINE_DIALECT_RE.test(normalized)) {
     return inlineNodesFromPlainSource(normalized);
   }
   if (handedToMicromark(normalized)) return null;
-  return parseSimpleAsteriskTildeCode(normalized);
+  return parseSimpleAsteriskTildeCode(normalized, [], 0, true);
 }
 
 /**
@@ -840,9 +853,12 @@ function parseSimpleAsteriskTildeCode(
   md: string,
   parentMarks: readonly Mark[] = [],
   depth = 0,
+  paragraphEnd = false,
 ): ProseNode[] | null {
   let input = md;
-  if (!HARD_BREAK_RE.test(input)) {
+  // Only the end of the whole paragraph drops trailing whitespace; inside a
+  // mark or a link label (`[**a** ](u)`, `**< *b***`) the space is content.
+  if (paragraphEnd && !HARD_BREAK_RE.test(input)) {
     input = input.trimEnd();
   }
   const nodes: ProseNode[] = [];
