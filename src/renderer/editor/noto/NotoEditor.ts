@@ -49,6 +49,7 @@ import {
   type NotoTargetEnvelope,
   type NotoTransaction,
   type NotoTransactionWire,
+  type NotoBlockOrigin,
 } from '../../../shared/markdown/v3/contracts';
 import { compactTransaction } from '../../../shared/markdown/v3/revision-patch';
 import {
@@ -56,7 +57,7 @@ import {
   sourceHasFinalNewline,
   sourceSettleKind,
 } from '../../source-mode-text';
-import { captureMarkdown, captureStableWire, captureTransaction, isUnwritableBlock, type CaptureStats, type PristineBlock } from './capture';
+import { blockMarkdownNow, captureMarkdown, captureStableWire, captureTransaction, effectiveOrigins, isUnwritableBlock, pinnedSource, type CaptureStats, type PristineBlock } from './capture';
 import type { NotoEditorPort } from './NotoEditorPort';
 import { createOriginPlugin, getBlockOrigins, rebaseOrigins, transactionKeepsTopLevelNodes } from './origin-plugin';
 import { gitGutterPlugin, setGitBlocks, showCommittedAtSelection } from './git-gutter';
@@ -695,10 +696,39 @@ export class NotoEditor implements NotoEditorPort {
     // write, and it is not in the document.
     const next = this.dirty
       ? this.target !== null || this.pendingSource !== null || !view.state.doc.eq(this.baselineDoc)
+        || this.pinsDiffer(view.state)
       : true;
     if (next === this.dirty) return;
     this.dirty = next;
     this.options.onDirtyChange?.(next);
+  }
+
+  /**
+   * Origins for a save: the editor's, plus those pinned to a reverted block
+   * or to the block an undo put back (capture.ts `pinSource`).
+   */
+  private saveOrigins(state: EditorState): (NotoBlockOrigin | null)[] {
+    return effectiveOrigins(state.doc, getBlockOrigins(state), this.document);
+  }
+
+  /**
+   * Whether a block equal in structure to the saved one is pinned to other
+   * bytes: a revert to the committed version that only changes how the block
+   * is written (`_a_` for `*a*`). The document then still has something to
+   * save. Only asked when the document already compares equal to the saved one.
+   */
+  private pinsDiffer(state: EditorState): boolean {
+    const origins = this.saveOrigins(state);
+    let differs = false;
+    state.doc.forEach((node, _offset, index) => {
+      if (differs) return;
+      const pin = pinnedSource(node);
+      if (!pin) return;
+      const origin = origins[index];
+      const previous = origin ? this.pristine.get(origin.blockId) : undefined;
+      if (!previous || previous.markdown !== pin.markdown) differs = true;
+    });
+    return differs;
   }
 
   get isDirty(): boolean {
@@ -1075,7 +1105,7 @@ export class NotoEditor implements NotoEditorPort {
     if (!view) return '';
     return captureMarkdown({
       doc: view.state.doc,
-      origins: getBlockOrigins(view.state),
+      origins: this.saveOrigins(view.state),
       document: this.document,
       pristine: this.pristine,
     }).join('\n\n');
@@ -1102,7 +1132,7 @@ export class NotoEditor implements NotoEditorPort {
 
     const current = captureMarkdown({
       doc: view.state.doc,
-      origins: getBlockOrigins(view.state),
+      origins: this.saveOrigins(view.state),
       document: this.document,
       pristine: this.pristine,
     });
@@ -1247,7 +1277,7 @@ export class NotoEditor implements NotoEditorPort {
 
     const input = {
       doc: view.state.doc,
-      origins: getBlockOrigins(view.state),
+      origins: this.saveOrigins(view.state),
       document: this.document,
       pristine: this.pristine,
       envelope: this.target ?? undefined,
@@ -1288,7 +1318,7 @@ export class NotoEditor implements NotoEditorPort {
 
     return captureTransaction({
       doc: view.state.doc,
-      origins: getBlockOrigins(view.state),
+      origins: this.saveOrigins(view.state),
       document: this.document,
       pristine: this.pristine,
       envelope: this.target ?? undefined,
