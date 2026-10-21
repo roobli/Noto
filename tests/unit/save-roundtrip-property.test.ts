@@ -720,6 +720,15 @@ describe('a struck run against what sits beside it', () => {
     expectSavedMatchesEditor(h, 'tilde after struck text');
   });
 
+  // `~~\~~~~`: with only the first literal tilde escaped, the second and the
+  // closer made a run of three, which cannot close.
+  it('escapes every tilde of a run between the delimiters', () => {
+    const h = openTracked('Type \\~\\~ to strike.\n');
+    strike(h, '~~');
+    expect(save(h)).toBe('Type ~~\\~\\~~~ to strike.\n');
+    expectStrikeReadsBack(h, 'Type ~~ to strike.', '~~');
+  });
+
   // Letters on both sides flank already, and CJK text is left as the file
   // wrote it rather than filled with references.
   it('leaves runs that read back alone', () => {

@@ -201,16 +201,22 @@ const mdastExtensions = [
  * `~~a~~~b`; both came back as plain text with the tildes showing. The tilde
  * before a closer was already escaped, because the serializer passes the
  * closer as what follows.
+ *
+ * Every tilde of a run that touches a delimiter is escaped. Escaping only the
+ * first of `~~` struck saved `~~\~~~~`, where the bare tilde and the closer
+ * make a run of three that cannot close.
  */
 function tildeOnlyInPairs(extension: ToMarkdownOptions): ToMarkdownOptions {
   return {
     ...extension,
     unsafe: extension.unsafe?.flatMap((rule) =>
       rule.character === '~' && rule.after === undefined && rule.before === undefined
-        // A lookbehind, so the match does not take the tilde before it: the
-        // opener is passed in front of the text, and `~~` matched as a pair
-        // would hide a third tilde right after it.
-        ? [{ ...rule, after: '~' }, { ...rule, before: '(?<=~)' }]
+        // One zero-width condition, a tilde on either side, so every tilde of
+        // a run is escaped. Split into a `before` and an `after` rule, the
+        // escaper leaves a tilde bare when its neighbour is escaped anyway,
+        // and it counts a delimiter as escaped: `~~` struck was saved as
+        // `~~\~~~~`.
+        ? [{ ...rule, before: '(?<=~)|(?=~~)' }]
         : [rule],
     ),
     extensions: extension.extensions?.map(tildeOnlyInPairs),
