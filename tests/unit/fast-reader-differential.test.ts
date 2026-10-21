@@ -162,18 +162,9 @@ function differences(source: string, text: string): Mismatch[] {
  * entry must still match a mismatch, so a fixed shape cannot linger here.
  */
 const EXPECTED_FAIL: Record<string, (markdown: string) => boolean> = {
-  // `x\$$y$`: an escaped dollar keeps the formula after it from opening.
-  'escaped dollar before a formula': (md) => /(?<!\\)(?:\\\\)*\\\$\$/.test(md),
-  // `` `a``b` ``, `` ` ``" ` ``, `` `` \` `` ``: backticks or a backslash
-  // inside a code span.
-  'code span holding backticks': (md) => md.includes('`') && /``|\\`/.test(md),
   // `[**a** ](u)`, `**< *b***`: a run's trailing space before `](` or a
   // nested opener.
   'space before a nested delimiter': (md) => /[ \t]\]\(|[^\s\w*_~][ \t]+[*_]/.test(md),
-  // `[^x](u)`: link text starting with a caret read as a footnote call.
-  'link text starting with a caret': (md) => md.includes('[^'),
-  // `*a***b*c***`: a `***` run that both closes and opens.
-  'triple run that closes and opens': (md) => /[^\s*]\*\*\*[^\s*]/.test(md),
   // `See \nNext`: one space before a soft line break, which micromark drops.
   'space before a soft line break': (md) => /(?<! ) \n./.test(md),
 };
