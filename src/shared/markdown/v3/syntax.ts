@@ -619,10 +619,31 @@ const characterReferenceVerbatim: ToMarkdownOptions = {
   handlers: { characterReference },
 };
 
+/**
+ * A literal backslash before the last character of text that a delimiter
+ * follows, written as `\\`.
+ *
+ * When a `*`, `_` or `~~` run cannot flank where it sits, the emphasis, strong
+ * and strikethrough handlers replace the letter or space beside it with a
+ * character reference, after that text was already escaped. A backslash in
+ * front of a letter needs no escape, so text ending `\y` before `*.x*` was
+ * saved as `\&#x79;*.x*`, where the backslash escapes the `&` and the file
+ * reads back as `&#x79;`. Writing the backslash as `\\` reads back the same
+ * whether or not the letter gets encoded.
+ */
+const BACKSLASH_BEFORE_LAST = /(?<!\\)(?:\\\\)*\\[^!-\/:-@\[-`{-~]$/u;
+
+function backslashSurvivesEncoding(written: string, after: string): string {
+  if (!/^[*_~]/.test(after) || !BACKSLASH_BEFORE_LAST.test(written)) return written;
+  const last = written.length - [...written].at(-1)!.length;
+  return `${written.slice(0, last)}\\${written.slice(last)}`;
+}
+
 const verbatimRunsInText: ToMarkdownOptions = {
   handlers: {
     text(node, _parent, state, info) {
-      return emitWithVerbatimRuns(node.value, { safe: withBareAmpersands(state.safe.bind(state)), stack: state.stack }, info);
+      const written = emitWithVerbatimRuns(node.value, { safe: withBareAmpersands(state.safe.bind(state)), stack: state.stack }, info);
+      return backslashSurvivesEncoding(written, info.after);
     },
     /*
      * An image alt is a plain string, not phrasing, so the text handler never

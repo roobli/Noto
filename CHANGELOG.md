@@ -37,6 +37,11 @@ How releases are made, and what each channel receives, is in
   now the only engine.
 
 ### Fixed
+- A backslash right before a letter that touches italic, bold or
+  strikethrough (`C:\d` before italic `(see)`) no longer turns the letter into
+  `&#x64;` text when its paragraph is edited and saved. The letter is written
+  as a character reference there, and the bare backslash in front escaped it
+  (`C:\&#x64;*(see)*`). The backslash is now written as `\\`.
 - A dollar sign in text followed by a character that also needs escaping
   (`$_GET`, `$[x]`, `$*`) no longer turns the text up to the next dollar into
   math when its paragraph is edited and saved. Its escape was dropped
