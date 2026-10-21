@@ -194,7 +194,7 @@ describe('git gutter mapping', () => {
     expect(gitDeletedBefore(state, 1)).toBe('gone');
     expect(gitDeletedBefore(state, 0)).toBeNull();
     expect(gitDeletedBefore(state, 2)).toBe('tail gone');
-    expect(gitGutterMarks(state).deleted).toEqual([{ before: 1, head: 'gone', heads: ['gone'] }, { before: 2, head: 'tail gone', heads: ['tail gone'] }]);
+    expect(gitGutterMarks(state).deleted).toEqual([{ before: 1, head: 'gone' }, { before: 2, head: 'tail gone' }]);
   });
 
   it('clears on a null event and stays out of undo history', () => {

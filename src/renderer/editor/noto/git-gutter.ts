@@ -35,6 +35,8 @@ interface GitGutterState {
   readonly blocks: ReadonlyMap<string, GitGutterEntry>;
   /** Keyed by the block the deleted ones stood before; `''` for the end. */
   readonly deleted: ReadonlyMap<string, string>;
+  /** The same runs' committed blocks one by one, for a revert. */
+  readonly deletedHeads: ReadonlyMap<string, readonly string[]>;
   readonly origins: readonly (NotoBlockOrigin | null)[] | null;
 }
 
@@ -49,7 +51,7 @@ export const gitGutterKey = new PluginKey<GitGutterState>('noto-git-gutter');
 
 const END = '';
 
-const EMPTY: GitGutterState = { blocks: new Map(), deleted: new Map(), origins: null };
+const EMPTY: GitGutterState = { blocks: new Map(), deleted: new Map(), deletedHeads: new Map(), origins: null };
 
 function originsOf(state: EditorState): readonly (NotoBlockOrigin | null)[] | null {
   return originKey.getState(state)?.origins ?? null;
@@ -91,6 +93,15 @@ export function gitEntryAt(state: EditorState, index: number): GitGutterEntry | 
   const origin = originsOf(state)?.[index] ?? null;
   if (!gutter || !origin) return null;
   return gutter.blocks.get(origin.blockId) ?? null;
+}
+
+/** The committed blocks of the deleted run just before block `index`, one by one. */
+export function gitDeletedHeadsBefore(state: EditorState, index: number): readonly string[] | null {
+  const gutter = gitGutterKey.getState(state);
+  if (!gutter) return null;
+  if (index >= state.doc.childCount) return gutter.deletedHeads.get(END) ?? null;
+  const origin = originsOf(state)?.[index] ?? null;
+  return origin ? gutter.deletedHeads.get(origin.blockId) ?? null : null;
 }
 
 /** The deleted run just before the top-level block at `index`, if any. */
@@ -364,7 +375,8 @@ export function gitGutterPlugin(): Plugin<GitGutterState> {
         if (meta !== undefined) {
           const blocks = new Map((meta?.blocks ?? []).map((block) => [block.blockId, { change: block.change, head: block.head }] as const));
           const deleted = new Map((meta?.deleted ?? []).map((run) => [run.beforeBlockId ?? END, run.head] as const));
-          return { blocks, deleted, origins: originsOf(next) };
+          const deletedHeads = new Map((meta?.deleted ?? []).map((run) => [run.beforeBlockId ?? END, run.heads] as const));
+          return { blocks, deleted, deletedHeads, origins: originsOf(next) };
         }
         if (!tr.docChanged || isEmpty(previous)) return previous;
         const origins = originsOf(next);
