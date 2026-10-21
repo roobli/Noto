@@ -70,6 +70,8 @@ export const WORKSPACE_CHANNELS = {
   gitMarks: 'noto:v1:workspace:git-marks',
   /** Push: which notes differ from the last commit changed. See `WorkspaceGitMarksV1`. */
   gitMarksChanged: 'noto:v1:workspace:git-marks-changed',
+  /** Push: the note in front's blocks against HEAD. See `WorkspaceGitBlocksV1`. */
+  gitBlocksChanged: 'noto:v1:workspace:git-blocks-changed',
 } as const;
 
 /** One entry in the workspace tree. */
@@ -516,6 +518,34 @@ export interface WorkspaceGitMarksV1 {
   readonly folders: readonly string[];
 }
 
+/** Bounds on a gutter message: a note over a megabyte has no gutter at all. */
+export const MAX_GIT_BLOCKS = 100_000;
+export const MAX_GIT_BLOCK_TEXT = 1024 * 1024 + 1024;
+
+/**
+ * Which blocks of an open note differ from the note as last committed.
+ *
+ * Keyed by block id rather than position, so it lands on the editor's node
+ * whose origin is that block whatever has been typed since: an id names one
+ * block of one accepted revision. `null` blocks and no deleted runs mean the
+ * note has no committed version, or matches it.
+ */
+export interface WorkspaceGitBlocksV1 {
+  readonly version: typeof NOTO_WORKSPACE_VERSION;
+  readonly documentId: string;
+  readonly blocks: ReadonlyArray<{
+    readonly blockId: string;
+    readonly change: 'modified' | 'added';
+    /** The block as committed, for `modified`. */
+    readonly head: string | null;
+  }>;
+  readonly deleted: ReadonlyArray<{
+    /** The block the deleted ones stood before; null at the end of the note. */
+    readonly beforeBlockId: string | null;
+    readonly head: string;
+  }>;
+}
+
 export interface WorkspaceRenameRowEventV1 {
   readonly version: typeof NOTO_WORKSPACE_VERSION;
   /** For `rename`, the row to rename. For `new-folder`, the folder to make one in. */
@@ -807,5 +837,6 @@ export interface NotoWorkspaceApiV1 {
   onTreeChanged(listener: () => void): () => void;
   gitMarks(request: WorkspaceRequestV1): Promise<WorkspaceResultV1<WorkspaceGitMarksV1>>;
   onGitMarksChanged(listener: (event: WorkspaceGitMarksV1) => void): () => void;
+  onGitBlocksChanged(listener: (event: WorkspaceGitBlocksV1) => void): () => void;
   onRenameRow(listener: (event: WorkspaceRenameRowEventV1) => void): () => void;
 }

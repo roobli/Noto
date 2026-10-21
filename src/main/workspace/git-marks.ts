@@ -121,6 +121,14 @@ export function systemGit(binary: string): GitRunner {
   });
 }
 
+let sharedRunner: Promise<GitRunner | null> | null = null;
+
+/** The system git, found once per process, or null when there is none. */
+export function defaultGitRunner(): Promise<GitRunner | null> {
+  sharedRunner ??= findGit().then((binary) => (binary === null ? null : systemGit(binary)));
+  return sharedRunner;
+}
+
 /** Where a folder sits in its repository, from one `rev-parse`. */
 export interface GitLocationV1 {
   readonly toplevel: string;
@@ -184,6 +192,8 @@ export interface GitMarksOptions {
   readonly watchDirectory?: (directory: string, recursive: boolean, onChange: (name: string | null) => void) => (() => void) | null;
   readonly log?: (event: string, fields?: Record<string, unknown>) => void;
   readonly debounceMs?: number;
+  /** Told whenever a refresh is scheduled, so what else reads git can follow. */
+  readonly onRefresh?: () => void;
 }
 
 /** Watch one directory, and hand back how to stop. Null when it cannot be watched. */
@@ -248,6 +258,7 @@ export class GitMarks {
 
   /** Something may have changed: run a status once things settle. */
   refresh(): void {
+    this.options.onRefresh?.();
     if (this.location === null) return;
     if (this.timer !== null) clearTimeout(this.timer);
     this.timer = setTimeout(() => {
@@ -268,10 +279,7 @@ export class GitMarks {
   }
 
   private resolveRunner(): Promise<GitRunner | null> {
-    this.runnerPromise ??= (this.options.runner ?? (async () => {
-      const binary = await findGit();
-      return binary === null ? null : systemGit(binary);
-    }))();
+    this.runnerPromise ??= (this.options.runner ?? defaultGitRunner)();
     return this.runnerPromise;
   }
 

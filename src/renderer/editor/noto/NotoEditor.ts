@@ -59,6 +59,9 @@ import {
 import { captureMarkdown, captureStableWire, captureTransaction, isUnwritableBlock, type CaptureStats, type PristineBlock } from './capture';
 import type { NotoEditorPort } from './NotoEditorPort';
 import { createOriginPlugin, getBlockOrigins, rebaseOrigins, transactionKeepsTopLevelNodes } from './origin-plugin';
+import { gitGutterPlugin, setGitBlocks, showCommittedAtSelection } from './git-gutter';
+import { closeGitPopover } from './git-popover';
+import type { WorkspaceGitBlocksV1 } from '../../../shared/workspace/v1/contracts';
 import { notoInputRules, type InputRuleOptions } from './input-rules';
 import { EDITOR_COMMANDS, insertTable, notoKeymap } from './keymap';
 import { sortTasks, toggleTaskStatus, type TaskStampOptions } from './todo-manager';
@@ -370,6 +373,7 @@ export class NotoEditor implements NotoEditorPort {
       mathEditingPlugin(),
       searchPlugin(),
       syntaxHighlightPlugin(),
+      gitGutterPlugin(),
     ];
   }
 
@@ -977,6 +981,22 @@ export class NotoEditor implements NotoEditorPort {
     for (const image of this.imageViews) image.refresh();
   }
 
+  /**
+   * What git says about this note's blocks against HEAD, or null for nothing.
+   * A view change only: no history, no save.
+   */
+  setGitBlocks(event: WorkspaceGitBlocksV1 | null): void {
+    const view = this.view;
+    if (!view) return;
+    view.dispatch(setGitBlocks(view.state.tr, event));
+  }
+
+  /** The block at the caret as committed, for the keyboard. False when there is nothing to show. */
+  showCommittedBlock(): boolean {
+    const view = this.view;
+    return view ? showCommittedAtSelection(view) : false;
+  }
+
   /** Drop the highlight, for when the find bar closes. */
   clearSearch(): void {
     const view = this.view;
@@ -1533,6 +1553,7 @@ export class NotoEditor implements NotoEditorPort {
   }
 
   destroy(): void {
+    closeGitPopover();
     this.deferredEnrich?.destroy();
     this.deferredEnrich = null;
     this.enrichSources = null;

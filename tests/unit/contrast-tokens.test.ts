@@ -74,4 +74,11 @@ describe.each(['light', 'dark'] as const)('The git marks in the %s theme', (name
       }
     }
   });
+
+  it('clear 3:1 on the page for the gutter beside the open note', async () => {
+    const t = await theme(name);
+    for (const mark of ['git-changed', 'success', 'danger']) {
+      expect(contrast(t[mark], t.paper), `${mark} on paper`).toBeGreaterThanOrEqual(3);
+    }
+  });
 });

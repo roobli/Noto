@@ -1966,7 +1966,8 @@ button:disabled { color: var(--muted); opacity: 0.7; }
 :root[data-input='keyboard'] :is(
   .vault-menu-list, .pref-scrim, .settings-shell, .command-palette,
   .command-palette-scrim, .quick-scrim, .quick-open, .table-dialog-scrim,
-  .table-dialog, .reload-confirm-scrim, .reload-confirm, .shortcuts
+  .table-dialog, .reload-confirm-scrim, .reload-confirm, .shortcuts,
+  .noto-git-popover
 ) {
   animation: none;
 }

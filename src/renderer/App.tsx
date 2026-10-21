@@ -59,7 +59,7 @@ import {
 } from '../shared/settings/v1/contracts';
 import type { AssetRefusalV1 } from '../shared/assets/v1/contracts';
 import { copyThroughSelection } from './editor/noto/clipboard';
-import type { WorkspaceEntryRefusalV1, WorkspaceExportKindV1, WorkspaceGitMarksV1 } from '../shared/workspace/v1/contracts';
+import type { WorkspaceEntryRefusalV1, WorkspaceExportKindV1, WorkspaceGitBlocksV1, WorkspaceGitMarksV1 } from '../shared/workspace/v1/contracts';
 import { EXPORT_PALETTE_COMMANDS } from '../shared/export/targets';
 import { EMPTY_TRAIL, forget as forgetTrail, record as recordTrail, stepBack, stepForward, type Trail } from './trail';
 import { wikiCandidates, wikiTargetFor } from './wiki-target';
@@ -448,6 +448,10 @@ function NotoWorkspace({ platform }: { platform: NotoPlatform }) {
   const countRef = useRef<(documentId: string, next: DocumentCount) => void>(() => {});
 
   const editorsRef = useRef<Map<string, NotoEditor>>(new Map());
+  /** The last git gutter per document, for an editor that mounts after it arrived. */
+  const gitBlocksRef = useRef<Map<string, WorkspaceGitBlocksV1>>(new Map());
+  /** Bumped when a gutter arrives, so the palette offers its command only where there is one. */
+  const [gitBlocksVersion, setGitBlocksVersion] = useState(0);
   /** Always the editor of the document in front, so call sites stay unchanged. */
   const editorRef = useRef<NotoEditor | null>(null);
   const pluginHostRef = useRef<ReadonlyMap<string, RendererPluginHost> | null>(null);
@@ -900,6 +904,12 @@ function NotoWorkspace({ platform }: { platform: NotoPlatform }) {
     const unsubscribeGit = window.notoWorkspace.onGitMarksChanged((event) => {
       if (active) setGitMarks(event);
     });
+    const unsubscribeGitBlocks = window.notoWorkspace.onGitBlocksChanged((event) => {
+      if (!active) return;
+      gitBlocksRef.current.set(event.documentId, event);
+      editorsRef.current.get(event.documentId)?.setGitBlocks(event);
+      setGitBlocksVersion((current) => current + 1);
+    });
     // Marks for a folder opened before this page could listen.
     void window.notoWorkspace.gitMarks({ version: 1, requestId: rid('ws-git') })
       .then((result) => { if (active && result.ok) setGitMarks((current) => current ?? result.value); })
@@ -983,6 +993,7 @@ function NotoWorkspace({ platform }: { platform: NotoPlatform }) {
       unsubscribeExternal();
       unsubscribeTree();
       unsubscribeGit();
+      unsubscribeGitBlocks();
       unsubscribeRename();
       unsubscribeTabs();
       unsubscribeFolder();
@@ -2143,8 +2154,20 @@ function NotoWorkspace({ platform }: { platform: NotoPlatform }) {
           source: manifest?.name ?? snapshot.id,
         }));
       });
-    return [...builtin, ...plugins];
-  }, [pluginSnapshots]);
+    // The keyboard's way to the git gutter's popover, offered only while the
+    // note in front has something in its gutter.
+    const gutter = activeId ? gitBlocksRef.current.get(activeId) : undefined;
+    const git = gutter && (gutter.blocks.length > 0 || gutter.deleted.length > 0)
+      ? [{
+        key: 'git:show-committed',
+        testId: 'palette-git-show-committed',
+        kind: 'git' as const,
+        title: 'Show Block as Committed',
+        source: 'Git',
+      }]
+      : [];
+    return [...builtin, ...git, ...plugins];
+  }, [pluginSnapshots, activeId, gitBlocksVersion]);
   const paletteCommandByKey = useMemo(
     () => new Map(paletteCommands.map((command) => [command.key, command])),
     [paletteCommands],
@@ -2490,6 +2513,8 @@ function NotoWorkspace({ platform }: { platform: NotoPlatform }) {
                 onWidthStep={(direction) => stepWidthRef.current(direction)}
                 onReady={(editor) => {
                   editorsRef.current.set(doc.document.documentId, editor);
+                  const gitBlocks = gitBlocksRef.current.get(doc.document.documentId);
+                  if (gitBlocks) editor.setGitBlocks(gitBlocks);
                   setEditorsReady((count) => count + 1);
                   if (doc.document.documentId === activeIdRef.current) {
                     editorRef.current = editor;
@@ -2597,6 +2622,7 @@ function NotoWorkspace({ platform }: { platform: NotoPlatform }) {
             setPaletteOpen(false);
             if (!chosen) return;
             if (chosen.kind === 'export') exportNote(chosen.target);
+            else if (chosen.kind === 'git') { if (!editorRef.current?.showCommittedBlock()) editorRef.current?.focus(); }
             else executePluginCommand(chosen.pluginId, chosen.commandId);
           }}
         />
