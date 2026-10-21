@@ -60,7 +60,8 @@ import {
 import { blockMarkdownNow, captureMarkdown, captureStableWire, captureTransaction, effectiveOrigins, isUnwritableBlock, pinnedSource, type CaptureStats, type PristineBlock } from './capture';
 import type { NotoEditorPort } from './NotoEditorPort';
 import { createOriginPlugin, getBlockOrigins, rebaseOrigins, transactionKeepsTopLevelNodes } from './origin-plugin';
-import { gitGutterPlugin, setGitBlocks, showCommittedAtSelection } from './git-gutter';
+import { gitGutterPlugin, gitTargetAtSelection, setGitBlocks, showCommittedAtSelection, type GitRevertTarget } from './git-gutter';
+import { gitRevertTransaction } from './git-revert';
 import { closeGitPopover } from './git-popover';
 import type { WorkspaceGitBlocksV1 } from '../../../shared/workspace/v1/contracts';
 import { notoInputRules, type InputRuleOptions } from './input-rules';
@@ -376,7 +377,7 @@ export class NotoEditor implements NotoEditorPort {
       mathAdjacencyPlugin(),
       searchPlugin(),
       syntaxHighlightPlugin(),
-      gitGutterPlugin(),
+      gitGutterPlugin({ revert: (target) => this.revertGitBlock(target) }),
     ];
   }
 
@@ -1027,6 +1028,36 @@ export class NotoEditor implements NotoEditorPort {
   showCommittedBlock(): boolean {
     const view = this.view;
     return view ? showCommittedAtSelection(view) : false;
+  }
+
+  /**
+   * Revert one block to the last commit, as one undoable edit. The note is
+   * then dirty and saves through the normal path; nothing here touches git.
+   */
+  revertGitBlock(target: GitRevertTarget): boolean {
+    const view = this.view;
+    if (!view) return false;
+    const tr = gitRevertTransaction(view.state, target, {
+      origins: this.saveOrigins(view.state),
+      pristine: this.pristine,
+    });
+    if (!tr) return false;
+    view.dispatch(tr);
+    view.focus();
+    return true;
+  }
+
+  /** The keyboard's revert: the block at the caret, or a deleted run beside it. */
+  revertGitAtSelection(): boolean {
+    const view = this.view;
+    const target = view ? gitTargetAtSelection(view.state) : null;
+    return target ? this.revertGitBlock(target) : false;
+  }
+
+  /** Whether the caret's block, or a deleted run beside it, can be reverted. */
+  get canRevertGitAtSelection(): boolean {
+    const view = this.view;
+    return view ? gitTargetAtSelection(view.state) !== null : false;
   }
 
   /** Drop the highlight, for when the find bar closes. */

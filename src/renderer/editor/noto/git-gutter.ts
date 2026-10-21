@@ -21,11 +21,12 @@
 
 import { Plugin, PluginKey, type EditorState, type Transaction } from 'prosemirror-state';
 import type { EditorView } from 'prosemirror-view';
+import type { Node as ProseNode } from 'prosemirror-model';
 import type { NotoBlockOrigin } from '../../../shared/markdown/v3/contracts';
 import type { WorkspaceGitBlocksV1 } from '../../../shared/workspace/v1/contracts';
 import { originKey } from './origin-plugin';
 import { pinnedSource } from './capture';
-import { GIT_BLOCK_WORDS, openGitPopover } from './git-popover';
+import { GIT_BLOCK_WORDS, openGitPopover, type GitPopoverAction } from './git-popover';
 
 export interface GitGutterEntry {
   readonly change: 'modified' | 'added';
@@ -162,12 +163,54 @@ function blockElement(view: EditorView, index: number): HTMLElement | null {
   return node instanceof HTMLElement ? node : null;
 }
 
+/** Where a revert applies: a block, or the place before a block (or the end) where a run was deleted. */
+export type GitRevertTarget =
+  | { readonly kind: 'block'; readonly index: number }
+  | { readonly kind: 'deleted'; readonly before: number };
+
+/** The editor's revert, given to the plugin by its owner (NotoEditor). */
+export type GitReverter = (target: GitRevertTarget) => boolean;
+
+const reverters = new WeakMap<EditorView, GitReverter>();
+
+/** The top-level index of a node object now, or -1; the end of the note for null. */
+function indexNow(view: EditorView, node: ProseNode | null): number {
+  const doc = view.state.doc;
+  if (node === null) return doc.childCount;
+  for (let index = 0; index < doc.childCount; index += 1) if (doc.child(index) === node) return index;
+  return -1;
+}
+
+/**
+ * The popover's revert, aimed at the node rather than the index, so a
+ * document that changed while the popover was open (a background pass, a
+ * new gutter) reverts the block that was shown or nothing.
+ */
+function actionFor(view: EditorView, kind: 'restore' | 'remove', target: GitRevertTarget): GitPopoverAction | undefined {
+  const revert = reverters.get(view);
+  if (!revert) return undefined;
+  const doc = view.state.doc;
+  if (target.kind === 'block') {
+    const node = doc.child(target.index);
+    return { kind, run: () => {
+      const index = indexNow(view, node);
+      return index >= 0 && revert({ kind: 'block', index });
+    } };
+  }
+  const before = target.before < doc.childCount ? doc.child(target.before) : null;
+  return { kind, run: () => {
+    const index = indexNow(view, before);
+    return index >= 0 && revert({ kind: 'deleted', before: index });
+  } };
+}
+
 function openFor(view: EditorView, index: number, entry: GitGutterEntry): boolean {
   const anchor = blockElement(view, index);
   if (!anchor) return false;
+  const action = actionFor(view, entry.change === 'modified' ? 'restore' : 'remove', { kind: 'block', index });
   openGitPopover(view, anchor, entry.change === 'modified'
-    ? { kind: 'modified', text: entry.head ?? '' }
-    : { kind: 'added', text: null });
+    ? { kind: 'modified', text: entry.head ?? '', action }
+    : { kind: 'added', text: null, action });
   return true;
 }
 
@@ -175,8 +218,17 @@ function openDeleted(view: EditorView, before: number, head: string): boolean {
   const count = view.state.doc.childCount;
   const anchor = blockElement(view, before < count ? before : count - 1);
   if (!anchor) return false;
-  openGitPopover(view, anchor, { kind: 'deleted', text: head });
+  openGitPopover(view, anchor, { kind: 'deleted', text: head, action: actionFor(view, 'restore', { kind: 'deleted', before }) });
   return true;
+}
+
+/** Where the keyboard's revert applies from the caret: its block, or a deleted run beside it. */
+export function gitTargetAtSelection(state: EditorState): GitRevertTarget | null {
+  const index = state.selection.$from.index(0);
+  if (gitEntryAt(state, index)) return { kind: 'block', index };
+  if (gitDeletedBefore(state, index) !== null) return { kind: 'deleted', before: index };
+  if (gitDeletedBefore(state, index + 1) !== null) return { kind: 'deleted', before: index + 1 };
+  return null;
 }
 
 /**
@@ -228,7 +280,8 @@ class GutterLayer {
   /** The top-level elements being watched for size, while there is a gutter. */
   private readonly watched = new Set<Element>();
 
-  constructor(private readonly view: EditorView) {
+  constructor(private readonly view: EditorView, revert: GitReverter | undefined) {
+    if (revert) reverters.set(view, revert);
     this.layer = document.createElement('div');
     this.layer.className = 'noto-git-gutter';
     this.layer.setAttribute('aria-hidden', 'true');
@@ -402,7 +455,7 @@ function place(element: HTMLElement, left: number, top: number, height: number):
   element.style.height = `${Math.round(height)}px`;
 }
 
-export function gitGutterPlugin(): Plugin<GitGutterState> {
+export function gitGutterPlugin(options: { readonly revert?: GitReverter } = {}): Plugin<GitGutterState> {
   return new Plugin<GitGutterState>({
     key: gitGutterKey,
     state: {
@@ -422,6 +475,6 @@ export function gitGutterPlugin(): Plugin<GitGutterState> {
         return origins === previous.origins ? previous : { ...previous, origins };
       },
     },
-    view: (view) => new GutterLayer(view),
+    view: (view) => new GutterLayer(view, options.revert),
   });
 }

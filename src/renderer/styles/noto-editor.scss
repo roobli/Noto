@@ -2881,3 +2881,16 @@
 /* Said, not muted: --muted on the code fill is 4.48:1 in light, under 4.5. */
 .noto-git-popover-empty { font-style: italic; }
 
+/* The revert, under the panel at the end: the ordinary button, since the
+   edit is undoable like any other, at the popover's type size. */
+.noto-git-popover-actions {
+  display: flex;
+  justify-content: flex-end;
+}
+.noto-git-popover-revert {
+  min-height: 26px;
+  padding: 3px 10px;
+  font-size: 12.5px;
+  line-height: 1.3;
+}
+
