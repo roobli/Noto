@@ -79,6 +79,7 @@ import { ALL_MARK_KINDS, type TyporaMarkKinds } from './typora-marks';
 import { typewriterPlugin } from './typewriter-plugin';
 import { autoPairPlugin } from './auto-pair';
 import { mathEditingPlugin, mathNodeViews } from './math-view';
+import { mathAdjacencyPlugin } from './math-adjacency';
 import { tableNodeViews } from './table-view';
 import { fenceNodeViews } from './fence-view';
 import type { ImageContext } from './image-source';
@@ -371,6 +372,7 @@ export class NotoEditor implements NotoEditorPort {
       linkEditorPlugin(),
       followLinkPlugin({ onFollow: (href) => this.options.onFollowLink?.(href) }),
       mathEditingPlugin(),
+      mathAdjacencyPlugin(),
       searchPlugin(),
       syntaxHighlightPlugin(),
       gitGutterPlugin(),

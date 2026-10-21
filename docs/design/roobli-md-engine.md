@@ -141,6 +141,8 @@ exotic inline refuses. Host serialize still runs a
 reparse proof so unterminated fences that would swallow neighbours are refused
 (`REPARSE_MISMATCH`), matching the micromark windowed check.
 
+Two inline formulas the editor makes touch are merged into one joined by a space (`$x$` + `$y$` → `$x y$`), because `$x$$y$` reads back as a single formula; a left formula ending in an odd run of backslashes keeps a text space instead.
+
 Gates that were green before the flip:
 
 | Gate | Status |

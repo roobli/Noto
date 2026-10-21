@@ -11,12 +11,14 @@
  */
 import { afterEach, describe, expect, it } from 'vitest';
 import { TextSelection } from 'prosemirror-state';
-import { DOMParser, Fragment, type Node as ProseNode } from 'prosemirror-model';
+import { DOMParser, Fragment, Slice, type Node as ProseNode } from 'prosemirror-model';
 import { isUnwritableBlock } from '../../src/renderer/editor/noto/capture';
 import { NotoEditor } from '../../src/renderer/editor/noto/NotoEditor';
 import { parseDocument, toWire } from '../../src/shared/markdown/v3/document';
 import { blockSpansFromWire, splitBlocks } from '../../src/shared/markdown/v3/blocks';
 import { docFromSpans } from '../../src/shared/markdown/v3/pm/from-mdast';
+import { blockToMarkdown } from '../../src/shared/markdown/v3/pm/to-mdast';
+import { notoSchema } from '../../src/shared/markdown/v3/pm/schema';
 import { serializeDocument } from '../../src/shared/markdown/v3/serialize';
 import { expandTransaction } from '../../src/shared/markdown/v3/revision-patch';
 import { resolveDeferredOpenSpans, enrichSpansInRange } from '../../src/shared/markdown/v3/roobli-md-adapter';
@@ -750,6 +752,61 @@ describe('a dollar sign in text', () => {
     typeAtEnd(h, 0, '!');
     expect(save(h)).toBe('$x$**\\$\\_a** costs \\$5.!\n');
     expectSavedMatchesEditor(h, 'dollar opening strong text after math');
+  });
+});
+
+describe('two inline formulas the editor makes touch', () => {
+  // `$x$$y$` reads back as one formula holding `x$$y`, so it is not a valid
+  // saved form. The editor merges the two as they meet; what is saved is the
+  // merged formula, and reopening it gives back the same bytes.
+
+  /** The text range of `needle` in block 0, outside any formula. */
+  function textRange(h: Harness, needle: string): { from: number; to: number } {
+    let found: { from: number; to: number } | null = null;
+    view(h).state.doc.child(0).forEach((child, offset) => {
+      const at = child.isText ? child.text!.indexOf(needle) : -1;
+      if (found === null && at >= 0) found = { from: 1 + offset + at, to: 1 + offset + at + needle.length };
+    });
+    if (found === null) throw new Error(`no text ${needle}`);
+    return found;
+  }
+
+  /** The bytes must survive a reopen and a full re-serialize unchanged. */
+  function expectReopensAs(saved: string): void {
+    const reopened = fullDoc(saved);
+    expect(reopened.childCount).toBe(1);
+    expect(`${blockToMarkdown(reopened.child(0))}\n`).toBe(saved);
+  }
+
+  it('deleting the text between them saves one formula', () => {
+    const h = openTracked('Let $x$ and $y$ be.\n');
+    const v = view(h);
+    const { from, to } = textRange(h, ' and ');
+    v.dispatch(v.state.tr.delete(from, to));
+    expect(save(h)).toBe('Let $x y$ be.\n');
+    expectSavedMatchesEditor(h, 'delete between formulas');
+    expectReopensAs(h.saved);
+  });
+
+  it('a formula pasted against another saves one formula', () => {
+    const h = openTracked('Sum $x$ here.\n');
+    const v = view(h);
+    const { from } = textRange(h, ' here.');
+    const slice = new Slice(Fragment.from(notoSchema.nodes.math_inline.create(null, notoSchema.text('y'))), 0, 0);
+    v.dispatch(v.state.tr.setSelection(TextSelection.create(v.state.doc, from)).replaceSelection(slice));
+    expect(save(h)).toBe('Sum $x y$ here.\n');
+    expectSavedMatchesEditor(h, 'paste against a formula');
+    expectReopensAs(h.saved);
+  });
+
+  it('a left formula ending in a backslash keeps a space instead of merging', () => {
+    const h = openTracked('A $a\\$ - $b$.\n');
+    const v = view(h);
+    const { from, to } = textRange(h, ' - ');
+    v.dispatch(v.state.tr.delete(from, to));
+    expect(save(h)).toBe('A $a\\$ $b$.\n');
+    expectSavedMatchesEditor(h, 'backslash before the seam');
+    expectReopensAs(h.saved);
   });
 });
 
