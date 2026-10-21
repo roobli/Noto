@@ -43,6 +43,7 @@ import { DeferredViewportEnrichController } from './deferred-viewport-enrich';
 import type { EnrichPmWindow } from './enrich-pm-patch';
 import { parseDocumentSpans } from './parse-document';
 import { toLf } from '../../../shared/markdown/v3/line-endings';
+import { savedSnapshotLeavesDirty } from '../../file-truth-state';
 import {
   NOTO_MARKDOWN_VERSION,
   type NotoDocumentWire,
@@ -207,6 +208,16 @@ export class NotoEditor implements NotoEditorPort {
   private readonly imageViews = new Set<Refreshable>();
   private baselineDoc: ProseNode;
   private dirty = false;
+  /**
+   * Bumped by every real edit, including a source-mode change that does not
+   * touch the block document. Background enrichment does not bump it: it
+   * swaps a stand-in for the same bytes, which is not an edit.
+   */
+  private editVersion = 0;
+  /** The edit version a save captured, or null when no save is in flight. */
+  private capturedEditVersion: number | null = null;
+  /** The source buffer a save captured, so a source edit that lands mid-save survives. */
+  private capturedSource: string | null = null;
   private readonly host: HTMLElement;
   private readonly options: NotoEditorOptions;
   /** What each accepted block looked like, keyed by block id. */
@@ -618,6 +629,7 @@ export class NotoEditor implements NotoEditorPort {
     // back to the full walk until the next accept.
     if (!transactionKeepsTopLevelNodes(transaction)) this.topLevelStable = false;
     this.docVersion += 1;
+    this.editVersion += 1;
     // WYSIWYG edits (and paste) diverge from the cached structural split.
     // replaceMarkdown sets replaceInFlight so its own dispatch does not clear.
     if (!this.replaceInFlight) {
@@ -1177,6 +1189,7 @@ export class NotoEditor implements NotoEditorPort {
       const lf = toLf(markdown);
       if (this.pendingSource === lf) return blockReplaced || envelopeChanged;
       this.pendingSource = lf;
+      this.editVersion += 1;
       if (!this.dirty) {
         this.dirty = true;
         this.options.onDirtyChange?.(true);
@@ -1187,6 +1200,7 @@ export class NotoEditor implements NotoEditorPort {
 
     if (this.pendingSource !== null) {
       this.pendingSource = null;
+      this.editVersion += 1;
       // May have been dirty only for the escape; drop the mark when the
       // document and envelope are back where they started.
       if (this.dirty) {
@@ -1243,6 +1257,8 @@ export class NotoEditor implements NotoEditorPort {
     if (view.composing) {
       throw new Error('IME_COMPOSITION_ACTIVE: finish the current word before saving');
     }
+    this.capturedEditVersion = this.editVersion;
+    this.capturedSource = this.pendingSource;
     if (this.pendingSource !== null) return this.captureWithStats().transaction;
 
     const input = {
@@ -1301,12 +1317,36 @@ export class NotoEditor implements NotoEditorPort {
    * The editor keeps the user's current content and undo history; only the
    * provenance is re-pointed, so a save never interrupts typing.
    */
+  /**
+   * Drop the snapshot a capture took when the save never reached main.
+   *
+   * Without this, a later open or reload commit would compare against a capture
+   * that no longer corresponds to anything on disk.
+   */
+  abandonSave(): void {
+    this.capturedEditVersion = null;
+    this.capturedSource = null;
+  }
+
   commit(document: NotoDocumentWire): void {
     const view = this.view;
     if (!view) return;
 
+    const capturedVersion = this.capturedEditVersion;
+    const capturedSource = this.capturedSource;
+    this.capturedEditVersion = null;
+    this.capturedSource = null;
+    // A save takes a moment, and the reader can keep typing. Only a buffer that
+    // did not move can be called clean: comparing the version captured by the
+    // save with the one on screen now is the difference between "the file holds
+    // this" and "the file holds what this used to be".
+    const changedDuringSave = capturedVersion !== null
+      && savedSnapshotLeavesDirty(capturedVersion, this.editVersion);
+
     this.document = document;
-    this.pendingSource = null;
+    // Clear the source buffer only when this save carried it. A source edit
+    // that landed while the save was in flight is still waiting to be saved.
+    if (this.pendingSource === capturedSource) this.pendingSource = null;
     /*
      * Clear the pending change only when this document is what it asked for.
      *
@@ -1319,26 +1359,49 @@ export class NotoEditor implements NotoEditorPort {
       && (this.target.lineEnding === 'mixed' || this.target.lineEnding === document.envelope.lineEnding)) {
       this.target = null;
     }
-    // Slice the block text out of the accepted document rather than parsing it
-    // again. Main already worked out where every block sits and sent the
-    // offsets, so a save no longer costs a full parse in the renderer too.
-    this.pristine = new Map();
+
     const alignment = alignSavedBlocks(view.state.doc, document.origins.length);
     const origins = alignment.map((block) => (block === null ? null : document.origins[block] ?? null));
-    view.state.doc.forEach((node, _offset, index) => {
-      const block = alignment[index];
-      if (block === null || block === undefined) return;
-      const origin = document.origins[block];
-      const span = document.spans[block];
-      if (!origin || !span) return;
-      this.pristine.set(origin.blockId, {
-        node,
-        markdown: toLf(document.text.slice(span.start, span.end)),
-      });
-    });
 
-    this.baselineDoc = view.state.doc;
+    if (changedDuringSave) {
+      // The buffer is ahead of the revision that just landed. Keep the
+      // provenance the editor had before the save and force the next capture
+      // through the full walk; the saved revision is still adopted so the next
+      // save is based on what actually reached disk.
+      this.topLevelStable = false;
+      this.acceptedNodes = [];
+    } else {
+      // Slice the block text out of the accepted document rather than parsing it
+      // again. Main already worked out where every block sits and sent the
+      // offsets, so a save no longer costs a full parse in the renderer too.
+      this.pristine = new Map();
+      view.state.doc.forEach((node, _offset, index) => {
+        const block = alignment[index];
+        if (block === null || block === undefined) return;
+        const origin = document.origins[block];
+        const span = document.spans[block];
+        if (!origin || !span) return;
+        this.pristine.set(origin.blockId, {
+          node,
+          markdown: toLf(document.text.slice(span.start, span.end)),
+        });
+      });
+
+      this.baselineDoc = view.state.doc;
+    }
+
     view.dispatch(rebaseOrigins(view.state.tr, origins));
+
+    if (changedDuringSave) {
+      // The file now holds the captured revision, but the buffer still has
+      // edits that this save did not carry. Report dirty again even if the flag
+      // was already set, so the status line cannot call this buffer saved.
+      this.dirty = true;
+      this.options.onDirtyChange?.(true);
+      this.options.onDocumentChanged?.();
+      return;
+    }
+
     // Rebase does not edit the document. The nodes now on screen are what the
     // file just became, so the next interior edits can take the kept-run path
     // again even if the save started from a structural change.

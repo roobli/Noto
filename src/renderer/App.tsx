@@ -1192,6 +1192,7 @@ function NotoWorkspace({ platform }: { platform: NotoPlatform }) {
       // revision comes back as a patch to.
       base = editor.acceptedDocument;
     } catch (error) {
+      editor.abandonSave();
       setLocalMessage(actionableFileTruthMessage(error,
         'The editor refused this save. Finish the current word, then save again.'));
       setState('Unsaved changes');
@@ -1212,6 +1213,7 @@ function NotoWorkspace({ platform }: { platform: NotoPlatform }) {
         return whole.ok ? whole.value : null;
       });
       if (!result.ok) {
+        editor.abandonSave();
         setPending(false);
         setOutcome(null);
         setLocalMessage(actionableFileTruthMessage(result.error.message, 'The save transport failed. Your edits are still here.'));
@@ -1220,6 +1222,7 @@ function NotoWorkspace({ platform }: { platform: NotoPlatform }) {
       }
       present(result.value);
     } catch (error) {
+      editor.abandonSave();
       setPending(false);
       setOutcome(null);
       updateRecoveryBarrier(true);
