@@ -45,7 +45,10 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        os: [macos-14, windows-latest, ubuntu-latest]
+        # 24.04, not ubuntu-latest: the installers job is pinned for the same
+        # reason, and a moving runner image makes an e2e-only failure
+        # impossible to attribute to the change under test.
+        os: [macos-14, windows-latest, ubuntu-24.04]
     steps:
       - uses: actions/checkout@v4
       - uses: pnpm/action-setup@v4

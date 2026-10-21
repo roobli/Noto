@@ -204,9 +204,14 @@ button:disabled { color: var(--muted); opacity: 0.7; }
 
 [data-platform='win32'] .title-actions,
 [data-platform='linux'] .title-actions {
-  padding-right: max(0px, calc(
+  /* Cap the reservation just above a three-button strip. The overlay's
+     geometry can lag a resize by a frame; without a cap a transient value
+     from the previous window width reserves several hundred pixels, which
+     shifts the middle column and takes the filename off centre. 180px still
+     clears the ~138px strip Windows and common Linux desktops use. */
+  padding-right: min(180px, max(0px, calc(
     100vw - env(titlebar-area-width, calc(100vw - 138px)) - env(titlebar-area-x, 0px) - 8px
-  ));
+  )));
 }
 
 .titlebar button,
