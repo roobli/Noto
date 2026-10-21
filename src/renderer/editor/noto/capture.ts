@@ -47,6 +47,8 @@ export function isUnwritableBlock(node: ProseNode): boolean {
 export interface PinnedSource {
   readonly markdown: string;
   readonly origin: NotoBlockOrigin | null;
+  /** Set from the last commit's bytes by a revert, rather than kept for an undo. */
+  readonly committed?: boolean;
 }
 
 const pins = new WeakMap<ProseNode, PinnedSource>();
