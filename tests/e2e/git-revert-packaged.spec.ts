@@ -163,7 +163,7 @@ const revertButton = (page: Page) => page.getByTestId('git-popover-revert');
 const fileText = (repo: string) => readFileSync(path.join(repo, 'note.md'), 'utf8');
 
 async function save(page: Page, repo: string, expected: string): Promise<void> {
-  await page.keyboard.press(`${MOD}+KeyS`);
+  await page.getByTestId('save-button').click();
   await expect.poll(() => fileText(repo), { timeout: 10_000 }).toBe(expected);
 }
 
@@ -237,7 +237,7 @@ test.describe('revert to committed', () => {
         await capture(app, path.join(SHOTS, 'pr3-light-added-popover.png'));
       }
       // By keyboard: Tab from the panel reaches it, Enter presses it.
-      await expect(page.getByTestId('git-popover-text')).toBeFocused();
+      await expect(page.getByTestId('git-popover-empty')).toBeFocused();
       await page.keyboard.press('Tab');
       await expect(revertButton(page)).toBeFocused();
       await page.keyboard.press('Enter');
@@ -253,6 +253,7 @@ test.describe('revert to committed', () => {
       await expect(deletedMarks(page)).toHaveCount(0);
 
       // Undo after the save, every step, and save: the working bytes exactly.
+      await placeCaretAtEnd(page, block(page, 'The last paragraph'));
       for (let step = 0; step < 3; step += 1) await page.keyboard.press(`${MOD}+KeyZ`);
       await save(page, repo, NOW);
       await expect(lines(page)).toHaveCount(2, { timeout: 15_000 });
@@ -294,9 +295,12 @@ test.describe('revert to committed', () => {
       await page.getByTestId('palette-input').fill('revert block');
       await page.keyboard.press('Enter');
       expect(await focusInEditor(page)).toBe(true);
+      // Two undos take both reverts back: the note is clean again, as opened.
       await page.keyboard.press(`${MOD}+KeyZ`);
       await page.keyboard.press(`${MOD}+KeyZ`);
-      await save(page, repo, NOW);
+      await expect(block(page, 'rewritten after the commit')).toHaveCount(1);
+      await expect(page.getByTestId('save-button')).toHaveCount(0);
+      expect(fileText(repo)).toBe(NOW);
     } finally {
       await app.close();
     }
