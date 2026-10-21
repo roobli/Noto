@@ -48,6 +48,11 @@ when dirty, no second Plugins entry, no menu-echo buttons.
 
 The filename sits in the optical centre of the window at 13px in `--muted`, with
 the unsaved dot beside it.
+The bar is three columns, the two control groups and the identity between
+them, with the side columns kept equal while both fit. When the window is too
+narrow for that, the identity gives up the width: the folder before the name is
+cut short with an ellipsis, the name stays whole, and neither runs under the
+controls on either side.
 
 ### System buttons and the menu — avoid them, do not merely clear them
 

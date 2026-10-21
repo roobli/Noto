@@ -167,9 +167,15 @@ button:disabled { color: var(--muted); opacity: 0.7; }
 .titlebar {
   -webkit-app-region: drag;
   position: relative;
-  display: flex;
+  /* Three columns: the controls on either side and the filename between.
+     The side columns are the same width whenever both fit, so the name sits
+     in the centre of the window; each is never narrower than what it holds,
+     so when the window is too narrow for that the name gives up the width,
+     never the controls, and it can not reach under either group. */
+  display: grid;
+  grid-template-columns: minmax(max-content, 1fr) minmax(0, max-content) minmax(max-content, 1fr);
   align-items: center;
-  gap: 8px;
+  column-gap: 8px;
   min-width: 0;
   max-width: 100%;
   padding: 0 8px;
@@ -190,14 +196,17 @@ button:disabled { color: var(--muted); opacity: 0.7; }
    Windows / Linux: `titleBarStyle: hidden` + Window Controls Overlay puts
    caption buttons on the right — pad so Settings (and Save when dirty) are
    never under them. Prefer WCO geometry env vars; fall back to a typical
-   three-button strip (~46px × 3). */
-[data-platform='darwin'] .titlebar { padding-left: 78px; }
+   three-button strip (~46px × 3).
+   The room is reserved inside the control groups rather than on the bar, so
+   the bar's columns still span the whole window and its middle is the
+   window's middle. The bar's own 8px is already on that edge. */
+[data-platform='darwin'] .title-left { padding-left: 70px; }
 
-[data-platform='win32'] .titlebar,
-[data-platform='linux'] .titlebar {
-  padding-right: calc(
-    100vw - env(titlebar-area-width, calc(100vw - 138px)) - env(titlebar-area-x, 0px)
-  );
+[data-platform='win32'] .title-actions,
+[data-platform='linux'] .title-actions {
+  padding-right: max(0px, calc(
+    100vw - env(titlebar-area-width, calc(100vw - 138px)) - env(titlebar-area-x, 0px) - 8px
+  ));
 }
 
 .titlebar button,
@@ -208,29 +217,33 @@ button:disabled { color: var(--muted); opacity: 0.7; }
   display: flex;
   align-items: center;
   gap: 2px;
-  flex: 0 0 auto;
 }
 
-.title-actions { margin-left: auto; }
+.title-left { grid-column: 1; justify-self: start; }
+.title-actions { grid-column: 3; justify-self: end; }
 
 /* The filename sits in the optical centre of the window, which is where a
    window title belongs, rather than being pushed around by however many icons
-   happen to be on either side of it. */
+   happen to be on either side of it. The middle column is only as wide as the
+   room between the two groups, so a long folder name is cut short there
+   instead of running under the gear. */
 .document-identity {
-  position: absolute;
-  left: 50%;
-  transform: translateX(-50%);
+  grid-column: 2;
+  justify-self: center;
   display: flex;
   align-items: center;
   gap: 6px;
-  max-width: min(60%, 560px);
+  max-width: min(60vw, 560px);
   min-width: 0;
   pointer-events: none;
 }
 
 .document-identity strong {
   display: block;
-  flex: 0 1 auto;
+  /* The name is the last thing to give way: the folder before it shrinks to
+     nothing first, and only a name wider than the whole middle is cut. */
+  flex: 0 0 auto;
+  max-width: 100%;
   min-width: 0;
   overflow: hidden;
   color: var(--muted);
@@ -244,7 +257,7 @@ button:disabled { color: var(--muted); opacity: 0.7; }
    between segments. The name stays the one thing set a step darker. */
 .document-identity .crumb {
   /* The folder gives way before the name does. */
-  flex: 0 4 auto;
+  flex: 0 1 auto;
   min-width: 0;
   overflow: hidden;
   /* The muted tier itself, not a fade of it: an opacity under the muted ink
@@ -1912,17 +1925,6 @@ button:disabled { color: var(--muted); opacity: 0.7; }
    which is where their layout lives. What changes here is the bar. */
 
 @media (max-width: 700px) {
-  /* The filename cannot be centred at this width: the traffic lights take the
-     left third and the icons the right, so a centred title would be squeezed
-     into what is left of the middle. It goes inline instead. */
-  .document-identity {
-    position: static;
-    transform: none;
-    max-width: none;
-    flex: 1 1 auto;
-    justify-content: center;
-  }
-
   .app-shell { grid-template-rows: auto auto minmax(0, 1fr) auto 24px; }
   .operational-status { height: 24px; grid-template-columns: minmax(0, 1fr); }
   .status-message, .recent-strip { display: none; }
