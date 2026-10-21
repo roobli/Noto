@@ -849,6 +849,17 @@ function parseSimpleImageAlt(label: string): string | null {
 /** Max nest depth (37 = outer + thirty-seven nested, e.g. `_p *q **r _s *t **u _v *w **x _y *z **a _b *c **d _e *f **g _h *i **j _k *l **m _n *o **p _q *r **s _t *u ~~v _w *x _y *z `a` z* y_ x* w_ v~~ u* t_ s** r* q_ p** o* n_ m** l* k_ j** i* h_ g** f* e_ d** c* b_ a** z* y_ x** w* v_ u** t* s_ r** q* p_`). */
 const MAX_MARK_NEST = 37;
 
+/**
+ * How deep `skipNestedSpan` may recurse before it hands the block back.
+ *
+ * The lookahead for a closer can walk through another opener, and an unclosed
+ * run of openers (`'*a '.repeat(5000)`) used to recurse once per opener until
+ * the JS stack gave out. A shape deeper than the mark nesting the fast reader
+ * supports is not one it can prove, so returning -1 sends the block to
+ * micromark instead of guessing.
+ */
+const MAX_SKIP_DEPTH = 64;
+
 function parseSimpleAsteriskTildeCode(
   md: string,
   parentMarks: readonly Mark[] = [],
@@ -942,7 +953,8 @@ function parseSimpleAsteriskTildeCode(
    * Skip a balanced nested span starting at `at` (code / ~~ / ** / * / __ / _).
    * Returns end index exclusive, or -1 if unmatched / ambiguous.
    */
-  const skipNestedSpan = (at: number): number => {
+  const skipNestedSpan = (at: number, depth = 0): number => {
+    if (depth >= MAX_SKIP_DEPTH) return -1;
     if (input[at] === '$') {
       const math = endOfSimpleInlineMath(input, at);
       if (!math) return -1;
@@ -980,7 +992,7 @@ function parseSimpleAsteriskTildeCode(
           if (search === at + 2) return -1;
           if (isWs(input[search - 1])) {
             if (search + 2 < len && !isWs(input[search + 2])) {
-              const next = skipNestedSpan(search);
+              const next = skipNestedSpan(search, depth + 1);
               if (next < 0) return -1;
               search = next;
               continue;
@@ -1005,26 +1017,26 @@ function parseSimpleAsteriskTildeCode(
           continue;
         }
         if (input[search] === '`') {
-          const next = skipNestedSpan(search);
+          const next = skipNestedSpan(search, depth + 1);
           if (next < 0) return -1;
           search = next;
           continue;
         }
         if (input.startsWith('~~', search)) {
-          const next = skipNestedSpan(search);
+          const next = skipNestedSpan(search, depth + 1);
           if (next < 0) return -1;
           search = next;
           continue;
         }
         // Nested `*em*` / `_em_` / `__strong__` may hold `**`; skip them.
         if (input[search] === '*' && !input.startsWith('**', search)) {
-          const next = skipNestedSpan(search);
+          const next = skipNestedSpan(search, depth + 1);
           if (next < 0) return -1;
           search = next;
           continue;
         }
         if (input.startsWith('__', search) || input[search] === '_') {
-          const next = skipNestedSpan(search);
+          const next = skipNestedSpan(search, depth + 1);
           if (next < 0) return -1;
           search = next;
           continue;
@@ -1034,7 +1046,7 @@ function parseSimpleAsteriskTildeCode(
           if (isWs(input[search - 1])) {
             // Same-delimiter nest (`**a **b** c**`): skip inner opener.
             if (search + 2 < len && !isWs(input[search + 2])) {
-              const next = skipNestedSpan(search);
+              const next = skipNestedSpan(search, depth + 1);
               if (next < 0) return -1;
               search = next;
               continue;
@@ -1060,7 +1072,7 @@ function parseSimpleAsteriskTildeCode(
           if (search === at + 2) return -1;
           if (isWs(input[search - 1])) {
             if (search + 2 < len && !isWs(input[search + 2])) {
-              const next = skipNestedSpan(search);
+              const next = skipNestedSpan(search, depth + 1);
               if (next < 0) return -1;
               search = next;
               continue;
@@ -1086,25 +1098,25 @@ function parseSimpleAsteriskTildeCode(
           continue;
         }
         if (input.startsWith('**', search)) {
-          const next = skipNestedSpan(search);
+          const next = skipNestedSpan(search, depth + 1);
           if (next < 0) return -1;
           search = next;
           continue;
         }
         if (input[search] === '`') {
-          const next = skipNestedSpan(search);
+          const next = skipNestedSpan(search, depth + 1);
           if (next < 0) return -1;
           search = next;
           continue;
         }
         if (input.startsWith('~~', search)) {
-          const next = skipNestedSpan(search);
+          const next = skipNestedSpan(search, depth + 1);
           if (next < 0) return -1;
           search = next;
           continue;
         }
         if (input.startsWith('__', search) || input[search] === '_') {
-          const next = skipNestedSpan(search);
+          const next = skipNestedSpan(search, depth + 1);
           if (next < 0) return -1;
           search = next;
           continue;
@@ -1113,7 +1125,7 @@ function parseSimpleAsteriskTildeCode(
           if (search === at + 1) return -1;
           if (isWs(input[search - 1])) {
             if (search + 1 < len && !isWs(input[search + 1]) && !input.startsWith('**', search)) {
-              const next = skipNestedSpan(search);
+              const next = skipNestedSpan(search, depth + 1);
               if (next < 0) return -1;
               search = next;
               continue;
@@ -1140,13 +1152,13 @@ function parseSimpleAsteriskTildeCode(
           continue;
         }
         if (input[search] === '`') {
-          const next = skipNestedSpan(search);
+          const next = skipNestedSpan(search, depth + 1);
           if (next < 0) return -1;
           search = next;
           continue;
         }
         if (input.startsWith('~~', search) || input.startsWith('**', search) || input[search] === '*') {
-          const next = skipNestedSpan(search);
+          const next = skipNestedSpan(search, depth + 1);
           if (next < 0) return -1;
           search = next;
           continue;
@@ -1158,7 +1170,7 @@ function parseSimpleAsteriskTildeCode(
           }
           if (isWs(input[search - 1])) {
             if (search + 1 < len && !isWs(input[search + 1]) && !input.startsWith('__', search)) {
-              const next = skipNestedSpan(search);
+              const next = skipNestedSpan(search, depth + 1);
               if (next < 0) return -1;
               search = next;
               continue;

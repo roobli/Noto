@@ -180,6 +180,12 @@ describe('the fast reader reads what micromark reads', () => {
     expect(unexpected.length, `fast reader disagrees with micromark:\n${report}`).toBe(0);
   });
 
+  it('hands a run of thousands of unclosed openers to micromark instead of overflowing', () => {
+    for (const text of ['*a '.repeat(5000), '**a '.repeat(10000)]) {
+      expect(differences('adversarial', text)).toEqual([]);
+    }
+  }, 20_000);
+
   for (const [name, known] of Object.entries(EXPECTED_FAIL)) {
     it(`still needs the expected-fail for ${name}`, () => {
       expect(mismatches.some((m) => known(m.markdown)), `no mismatch left for "${name}"; remove its entry`).toBe(true);
