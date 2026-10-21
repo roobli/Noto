@@ -270,6 +270,12 @@ describe('what the serializer must not escape', () => {
       .toBe('![img_v3_02144_abc](https://x.test/a.jpg)');
   });
 
+  it('escapes a bracket inside what looks like a footnote reference', () => {
+    // `[[^[]](u)` read back as `[` and a link on `^[]`.
+    expect(roundTrip('[\\[^\\[\\]](u)')).toBe('[\\[^\\[\\]](u)');
+    expect(roundTrip('See [^1] here')).toBe('See [^1] here');
+  });
+
   it('escapes a glued star that a real delimiter could pair with', () => {
     // The emphasis opener has `"` before it, so it can close too, and closed
     // the bare star: `&*a "*"*` read back as emphasis on `a "`.
