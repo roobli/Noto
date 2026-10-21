@@ -652,11 +652,44 @@ function backslashSurvivesEncoding(written: string, after: string): string {
   return `${written.slice(0, last)}\\${written.slice(last)}`;
 }
 
+/**
+ * Every bare tilde of a run that is two long or touches a tilde outside the
+ * text, escaped.
+ *
+ * `tildeOnlyInPairs` asks for these, but the escaper skips a tilde whose
+ * neighbour it is escaping anyway, as if any escaped character kept a tilde
+ * apart. Not from a delimiter: `*~` struck was saved as `~~\*~~~`, the bare
+ * tilde and the closer a run of three that cannot close. A tilde after an
+ * escaped one is still left alone, so `\~~` stays as written.
+ */
+function tildeRunsEscaped(written: string, before: string, after: string): string {
+  if (!written.includes('~')) return written;
+  const bare = new Set<number>();
+  for (let i = 0; i < written.length; i += 1) {
+    if (written[i] === '\\' && /[!-/:-@[-`{-~]/.test(written[i + 1] ?? '')) i += 1;
+    else if (written[i] === '~') bare.add(i);
+  }
+  let out = '';
+  for (let i = 0; i < written.length;) {
+    if (!bare.has(i)) {
+      out += written[i];
+      i += 1;
+      continue;
+    }
+    let end = i;
+    while (bare.has(end)) end += 1;
+    const touches = (i === 0 && before.endsWith('~')) || (end === written.length && after.startsWith('~'));
+    out += end - i > 1 || touches ? '\\~'.repeat(end - i) : '~';
+    i = end;
+  }
+  return out;
+}
+
 const verbatimRunsInText: ToMarkdownOptions = {
   handlers: {
     text(node, _parent, state, info) {
       const written = emitWithVerbatimRuns(node.value, { safe: withBareAmpersands(state.safe.bind(state)), stack: state.stack }, info);
-      return backslashSurvivesEncoding(written, info.after);
+      return tildeRunsEscaped(backslashSurvivesEncoding(written, info.after), info.before, info.after);
     },
     /*
      * An image alt is a plain string, not phrasing, so the text handler never
