@@ -31,6 +31,8 @@ export interface GitDeletedBlocksV1 {
   readonly before: number;
   /** What was there, the committed blocks joined by a blank line. */
   readonly head: string;
+  /** The committed blocks one by one, as their source, for a revert. */
+  readonly heads: readonly string[];
 }
 
 export interface GitBlockDiffV1 {
@@ -272,7 +274,8 @@ export function diffBlocks(
       changed.push({ ordinal: currentFrom + offset, change: 'added', head: null });
     }
     if (headRun > paired) {
-      deleted.push({ before: currentTo, head: head.slice(headFrom + paired, headTo).map((block) => block.replace(/\n+$/, '')).join('\n\n') });
+      const heads = head.slice(headFrom + paired, headTo);
+      deleted.push({ before: currentTo, head: heads.map((block) => block.replace(/\n+$/, '')).join('\n\n'), heads });
     }
   };
   let headAt = 0;

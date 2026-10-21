@@ -548,8 +548,10 @@ export function isWorkspaceGitBlocksV1(value: unknown): value is WorkspaceGitBlo
       && isBlockId(block.blockId)
       && ((block.change === 'modified' && isBlockText(block.head)) || (block.change === 'added' && block.head === null)))
     && Array.isArray(value.deleted) && value.deleted.length <= MAX_GIT_BLOCKS
-    && value.deleted.every((run: unknown) => record(run) && exact(run, ['beforeBlockId', 'head'])
-      && (run.beforeBlockId === null || isBlockId(run.beforeBlockId)) && isBlockText(run.head));
+    && value.deleted.every((run: unknown) => record(run) && exact(run, ['beforeBlockId', 'head', 'heads'])
+      && (run.beforeBlockId === null || isBlockId(run.beforeBlockId)) && isBlockText(run.head)
+      && Array.isArray(run.heads) && run.heads.length > 0 && run.heads.length <= MAX_GIT_BLOCKS
+      && run.heads.every(isBlockText));
 }
 
 export const isWorkspaceGitMarksResultV1 = (value: unknown, id: string): value is WorkspaceResultV1<WorkspaceGitMarksV1> =>

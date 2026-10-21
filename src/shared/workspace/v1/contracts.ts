@@ -542,7 +542,10 @@ export interface WorkspaceGitBlocksV1 {
   readonly deleted: ReadonlyArray<{
     /** The block the deleted ones stood before; null at the end of the note. */
     readonly beforeBlockId: string | null;
+    /** What was there, the committed blocks joined by a blank line, for showing. */
     readonly head: string;
+    /** The same blocks one by one, for putting back as they were. */
+    readonly heads: readonly string[];
   }>;
 }
 
