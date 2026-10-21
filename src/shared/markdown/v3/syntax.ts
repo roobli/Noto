@@ -347,9 +347,11 @@ const VERBATIM_RUN = new RegExp(
      * `[`. Escaping it turned every footnote in an edited paragraph into the
      * literal characters `\[^1]`, which is not a footnote any more and not what
      * the file said. The label cannot hold whitespace or a bracket, so the run
-     * is only recognised in the shape that can mean nothing else.
+     * is only recognised in the shape that can mean nothing else. Either
+     * bracket: `[^[]` as link text was written bare, and its `[` opened the
+     * link a character early.
      */
-    '\\[\\^[^\\]\\s]+\\]',
+    '\\[\\^[^\\[\\]\\s]+\\]',
     // `[TOC]`, the marker Typora reads as a table of contents. It is a bare
     // link reference to a definition that does not exist, so the serializer
     // escapes it and the marker stops working.
