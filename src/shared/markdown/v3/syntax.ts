@@ -504,9 +504,19 @@ const hardBreakAsTwoSpaces: ToMarkdownOptions = {
  * serializer's escape like any other literal star. Other Unicode punctuation
  * is left out on purpose, because the CJK-friendly flanking rules let a star
  * after CJK punctuation close.
+ *
+ * Nor right after a delimiter, where it joins that run (`***b***` then `*a1`
+ * was saved as `***b****a1`), nor in a paragraph, heading or cell where a real
+ * span's opening delimiter has something other than whitespace or the start
+ * of the block before it. Such a delimiter can close as well as open, and the
+ * bare star is the opener it closes: `&*a` before `"` emphasised was saved as
+ * `&*a "*"*` and came back as emphasis on `a "`. Which delimiter reaches the
+ * star is the delimiter algorithm's business, so the check is conservative:
+ * one such span anywhere in the block escapes every bare star in it, and
+ * `*nix and **bold**` keeps its star.
  */
-function bareStarStaysLiteral(previous: string, stack: readonly string[]): boolean {
-  if (stack.includes('emphasis') || stack.includes('strong')) return false;
+function bareStarStaysLiteral(previous: string, stack: readonly string[], besideStarRuns: boolean): boolean {
+  if (besideStarRuns || stack.includes('emphasis') || stack.includes('strong')) return false;
   return previous === '' || /[\s!-\/:-@\[-`{-~]/.test(previous);
 }
 
@@ -570,6 +580,8 @@ function emitWithVerbatimRuns(
   state: {
     safe: (value: string, info: { before: string; after: string }) => string;
     stack: readonly string[];
+    /** The text shares its block with a span whose opener could close. */
+    besideStarRuns?: boolean;
   },
   info: { before: string; after: string },
 ): string {
@@ -593,7 +605,8 @@ function emitWithVerbatimRuns(
     if (match === null) break;
     if (match[0].startsWith('*')) {
       const previous = match.index > 0 ? value[match.index - 1]! : info.before.slice(-1);
-      if (!bareStarStaysLiteral(previous, state.stack)) {
+      const joinsDelimiter = match.index === 0 && previous === '*';
+      if (joinsDelimiter || !bareStarStaysLiteral(previous, state.stack, state.besideStarRuns ?? false)) {
         // Leave the star to the ordinary segment, and let the rest of the run
         // still match on its own (`a*b_c` keeps `b_c` whole).
         VERBATIM_RUN.lastIndex = match.index + 1;
@@ -688,7 +701,11 @@ function tildeRunsEscaped(written: string, before: string, after: string): strin
 const verbatimRunsInText: ToMarkdownOptions = {
   handlers: {
     text(node, _parent, state, info) {
-      const written = emitWithVerbatimRuns(node.value, { safe: withBareAmpersands(state.safe.bind(state)), stack: state.stack }, info);
+      const written = emitWithVerbatimRuns(node.value, {
+        safe: withBareAmpersands(state.safe.bind(state)),
+        stack: state.stack,
+        besideStarRuns: textBesideStarRuns.has(node),
+      }, info);
       return tildeRunsEscaped(backslashSurvivesEncoding(written, info.after), info.before, info.after);
     },
     /*
@@ -943,7 +960,49 @@ export function parseMarkdown(text: string): Root {
  * from the original source instead, which is what keeps saves byte exact.
  */
 export function renderMarkdown(node: Nodes): string {
-  return toMarkdown(node, serializerOptions);
+  markTextBesideStarRuns(node);
+  try {
+    return toMarkdown(node, serializerOptions);
+  } finally {
+    textBesideStarRuns.clear();
+  }
+}
+
+/**
+ * Text nodes in a block holding a span whose opening delimiter could close,
+ * for one render. See `bareStarStaysLiteral`.
+ */
+const textBesideStarRuns = new Set<Nodes>();
+
+function markTextBesideStarRuns(node: Nodes, besideStarRuns = false): void {
+  let beside = besideStarRuns;
+  if (node.type === 'paragraph' || node.type === 'heading' || node.type === 'tableCell') {
+    beside = holdsClosingOpener(node, false);
+  }
+  if (node.type === 'text' && beside) textBesideStarRuns.add(node);
+  if ('children' in node) for (const child of node.children) markTextBesideStarRuns(child as Nodes, beside);
+}
+
+/**
+ * Whether an emphasis or strong under `node` has something other than
+ * whitespace or the start of the block before its delimiter run.
+ * `afterNonSpace` says what precedes `node`'s first child: a nested run's
+ * delimiters join the enclosing run's, and a link's or strike's first child
+ * follows its `[` or `~~`.
+ */
+function holdsClosingOpener(node: Nodes, afterNonSpace: boolean): boolean {
+  if (!('children' in node)) return false;
+  const children = node.children as Nodes[];
+  return children.some((child, index) => {
+    const previous = index > 0 ? children[index - 1]! : undefined;
+    const nonSpaceBefore = previous === undefined
+      ? afterNonSpace
+      : previous.type === 'text' ? !/\s$/u.test(previous.value) : previous.type !== 'break';
+    if (child.type === 'emphasis' || child.type === 'strong') {
+      return nonSpaceBefore || holdsClosingOpener(child, false);
+    }
+    return holdsClosingOpener(child, true);
+  });
 }
 
 /**

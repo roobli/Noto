@@ -269,6 +269,16 @@ describe('what the serializer must not escape', () => {
     expect(roundTrip('![img_v3_02144_abc](https://x.test/a.jpg)'))
       .toBe('![img_v3_02144_abc](https://x.test/a.jpg)');
   });
+
+  it('escapes a glued star that a real delimiter could pair with', () => {
+    // The emphasis opener has `"` before it, so it can close too, and closed
+    // the bare star: `&*a "*"*` read back as emphasis on `a "`.
+    expect(roundTrip('&\\*a "*"*')).toBe('&\\*a "*"*');
+    // Right after a closer the star joins its run: `***b****a1`.
+    expect(roundTrip('***b***\\*a1')).toBe('***b***\\*a1');
+    // An opener with whitespace before it cannot close, so the star stays.
+    expect(roundTrip('*nix, *see* this')).toBe('*nix, *see* this');
+  });
 });
 
 describe('a character reference', () => {
