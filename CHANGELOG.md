@@ -23,6 +23,12 @@ How releases are made, and what each channel receives, is in
   for the block holding the caret. The gutter compares the saved note, so it
   updates on save, and is not drawn for notes over 1 MB or notes git does not
   track.
+- **A changed or deleted block can go back to how it was committed.** The
+  popover from the gutter has "Revert to Committed", and "Revert Block to
+  Committed" in the command palette does the same for the block at the caret.
+  A new block offers "Remove Block". It is an ordinary edit: the note is
+  unsaved until you save, and undo takes it back. Noto still never writes to
+  the repository.
 
 ### Changed
 - **Updates no longer install themselves while builds are unsigned.** On
