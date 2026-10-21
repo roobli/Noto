@@ -11,6 +11,7 @@ import { fromMarkdown, type CompileContext, type Extension as FromMarkdownExtens
 import { defaultHandlers, toMarkdown, type Handle, type Options as ToMarkdownOptions, type State } from 'mdast-util-to-markdown';
 import { gfm } from 'micromark-extension-gfm';
 import { cjkFriendlyExtension } from 'micromark-extension-cjk-friendly';
+import { gfmStrikethroughCjkFriendly } from 'micromark-extension-cjk-friendly-gfm-strikethrough';
 import { cjkFriendlyToMarkdown } from 'mdast-util-to-markdown-cjk-friendly';
 import { gfmFromMarkdown, gfmToMarkdown } from 'mdast-util-gfm';
 import { math } from 'micromark-extension-math';
@@ -61,6 +62,12 @@ const micromarkExtensions = [
    * flanking rules rather than a rule invented here.
    */
   cjkFriendlyExtension(),
+  /*
+   * Strikethrough takes the same amendment, so one dialect covers every
+   * delimiter: `中~~「删」~~文` is struck, as `中**「粗」**文` is bold. Must
+   * come after `gfm()`; the single tilde stays Typora's subscript.
+   */
+  gfmStrikethroughCjkFriendly({ singleTilde: false }),
   math({ singleDollarTextMath: true }),
   frontmatterSyntax,
 ];
@@ -247,10 +254,10 @@ function dollarAlwaysEscaped(extension: ToMarkdownOptions): ToMarkdownOptions {
  * the run is encoded and nothing else is.
  *
  * Whitespace at the run's inner edge never reaches here: the editor writes it
- * outside the run (`to-mdast.ts`). CJK text is left as it was, because the
- * CJK-friendly amendment the dialect takes for emphasis has a strikethrough
- * counterpart the dialect does not take yet, and encoding every ideograph next
- * to `~~「…」~~` would fill Chinese notes with references.
+ * outside the run (`to-mdast.ts`). CJK text is left as it was: the dialect
+ * reads `~~` with the same CJK-friendly amendment as `*` and `_`
+ * (`gfmStrikethroughCjkFriendly` above), under which a run beside an ideograph
+ * flanks, so `~~「…」~~` needs no references around it.
  */
 function strikethroughFlanks(extension: ToMarkdownOptions): ToMarkdownOptions {
   const write = extension.handlers?.delete;

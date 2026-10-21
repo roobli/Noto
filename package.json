@@ -36,7 +36,7 @@
     "verify": "pnpm typecheck && pnpm test"
   },
   "dependencies": {
-    "@roobli/md": "github:roobli/md#2e723e8c79169607b342275f140b71baa75c5854",
+    "@roobli/md": "github:roobli/md#ab7305ad7569e43fdbfaaadfe13124db150f9509",
     "electron-updater": "6.8.9",
     "mdast-util-from-markdown": "^2.0.3",
     "mdast-util-frontmatter": "^2.0.1",
@@ -46,6 +46,7 @@
     "mdast-util-to-markdown-cjk-friendly": "^1.0.0",
     "mermaid": "^11.17.2",
     "micromark-extension-cjk-friendly": "^2.0.1",
+    "micromark-extension-cjk-friendly-gfm-strikethrough": "2.0.1",
     "micromark-extension-frontmatter": "^2.0.0",
     "micromark-extension-gfm": "^3.0.0",
     "micromark-extension-math": "^3.1.0",

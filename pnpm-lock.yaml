@@ -9,8 +9,8 @@ importers:
   .:
     dependencies:
       '@roobli/md':
-        specifier: github:roobli/md#2e723e8c79169607b342275f140b71baa75c5854
-        version: https://codeload.github.com/roobli/md/tar.gz/2e723e8c79169607b342275f140b71baa75c5854(@types/mdast@4.0.4)(micromark-util-types@2.0.2)(micromark@4.0.2(supports-color@8.1.1))(supports-color@8.1.1)
+        specifier: github:roobli/md#ab7305ad7569e43fdbfaaadfe13124db150f9509
+        version: https://codeload.github.com/roobli/md/tar.gz/ab7305ad7569e43fdbfaaadfe13124db150f9509(@types/mdast@4.0.4)(micromark-util-types@2.0.2)(micromark@4.0.2(supports-color@8.1.1))(supports-color@8.1.1)
       electron-updater:
         specifier: 6.8.9
         version: 6.8.9(supports-color@8.1.1)
@@ -37,6 +37,9 @@ importers:
         version: 11.17.2
       micromark-extension-cjk-friendly:
         specifier: ^2.0.1
+        version: 2.0.1(micromark-util-types@2.0.2)(micromark@4.0.2(supports-color@8.1.1))
+      micromark-extension-cjk-friendly-gfm-strikethrough:
+        specifier: 2.0.1
         version: 2.0.1(micromark-util-types@2.0.2)(micromark@4.0.2(supports-color@8.1.1))
       micromark-extension-frontmatter:
         specifier: ^2.0.0
@@ -621,9 +624,9 @@ packages:
   '@rolldown/pluginutils@1.0.1':
     resolution: {integrity: sha512-2j9bGt5Jh8hj+vPtgzPtl72j0yRxHAyumoo6TNfAjsLB04UtpSvPbPcDcBMxz7n+9CYB0c1GxQFxYRg2jimqGw==}
 
-  '@roobli/md@https://codeload.github.com/roobli/md/tar.gz/2e723e8c79169607b342275f140b71baa75c5854':
-    resolution: {gitHosted: true, integrity: sha512-cPpgldflqCim49f5ubQ/4Cq5L/0uYSKv/YeSR2xXK/gTl/4OP7X5ImY5Zvzl1FzETcbVaWvw04rz/dP2Mt8j1g==, tarball: https://codeload.github.com/roobli/md/tar.gz/2e723e8c79169607b342275f140b71baa75c5854}
-    version: 0.1.20
+  '@roobli/md@https://codeload.github.com/roobli/md/tar.gz/ab7305ad7569e43fdbfaaadfe13124db150f9509':
+    resolution: {gitHosted: true, integrity: sha512-szZoEy7OScQKEY/I315/YF2sSYSAxFPwdxKa/2Wh7sHlbpBBAIt3btpfJXefpBoYmWYj3cxrseTNPGIZxYVDbA==, tarball: https://codeload.github.com/roobli/md/tar.gz/ab7305ad7569e43fdbfaaadfe13124db150f9509}
+    version: 0.1.21
     engines: {node: '>=22.12.0'}
     hasBin: true
 
@@ -2244,6 +2247,26 @@ packages:
 
   micromark-core-commonmark@2.0.3:
     resolution: {integrity: sha512-RDBrHEMSxVFLg6xvnXmb1Ayr2WzLAWjeSATAoxwKYJV94TeNavgoIdA0a9ytzDSVzBy2YKFK+emCPOEibLeCrg==}
+
+  micromark-extension-cjk-friendly-gfm-strikethrough@1.2.3:
+    resolution: {integrity: sha512-gSPnxgHDDqXYOBvQRq6lerrq9mjDhdtKn+7XETuXjxWcL62yZEfUdA28Ml1I2vDIPfAOIKLa0h2XDSGkInGHFQ==}
+    engines: {node: '>=16'}
+    peerDependencies:
+      micromark: ^4.0.0
+      micromark-util-types: ^2.0.0
+    peerDependenciesMeta:
+      micromark-util-types:
+        optional: true
+
+  micromark-extension-cjk-friendly-gfm-strikethrough@2.0.1:
+    resolution: {integrity: sha512-wVC0zwjJNqQeX+bb07YTPu/CvSAyCTafyYb7sMhX1r62/Lw5M/df3JyYaANyp8g15c1ypJRFSsookTqA1IDsUg==}
+    engines: {node: '>=18'}
+    peerDependencies:
+      micromark: ^4.0.0
+      micromark-util-types: ^2.0.0
+    peerDependenciesMeta:
+      micromark-util-types:
+        optional: true
 
   micromark-extension-cjk-friendly-util@2.1.1:
     resolution: {integrity: sha512-egs6+12JU2yutskHY55FyR48ZiEcFOJFyk9rsiyIhcJ6IvWB6ABBqVrBw8IobqJTDZ/wdSr9eoXDPb5S2nW1bg==}
@@ -4117,7 +4140,7 @@ snapshots:
 
   '@rolldown/pluginutils@1.0.1': {}
 
-  '@roobli/md@https://codeload.github.com/roobli/md/tar.gz/2e723e8c79169607b342275f140b71baa75c5854(@types/mdast@4.0.4)(micromark-util-types@2.0.2)(micromark@4.0.2(supports-color@8.1.1))(supports-color@8.1.1)':
+  '@roobli/md@https://codeload.github.com/roobli/md/tar.gz/ab7305ad7569e43fdbfaaadfe13124db150f9509(@types/mdast@4.0.4)(micromark-util-types@2.0.2)(micromark@4.0.2(supports-color@8.1.1))(supports-color@8.1.1)':
     dependencies:
       mdast-util-frontmatter: 2.0.1(supports-color@8.1.1)
       mdast-util-gfm: 3.1.0(supports-color@8.1.1)
@@ -4127,6 +4150,7 @@ snapshots:
     optionalDependencies:
       mdast-util-from-markdown: 2.0.3(supports-color@8.1.1)
       micromark-extension-cjk-friendly: 1.2.3(micromark-util-types@2.0.2)(micromark@4.0.2(supports-color@8.1.1))
+      micromark-extension-cjk-friendly-gfm-strikethrough: 1.2.3(micromark-util-types@2.0.2)(micromark@4.0.2(supports-color@8.1.1))
       micromark-extension-frontmatter: 2.0.0
       micromark-extension-gfm: 3.0.0
       micromark-extension-math: 3.1.0
@@ -5935,6 +5959,33 @@ snapshots:
       micromark-util-resolve-all: 2.0.1
       micromark-util-subtokenize: 2.1.0
       micromark-util-symbol: 2.0.1
+      micromark-util-types: 2.0.2
+
+  micromark-extension-cjk-friendly-gfm-strikethrough@1.2.3(micromark-util-types@2.0.2)(micromark@4.0.2(supports-color@8.1.1)):
+    dependencies:
+      devlop: 1.1.0
+      get-east-asian-width: 1.6.0
+      micromark: 4.0.2(supports-color@8.1.1)
+      micromark-extension-cjk-friendly-util: 2.1.1(micromark-util-types@2.0.2)
+      micromark-util-character: 2.1.1
+      micromark-util-chunked: 2.0.1
+      micromark-util-resolve-all: 2.0.1
+      micromark-util-symbol: 2.0.1
+    optionalDependencies:
+      micromark-util-types: 2.0.2
+    optional: true
+
+  micromark-extension-cjk-friendly-gfm-strikethrough@2.0.1(micromark-util-types@2.0.2)(micromark@4.0.2(supports-color@8.1.1)):
+    dependencies:
+      devlop: 1.1.0
+      get-east-asian-width: 1.6.0
+      micromark: 4.0.2(supports-color@8.1.1)
+      micromark-extension-cjk-friendly-util: 3.0.1(micromark-util-types@2.0.2)
+      micromark-util-character: 2.1.1
+      micromark-util-chunked: 2.0.1
+      micromark-util-resolve-all: 2.0.1
+      micromark-util-symbol: 2.0.1
+    optionalDependencies:
       micromark-util-types: 2.0.2
 
   micromark-extension-cjk-friendly-util@2.1.1(micromark-util-types@2.0.2):

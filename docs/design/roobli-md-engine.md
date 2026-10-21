@@ -141,6 +141,8 @@ exotic inline refuses. Host serialize still runs a
 reparse proof so unterminated fences that would swallow neighbours are refused
 (`REPARSE_MISMATCH`), matching the micromark windowed check.
 
+`~~` follows the same CJK-friendly flanking amendment as `*` and `_` (`micromark-extension-cjk-friendly-gfm-strikethrough`), so `中~~「删」~~文` is struck; GitHub, which does not take the amendment, may render these differently, the same as for `*` and `_`.
+
 Two inline formulas the editor makes touch are merged into one joined by a space (`$x$` + `$y$` → `$x y$`), because `$x$$y$` reads back as a single formula; a left formula ending in an odd run of backslashes keeps a text space instead.
 
 Gates that were green before the flip:

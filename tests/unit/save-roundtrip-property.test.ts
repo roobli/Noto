@@ -729,6 +729,29 @@ describe('a struck run against what sits beside it', () => {
     expect(save(h)).toBe('a~~b~~c 这是~~「错」~~的\n');
     expectSavedMatchesEditor(h, 'runs that already flank');
   });
+
+  // The same run where the fast reader hands the paragraph to micromark (a
+  // character reference sends it there). `~~` takes the CJK-friendly amendment
+  // as `*` and `_` do, so micromark strikes it too.
+  it('strikes beside CJK text when micromark reads the paragraph', () => {
+    const h = openTracked('A &amp; 这是「错」的\n');
+    strike(h, '「错」');
+    expect(save(h)).toBe('A &amp; 这是~~「错」~~的\n');
+    expectStrikeReadsBack(h, 'A & 这是「错」的', '「错」');
+  });
+
+  it('strikes nested emphasis beside CJK text', () => {
+    const h = openTracked('文:中 end\n');
+    const v = view(h);
+    const from = blockStart(v.state.doc, 0) + 2;
+    const { marks } = v.state.schema;
+    v.dispatch(v.state.tr
+      .addMark(from, from + 2, marks.strikethrough.create())
+      .addMark(from, from + 2, marks.emphasis.create())
+      .addMark(from, from + 2, marks.strong.create()));
+    expect(save(h)).toBe('文~~***:中***~~ end\n');
+    expectStrikeReadsBack(h, '文:中 end', ':中');
+  });
 });
 
 describe('a backslash before the letter a delimiter encodes', () => {
