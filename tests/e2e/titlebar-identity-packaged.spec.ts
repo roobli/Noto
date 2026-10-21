@@ -76,6 +76,16 @@ test('a long folder name is cut short before the controls, and the name stays wh
         const m = await measure(page);
         return m.window === width && m.controls <= width && m.actions[1] <= m.controls;
       }).toBe(true);
+      // The caption geometry, and the CSS env() values it feeds, settle a frame
+      // or two after the window does. Wait for the bar itself to be in its
+      // final shape rather than measuring the frame the resize lands on.
+      await expect.poll(async () => {
+        const m = await measure(page);
+        return m.nameCut === false
+          && (width !== 720 || m.crumbCut)
+          && m.identity[0] >= m.left[1]
+          && m.identity[1] <= m.actions[0];
+      }).toBe(true);
       const g = await measure(page);
       // Clear of both groups.
       expect(g.identity[0]).toBeGreaterThanOrEqual(g.left[1]);
@@ -85,9 +95,15 @@ test('a long folder name is cut short before the controls, and the name stays wh
       expect(g.nameCut).toBe(false);
     }
 
-    // With room on both sides the identity is in the window's middle.
-    const wide = await measure(page);
-    expect(Math.abs((wide.identity[0] + wide.identity[1]) / 2 - wide.window / 2)).toBeLessThanOrEqual(1);
+    // With room on both sides the identity is in the window's middle. Poll the
+    // centre itself: the window width and the overlay geometry can settle in
+    // different frames, and a single measure here made this test fail only on
+    // the Linux runner. Measuring the settled frame also keeps the assertion
+    // about the layout rather than about a transient caption reservation.
+    await expect.poll(async () => {
+      const m = await measure(page);
+      return Math.abs((m.identity[0] + m.identity[1]) / 2 - m.window / 2);
+    }).toBeLessThanOrEqual(1);
   } finally {
     await app.close();
   }
