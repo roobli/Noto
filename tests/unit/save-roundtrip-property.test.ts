@@ -729,6 +729,30 @@ describe('a struck run against what sits beside it', () => {
   });
 });
 
+describe('a dollar sign in text', () => {
+  function typeAtEnd(h: Harness, index: number, text: string): void {
+    const v = view(h);
+    v.dispatch(v.state.tr.insertText(text, blockStart(v.state.doc, index) + v.state.doc.child(index).nodeSize - 1));
+  }
+
+  // `$\_GET`: the serializer dropped the escape on a dollar whose next
+  // character it escaped anyway, and on reopen the bare `$` opened math that
+  // ran to the `\$` later in the paragraph.
+  it('stays text when the character after it is escaped too', () => {
+    const h = openTracked('Read \\$\\_GET, not \\$HOME.\n');
+    typeAtEnd(h, 0, ' Then $[x] and $*.');
+    expect(save(h)).toBe('Read \\$\\_GET, not \\$HOME. Then \\$\\[x] and \\$\\*.\n');
+    expectSavedMatchesEditor(h, 'dollar before an escaped character');
+  });
+
+  it('at the start of a styled run after math stays text', () => {
+    const h = openTracked('$x$**\\$\\_a** costs \\$5.\n');
+    typeAtEnd(h, 0, '!');
+    expect(save(h)).toBe('$x$**\\$\\_a** costs \\$5.!\n');
+    expectSavedMatchesEditor(h, 'dollar opening strong text after math');
+  });
+});
+
 describe('two lists the editor leaves adjacent', () => {
   // With only blank lines between them, two lists of one family and marker
   // read back as one loose list. The later one is written with the other marker.

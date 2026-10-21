@@ -211,6 +211,29 @@ function tildeOnlyInPairs(extension: ToMarkdownOptions): ToMarkdownOptions {
 }
 
 /**
+ * A dollar in text is escaped wherever it stands.
+ *
+ * With single-dollar math one `$` opens inline math, so the math serializer
+ * marks every `$` in phrasing unsafe. It writes that rule with `after:
+ * undefined`, though, and the escaper reads any rule holding an `after` key as
+ * conditioned on the next character: when that character is escaped anyway,
+ * it skips the escape on the `$`, which only protects `$$`. Text such as
+ * `$_GET` or `$[x]` was saved as `$\_GET` or `$\[x]`, and on reopen that bare
+ * `$` opened math that ran to the next dollar the paragraph wrote, `\$`
+ * included, since a backslash escapes nothing inside math.
+ */
+function dollarAlwaysEscaped(extension: ToMarkdownOptions): ToMarkdownOptions {
+  return {
+    ...extension,
+    unsafe: extension.unsafe?.map((rule) => {
+      if (rule.character !== '$' || !('after' in rule) || rule.after !== undefined) return rule;
+      const { after: _unconditional, ...always } = rule;
+      return always;
+    }),
+  };
+}
+
+/**
  * A struck run whose tildes open and close where they are written.
  *
  * GFM gives `~~` the flanking rules of `*`: it cannot open with a letter before
@@ -832,7 +855,7 @@ const serializerOptions: ToMarkdownOptions = {
     // CommonMark's own flanking rules and, believing the run cannot close,
     // escapes the Chinese character after it into a numeric reference.
     nestedEmphasisAlternates(cjkFriendlyToMarkdown()),
-    tablesAsTheVaultWritesThem(strikethroughFlanks(tildeOnlyInPairs(gfmToMarkdown({ tablePipeAlign: false })))), mathToMarkdown(), frontmatterToMarkdown(), characterReferenceVerbatim, verbatimRunsInText, listMarkerFromNode, bareAutolink, hardBreakAsTwoSpaces],
+    tablesAsTheVaultWritesThem(strikethroughFlanks(tildeOnlyInPairs(gfmToMarkdown({ tablePipeAlign: false })))), dollarAlwaysEscaped(mathToMarkdown()), frontmatterToMarkdown(), characterReferenceVerbatim, verbatimRunsInText, listMarkerFromNode, bareAutolink, hardBreakAsTwoSpaces],
 };
 
 /**
