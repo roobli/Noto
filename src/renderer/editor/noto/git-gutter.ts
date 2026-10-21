@@ -169,7 +169,11 @@ export type GitRevertTarget =
   | { readonly kind: 'deleted'; readonly before: number };
 
 /** The editor's revert, given to the plugin by its owner (NotoEditor). */
-export type GitReverter = (target: GitRevertTarget) => boolean;
+export interface GitReverter {
+  /** What a revert there would do; null when it cannot be done. */
+  kind(target: GitRevertTarget): 'restore' | 'remove' | null;
+  revert(target: GitRevertTarget): boolean;
+}
 
 const reverters = new WeakMap<EditorView, GitReverter>();
 
@@ -186,9 +190,11 @@ function indexNow(view: EditorView, node: ProseNode | null): number {
  * document that changed while the popover was open (a background pass, a
  * new gutter) reverts the block that was shown or nothing.
  */
-function actionFor(view: EditorView, kind: 'restore' | 'remove', target: GitRevertTarget): GitPopoverAction | undefined {
-  const revert = reverters.get(view);
-  if (!revert) return undefined;
+function actionFor(view: EditorView, target: GitRevertTarget): GitPopoverAction | undefined {
+  const reverter = reverters.get(view);
+  const kind = reverter?.kind(target) ?? null;
+  if (!reverter || !kind) return undefined;
+  const revert = (to: GitRevertTarget) => reverter.revert(to);
   const doc = view.state.doc;
   if (target.kind === 'block') {
     const node = doc.child(target.index);
@@ -207,7 +213,7 @@ function actionFor(view: EditorView, kind: 'restore' | 'remove', target: GitReve
 function openFor(view: EditorView, index: number, entry: GitGutterEntry): boolean {
   const anchor = blockElement(view, index);
   if (!anchor) return false;
-  const action = actionFor(view, entry.change === 'modified' ? 'restore' : 'remove', { kind: 'block', index });
+  const action = actionFor(view, { kind: 'block', index });
   openGitPopover(view, anchor, entry.change === 'modified'
     ? { kind: 'modified', text: entry.head ?? '', action }
     : { kind: 'added', text: null, action });
@@ -218,7 +224,7 @@ function openDeleted(view: EditorView, before: number, head: string): boolean {
   const count = view.state.doc.childCount;
   const anchor = blockElement(view, before < count ? before : count - 1);
   if (!anchor) return false;
-  openGitPopover(view, anchor, { kind: 'deleted', text: head, action: actionFor(view, 'restore', { kind: 'deleted', before }) });
+  openGitPopover(view, anchor, { kind: 'deleted', text: head, action: actionFor(view, { kind: 'deleted', before }) });
   return true;
 }
 

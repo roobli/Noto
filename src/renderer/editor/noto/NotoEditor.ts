@@ -22,7 +22,7 @@ import { footnoteHoverPlugin } from './footnote-hover';
 import { sliceFromText } from './paste-text';
 import { EditorState, Selection, type Plugin, type Transaction, TextSelection } from 'prosemirror-state';
 import { EditorView } from 'prosemirror-view';
-import { history, redo, undo } from 'prosemirror-history';
+import { closeHistory, history, redo, undo } from 'prosemirror-history';
 import { dropCursor } from 'prosemirror-dropcursor';
 import { gapCursor } from 'prosemirror-gapcursor';
 import { columnResizing, tableEditing } from 'prosemirror-tables';
@@ -61,7 +61,7 @@ import { blockMarkdownNow, captureMarkdown, captureStableWire, captureTransactio
 import type { NotoEditorPort } from './NotoEditorPort';
 import { createOriginPlugin, getBlockOrigins, rebaseOrigins, transactionKeepsTopLevelNodes } from './origin-plugin';
 import { gitGutterPlugin, gitTargetAtSelection, setGitBlocks, showCommittedAtSelection, type GitRevertTarget } from './git-gutter';
-import { gitRevertTransaction } from './git-revert';
+import { gitRevertKind, gitRevertTransaction, type GitRevertContext } from './git-revert';
 import { closeGitPopover } from './git-popover';
 import type { WorkspaceGitBlocksV1 } from '../../../shared/workspace/v1/contracts';
 import { notoInputRules, type InputRuleOptions } from './input-rules';
@@ -377,7 +377,10 @@ export class NotoEditor implements NotoEditorPort {
       mathAdjacencyPlugin(),
       searchPlugin(),
       syntaxHighlightPlugin(),
-      gitGutterPlugin({ revert: (target) => this.revertGitBlock(target) }),
+      gitGutterPlugin({ revert: {
+        kind: (target) => this.gitRevertKind(target),
+        revert: (target) => this.revertGitBlock(target),
+      } }),
     ];
   }
 
@@ -1037,14 +1040,17 @@ export class NotoEditor implements NotoEditorPort {
   revertGitBlock(target: GitRevertTarget): boolean {
     const view = this.view;
     if (!view) return false;
-    const tr = gitRevertTransaction(view.state, target, {
-      origins: this.saveOrigins(view.state),
-      pristine: this.pristine,
-    });
+    const tr = gitRevertTransaction(view.state, target, this.revertContext(view.state));
     if (!tr) return false;
     view.dispatch(tr);
+    // Closed on both sides, so typing straight after it is a step of its own.
+    view.dispatch(closeHistory(view.state.tr));
     view.focus();
     return true;
+  }
+
+  private revertContext(state: EditorState): GitRevertContext {
+    return { origins: this.saveOrigins(state), pristine: this.pristine, document: this.document };
   }
 
   /** The keyboard's revert: the block at the caret, or a deleted run beside it. */
@@ -1054,10 +1060,10 @@ export class NotoEditor implements NotoEditorPort {
     return target ? this.revertGitBlock(target) : false;
   }
 
-  /** Whether the caret's block, or a deleted run beside it, can be reverted. */
-  get canRevertGitAtSelection(): boolean {
+  /** What reverting `target` would do ('restore' or 'remove'), or null when it cannot be done. */
+  gitRevertKind(target: GitRevertTarget): 'restore' | 'remove' | null {
     const view = this.view;
-    return view ? gitTargetAtSelection(view.state) !== null : false;
+    return view ? gitRevertKind(view.state, target, this.revertContext(view.state)) : null;
   }
 
   /** Drop the highlight, for when the find bar closes. */

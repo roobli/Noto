@@ -24,6 +24,10 @@ import { expandTransaction } from '../../src/shared/markdown/v3/revision-patch';
 import { resolveDeferredOpenSpans, enrichSpansInRange } from '../../src/shared/markdown/v3/roobli-md-adapter';
 import { viewportStubKey } from '../../src/renderer/editor/noto/viewport-stub';
 import type { NotoDocument } from '../../src/shared/markdown/v3/contracts';
+import { gitDeletedBefore, gitEntryAt, type GitRevertTarget } from '../../src/renderer/editor/noto/git-gutter';
+import { diffBlocks } from '../../src/shared/git/block-diff';
+import { blocksOf } from '../../src/main/workspace/git-blocks';
+import { NOTO_WORKSPACE_VERSION, type WorkspaceGitBlocksV1 } from '../../src/shared/workspace/v1/contracts';
 
 const encoder = new TextEncoder();
 const decoder = new TextDecoder();
@@ -1003,5 +1007,209 @@ describe('undo after save and IME composition on the sparse path', () => {
     save(h);
     expect(h.saved).toContain('漢字');
     expectSavedMatchesEditor(h, 'after composition');
+  });
+});
+
+// Revert to committed (git PR 3). HEAD is a corpus; the working file is HEAD
+// with blocks changed, deleted and added at random. Reverting every gutter
+// entry, then saving, must write HEAD byte for byte; undoing the reverts,
+// then saving, must write the working bytes byte for byte.
+
+function gutterFor(h: Harness, head: string): WorkspaceGitBlocksV1 {
+  const accepted = h.document.blocks;
+  const diff = diffBlocks(blocksOf(head), accepted.map((block) => block.markdown));
+  return {
+    version: NOTO_WORKSPACE_VERSION,
+    documentId: h.document.documentId,
+    blocks: diff.changed.map((entry) => ({ blockId: accepted[entry.ordinal]!.id, change: entry.change, head: entry.head })),
+    deleted: diff.deleted.map((entry) => ({ beforeBlockId: accepted[entry.before]?.id ?? null, head: entry.head, heads: entry.heads })),
+  };
+}
+
+/** Every place the gutter marks now, in document order. */
+function markedTargets(h: Harness): GitRevertTarget[] {
+  const state = view(h).state;
+  const targets: GitRevertTarget[] = [];
+  for (let index = 0; index <= state.doc.childCount; index += 1) {
+    if (gitDeletedBefore(state, index) !== null) targets.push({ kind: 'deleted', before: index });
+    if (index < state.doc.childCount && gitEntryAt(state, index)) targets.push({ kind: 'block', index });
+  }
+  return targets;
+}
+
+/** The marked places a revert is offered for. */
+function revertTargets(h: Harness): GitRevertTarget[] {
+  return markedTargets(h).filter((target) => h.editor.gitRevertKind(target) !== null);
+}
+
+/** The bytes a save would write now, without saving. */
+function peek(h: Harness): string {
+  const tx = expandTransaction(h.editor.captureSave(), h.document);
+  if (!tx) throw new Error('transaction did not expand');
+  const result = serializeDocument(h.document, tx);
+  if (result.status !== 'serialized') throw new Error(`serialize failed: ${(result as { code?: string }).code ?? ''}`);
+  return decoder.decode(result.outputBytes);
+}
+
+function isDirty(h: Harness): boolean {
+  return (h.editor as unknown as { dirty: boolean }).dirty;
+}
+
+/** HEAD's blocks with some changed, some deleted, some new ones added. */
+function workingFrom(head: string, r: () => number): string {
+  const blocks = blocksOf(head);
+  const out: string[] = [];
+  for (let i = 0; i < blocks.length; i += 1) {
+    const roll = r();
+    if (roll < 0.06) continue;
+    if (roll < 0.12) out.push(`Changed paragraph ${i} in the working copy.`);
+    else if (roll < 0.16) out.push(r() < 0.5 ? `### Changed heading ${i}` : `Changed *line* ${i} with \`code\`.`);
+    else out.push(blocks[i]!);
+    if (r() < 0.05) out.push(`A new paragraph after ${i}, not in the commit.`);
+  }
+  return `${out.join('\n\n')}\n`;
+}
+
+describe('revert to committed', () => {
+  const HEAD = 'Intro *line*.\n\n## Title\n\n- a\n- b\n\nKept paragraph.\n\n> quote\n\nEnd.\n';
+
+  it('a changed block saves exactly the committed bytes, keeping the gaps around it', () => {
+    const head = 'One.\n\n\n\nTwo   with  *odd*   spacing_ \n\nThree.\n';
+    const h = openTracked('One.\n\n\n\nTwo edited.\n\nThree.\n');
+    h.editor.setGitBlocks(gutterFor(h, head));
+    expect(revertTargets(h)).toEqual([{ kind: 'block', index: 1 }]);
+    expect(h.editor.revertGitBlock({ kind: 'block', index: 1 })).toBe(true);
+    expect(isDirty(h)).toBe(true);
+    expect(revertTargets(h)).toEqual([]);
+    expect(save(h)).toBe(head);
+  });
+
+  it('a deleted run comes back where it was', () => {
+    const h = openTracked('Intro *line*.\n\nKept paragraph.\n\n> quote\n\nEnd.\n');
+    h.editor.setGitBlocks(gutterFor(h, HEAD));
+    expect(revertTargets(h)).toEqual([{ kind: 'deleted', before: 1 }]);
+    expect(h.editor.revertGitBlock({ kind: 'deleted', before: 1 })).toBe(true);
+    expect(revertTargets(h)).toEqual([]);
+    expect(save(h)).toBe(HEAD);
+  });
+
+  it('a deleted run at the end comes back at the end', () => {
+    const h = openTracked('Intro *line*.\n\n## Title\n\n- a\n- b\n\nKept paragraph.\n');
+    h.editor.setGitBlocks(gutterFor(h, HEAD));
+    expect(h.editor.revertGitBlock({ kind: 'deleted', before: 4 })).toBe(true);
+    expect(save(h)).toBe(HEAD);
+  });
+
+  it('a new block is removed', () => {
+    const h = openTracked('Intro *line*.\n\n## Title\n\nBrand new.\n\n- a\n- b\n\nKept paragraph.\n\n> quote\n\nEnd.\n');
+    h.editor.setGitBlocks(gutterFor(h, HEAD));
+    expect(revertTargets(h)).toEqual([{ kind: 'block', index: 2 }]);
+    expect(h.editor.revertGitBlock({ kind: 'block', index: 2 })).toBe(true);
+    expect(save(h)).toBe(HEAD);
+  });
+
+  it('undo restores the exact prior bytes, before and after a save', () => {
+    const working = 'One.\n\nTwo  *edited*   by hand_ \n\nThree.\n';
+    const h = openTracked(working);
+    h.editor.setGitBlocks(gutterFor(h, 'One.\n\nTwo.\n\nThree.\n'));
+    h.editor.revertGitBlock({ kind: 'block', index: 1 });
+    expect(h.editor.history('undo')).toBe(true);
+    expect(isDirty(h)).toBe(false);
+    expect(save(h)).toBe(working);
+    h.editor.history('redo');
+    expect(save(h)).toBe('One.\n\nTwo.\n\nThree.\n');
+    h.editor.history('undo');
+    expect(save(h)).toBe(working);
+  });
+
+  it('a revert that only changes the formatting still makes the note dirty and saves', () => {
+    const head = 'One.\n\nTwo __strong__.\n\nThree.\n';
+    const h = openTracked('One.\n\nTwo **strong**.\n\nThree.\n');
+    h.editor.setGitBlocks(gutterFor(h, head));
+    h.editor.revertGitBlock({ kind: 'block', index: 1 });
+    expect(isDirty(h)).toBe(true);
+    expect(save(h)).toBe(head);
+  });
+
+  it('typing after a revert undoes on its own', () => {
+    const h = openTracked('One.\n\nTwo edited.\n\nThree.\n');
+    h.editor.setGitBlocks(gutterFor(h, 'One.\n\nTwo.\n\nThree.\n'));
+    h.editor.revertGitBlock({ kind: 'block', index: 1 });
+    typeAtCaret(h, 'X');
+    h.editor.history('undo');
+    expect(save(h)).toBe('One.\n\nTwo.\n\nThree.\n');
+  });
+
+  it('is not offered where the committed block would join its new neighbour, so the note always saves', () => {
+    // HEAD's list, put back before an indented block it never sat beside,
+    // would take that block in as its own continuation.
+    const h = openTracked('One.\n\n### Item after\n\n    indented\n\nTwo.\n');
+    h.editor.setGitBlocks(gutterFor(h, 'One.\n\n- item after\n\nTwo.\n'));
+    const marked = markedTargets(h);
+    expect(marked).toContainEqual({ kind: 'block', index: 1 });
+    expect(h.editor.gitRevertKind({ kind: 'block', index: 1 })).toBeNull();
+    expect(h.editor.revertGitBlock({ kind: 'block', index: 1 })).toBe(false);
+    // Removing the indented block, as deleting it by hand would, is offered,
+    // and then the list can go back.
+    expect(h.editor.gitRevertKind({ kind: 'block', index: 2 })).toBe('remove');
+    h.editor.revertGitBlock({ kind: 'block', index: 2 });
+    expect(h.editor.revertGitBlock({ kind: 'block', index: 1 })).toBe(true);
+    expect(save(h)).toBe('One.\n\n- item after\n\nTwo.\n');
+  });
+
+  it('the caret route reverts the block at the caret', () => {
+    const h = openTracked('One.\n\nTwo edited.\n\nThree.\n');
+    h.editor.setGitBlocks(gutterFor(h, 'One.\n\nTwo.\n\nThree.\n'));
+    placeCaretAtBlockStart(h, 0);
+    expect(h.editor.revertGitAtSelection()).toBe(false);
+    placeCaretAtBlockStart(h, 1);
+    expect(h.editor.revertGitAtSelection()).toBe(true);
+    expect(save(h)).toBe('One.\n\nTwo.\n\nThree.\n');
+  });
+
+  it('property: each revert undoes to the exact bytes, all of them write HEAD, and undoing them reads back as the working file', { timeout: 120_000 }, () => {
+    for (let seed = 1; seed <= 12; seed += 1) {
+      const r = rng(seed * 7919);
+      const head = corpus(60 + Math.floor(r() * 60));
+      const working = workingFrom(head, r);
+      if (working === head) continue;
+      const h = openTracked(working);
+      h.editor.setGitBlocks(gutterFor(h, head));
+      let reverts = 0;
+      for (let guard = 0; guard < 500; guard += 1) {
+        const targets = revertTargets(h);
+        if (targets.length === 0) break;
+        const target = targets[Math.floor(r() * targets.length)]!;
+        const label = `seed ${seed} ${JSON.stringify(target)}`;
+        const before = peek(h);
+        expect(h.editor.revertGitBlock(target), label).toBe(true);
+        let after: string;
+        try { after = peek(h); } catch (error) {
+          const ed = h.editor.captureSave();
+          throw new Error(`${label}: ${String(error)}\n${JSON.stringify(ed).slice(0, 4000)}\nWORKING ${JSON.stringify(working)}`);
+        }
+        // Undo is the exact prior bytes; redo the exact reverted ones.
+        expect(h.editor.history('undo'), label).toBe(true);
+        expect(peek(h), `${label} undo`).toBe(before);
+        expect(h.editor.history('redo'), label).toBe(true);
+        expect(peek(h), `${label} redo`).toBe(after);
+        reverts += 1;
+        // Now and then save midway, as autosave would; the gutter is then
+        // recomputed from the saved file as main does.
+        if (r() < 0.2) {
+          save(h);
+          h.editor.setGitBlocks(gutterFor(h, head));
+        }
+      }
+      expect(reverts, `seed ${seed}`).toBeGreaterThan(0);
+      expect(save(h), `seed ${seed} after reverting`).toBe(head);
+      // Undone across saves, a block that lost its place in the file is
+      // written as any undone edit is: the same document, not always the
+      // same bytes (the existing undo-after-save contract above).
+      while (h.editor.history('undo')) { /* every revert, one at a time */ }
+      save(h);
+      expectSavedMatchesEditor(h, `seed ${seed} after undo`);
+      expect(fullDoc(h.saved).eq(fullDoc(working)), `seed ${seed} after undo`).toBe(true);
+    }
   });
 });
