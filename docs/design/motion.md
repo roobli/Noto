@@ -72,7 +72,7 @@ arrivals all resolve to their final state on the first frame.
 
 ## Amendment, 2026-10-20
 
-Decided by cdcd. The two rules above that this changes are left as they were
+Decided by the maintainer. The two rules above that this changes are left as they were
 written. Where they disagree with this section, this section holds.
 
 **Keyboard-summoned overlays appear at once.** An overlay summoned from the
