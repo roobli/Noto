@@ -425,6 +425,33 @@ describe('save edge cases found by the property test', () => {
   });
 });
 
+describe('a save that returns after the buffer moved', () => {
+  it('keeps the edit that landed while the save was in flight', () => {
+    const h = open('# Note\n\nAlpha beta.\n');
+    const inFlight = h.editor.captureSave();
+
+    // Main is writing the captured transaction; the reader keeps typing.
+    const v = view(h);
+    v.dispatch(v.state.tr.insertText('Z', 1));
+
+    const tx = expandTransaction(inFlight, h.document);
+    if (!tx) throw new Error('transaction did not expand');
+    const result = serializeDocument(h.document, tx);
+    if (result.status !== 'serialized') throw new Error('serialize failed');
+    h.document = result.document;
+    h.editor.commit({ ...toWire(result.document), nodes: null });
+
+    expect(h.editor.isDirty).toBe(true);
+
+    const next = h.editor.captureSave();
+    const nextTx = expandTransaction(next, h.document);
+    if (!nextTx) throw new Error('transaction did not expand');
+    const nextResult = serializeDocument(h.document, nextTx);
+    if (nextResult.status !== 'serialized') throw new Error('serialize failed');
+    expect(decoder.decode(nextResult.outputBytes)).toContain('ZNote');
+  });
+});
+
 describe('character references through an edit', () => {
   it('keep their spelling, and a typed ampersand stays text', () => {
     const h = openTracked('Tom &amp; Jerry &copy; Q&A.\n\n| a &vert; b | c |\n| --- | --- |\n| &nbsp; | d |\n');
