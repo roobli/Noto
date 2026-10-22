@@ -21,7 +21,7 @@ licensing question is closed.
 
 Three values were changed from the source theme so that readable text clears
 WCAG AA's 4.5:1 on every surface it sits on, not only on the page. The
-decision is cdcd's, from the in-app polish audit; the values were measured
+decision is the maintainer's, from the in-app polish audit; the values were measured
 against the paper, panel, raised, overlay and code-fill surfaces.
 
 | Token | Theme | Was | Now | Why |

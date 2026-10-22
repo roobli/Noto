@@ -4,7 +4,7 @@ import { describe, expect, it } from 'vitest';
 /*
  * Readable text clears 4.5:1 against every surface it is set on, in both
  * themes, and the code's muted ink (comments, punctuation) clears it on the
- * code fill. Decided by cdcd on 2026-10-20: the dark muted and both code
+ * code fill. Decided by the maintainer on 2026-10-20: the dark muted and both code
  * mutes were lifted to these values; see resources/provenance/DESIGN_TOKENS.md.
  */
 const hex = (value: string): [number, number, number] => {
