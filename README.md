@@ -26,6 +26,18 @@ React and ProseMirror.
 Downloads, guides and the project's direction live at
 [roobli.github.io/Noto.docs](https://roobli.github.io/Noto.docs/).
 
+## Around the window
+
+The four states below come from the packaged build in the light theme.
+
+| Quick open | Command palette |
+| --- | --- |
+| ![Quick open over the file rail with three cache notes in the results](docs/images/noto-quick-open.png) | ![The command palette listing export formats over a cache sizing note](docs/images/noto-command-palette.png) |
+
+| Outline | Source mode |
+| --- | --- |
+| ![The outline in the rail beside a cache sizing note](docs/images/noto-outline.png) | ![The cache sizing note shown as Markdown source beside the file rail](docs/images/noto-source.png) |
+
 ## Project status
 
 Noto is usable and under active development. The current formal release is
