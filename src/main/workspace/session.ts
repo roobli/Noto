@@ -1392,7 +1392,7 @@ export class WorkspaceSession {
         blockId: accepted.blocks[entry.ordinal]!.id, change: entry.change, head: entry.head,
       })),
       deleted: (diff?.deleted ?? []).map((entry) => ({
-        beforeBlockId: accepted.blocks[entry.before]?.id ?? null, head: entry.head,
+        beforeBlockId: accepted.blocks[entry.before]?.id ?? null, head: entry.head, heads: entry.heads,
       })),
     };
     const previous = this.lastGutter;

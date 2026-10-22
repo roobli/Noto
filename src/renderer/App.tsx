@@ -2169,6 +2169,13 @@ function NotoWorkspace({ platform }: { platform: NotoPlatform }) {
         kind: 'git' as const,
         title: 'Show Block as Committed',
         source: 'Git',
+      }, {
+        // An editor transaction, undoable, saved like any edit.
+        key: 'git:revert',
+        testId: 'palette-git-revert',
+        kind: 'git' as const,
+        title: 'Revert Block to Committed',
+        source: 'Git',
       }]
       : [];
     return [...builtin, ...git, ...plugins];
@@ -2633,7 +2640,12 @@ function NotoWorkspace({ platform }: { platform: NotoPlatform }) {
             setPaletteOpen(false);
             if (!chosen) return;
             if (chosen.kind === 'export') exportNote(chosen.target);
-            else if (chosen.kind === 'git') { if (!editorRef.current?.showCommittedBlock()) editorRef.current?.focus(); }
+            else if (chosen.kind === 'git') {
+              const done = chosen.key === 'git:revert'
+                ? editorRef.current?.revertGitAtSelection()
+                : editorRef.current?.showCommittedBlock();
+              if (!done) editorRef.current?.focus();
+            }
             else executePluginCommand(chosen.pluginId, chosen.commandId);
           }}
         />

@@ -22,7 +22,7 @@ import { footnoteHoverPlugin } from './footnote-hover';
 import { sliceFromText } from './paste-text';
 import { EditorState, Selection, type Plugin, type Transaction, TextSelection } from 'prosemirror-state';
 import { EditorView } from 'prosemirror-view';
-import { history, redo, undo } from 'prosemirror-history';
+import { closeHistory, history, redo, undo } from 'prosemirror-history';
 import { dropCursor } from 'prosemirror-dropcursor';
 import { gapCursor } from 'prosemirror-gapcursor';
 import { columnResizing, tableEditing } from 'prosemirror-tables';
@@ -50,6 +50,7 @@ import {
   type NotoTargetEnvelope,
   type NotoTransaction,
   type NotoTransactionWire,
+  type NotoBlockOrigin,
 } from '../../../shared/markdown/v3/contracts';
 import { compactTransaction } from '../../../shared/markdown/v3/revision-patch';
 import {
@@ -57,10 +58,11 @@ import {
   sourceHasFinalNewline,
   sourceSettleKind,
 } from '../../source-mode-text';
-import { captureMarkdown, captureStableWire, captureTransaction, isUnwritableBlock, type CaptureStats, type PristineBlock } from './capture';
+import { blockMarkdownNow, captureMarkdown, captureStableWire, captureTransaction, effectiveOrigins, isUnwritableBlock, pinnedSource, type CaptureStats, type PristineBlock } from './capture';
 import type { NotoEditorPort } from './NotoEditorPort';
 import { createOriginPlugin, getBlockOrigins, rebaseOrigins, transactionKeepsTopLevelNodes } from './origin-plugin';
-import { gitGutterPlugin, setGitBlocks, showCommittedAtSelection } from './git-gutter';
+import { gitGutterPlugin, gitTargetAtSelection, setGitBlocks, showCommittedAtSelection, type GitRevertTarget } from './git-gutter';
+import { gitRevertKind, gitRevertTransaction, type GitRevertContext } from './git-revert';
 import { closeGitPopover } from './git-popover';
 import type { WorkspaceGitBlocksV1 } from '../../../shared/workspace/v1/contracts';
 import { notoInputRules, type InputRuleOptions } from './input-rules';
@@ -386,7 +388,10 @@ export class NotoEditor implements NotoEditorPort {
       mathAdjacencyPlugin(),
       searchPlugin(),
       syntaxHighlightPlugin(),
-      gitGutterPlugin(),
+      gitGutterPlugin({ revert: {
+        kind: (target) => this.gitRevertKind(target),
+        revert: (target) => this.revertGitBlock(target),
+      } }),
     ];
   }
 
@@ -707,10 +712,39 @@ export class NotoEditor implements NotoEditorPort {
     // write, and it is not in the document.
     const next = this.dirty
       ? this.target !== null || this.pendingSource !== null || !view.state.doc.eq(this.baselineDoc)
+        || this.pinsDiffer(view.state)
       : true;
     if (next === this.dirty) return;
     this.dirty = next;
     this.options.onDirtyChange?.(next);
+  }
+
+  /**
+   * Origins for a save: the editor's, plus those pinned to a reverted block
+   * or to the block an undo put back (capture.ts `pinSource`).
+   */
+  private saveOrigins(state: EditorState): (NotoBlockOrigin | null)[] {
+    return effectiveOrigins(state.doc, getBlockOrigins(state), this.document);
+  }
+
+  /**
+   * Whether a block equal in structure to the saved one is pinned to other
+   * bytes: a revert to the committed version that only changes how the block
+   * is written (`_a_` for `*a*`). The document then still has something to
+   * save. Only asked when the document already compares equal to the saved one.
+   */
+  private pinsDiffer(state: EditorState): boolean {
+    const origins = this.saveOrigins(state);
+    let differs = false;
+    state.doc.forEach((node, _offset, index) => {
+      if (differs) return;
+      const pin = pinnedSource(node);
+      if (!pin) return;
+      const origin = origins[index];
+      const previous = origin ? this.pristine.get(origin.blockId) : undefined;
+      if (!previous || previous.markdown !== pin.markdown) differs = true;
+    });
+    return differs;
   }
 
   get isDirty(): boolean {
@@ -1011,6 +1045,39 @@ export class NotoEditor implements NotoEditorPort {
     return view ? showCommittedAtSelection(view) : false;
   }
 
+  /**
+   * Revert one block to the last commit, as one undoable edit. The note is
+   * then dirty and saves through the normal path; nothing here touches git.
+   */
+  revertGitBlock(target: GitRevertTarget): boolean {
+    const view = this.view;
+    if (!view) return false;
+    const tr = gitRevertTransaction(view.state, target, this.revertContext(view.state));
+    if (!tr) return false;
+    view.dispatch(tr);
+    // Closed on both sides, so typing straight after it is a step of its own.
+    view.dispatch(closeHistory(view.state.tr));
+    view.focus();
+    return true;
+  }
+
+  private revertContext(state: EditorState): GitRevertContext {
+    return { origins: this.saveOrigins(state), pristine: this.pristine, document: this.document };
+  }
+
+  /** The keyboard's revert: the block at the caret, or a deleted run beside it. */
+  revertGitAtSelection(): boolean {
+    const view = this.view;
+    const target = view ? gitTargetAtSelection(view.state) : null;
+    return target ? this.revertGitBlock(target) : false;
+  }
+
+  /** What reverting `target` would do ('restore' or 'remove'), or null when it cannot be done. */
+  gitRevertKind(target: GitRevertTarget): 'restore' | 'remove' | null {
+    const view = this.view;
+    return view ? gitRevertKind(view.state, target, this.revertContext(view.state)) : null;
+  }
+
   /** Drop the highlight, for when the find bar closes. */
   clearSearch(): void {
     const view = this.view;
@@ -1087,7 +1154,7 @@ export class NotoEditor implements NotoEditorPort {
     if (!view) return '';
     return captureMarkdown({
       doc: view.state.doc,
-      origins: getBlockOrigins(view.state),
+      origins: this.saveOrigins(view.state),
       document: this.document,
       pristine: this.pristine,
     }).join('\n\n');
@@ -1114,7 +1181,7 @@ export class NotoEditor implements NotoEditorPort {
 
     const current = captureMarkdown({
       doc: view.state.doc,
-      origins: getBlockOrigins(view.state),
+      origins: this.saveOrigins(view.state),
       document: this.document,
       pristine: this.pristine,
     });
@@ -1263,7 +1330,7 @@ export class NotoEditor implements NotoEditorPort {
 
     const input = {
       doc: view.state.doc,
-      origins: getBlockOrigins(view.state),
+      origins: this.saveOrigins(view.state),
       document: this.document,
       pristine: this.pristine,
       envelope: this.target ?? undefined,
@@ -1304,7 +1371,7 @@ export class NotoEditor implements NotoEditorPort {
 
     return captureTransaction({
       doc: view.state.doc,
-      origins: getBlockOrigins(view.state),
+      origins: this.saveOrigins(view.state),
       document: this.document,
       pristine: this.pristine,
       envelope: this.target ?? undefined,

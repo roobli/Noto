@@ -46,16 +46,16 @@ describe('diffBlocks', () => {
   it('places a deleted run before the block that followed it, joined by a blank line', () => {
     expect(diffBlocks(['a', 'b', 'c', 'd'], ['a', 'd'])).toEqual({
       changed: [],
-      deleted: [{ before: 1, head: 'b\n\nc' }],
+      deleted: [{ before: 1, head: 'b\n\nc', heads: ['b', 'c'] }],
     });
   });
 
   it('places blocks deleted from the end at the block count', () => {
-    expect(diffBlocks(['a', 'b', 'c'], ['a'])).toEqual({ changed: [], deleted: [{ before: 1, head: 'b\n\nc' }] });
+    expect(diffBlocks(['a', 'b', 'c'], ['a'])).toEqual({ changed: [], deleted: [{ before: 1, head: 'b\n\nc', heads: ['b', 'c'] }] });
   });
 
   it('places blocks deleted from the start at zero', () => {
-    expect(diffBlocks(['a', 'b', 'c'], ['c'])).toEqual({ changed: [], deleted: [{ before: 0, head: 'a\n\nb' }] });
+    expect(diffBlocks(['a', 'b', 'c'], ['c'])).toEqual({ changed: [], deleted: [{ before: 0, head: 'a\n\nb', heads: ['a', 'b'] }] });
   });
 
   it('pairs an unmatched run positionally: modified first, then added', () => {
@@ -71,7 +71,7 @@ describe('diffBlocks', () => {
   it('pairs an unmatched run positionally: modified, then the rest deleted', () => {
     expect(diffBlocks(['a', 'b', 'c', 'z'], ['a', 'B', 'z'])).toEqual({
       changed: [{ ordinal: 1, change: 'modified', head: 'b' }],
-      deleted: [{ before: 2, head: 'c' }],
+      deleted: [{ before: 2, head: 'c', heads: ['c'] }],
     });
   });
 
@@ -84,7 +84,7 @@ describe('diffBlocks', () => {
     const now = ['h', 'p2', 'p3', 'new', 'p4'];
     const result = diffBlocks(head, now);
     expect(result.changed).toEqual([{ ordinal: 3, change: 'added', head: null }]);
-    expect(result.deleted).toEqual([{ before: 1, head: 'p1' }]);
+    expect(result.deleted).toEqual([{ before: 1, head: 'p1', heads: ['p1'] }]);
   });
 
   it('stays bounded on a huge differing middle: no alignment, still an answer', () => {
@@ -188,8 +188,8 @@ describe('git gutter mapping', () => {
 
   it('keeps deleted runs on the block that follows them, and at the end', () => {
     const state = stateWith(['one', 'two'], event([], [
-      { beforeBlockId: id(1), head: 'gone' },
-      { beforeBlockId: null, head: 'tail gone' },
+      { beforeBlockId: id(1), head: 'gone', heads: ['gone'] },
+      { beforeBlockId: null, head: 'tail gone', heads: ['tail gone'] },
     ]));
     expect(gitDeletedBefore(state, 1)).toBe('gone');
     expect(gitDeletedBefore(state, 0)).toBeNull();
@@ -293,7 +293,7 @@ describe('diffBlocks inside an unmatched stretch', () => {
         { ordinal: 2, change: 'modified', head: 'The first paragraph has not changed.' },
         { ordinal: 3, change: 'modified', head: 'The second paragraph, as committed.' },
       ],
-      deleted: [{ before: 4, head: 'Gone.' }],
+      deleted: [{ before: 4, head: 'Gone.', heads: ['Gone.'] }],
     });
   });
 

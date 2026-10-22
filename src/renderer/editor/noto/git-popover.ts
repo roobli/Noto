@@ -20,10 +20,24 @@ export const GIT_BLOCK_WORDS = {
   deleted: 'Deleted since the last commit',
 } as const;
 
-export type GitPopoverContent =
+/** The words on the revert action, by what it does. */
+export const GIT_REVERT_WORDS = {
+  restore: 'Revert to Committed',
+  remove: 'Remove Block',
+} as const;
+
+/** The one thing the popover can do besides show: revert, as an editor transaction. */
+export interface GitPopoverAction {
+  readonly kind: keyof typeof GIT_REVERT_WORDS;
+  /** Dispatches the revert and puts the focus back in the note. */
+  readonly run: () => boolean;
+}
+
+export type GitPopoverContent = (
   | { readonly kind: 'modified'; readonly text: string }
   | { readonly kind: 'deleted'; readonly text: string }
-  | { readonly kind: 'added'; readonly text: null };
+  | { readonly kind: 'added'; readonly text: null }
+) & { readonly action?: GitPopoverAction };
 
 let open: { readonly close: (restoreFocus: boolean) => void } | null = null;
 
@@ -75,6 +89,27 @@ export function openGitPopover(view: EditorView, anchor: HTMLElement, content: G
   // Scrolls on its own when long, and is reachable by Tab to scroll by key.
   body.tabIndex = 0;
   popover.append(body);
+
+  // The action sits under the panel, at the end, in the ordinary button: an
+  // undoable edit, so not the danger colour a destructive one would take.
+  let revert: HTMLButtonElement | null = null;
+  if (content.action) {
+    const action = content.action;
+    const actions = document.createElement('div');
+    actions.className = 'noto-git-popover-actions';
+    revert = document.createElement('button');
+    revert.type = 'button';
+    revert.className = 'noto-git-popover-revert';
+    revert.dataset.testid = 'git-popover-revert';
+    revert.dataset.gitRevert = action.kind;
+    revert.textContent = GIT_REVERT_WORDS[action.kind];
+    revert.addEventListener('click', () => {
+      finish(false);
+      if (!action.run()) view.focus();
+    });
+    actions.append(revert);
+    popover.append(actions);
+  }
 
   document.body.append(popover);
   place(popover, anchor);

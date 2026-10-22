@@ -32,6 +32,80 @@ export function isUnwritableBlock(node: ProseNode): boolean {
   return node.isTextblock && node.childCount === 0 && !node.type.spec.code;
 }
 
+/**
+ * Source pinned to one node object: the exact bytes it saves as, and the
+ * accepted block it stands for, when the origin plugin could not keep that.
+ *
+ * A revert to the committed version (git-revert.ts) replaces a whole block,
+ * which drops its origin and would leave it to the serializer's opinions.
+ * Instead the new node is pinned to the committed bytes and to the block it
+ * replaces, and the node it replaced is pinned to the bytes it had, so an undo
+ * (which puts that same object back) saves exactly what was there before.
+ * ProseMirror nodes are immutable: an edit to a pinned node makes a new
+ * object, which has no pin and is serialized as anything typed is.
+ */
+export interface PinnedSource {
+  readonly markdown: string;
+  readonly origin: NotoBlockOrigin | null;
+  /** Set from the last commit's bytes by a revert, rather than kept for an undo. */
+  readonly committed?: boolean;
+}
+
+const pins = new WeakMap<ProseNode, PinnedSource>();
+
+export function pinSource(node: ProseNode, pin: PinnedSource): void {
+  pins.set(node, pin);
+}
+
+export function pinnedSource(node: ProseNode): PinnedSource | undefined {
+  return pins.get(node);
+}
+
+/**
+ * The origins a save should use: the editor's, with a pinned node's origin
+ * filled in where the editor has none, when that origin belongs to the
+ * accepted document, is not claimed by another block, and keeps the order
+ * the serializer requires. Anything else stays null and the node is a new
+ * block, saved from its pinned bytes.
+ */
+export function effectiveOrigins(
+  doc: ProseNode,
+  origins: readonly (NotoBlockOrigin | null)[],
+  document: NotoDocumentWire,
+): (NotoBlockOrigin | null)[] {
+  const result = origins.slice(0, doc.childCount);
+  while (result.length < doc.childCount) result.push(null);
+  let anyPin = false;
+  doc.forEach((node, _offset, index) => {
+    if (result[index] === null && pins.get(node)?.origin) anyPin = true;
+  });
+  if (!anyPin) return result;
+  const claimed = new Set(result.filter((origin) => origin !== null).map((origin) => origin!.blockId));
+  // The next claimed ordinal to the right of each index, for the order check.
+  const nextOrdinal = new Array<number>(result.length + 1);
+  nextOrdinal[result.length] = Number.POSITIVE_INFINITY;
+  for (let index = result.length - 1; index >= 0; index -= 1) {
+    nextOrdinal[index] = result[index]?.ordinal ?? nextOrdinal[index + 1]!;
+  }
+  let previousOrdinal = -1;
+  for (let index = 0; index < result.length; index += 1) {
+    const current = result[index];
+    if (current) {
+      previousOrdinal = current.ordinal;
+      continue;
+    }
+    const pinned = pins.get(doc.child(index))?.origin;
+    if (!pinned || claimed.has(pinned.blockId)) continue;
+    const issued = document.origins[pinned.ordinal];
+    if (!issued || !sameOrigin(issued, pinned)) continue;
+    if (pinned.ordinal <= previousOrdinal || pinned.ordinal >= nextOrdinal[index + 1]!) continue;
+    result[index] = pinned;
+    claimed.add(pinned.blockId);
+    previousOrdinal = pinned.ordinal;
+  }
+  return result;
+}
+
 /** What a block looked like when the document was accepted. */
 export interface PristineBlock {
   readonly node: ProseNode;
@@ -71,13 +145,24 @@ function markdownFor(
   origin: NotoBlockOrigin | null,
   pristine: CaptureInput['pristine'],
 ): { markdown: string; reused: boolean } {
+  const pin = pins.get(node);
   if (origin) {
     const previous = pristine.get(origin.blockId);
-    if (previous && node.eq(previous.node)) {
+    if (previous && (pin ? pin.markdown === previous.markdown : node.eq(previous.node))) {
       return { markdown: previous.markdown, reused: true };
     }
   }
+  if (pin) return { markdown: pin.markdown, reused: false };
   return { markdown: blockToMarkdown(node), reused: false };
+}
+
+/** The bytes one block would save as now. */
+export function blockMarkdownNow(
+  node: ProseNode,
+  origin: NotoBlockOrigin | null,
+  pristine: CaptureInput['pristine'],
+): string {
+  return markdownFor(node, origin, pristine).markdown;
 }
 
 /**
@@ -226,10 +311,13 @@ export function captureStableWire(
       run = null;
       continue;
     }
-    let unchanged = node === acceptedNodes[index];
+    const pin = pins.get(node);
+    let unchanged = !pin && node === acceptedNodes[index];
     if (!unchanged && origin) {
       const previous = input.pristine.get(origin.blockId);
-      unchanged = !!previous && (node === previous.node || node.eq(previous.node));
+      unchanged = !!previous && (pin
+        ? pin.markdown === previous.markdown
+        : node === previous.node || node.eq(previous.node));
     }
     const list = writtenListMarker(
       node,
@@ -261,7 +349,7 @@ export function captureStableWire(
     // block with no origin has nothing to reuse and must be rendered.
     units.push({
       origin,
-      markdown: unchanged && origin ? null : blockToMarkdown(node),
+      markdown: unchanged && origin ? null : pin ? pin.markdown : blockToMarkdown(node),
     });
   }
 

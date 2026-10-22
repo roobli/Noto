@@ -21,10 +21,12 @@
 
 import { Plugin, PluginKey, type EditorState, type Transaction } from 'prosemirror-state';
 import type { EditorView } from 'prosemirror-view';
+import type { Node as ProseNode } from 'prosemirror-model';
 import type { NotoBlockOrigin } from '../../../shared/markdown/v3/contracts';
 import type { WorkspaceGitBlocksV1 } from '../../../shared/workspace/v1/contracts';
 import { originKey } from './origin-plugin';
-import { GIT_BLOCK_WORDS, openGitPopover } from './git-popover';
+import { pinnedSource } from './capture';
+import { GIT_BLOCK_WORDS, openGitPopover, type GitPopoverAction } from './git-popover';
 
 export interface GitGutterEntry {
   readonly change: 'modified' | 'added';
@@ -35,6 +37,8 @@ interface GitGutterState {
   readonly blocks: ReadonlyMap<string, GitGutterEntry>;
   /** Keyed by the block the deleted ones stood before; `''` for the end. */
   readonly deleted: ReadonlyMap<string, string>;
+  /** The same runs' committed blocks one by one, for a revert. */
+  readonly deletedHeads: ReadonlyMap<string, readonly string[]>;
   readonly origins: readonly (NotoBlockOrigin | null)[] | null;
 }
 
@@ -49,7 +53,7 @@ export const gitGutterKey = new PluginKey<GitGutterState>('noto-git-gutter');
 
 const END = '';
 
-const EMPTY: GitGutterState = { blocks: new Map(), deleted: new Map(), origins: null };
+const EMPTY: GitGutterState = { blocks: new Map(), deleted: new Map(), deletedHeads: new Map(), origins: null };
 
 function originsOf(state: EditorState): readonly (NotoBlockOrigin | null)[] | null {
   return originKey.getState(state)?.origins ?? null;
@@ -64,6 +68,30 @@ export function setGitBlocks(tr: Transaction, event: WorkspaceGitBlocksV1 | null
   return tr.setMeta(gitGutterKey, event).setMeta('addToHistory', false);
 }
 
+/**
+ * The accepted block the node at `index` stands for. The origin plugin's
+ * answer, or, for a node an undo put back after a revert (which the plugin
+ * cannot follow across a whole-block replace), the block its pin names. A
+ * node set from the committed bytes stands for nothing the gutter marks: it
+ * is what was committed.
+ */
+function originAt(state: EditorState, origins: readonly (NotoBlockOrigin | null)[], index: number): NotoBlockOrigin | null {
+  const node = state.doc.child(index);
+  const pin = pinnedSource(node);
+  if (pin?.committed) return null;
+  return origins[index] ?? pin?.origin ?? null;
+}
+
+/** Whether the deleted run before `index` has been put back: the nodes before it are its committed blocks. */
+function restoredBefore(state: EditorState, index: number, heads: readonly string[] | undefined): boolean {
+  if (!heads || heads.length === 0 || index < heads.length) return false;
+  for (let offset = 0; offset < heads.length; offset += 1) {
+    const pin = pinnedSource(state.doc.child(index - heads.length + offset));
+    if (!pin?.committed || pin.markdown !== heads[offset]) return false;
+  }
+  return true;
+}
+
 /** Every mark, by the top-level node it belongs to. One pass over the top level. */
 export function gitGutterMarks(state: EditorState): GitGutterMarks {
   const gutter = gitGutterKey.getState(state);
@@ -73,33 +101,54 @@ export function gitGutterMarks(state: EditorState): GitGutterMarks {
   const deleted: Array<{ before: number; head: string }> = [];
   const count = state.doc.childCount;
   for (let index = 0; index < count; index += 1) {
-    const origin = origins[index];
+    const origin = originAt(state, origins, index);
     if (!origin) continue;
     const removed = gutter.deleted.get(origin.blockId);
-    if (removed !== undefined) deleted.push({ before: index, head: removed });
+    if (removed !== undefined && !restoredBefore(state, index, gutter.deletedHeads.get(origin.blockId))) {
+      deleted.push({ before: index, head: removed });
+    }
     const entry = gutter.blocks.get(origin.blockId);
     if (entry) lines.push({ index, ...entry });
   }
   const atEnd = gutter.deleted.get(END);
-  if (atEnd !== undefined) deleted.push({ before: count, head: atEnd });
+  if (atEnd !== undefined && !restoredBefore(state, count, gutter.deletedHeads.get(END))) {
+    deleted.push({ before: count, head: atEnd });
+  }
   return { lines, deleted };
 }
 
 /** What the gutter says about the top-level block at `index`, if anything. */
 export function gitEntryAt(state: EditorState, index: number): GitGutterEntry | null {
   const gutter = gitGutterKey.getState(state);
-  const origin = originsOf(state)?.[index] ?? null;
-  if (!gutter || !origin) return null;
-  return gutter.blocks.get(origin.blockId) ?? null;
+  const origins = originsOf(state);
+  if (!gutter || !origins || index < 0 || index >= state.doc.childCount) return null;
+  const origin = originAt(state, origins, index);
+  return origin ? gutter.blocks.get(origin.blockId) ?? null : null;
+}
+
+/** The deleted run just before the top-level block at `index`, if it is still deleted. */
+function deletedKey(state: EditorState, index: number): string | null {
+  const gutter = gitGutterKey.getState(state);
+  const origins = originsOf(state);
+  if (!gutter || !origins || index < 0) return null;
+  let key: string | null;
+  if (index >= state.doc.childCount) key = END;
+  else key = originAt(state, origins, index)?.blockId ?? null;
+  if (key === null || !gutter.deleted.has(key)) return null;
+  if (restoredBefore(state, Math.min(index, state.doc.childCount), gutter.deletedHeads.get(key))) return null;
+  return key;
+}
+
+/** The committed blocks of the deleted run just before block `index`, one by one. */
+export function gitDeletedHeadsBefore(state: EditorState, index: number): readonly string[] | null {
+  const key = deletedKey(state, index);
+  return key === null ? null : gitGutterKey.getState(state)!.deletedHeads.get(key) ?? null;
 }
 
 /** The deleted run just before the top-level block at `index`, if any. */
 export function gitDeletedBefore(state: EditorState, index: number): string | null {
-  const gutter = gitGutterKey.getState(state);
-  if (!gutter) return null;
-  if (index >= state.doc.childCount) return gutter.deleted.get(END) ?? null;
-  const origin = originsOf(state)?.[index] ?? null;
-  return origin ? gutter.deleted.get(origin.blockId) ?? null : null;
+  const key = deletedKey(state, index);
+  return key === null ? null : gitGutterKey.getState(state)!.deleted.get(key) ?? null;
 }
 
 function posOfChild(state: EditorState, index: number): number {
@@ -114,12 +163,60 @@ function blockElement(view: EditorView, index: number): HTMLElement | null {
   return node instanceof HTMLElement ? node : null;
 }
 
+/** Where a revert applies: a block, or the place before a block (or the end) where a run was deleted. */
+export type GitRevertTarget =
+  | { readonly kind: 'block'; readonly index: number }
+  | { readonly kind: 'deleted'; readonly before: number };
+
+/** The editor's revert, given to the plugin by its owner (NotoEditor). */
+export interface GitReverter {
+  /** What a revert there would do; null when it cannot be done. */
+  kind(target: GitRevertTarget): 'restore' | 'remove' | null;
+  revert(target: GitRevertTarget): boolean;
+}
+
+const reverters = new WeakMap<EditorView, GitReverter>();
+
+/** The top-level index of a node object now, or -1; the end of the note for null. */
+function indexNow(view: EditorView, node: ProseNode | null): number {
+  const doc = view.state.doc;
+  if (node === null) return doc.childCount;
+  for (let index = 0; index < doc.childCount; index += 1) if (doc.child(index) === node) return index;
+  return -1;
+}
+
+/**
+ * The popover's revert, aimed at the node rather than the index, so a
+ * document that changed while the popover was open (a background pass, a
+ * new gutter) reverts the block that was shown or nothing.
+ */
+function actionFor(view: EditorView, target: GitRevertTarget): GitPopoverAction | undefined {
+  const reverter = reverters.get(view);
+  const kind = reverter?.kind(target) ?? null;
+  if (!reverter || !kind) return undefined;
+  const revert = (to: GitRevertTarget) => reverter.revert(to);
+  const doc = view.state.doc;
+  if (target.kind === 'block') {
+    const node = doc.child(target.index);
+    return { kind, run: () => {
+      const index = indexNow(view, node);
+      return index >= 0 && revert({ kind: 'block', index });
+    } };
+  }
+  const before = target.before < doc.childCount ? doc.child(target.before) : null;
+  return { kind, run: () => {
+    const index = indexNow(view, before);
+    return index >= 0 && revert({ kind: 'deleted', before: index });
+  } };
+}
+
 function openFor(view: EditorView, index: number, entry: GitGutterEntry): boolean {
   const anchor = blockElement(view, index);
   if (!anchor) return false;
+  const action = actionFor(view, { kind: 'block', index });
   openGitPopover(view, anchor, entry.change === 'modified'
-    ? { kind: 'modified', text: entry.head ?? '' }
-    : { kind: 'added', text: null });
+    ? { kind: 'modified', text: entry.head ?? '', action }
+    : { kind: 'added', text: null, action });
   return true;
 }
 
@@ -127,8 +224,17 @@ function openDeleted(view: EditorView, before: number, head: string): boolean {
   const count = view.state.doc.childCount;
   const anchor = blockElement(view, before < count ? before : count - 1);
   if (!anchor) return false;
-  openGitPopover(view, anchor, { kind: 'deleted', text: head });
+  openGitPopover(view, anchor, { kind: 'deleted', text: head, action: actionFor(view, { kind: 'deleted', before }) });
   return true;
+}
+
+/** Where the keyboard's revert applies from the caret: its block, or a deleted run beside it. */
+export function gitTargetAtSelection(state: EditorState): GitRevertTarget | null {
+  const index = state.selection.$from.index(0);
+  if (gitEntryAt(state, index)) return { kind: 'block', index };
+  if (gitDeletedBefore(state, index) !== null) return { kind: 'deleted', before: index };
+  if (gitDeletedBefore(state, index + 1) !== null) return { kind: 'deleted', before: index + 1 };
+  return null;
 }
 
 /**
@@ -180,7 +286,8 @@ class GutterLayer {
   /** The top-level elements being watched for size, while there is a gutter. */
   private readonly watched = new Set<Element>();
 
-  constructor(private readonly view: EditorView) {
+  constructor(private readonly view: EditorView, revert: GitReverter | undefined) {
+    if (revert) reverters.set(view, revert);
     this.layer = document.createElement('div');
     this.layer.className = 'noto-git-gutter';
     this.layer.setAttribute('aria-hidden', 'true');
@@ -354,7 +461,7 @@ function place(element: HTMLElement, left: number, top: number, height: number):
   element.style.height = `${Math.round(height)}px`;
 }
 
-export function gitGutterPlugin(): Plugin<GitGutterState> {
+export function gitGutterPlugin(options: { readonly revert?: GitReverter } = {}): Plugin<GitGutterState> {
   return new Plugin<GitGutterState>({
     key: gitGutterKey,
     state: {
@@ -364,7 +471,8 @@ export function gitGutterPlugin(): Plugin<GitGutterState> {
         if (meta !== undefined) {
           const blocks = new Map((meta?.blocks ?? []).map((block) => [block.blockId, { change: block.change, head: block.head }] as const));
           const deleted = new Map((meta?.deleted ?? []).map((run) => [run.beforeBlockId ?? END, run.head] as const));
-          return { blocks, deleted, origins: originsOf(next) };
+          const deletedHeads = new Map((meta?.deleted ?? []).map((run) => [run.beforeBlockId ?? END, run.heads] as const));
+          return { blocks, deleted, deletedHeads, origins: originsOf(next) };
         }
         if (!tr.docChanged || isEmpty(previous)) return previous;
         const origins = originsOf(next);
@@ -373,6 +481,6 @@ export function gitGutterPlugin(): Plugin<GitGutterState> {
         return origins === previous.origins ? previous : { ...previous, origins };
       },
     },
-    view: (view) => new GutterLayer(view),
+    view: (view) => new GutterLayer(view, options.revert),
   });
 }
