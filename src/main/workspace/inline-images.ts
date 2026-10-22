@@ -88,6 +88,12 @@ export interface InlineDeps {
   /** The folder the note lives in, which relative addresses are relative to. */
   readonly noteDirectory: string;
   readonly read: (absolute: string) => Promise<Uint8Array>;
+  /**
+   * Resolve a local path to a file the session is allowed to read, or null.
+   * Main passes the same guard the asset protocol uses; a test that only
+   * exercises rewriting may omit it.
+   */
+  readonly resolve?: (absolute: string) => Promise<string | null>;
 }
 
 /** Matches the `src` of an `img` tag, which is the only shape our own serializer emits. */
@@ -126,9 +132,11 @@ export async function inlineImages(html: string, deps: InlineDeps): Promise<stri
     if (absolute === null) continue;
     const media = mediaTypeFor(absolute);
     if (media === null) continue;
+    const readable = deps.resolve ? await deps.resolve(absolute) : absolute;
+    if (readable === null) continue;
     let bytes: Uint8Array;
     try {
-      bytes = await deps.read(absolute);
+      bytes = await deps.read(readable);
     } catch {
       // A picture that is not there stays as it was, so the exported file shows
       // the same broken reference the note itself shows, rather than silently
