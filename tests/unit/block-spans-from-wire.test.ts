@@ -7,7 +7,7 @@ import { blockFromSpan, docFromSpans } from '../../src/shared/markdown/v3/pm/fro
 import { parseDocument, toWire } from '../../src/shared/markdown/v3/document';
 import { cloneParsedSpans } from '../../src/renderer/editor/noto/parse-document';
 import { createEnrichFlags, lazyNodeSpan, splitBlocksViaRoobli } from '../../src/shared/markdown/v3/roobli-md-adapter';
-import { canSkipDialectEnrich, collectFootnoteDefinitionIds, withKnownFootnoteIds } from '../../src/shared/markdown/v3/pm/from-engine';
+import { canSkipDialectEnrich, collectFootnoteDefinitionIds, collectLinkDefinitionIds, withKnownFootnoteIds, withKnownLinkDefinitionIds } from '../../src/shared/markdown/v3/pm/from-engine';
 import { isNotoDocumentWire } from '../../src/shared/file-truth/v1/validate';
 
 /**
@@ -149,8 +149,9 @@ describe('blockSpansFromWire', () => {
       expect(wire.engineOwned, name).toHaveLength(wire.origins.length);
       expect(isNotoDocumentWire(wire), name).toBe(true);
       const spans = blockSpansFromWire(wire)!;
-      const asked = withKnownFootnoteIds(collectFootnoteDefinitionIds(spans),
-        () => spans.map((span) => canSkipDialectEnrich(span.kind, span.markdown)));
+      const asked = withKnownLinkDefinitionIds(collectLinkDefinitionIds(spans),
+        () => withKnownFootnoteIds(collectFootnoteDefinitionIds(spans),
+          () => spans.map((span) => canSkipDialectEnrich(span.kind, span.markdown))));
       expect(spans.map((span) => span.engineOwned), name).toEqual(asked);
       // Flags from the shipped answers are the flags asking would give.
       const plain = spans.map(({ kind, markdown }) => ({ kind, markdown }));

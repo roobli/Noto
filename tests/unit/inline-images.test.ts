@@ -128,4 +128,30 @@ describe('inlineImages', () => {
       read: async () => { throw new Error('should not have read anything'); },
     })).toBe(html);
   });
+
+  it('does not read a file the session refuses', async () => {
+    const html = '<img src="../../secret.png">';
+    let reads = 0;
+    const out = await inlineImages(html, {
+      noteDirectory: '/vault/notes',
+      read: async () => { reads += 1; return PNG; },
+      resolve: async () => null,
+    });
+    expect(reads).toBe(0);
+    expect(out).toBe(html);
+  });
+
+  it('reads the real path the session approved', async () => {
+    const seen: string[] = [];
+    const out = await inlineImages('<img src="./a.png">', {
+      noteDirectory: '/vault/notes',
+      read: async (absolute) => { seen.push(absolute); return PNG; },
+      resolve: async (absolute) => {
+        expect(absolute).toBe('/vault/notes/a.png');
+        return '/real/vault/a.png';
+      },
+    });
+    expect(seen).toEqual(['/real/vault/a.png']);
+    expect(out).toContain('data:image/png;base64,');
+  });
 });

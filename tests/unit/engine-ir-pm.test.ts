@@ -33,6 +33,7 @@ import {
   parseSimpleFlatListsSource,
   parseSimpleTableSource,
   withKnownFootnoteIds,
+  withKnownLinkDefinitionIds,
 } from '../../src/shared/markdown/v3/pm/from-engine';
 import { blockFromSpan, blocksFromSpans, docFromSpans } from '../../src/shared/markdown/v3/pm/from-mdast';
 import {
@@ -108,8 +109,12 @@ describe('from-engine IR helpers', () => {
     expect(canSkipDialectEnrich('paragraph', 'see www.example.com')).toBe(true);
     expect(canSkipDialectEnrich('paragraph', 'mail user@example.com')).toBe(true);
     expect(canSkipDialectEnrich('paragraph', 'see <admin@example.com>')).toBe(true);
-    expect(canSkipDialectEnrich('paragraph', 'See [ref][id] and [x][]')).toBe(true);
-    expect(canSkipDialectEnrich('paragraph', 'Pic ![alt][logo]')).toBe(true);
+    withKnownLinkDefinitionIds(new Set(['id', 'x']), () => {
+      expect(canSkipDialectEnrich('paragraph', 'See [ref][id] and [x][]')).toBe(true);
+    });
+    withKnownLinkDefinitionIds(new Set(['logo']), () => {
+      expect(canSkipDialectEnrich('paragraph', 'Pic ![alt][logo]')).toBe(true);
+    });
     expect(canSkipDialectEnrich('paragraph', 'Hello __x__')).toBe(true);
     expect(canSkipDialectEnrich('paragraph', 'Hello _em_')).toBe(true);
     expect(canSkipDialectEnrich('paragraph', 'uses snake_case id')).toBe(true);
@@ -3361,7 +3366,8 @@ describe('blockFromEngineSpan', () => {
     const wikiStrong = [...Array(markedWiki!.childCount)].map((_, i) => markedWiki!.child(i)).find((n) => n.text === '[[Home]]');
     expect(wikiStrong!.marks.some((m) => m.type.name === 'strong')).toBe(true);
     expect(blockFromEngineSpan('paragraph', '[[a] [b]]')?.textContent).toBe('[[a] [b]]');
-    const fullRef = blockFromEngineSpan('paragraph', 'See [ref link][Alpha] nearby');
+    const fullRef = withKnownLinkDefinitionIds(new Set(['alpha']), () =>
+      blockFromEngineSpan('paragraph', 'See [ref link][Alpha] nearby'));
     expect(fullRef?.textContent).toBe('See ref link nearby');
     const fullBit = [...Array(fullRef!.childCount)].map((_, i) => fullRef!.child(i)).find((n) => n.text === 'ref link');
     expect(fullBit!.marks.find((m) => m.type.name === 'link')!.attrs).toMatchObject({
@@ -3371,7 +3377,8 @@ describe('blockFromEngineSpan', () => {
       identifier: 'alpha',
       label: 'Alpha',
     });
-    const collapsed = blockFromEngineSpan('paragraph', '[shortcut][]');
+    const collapsed = withKnownLinkDefinitionIds(new Set(['shortcut']), () =>
+      blockFromEngineSpan('paragraph', '[shortcut][]'));
     expect(collapsed?.textContent).toBe('shortcut');
     expect(collapsed!.child(0).marks.find((m) => m.type.name === 'link')!.attrs).toMatchObject({
       href: '',
@@ -3379,7 +3386,8 @@ describe('blockFromEngineSpan', () => {
       identifier: 'shortcut',
       label: 'shortcut',
     });
-    const markedRef = blockFromEngineSpan('paragraph', 'Go [**bold**][id] now');
+    const markedRef = withKnownLinkDefinitionIds(new Set(['id']), () =>
+      blockFromEngineSpan('paragraph', 'Go [**bold**][id] now'));
     expect(markedRef?.textContent).toBe('Go bold now');
     const boldRef = [...Array(markedRef!.childCount)].map((_, i) => markedRef!.child(i)).find((n) => n.text === 'bold');
     expect(boldRef!.marks.map((m) => m.type.name).sort()).toEqual(['link', 'strong']);
@@ -3388,7 +3396,8 @@ describe('blockFromEngineSpan', () => {
       identifier: 'id',
       label: 'id',
     });
-    const refImg = blockFromEngineSpan('paragraph', 'Pic ![alt][logo] here');
+    const refImg = withKnownLinkDefinitionIds(new Set(['logo']), () =>
+      blockFromEngineSpan('paragraph', 'Pic ![alt][logo] here'));
     expect(refImg?.child(1).type.name).toBe('image');
     expect(refImg?.child(1).attrs).toMatchObject({
       src: '',
@@ -3398,7 +3407,8 @@ describe('blockFromEngineSpan', () => {
       identifier: 'logo',
       label: 'logo',
     });
-    const collapsedImg = blockFromEngineSpan('paragraph', '![banner][]');
+    const collapsedImg = withKnownLinkDefinitionIds(new Set(['banner']), () =>
+      blockFromEngineSpan('paragraph', '![banner][]'));
     expect(collapsedImg?.child(0).attrs).toMatchObject({
       src: '',
       alt: 'banner',
@@ -4067,10 +4077,12 @@ describe('enrich skip for engine-owned spans', () => {
     const closedBracket = blockFromEngineSpan('paragraph', '![a\\]b](./f.png)');
     expect(closedBracket!.child(0).attrs.alt).toBe('a]b');
 
-    const ref = blockFromEngineSpan('paragraph', '![alt $x$][logo]');
+    const ref = withKnownLinkDefinitionIds(new Set(['logo']), () =>
+      blockFromEngineSpan('paragraph', '![alt $x$][logo]'));
     expect(ref!.child(0).attrs).toMatchObject({ alt: 'alt x', referenceType: 'full', src: '' });
 
-    const collapsed = blockFromEngineSpan('paragraph', '![**bold**][]');
+    const collapsed = withKnownLinkDefinitionIds(new Set(['**bold**']), () =>
+      blockFromEngineSpan('paragraph', '![**bold**][]'));
     expect(collapsed!.child(0).attrs.alt).toBe('bold');
 
     // Nested brackets stay dialect; matched `***` in alt is engine-owned.
@@ -4104,7 +4116,8 @@ describe('enrich skip for engine-owned spans', () => {
     const enriched = enrichSpansInRange(none.spans, text, { from: 0, to: none.spans.length });
     expect(enriched[0]!.kind).toBe('paragraph');
     expect(enriched[0]!.semanticKey).toBe(engineSemanticKey('paragraph', enriched[0]!.markdown));
-    const pm = blockFromEngineSpan('paragraph', enriched[0]!.markdown);
+    const pm = withKnownLinkDefinitionIds(new Set(['alpha']), () =>
+      blockFromEngineSpan('paragraph', enriched[0]!.markdown));
     expect(pm?.textContent).toBe('See ref nearby.');
     const bit = [...Array(pm!.childCount)].map((_, i) => pm!.child(i)).find((n) => n.text === 'ref');
     expect(bit!.marks.find((m) => m.type.name === 'link')!.attrs.referenceType).toBe('full');

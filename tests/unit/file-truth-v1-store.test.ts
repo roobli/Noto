@@ -87,6 +87,16 @@ describe('Noto file-truth v1 save transaction', () => {
     expect(await readFile(file, 'utf8')).toBe(external);
   });
 
+  it('recreates a file deleted under an open buffer', async () => {
+    const { file, store, candidate } = await harness();
+    const before = await readFile(file, 'utf8');
+    await store.platform.remove(file);
+    await settle();
+    const outcome = await store.save(candidate);
+    expect(outcome.status).toBe('saved');
+    expect(await readFile(file, 'utf8')).toBe(before.replace('Original paragraph.', 'Edited paragraph.'));
+  });
+
   it('admits only one main-process file-truth transaction at a time', async () => {
     const { store, candidate } = await harness();
     const first = store.save(candidate);

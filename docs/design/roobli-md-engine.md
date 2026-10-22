@@ -1,7 +1,7 @@
 # `@roobli/md` — parse backend adapter
 
 Noto’s markdown v3 stack (`src/shared/markdown/v3/`) defaults to the public MIT
-package **[@roobli/md](https://github.com/roobli/md)** v0.1.20 (“WYSIWYG-first
+package **[@roobli/md](https://github.com/roobli/md)** v0.1.23 (“WYSIWYG-first
 markdown engine for Noto”).
 
 > **Update:** the `NOTO_MARKDOWN_ENGINE` switch, `engine-flag.ts`, and the
@@ -22,12 +22,12 @@ mdast dump.
 ## Dependency
 
 ```
-"@roobli/md": "github:roobli/md#2e723e8c79169607b342275f140b71baa75c5854"
+"@roobli/md": "github:roobli/md#b408b1d24a814d7045209fad7e97741ad63a2805"
 ```
 
-That commit is v0.1.20 (the merge of roobli/md#23). It is pinned by commit
-until the `v0.1.20` tag is pushed, then goes back to `#v0.1.20`; pnpm resolves
-either to the same tarball.
+That commit is v0.1.23 (the lazy-continuation fixes from roobli/md#26 and md#27). It is pinned by commit so
+a moved tag cannot change what Noto builds; `#v0.1.23` resolves to the same
+tarball.
 
 pnpm must allow its `prepare` (tsc) build — see `allowBuilds` in
 `pnpm-workspace.yaml`.
@@ -64,8 +64,7 @@ snake_case), bare http(s) autolinks, table delimiter widening (vault
 three-dash; content cells stay unpadded), line-prefix offset alignment
 (0–3 leading ASCII spaces → leading/gaps, micromark parity), and
 `sourceEditBetween` / `reparseFromText` host helpers. Noto’s
-`syntax.ts` remains the micromark-path serializer when
-`NOTO_MARKDOWN_ENGINE=micromark`.
+`syntax.ts` remains the writer for changed blocks and the micromark oracle.
 
 ## Parity tests
 
@@ -95,9 +94,8 @@ serialize lock-in on the `@roobli/md` backend.
 Curated A/B fixtures live under `tests/fixtures/markdown-golden/` and are
 wired by `tests/unit/markdown-golden-gates.test.ts` (core set plus GFM inline,
 nested lists, HTML blocks, denser CJK+wiki, callout edges, hr/setext,
-link-definitions, trailing-spaces/soft-break, simple quotes, simple footnote-defs, empty footnote-defs, CJK emphasis, hard-breaks, images, empty/meta fences, escapes, table-align, ordered-start, inline HTML). They compare the legacy **micromark** path against the product-default
-`roobli-md` path on the same sources (via test override) — they do **not** change
-`NOTO_MARKDOWN_ENGINE` for the rest of the suite.
+link-definitions, trailing-spaces/soft-break, simple quotes, simple footnote-defs, empty footnote-defs, CJK emphasis, hard-breaks, images, empty/meta fences, escapes, table-align, ordered-start, inline HTML). They compare the legacy **micromark** oracle against the product default on the
+same sources; the environment switch is gone.
 
 | Gate | Assertion |
 | ---- | --------- |
@@ -162,8 +160,7 @@ refuses. Footnote-ref callout titles/bodies are
 **engine-owned when doc-wide defs are known** (open enrich / `docFromSpans` /
 paste multi-block): promote `[^id]` iff a matching def exists, else literal
 (micromark parity); single-span IR→PM without known ids still falls through to
-dialect. List-steal pipe-less `- | -` closed at split (v0.1.18). Lazy empty-container / link-def title / ordered start≠1 closed at split (v0.1.19). Escape hatch:
-`NOTO_MARKDOWN_ENGINE=micromark`.
+dialect. List-steal pipe-less `- | -` closed at split (v0.1.18). Lazy empty-container / link-def title / ordered start≠1 closed at split (v0.1.19). Lazy continuation after a heading, fence or nested quote, and definitions interrupting a paragraph, closed in v0.1.22, with the nested-quote case in v0.1.23.
 
 ## Bridge docs (engine repo)
 
@@ -174,8 +171,9 @@ dialect. List-steal pipe-less `- | -` closed at split (v0.1.18). Lazy empty-cont
 
 ## Status
 
-**Product default is `@roobli/md`.** Pin is `@roobli/md` v0.1.19; escape hatch
-`NOTO_MARKDOWN_ENGINE=micromark`. Quote/callout and
+**Product default is `@roobli/md`.** Pin is `@roobli/md` v0.1.23. The
+micromark escape hatch was removed in #332; the legacy path remains only as a
+test oracle. Quote/callout and
 indented-code split parity are closed; engine serialize dialect (hard-break /
 list-marker / verbatim / bare autolink / table delimiters / Phase 12 CJK
 emphasis), Phase 10 line-prefix offsets, Phase 11 `reparseFromText`, and
@@ -186,21 +184,19 @@ Phase 15 setext-`---` vs thematic-break parity (v0.1.12), Phase 16 mixed-marker 
 
 **Host wiring (`replaceMarkdown`).** `PriorSplitCache`
 (`src/shared/markdown/v3/prior-split-cache.ts`) seeds a structural split on
-open / reload from the resolved spans (no extra parse). On the product
-`@roobli/md` path (also when `NOTO_MARKDOWN_ENGINE=roobli-md` is explicit),
+open / reload from the resolved spans (no extra parse). On the `@roobli/md`
+path,
 `NotoEditor.replaceMarkdown` calls `spansForReplace` → `reparseFromTextViaRoobli`
 with `neighborSlack: 1`. WYSIWYG typing / paste invalidates the cache (`apply`
 skips invalidation while `replaceInFlight`); the next replace falls back to a
-full split and reseeds. Escape hatch `NOTO_MARKDOWN_ENGINE=micromark` keeps the
-legacy path. Unit coverage: `tests/unit/prior-split-cache.test.ts`.
+full split and reseeds. Unit coverage: `tests/unit/prior-split-cache.test.ts`.
 
 **Host wiring (block-mode serialize).** On the product `@roobli/md` path,
 `serializeDocument` routes all block-mode saves — identity, single-block, and
 multi-block insert/delete — through `@roobli/md` `serializeDocument` (via
 `toEngineDocument` / `toSerializeUnits`). Noto still validates forged origins,
 re-attaches `sha256` on preserved ranges, and keeps branded `documentId` /
-revision ids. `source` mode stays on the Noto serializer (host escape hatch).
-`NOTO_MARKDOWN_ENGINE=micromark` keeps the legacy path. Unit coverage:
+revision ids. `source` mode stays on the Noto serializer (host escape hatch). Unit coverage:
 `tests/unit/roobli-md-serialize-host.test.ts`.
 
 **Open-path cuts.** `splitBlocksViaRoobli` defaults to bulk mdast
@@ -237,7 +233,7 @@ images** (`[text][id]` / `[text][]` / `![alt][id]` / `![alt][]`), **simple bare
 http(s) autolinks**, **simple angle-bracket http(s) autolinks**, **simple www. autolinks**, **simple email autolinks** (bare + angle / mailto), **simple wiki links** (`[[target]]` / `[[target|alias]]` as literal text; decoration
 plugin owns display), and **simple backslash escapes** (ASCII punctuation + trailing-`\` hard breaks), including **escaped pipes in simple GFM table cells**, **ragged body rows on
 simple GFM tables**, and **simple inline HTML** (single- or multi-line tags / comments / PI / declarations / CDATA as `inline_html` atoms), and **simple inline math** (`$…$` / `$$…$$` as `math_inline`), are engine-owned.
-Product default is `@roobli/md` (escape hatch: `NOTO_MARKDOWN_ENGINE=micromark`).
+Product default is `@roobli/md`.
 
 Next: keep growing `markdown-golden/` (more GFM / vault edges), extend IR→PM
 only where micromark parity is locked (Phase 17 mismatched header/delim are paragraphs at split; residual dialect for thirty-eight+ nests (intentional cap) and nested-bracket image alts; footnote-ref callout titles/bodies owned with doc-wide defs; list-steal pipe-less closed (v0.1.18); lazy empty-container closed (v0.1.19); under-indented paragraph nest-exit after blank owned; under-indented structural nest-exit owned; nest-sibling after nest-exit owned; lazy-after-blank owned; setext-shaped tight `---` in list items owned; empty-item + blank + structural closed (v0.1.17); cross-family same-indent sibling mixes owned;
@@ -252,6 +248,5 @@ simple-footnote-defs, empty-footnote-defs, simple-setext-dash-headings, simple-m
 **Default-on landed** (approved in #282). Residual dialect: thirty-eight+ nests (cap) and nested-bracket image alts / exotic inline refuses.
 
 **Noto `0.0.2-alpha.9`** shipped the adapter (#37) plus `@roobli/md` v0.1.1 quote/
-callout parity (#38). Pin is now `@roobli/md` v0.1.19 (Phase 22 lazy empty-container / link-def title / ordered start≠1 on top of Phase 21 list-steal pipe-less / Phase 20 empty list item + blank + structural outside / Phase 19 same-indent list marker/delimiter split / Phase 18 `md serve` / Phase 17 table header/delim columns /
-Phase 16 mixed-marker nested lists / Phase 15 setext-`---` / Phase 14 nest/interrupt + adjacent-def / Phase 13 lazy / Phase 12 CJK / Phase 11 / 10 / 9 / 8 / 7 / v0.1.2). Escape hatch:
-`NOTO_MARKDOWN_ENGINE=micromark`.
+callout parity (#38). Pin is now `@roobli/md` v0.1.23 (Phase 22 lazy empty-container / link-def title / ordered start≠1 on top of Phase 21 list-steal pipe-less / Phase 20 empty list item + blank + structural outside / Phase 19 same-indent list marker/delimiter split / Phase 18 `md serve` / Phase 17 table header/delim columns /
+Phase 16 mixed-marker nested lists / Phase 15 setext-`---` / Phase 14 nest/interrupt + adjacent-def / Phase 13 lazy / Phase 12 CJK / Phase 11 / 10 / 9 / 8 / 7 / v0.1.2).

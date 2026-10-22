@@ -6,7 +6,7 @@
  * (plain / empty / simple-marked single-paragraph body; optional soft-wrap /
  * hard-break), paragraph/heading with plain or **simple marked** phrasing
  * (`**strong**` / `*em*` / `__strong__` / `_em_` / `~~del~~` / `` `code` ``;
- * up to nine-level nested marks e.g. `**bold _italic_**` / `*em **strong** em*` /
+ * up to thirty-seven-level nested marks e.g. `**bold _italic_**` / `*em **strong** em*` /
  * `**bold *em ~~strike~~ more* bold**` / `**a *b ~~c _d_ c~~ b* a**` / `**a *b ~~c _d `e` d_ c~~ b* a**` / `**v *w ~~x _y *z `a` z* y_ x~~ w* v**` / `**u *v ~~w _x *y _z `a` z_ y* x_ w~~ v* u**` / `**t *u ~~v _w *x _y *z `a` z* y_ x* w_ v~~ u* t**` / `**s _t *u ~~v _w *x _y *z `a` z* y_ x* w_ v~~ u* t_ s**` / `*r **s _t *u ~~v _w *x _y *z `a` z* y_ x* w_ v~~ u* t_ s** r*`; hard breaks engine-owned; snake_case underscores stay literal),
  * **simple** blockquotes (every line `>`-prefixed; plain or simple-marked
  * paragraphs incl. hard breaks, nested quotes, simple lists-in-quotes,
@@ -89,7 +89,7 @@ export const ENGINE_LEAF_KINDS: ReadonlySet<NotoBlockKind> = new Set([
  * links, code, math, HTML, autolink). Hard breaks alone do **not** force dialect
  * for plain paragraph/heading — those become engine-owned `hard_break` nodes
  * (serialize still writes two trailing spaces via `hardBreakAsTwoSpaces`).
- * Simple `*` / `**` / `_` / `__` / `~~` / `` ` `` marks (incl. up to nine-level
+ * Simple `*` / `**` / `_` / `__` / `~~` / `` ` `` marks (incl. up to thirty-seven-level
  * nesting), simple inline links / images, simple reference links / images,
  * simple bare http(s) + angle-bracket http(s) + www. + email autolinks, and
  * simple wiki `[[…]]` (literal text) are engine-owned via `tryInlineNodesFromSource`;
@@ -260,7 +260,11 @@ function plainRunNodes(
   marks: readonly Mark[] = [],
   trimTrailing = false,
 ): ProseNode[] {
-  const normalized = md.replace(/\r\n/g, '\n');
+  const normalized = md
+    .replace(/\r\n/g, '\n')
+    // A continuation line's leading spaces are not part of the paragraph;
+    // micromark strips them, so the fast reader must too.
+    .replace(/\n[ \t]+/g, '\n');
   if (!HARD_BREAK_RE.test(normalized)) {
     const body = trimTrailing ? normalized.trimEnd() : normalized;
     return textNodes(body, marks);
@@ -293,10 +297,18 @@ export interface TryInlineOptions {
    * see the same set without threading options through every helper.
    */
   readonly knownFootnoteIds?: ReadonlySet<string>;
+  /**
+   * Lowercased link-definition identifiers known in the document. A reference
+   * link or image is owned only when its id is in the set; otherwise the block
+   * goes to the document-aware path rather than inventing an empty href.
+   */
+  readonly knownLinkDefinitionIds?: ReadonlySet<string>;
 }
 
 /** Active doc-wide footnote def ids for the current IR→PM build (sync only). */
 let activeKnownFootnoteIds: ReadonlySet<string> | undefined;
+/** Active doc-wide link-definition ids for the current IR→PM build (sync only). */
+let activeKnownLinkDefinitionIds: ReadonlySet<string> | undefined;
 
 /**
  * Run `fn` with doc-wide footnote definition ids visible to the inline
@@ -313,6 +325,19 @@ export function withKnownFootnoteIds<T>(
     return fn();
   } finally {
     activeKnownFootnoteIds = prev;
+  }
+}
+
+export function withKnownLinkDefinitionIds<T>(
+  ids: ReadonlySet<string>,
+  fn: () => T,
+): T {
+  const prev = activeKnownLinkDefinitionIds;
+  activeKnownLinkDefinitionIds = ids;
+  try {
+    return fn();
+  } finally {
+    activeKnownLinkDefinitionIds = prev;
   }
 }
 
@@ -337,11 +362,31 @@ export function collectFootnoteDefinitionIds(
   return ids;
 }
 
+/**
+ * Collect normalized link-definition identifiers from structural spans. Uses
+ * the first-line `[label]:` shape only, so a deferred enrich can know the
+ * document's references before the dialect attaches.
+ */
+export function collectLinkDefinitionIds(
+  spans: readonly { readonly kind: string; readonly markdown: string }[],
+): ReadonlySet<string> {
+  const ids = new Set<string>();
+  for (const span of spans) {
+    if (span.kind !== 'link-definition') continue;
+    const line = span.markdown.replace(/\r\n/g, '\n').split('\n')[0] ?? '';
+    const m = /^ {0,3}\[([^\]\n]+)\]:/u.exec(line);
+    if (!m) continue;
+    const id = normalizeReferenceIdentifier(m[1]!);
+    if (id.length > 0) ids.add(id);
+  }
+  return ids;
+}
+
 
 /**
  * Engine-owned inline IR: plain text, hard breaks, and a simple subset of marks
  * (`**strong**`, `*emphasis*`, `__strong__`, `_emphasis_`, `~~strikethrough~~`,
- * `` `inline code` ``) plus **up to nine-level nesting** (e.g. `**bold _italic_**`,
+ * `` `inline code` ``) plus **up to thirty-seven-level nesting** (e.g. `**bold _italic_**`,
  * `*em **strong** em*`, `**bold *em ~~strike~~ more* bold**`, `**a *b ~~c _d_ c~~ b* a**`, `**a *b ~~c _d `e` d_ c~~ b* a**`, `**v *w ~~x _y *z `a` z* y_ x~~ w* v**`, `**u *v ~~w _x *y _z `a` z_ y* x_ w~~ v* u**`, `**t *u ~~v _w *x _y *z `a` z* y_ x* w_ v~~ u* t**`, `**s _t *u ~~v _w *x _y *z `a` z* y_ x* w_ v~~ u* t_ s**`, `*r **s _t *u ~~v _w *x _y *z `a` z* y_ x* w_ v~~ u* t_ s** r*`, `` **`code`** ``), **simple inline links / images**
  * (`[text](url)`, `[text](url "title")`, `![alt](url)`), **simple reference**
  * (`[text][id]` / `[text][]` / `![alt][id]` / `![alt][]`), **simple bare
@@ -373,6 +418,12 @@ export function tryInlineNodesFromSource(
     return withKnownFootnoteIds(options.knownFootnoteIds, () => tryInlineNodesFromSource(md, {
       ...options,
       knownFootnoteIds: undefined,
+    }));
+  }
+  if (options.knownLinkDefinitionIds !== undefined && options.knownLinkDefinitionIds !== activeKnownLinkDefinitionIds) {
+    return withKnownLinkDefinitionIds(options.knownLinkDefinitionIds, () => tryInlineNodesFromSource(md, {
+      ...options,
+      knownLinkDefinitionIds: undefined,
     }));
   }
   const normalized = md.replace(/\r\n/g, '\n');
@@ -435,6 +486,16 @@ function isWordChar(ch: string | undefined): boolean {
   if (!ch) return false;
   // Match syntax.ts WORD: ASCII alnum + Latin-1 supplement + CJK ideographs.
   return /[0-9A-Za-z\u00C0-\u024F\u3400-\u4DBF\u4E00-\u9FFF]/u.test(ch);
+}
+
+/** CommonMark punctuation: Unicode P (punctuation) or S (symbol). */
+function isPunctChar(ch: string | undefined): boolean {
+  return ch !== undefined && /[\p{P}\p{S}]/u.test(ch);
+}
+
+/** CJK ideograph, where the CJK-friendly extension relaxes flanking. */
+function isCjkChar(ch: string | undefined): boolean {
+  return ch !== undefined && /[\u3400-\u4DBF\u4E00-\u9FFF]/u.test(ch);
 }
 
 
@@ -822,7 +883,7 @@ function flattenNodesToImageAlt(nodes: readonly ProseNode[]): string | null {
 /**
  * Micromark-equivalent plain alt string for a simple image label, or `null` →
  * dialect. Owns: plain text; simple `$…$` / `$$…$$` (delimiters stripped, inner
- * kept as text — not `math_inline` nodes); simple flat / up-to-nine-level marks
+ * kept as text — not `math_inline` nodes); simple flat / up-to-thirty-seven-level marks
  * (`**` / `*` / `__` / `_` / `~~` / `` ` ``; snake_case `_` flanking); simple
  * backslash escapes of ASCII punct; literal simple HTML tags as characters;
  * angle http(s)/email autolinks (brackets stripped, text kept).
@@ -849,6 +910,17 @@ function parseSimpleImageAlt(label: string): string | null {
 /** Max nest depth (37 = outer + thirty-seven nested, e.g. `_p *q **r _s *t **u _v *w **x _y *z **a _b *c **d _e *f **g _h *i **j _k *l **m _n *o **p _q *r **s _t *u ~~v _w *x _y *z `a` z* y_ x* w_ v~~ u* t_ s** r* q_ p** o* n_ m** l* k_ j** i* h_ g** f* e_ d** c* b_ a** z* y_ x** w* v_ u** t* s_ r** q* p_`). */
 const MAX_MARK_NEST = 37;
 
+/**
+ * How deep `skipNestedSpan` may recurse before it hands the block back.
+ *
+ * The lookahead for a closer can walk through another opener, and an unclosed
+ * run of openers (`'*a '.repeat(5000)`) used to recurse once per opener until
+ * the JS stack gave out. A shape deeper than the mark nesting the fast reader
+ * supports is not one it can prove, so returning -1 sends the block to
+ * micromark instead of guessing.
+ */
+const MAX_SKIP_DEPTH = 64;
+
 function parseSimpleAsteriskTildeCode(
   md: string,
   parentMarks: readonly Mark[] = [],
@@ -872,6 +944,21 @@ function parseSimpleAsteriskTildeCode(
 
   const isWs = (ch: string | undefined): boolean =>
     ch === ' ' || ch === '\t' || ch === '\n' || ch === '\r';
+
+  /**
+   * CommonMark left-flanking for `*`, `_`, `**`, `__`, `~~`. A run may open
+   * only when it is not followed by whitespace and either the next character
+   * is not punctuation or the previous one is whitespace, punctuation or CJK.
+   * The CJK exception is the extension Noto already uses for `*`, `_` and
+   * `~~`: `文~~删~~` opens where bare CommonMark would not.
+   */
+  const canOpen = (at: number, length: number): boolean => {
+    const previous = at > 0 ? input[at - 1] : undefined;
+    const next = input[at + length];
+    if (!next || isWs(next)) return false;
+    if (!isPunctChar(next)) return true;
+    return !previous || isWs(previous) || isPunctChar(previous) || isCjkChar(previous);
+  };
 
   /**
    * Advance past a CommonMark backslash escape at `at`. Escaped punctuation
@@ -942,7 +1029,8 @@ function parseSimpleAsteriskTildeCode(
    * Skip a balanced nested span starting at `at` (code / ~~ / ** / * / __ / _).
    * Returns end index exclusive, or -1 if unmatched / ambiguous.
    */
-  const skipNestedSpan = (at: number): number => {
+  const skipNestedSpan = (at: number, depth = 0): number => {
+    if (depth >= MAX_SKIP_DEPTH) return -1;
     if (input[at] === '$') {
       const math = endOfSimpleInlineMath(input, at);
       if (!math) return -1;
@@ -980,7 +1068,7 @@ function parseSimpleAsteriskTildeCode(
           if (search === at + 2) return -1;
           if (isWs(input[search - 1])) {
             if (search + 2 < len && !isWs(input[search + 2])) {
-              const next = skipNestedSpan(search);
+              const next = skipNestedSpan(search, depth + 1);
               if (next < 0) return -1;
               search = next;
               continue;
@@ -1005,26 +1093,26 @@ function parseSimpleAsteriskTildeCode(
           continue;
         }
         if (input[search] === '`') {
-          const next = skipNestedSpan(search);
+          const next = skipNestedSpan(search, depth + 1);
           if (next < 0) return -1;
           search = next;
           continue;
         }
         if (input.startsWith('~~', search)) {
-          const next = skipNestedSpan(search);
+          const next = skipNestedSpan(search, depth + 1);
           if (next < 0) return -1;
           search = next;
           continue;
         }
         // Nested `*em*` / `_em_` / `__strong__` may hold `**`; skip them.
         if (input[search] === '*' && !input.startsWith('**', search)) {
-          const next = skipNestedSpan(search);
+          const next = skipNestedSpan(search, depth + 1);
           if (next < 0) return -1;
           search = next;
           continue;
         }
         if (input.startsWith('__', search) || input[search] === '_') {
-          const next = skipNestedSpan(search);
+          const next = skipNestedSpan(search, depth + 1);
           if (next < 0) return -1;
           search = next;
           continue;
@@ -1034,7 +1122,7 @@ function parseSimpleAsteriskTildeCode(
           if (isWs(input[search - 1])) {
             // Same-delimiter nest (`**a **b** c**`): skip inner opener.
             if (search + 2 < len && !isWs(input[search + 2])) {
-              const next = skipNestedSpan(search);
+              const next = skipNestedSpan(search, depth + 1);
               if (next < 0) return -1;
               search = next;
               continue;
@@ -1060,7 +1148,7 @@ function parseSimpleAsteriskTildeCode(
           if (search === at + 2) return -1;
           if (isWs(input[search - 1])) {
             if (search + 2 < len && !isWs(input[search + 2])) {
-              const next = skipNestedSpan(search);
+              const next = skipNestedSpan(search, depth + 1);
               if (next < 0) return -1;
               search = next;
               continue;
@@ -1086,25 +1174,25 @@ function parseSimpleAsteriskTildeCode(
           continue;
         }
         if (input.startsWith('**', search)) {
-          const next = skipNestedSpan(search);
+          const next = skipNestedSpan(search, depth + 1);
           if (next < 0) return -1;
           search = next;
           continue;
         }
         if (input[search] === '`') {
-          const next = skipNestedSpan(search);
+          const next = skipNestedSpan(search, depth + 1);
           if (next < 0) return -1;
           search = next;
           continue;
         }
         if (input.startsWith('~~', search)) {
-          const next = skipNestedSpan(search);
+          const next = skipNestedSpan(search, depth + 1);
           if (next < 0) return -1;
           search = next;
           continue;
         }
         if (input.startsWith('__', search) || input[search] === '_') {
-          const next = skipNestedSpan(search);
+          const next = skipNestedSpan(search, depth + 1);
           if (next < 0) return -1;
           search = next;
           continue;
@@ -1113,7 +1201,7 @@ function parseSimpleAsteriskTildeCode(
           if (search === at + 1) return -1;
           if (isWs(input[search - 1])) {
             if (search + 1 < len && !isWs(input[search + 1]) && !input.startsWith('**', search)) {
-              const next = skipNestedSpan(search);
+              const next = skipNestedSpan(search, depth + 1);
               if (next < 0) return -1;
               search = next;
               continue;
@@ -1140,13 +1228,13 @@ function parseSimpleAsteriskTildeCode(
           continue;
         }
         if (input[search] === '`') {
-          const next = skipNestedSpan(search);
+          const next = skipNestedSpan(search, depth + 1);
           if (next < 0) return -1;
           search = next;
           continue;
         }
         if (input.startsWith('~~', search) || input.startsWith('**', search) || input[search] === '*') {
-          const next = skipNestedSpan(search);
+          const next = skipNestedSpan(search, depth + 1);
           if (next < 0) return -1;
           search = next;
           continue;
@@ -1158,7 +1246,7 @@ function parseSimpleAsteriskTildeCode(
           }
           if (isWs(input[search - 1])) {
             if (search + 1 < len && !isWs(input[search + 1]) && !input.startsWith('__', search)) {
-              const next = skipNestedSpan(search);
+              const next = skipNestedSpan(search, depth + 1);
               if (next < 0) return -1;
               search = next;
               continue;
@@ -2205,7 +2293,7 @@ function parseSimpleAsteriskTildeCode(
     }
 
     if (input.startsWith('~~', i)) {
-      if (isWs(input[i + 2])) {
+      if (!canOpen(i, 2)) {
         emitPlain(i, i + 2);
         i += 2;
         continue;
@@ -2219,7 +2307,7 @@ function parseSimpleAsteriskTildeCode(
     }
 
     if (input.startsWith('**', i)) {
-      if (isWs(input[i + 2])) {
+      if (!canOpen(i, 2)) {
         emitPlain(i, i + 2);
         i += 2;
         continue;
@@ -2254,7 +2342,7 @@ function parseSimpleAsteriskTildeCode(
         i += 2;
         continue;
       }
-      if (isWs(input[i + 2])) {
+      if (!canOpen(i, 2)) {
         emitPlain(i, i + 2);
         i += 2;
         continue;
@@ -2283,8 +2371,8 @@ function parseSimpleAsteriskTildeCode(
     }
 
     if (input[i] === '*') {
-      // Not left-flanking → literal asterisk (e.g. `2 * 3`).
-      if (isWs(input[i + 1])) {
+      // Not left-flanking → literal asterisk (e.g. `2 * 3`, `a*.*b`).
+      if (!canOpen(i, 1)) {
         emitPlain(i, i + 1);
         i += 1;
         continue;
@@ -2305,7 +2393,7 @@ function parseSimpleAsteriskTildeCode(
         continue;
       }
       // Not left-flanking → literal.
-      if (isWs(input[i + 1])) {
+      if (!canOpen(i, 1)) {
         emitPlain(i, i + 1);
         i += 1;
         continue;
@@ -2435,6 +2523,12 @@ function parseSimpleAsteriskTildeCode(
           emitPlain(i, end);
           i = end;
           continue;
+        }
+        // The block-local reader cannot resolve a reference. Own it only when
+        // the document build supplied the definitions; otherwise hand the
+        // block to the document-aware path rather than inventing an empty href.
+        if (activeKnownLinkDefinitionIds === undefined || !activeKnownLinkDefinitionIds.has(refIdentifier)) {
+          return null;
         }
         const referenceType = isCollapsed ? 'collapsed' : 'full';
 
@@ -2637,6 +2731,10 @@ export interface ParsedHeading {
 /** ATX or setext heading body text (no inline marks). */
 export function parseHeadingSource(md: string): ParsedHeading | null {
   const trimmed = md.trimEnd();
+  const empty = /^(#{1,6})[ \t]*$/u.exec(trimmed);
+  if (empty) {
+    return { level: Math.min(6, empty[1]!.length), text: '' };
+  }
   const atx = /^(#{1,6})[ \t]+(.+?)[ \t]*#*[ \t]*$/s.exec(trimmed);
   if (atx) {
     return { level: Math.min(6, atx[1]!.length), text: atx[2]! };

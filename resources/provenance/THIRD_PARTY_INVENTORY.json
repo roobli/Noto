@@ -1,5 +1,5 @@
 {
-  "lockfileSha256": "9c96a2cb4b9652c448e90d4d71bed510184074431e11b5fb302fec3bd3a492cd",
+  "lockfileSha256": "8d61a8d05692312d79b8dc1235b20233bd46a37015e1519ef8cf18e92f157438",
   "packages": [
     {
       "name": "@antfu/install-pkg",
@@ -601,7 +601,7 @@
       ]
     },
     {
-      "name": "@parcel/watcher-linux-x64-glibc",
+      "name": "@parcel/watcher-darwin-arm64",
       "version": "2.6.0",
       "license": "MIT",
       "repository": "https://github.com/parcel-bundler/watcher.git",
@@ -629,7 +629,7 @@
       ]
     },
     {
-      "name": "@rolldown/binding-linux-x64-gnu",
+      "name": "@rolldown/binding-darwin-arm64",
       "version": "1.2.6",
       "license": "MIT",
       "repository": "git+https://github.com/rolldown/rolldown.git",
@@ -646,7 +646,7 @@
     },
     {
       "name": "@roobli/md",
-      "version": "0.1.21",
+      "version": "0.1.23",
       "license": "MIT",
       "repository": "git+https://github.com/roobli/md.git",
       "noticeFiles": [
@@ -1221,7 +1221,7 @@
       ]
     },
     {
-      "name": "@typescript/typescript-linux-x64",
+      "name": "@typescript/typescript-darwin-arm64",
       "version": "7.0.2",
       "license": "Apache-2.0",
       "repository": "https://github.com/microsoft/TypeScript.git",
@@ -3134,6 +3134,24 @@
       ]
     },
     {
+      "name": "fsevents",
+      "version": "2.3.2",
+      "license": "MIT",
+      "repository": "https://github.com/fsevents/fsevents.git",
+      "noticeFiles": [
+        "LICENSE"
+      ]
+    },
+    {
+      "name": "fsevents",
+      "version": "2.3.3",
+      "license": "MIT",
+      "repository": "https://github.com/fsevents/fsevents.git",
+      "noticeFiles": [
+        "LICENSE"
+      ]
+    },
+    {
       "name": "function-bind",
       "version": "1.1.2",
       "license": "MIT",
@@ -3770,7 +3788,7 @@
       "noticeFiles": []
     },
     {
-      "name": "lightningcss-linux-x64-gnu",
+      "name": "lightningcss-darwin-arm64",
       "version": "1.33.0",
       "license": "MPL-2.0",
       "repository": "https://github.com/parcel-bundler/lightningcss.git",

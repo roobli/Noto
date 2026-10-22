@@ -2,9 +2,9 @@
 
 Generated from the installed dependency tree. Do not edit by hand.
 
-- Lockfile SHA-256: `9c96a2cb4b9652c448e90d4d71bed510184074431e11b5fb302fec3bd3a492cd`
-- Unique resolved packages: 742
-- Packages with copied license or notice text: 713
+- Lockfile SHA-256: `8d61a8d05692312d79b8dc1235b20233bd46a37015e1519ef8cf18e92f157438`
+- Unique resolved packages: 744
+- Packages with copied license or notice text: 715
 - Packages without a root license or notice file: 29
 
 | Package | Declared license | License files | Repository |
@@ -76,12 +76,12 @@ Generated from the installed dependency tree. Do not edit by hand.
 | `@npmcli/fs@2.1.2` | ISC | LICENSE.md | https://github.com/npm/fs.git |
 | `@npmcli/move-file@2.0.1` | MIT | LICENSE.md | https://github.com/npm/move-file.git |
 | `@oxc-project/types@0.147.0` | MIT | LICENSE | git+https://github.com/oxc-project/oxc.git |
-| `@parcel/watcher-linux-x64-glibc@2.6.0` | MIT | LICENSE | https://github.com/parcel-bundler/watcher.git |
+| `@parcel/watcher-darwin-arm64@2.6.0` | MIT | LICENSE | https://github.com/parcel-bundler/watcher.git |
 | `@parcel/watcher@2.6.0` | MIT | LICENSE | https://github.com/parcel-bundler/watcher.git |
 | `@playwright/test@1.62.1` | Apache-2.0 | LICENSE, NOTICE | git+https://github.com/microsoft/playwright.git |
-| `@rolldown/binding-linux-x64-gnu@1.2.6` | MIT | none found | git+https://github.com/rolldown/rolldown.git |
+| `@rolldown/binding-darwin-arm64@1.2.6` | MIT | none found | git+https://github.com/rolldown/rolldown.git |
 | `@rolldown/pluginutils@1.0.1` | MIT | LICENSE | git+https://github.com/rolldown/plugins.git |
-| `@roobli/md@0.1.21` | MIT | LICENSE | git+https://github.com/roobli/md.git |
+| `@roobli/md@0.1.23` | MIT | LICENSE | git+https://github.com/roobli/md.git |
 | `@sindresorhus/is@4.6.0` | MIT | license | sindresorhus/is |
 | `@standard-schema/spec@1.1.0` | MIT | LICENSE | https://github.com/standard-schema/standard-schema |
 | `@szmarczak/http-timer@4.0.6` | MIT | LICENSE | git+https://github.com/szmarczak/http-timer.git |
@@ -145,7 +145,7 @@ Generated from the installed dependency tree. Do not edit by hand.
 | `@types/whatwg-mimetype@3.0.2` | MIT | LICENSE | https://github.com/DefinitelyTyped/DefinitelyTyped.git |
 | `@types/wrap-ansi@3.0.0` | MIT | LICENSE | https://www.github.com/DefinitelyTyped/DefinitelyTyped.git |
 | `@types/yauzl@2.10.3` | MIT | LICENSE | https://github.com/DefinitelyTyped/DefinitelyTyped.git |
-| `@typescript/typescript-linux-x64@7.0.2` | Apache-2.0 | LICENSE, NOTICE.txt | https://github.com/microsoft/TypeScript.git |
+| `@typescript/typescript-darwin-arm64@7.0.2` | Apache-2.0 | LICENSE, NOTICE.txt | https://github.com/microsoft/TypeScript.git |
 | `@upsetjs/venn.js@2.0.0` | MIT | LICENSE | https://github.com/upsetjs/venn.js.git |
 | `@vitejs/plugin-react@6.1.1` | MIT | LICENSE | git+https://github.com/vitejs/vite-plugin-react.git |
 | `@vitest/expect@4.1.11` | MIT | LICENSE | git+https://github.com/vitest-dev/vitest.git |
@@ -359,6 +359,8 @@ Generated from the installed dependency tree. Do not edit by hand.
 | `fs-extra@9.1.0` | MIT | LICENSE | https://github.com/jprichardson/node-fs-extra |
 | `fs-minipass@2.1.0` | ISC | LICENSE | git+https://github.com/npm/fs-minipass.git |
 | `fs.realpath@1.0.0` | ISC | LICENSE | git+https://github.com/isaacs/fs.realpath.git |
+| `fsevents@2.3.2` | MIT | LICENSE | https://github.com/fsevents/fsevents.git |
+| `fsevents@2.3.3` | MIT | LICENSE | https://github.com/fsevents/fsevents.git |
 | `function-bind@1.1.2` | MIT | LICENSE | https://github.com/Raynos/function-bind.git |
 | `galactus@1.0.0` | MIT | LICENSE | git+https://github.com/marshallOfSound/galactus.git |
 | `gar@1.0.4` | MIT | LICENSE | git+https://github.com/ethanent/gar.git |
@@ -431,7 +433,7 @@ Generated from the installed dependency tree. Do not edit by hand.
 | `layout-base@1.0.2` | MIT | LICENSE | git+https://github.com/iVis-at-Bilkent/layout-base.git |
 | `layout-base@2.0.1` | MIT | LICENSE | git+https://github.com/iVis-at-Bilkent/layout-base.git |
 | `lazy-val@1.0.5` | MIT | none found | develar/lazy-val |
-| `lightningcss-linux-x64-gnu@1.33.0` | MPL-2.0 | LICENSE | https://github.com/parcel-bundler/lightningcss.git |
+| `lightningcss-darwin-arm64@1.33.0` | MPL-2.0 | LICENSE | https://github.com/parcel-bundler/lightningcss.git |
 | `lightningcss@1.33.0` | MPL-2.0 | LICENSE | https://github.com/parcel-bundler/lightningcss.git |
 | `listr2@7.0.2` | MIT | LICENSE | https://github.com/listr2/listr2 |
 | `load-json-file@2.0.0` | MIT | license | sindresorhus/load-json-file |
@@ -3066,7 +3068,7 @@ OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
 SOFTWARE.
 ```
 
-### @parcel/watcher-linux-x64-glibc@2.6.0
+### @parcel/watcher-darwin-arm64@2.6.0
 
 #### LICENSE
 
@@ -3369,7 +3371,7 @@ OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
 SOFTWARE.
 ```
 
-### @roobli/md@0.1.21
+### @roobli/md@0.1.23
 
 #### LICENSE
 
@@ -5149,7 +5151,7 @@ SOFTWARE.
     SOFTWARE
 ```
 
-### @typescript/typescript-linux-x64@7.0.2
+### @typescript/typescript-darwin-arm64@7.0.2
 
 #### LICENSE
 
@@ -12802,6 +12804,64 @@ the licensed code:
   DEALINGS IN THE SOFTWARE.
 ```
 
+### fsevents@2.3.2
+
+#### LICENSE
+
+```text
+MIT License
+-----------
+
+Copyright (C) 2010-2020 by Philipp Dunkel, Ben Noordhuis, Elan Shankar, Paul Miller
+
+Permission is hereby granted, free of charge, to any person obtaining a copy
+of this software and associated documentation files (the "Software"), to deal
+in the Software without restriction, including without limitation the rights
+to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
+copies of the Software, and to permit persons to whom the Software is
+furnished to do so, subject to the following conditions:
+
+The above copyright notice and this permission notice shall be included in
+all copies or substantial portions of the Software.
+
+THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
+IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
+FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
+AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
+LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
+OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN
+THE SOFTWARE.
+```
+
+### fsevents@2.3.3
+
+#### LICENSE
+
+```text
+MIT License
+-----------
+
+Copyright (C) 2010-2020 by Philipp Dunkel, Ben Noordhuis, Elan Shankar, Paul Miller
+
+Permission is hereby granted, free of charge, to any person obtaining a copy
+of this software and associated documentation files (the "Software"), to deal
+in the Software without restriction, including without limitation the rights
+to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
+copies of the Software, and to permit persons to whom the Software is
+furnished to do so, subject to the following conditions:
+
+The above copyright notice and this permission notice shall be included in
+all copies or substantial portions of the Software.
+
+THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
+IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
+FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
+AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
+LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
+OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN
+THE SOFTWARE.
+```
+
 ### function-bind@1.1.2
 
 #### LICENSE
@@ -14401,7 +14461,7 @@ OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
 SOFTWARE.
 ```
 
-### lightningcss-linux-x64-gnu@1.33.0
+### lightningcss-darwin-arm64@1.33.0
 
 #### LICENSE
 
