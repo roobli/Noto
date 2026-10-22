@@ -2703,19 +2703,23 @@ function NotoWorkspace({ platform }: { platform: NotoPlatform }) {
           {/* Read-only is a mode with no other sign on screen, and a reader
               whose typing does nothing needs to be told why rather than
               concluding the app is broken. */}
-          {readOnly && <span className="status-flag" data-testid="read-only-flag">Read-only</span>}
-          {/* Something outside this window can drive it, and a reader must
-              never have to wonder whether that is so. */}
-          {remote.listening && (
-            <button
-              type="button"
-              className="status-flag status-remote"
-              data-testid="remote-flag"
-              title={`Listening on http://127.0.0.1:${remote.port ?? ''}. Press to open the Remote settings.`}
-              onClick={() => openSettings('remote')}
-            >
-              Remote
-            </button>
+          {(readOnly || remote.listening) && (
+            <span className="status-flags">
+              {readOnly && <span className="status-flag" data-testid="read-only-flag">Read-only</span>}
+              {/* Something outside this window can drive it, and a reader must
+                  never have to wonder whether that is so. */}
+              {remote.listening && (
+                <button
+                  type="button"
+                  className="status-flag status-remote"
+                  data-testid="remote-flag"
+                  title={`Listening on http://127.0.0.1:${remote.port ?? ''}. Press to open the Remote settings.`}
+                  onClick={() => openSettings('remote')}
+                >
+                  Remote
+                </button>
+              )}
+            </span>
           )}
           <span key={notice ?? state} className={notice ? 'status-message is-notice' : 'status-message'}
             data-testid={notice ? 'status-notice' : undefined} aria-live="polite">

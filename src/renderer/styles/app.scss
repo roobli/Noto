@@ -538,6 +538,7 @@ button:disabled { color: var(--muted); opacity: 0.7; }
    lives where a hint belongs. `Cmd+W` still closes; this is a signpost. */
 
 .recent-strip {
+  grid-column: 1;
   display: flex;
   align-items: center;
   gap: 2px;
@@ -1598,7 +1599,7 @@ button:disabled { color: var(--muted); opacity: 0.7; }
      onto a second row that a fixed height then hid, and the chips of the
      recent strip were sliced along their middle with the half that showed
      sitting under the rail's bottom edge. */
-  grid-template-columns: auto auto minmax(0, 1fr) auto;
+  grid-template-columns: auto auto minmax(0, 1fr) auto auto;
   align-items: center;
   gap: 12px;
   min-width: 0;
@@ -1613,6 +1614,8 @@ button:disabled { color: var(--muted); opacity: 0.7; }
   color: var(--muted);
   font-size: 11px;
 }
+
+.status-path { grid-column: 2; }
 
 .status-path,
 .scope {
@@ -1631,6 +1634,16 @@ button:disabled { color: var(--muted); opacity: 0.7; }
 
 /* Said quietly and continuously, unlike the message beside it, because it
    describes a mode that is still on rather than something that just happened. */
+/* The flags share the flexible column, so the message and count keep their
+   columns whether a flag is showing or not. */
+.status-flags {
+  grid-column: 3;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  min-width: 0;
+}
+
 .status-flag {
   border: 1px solid color-mix(in srgb, var(--accent) 40%, transparent);
   border-radius: 999px;
@@ -1643,6 +1656,7 @@ button:disabled { color: var(--muted); opacity: 0.7; }
 }
 
 .status-message {
+  grid-column: 4;
   min-width: 0;
   justify-self: end;
   overflow: hidden;
@@ -2032,6 +2046,7 @@ button:disabled { color: var(--muted); opacity: 0.7; }
    number does not shuffle its neighbours as it grows, and the same quiet grey
    as the path it shares the line with. */
 .count-disclosure {
+  grid-column: 5;
   position: relative;
   margin-left: auto;
 }
