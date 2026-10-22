@@ -51,6 +51,7 @@ import { isProbablyBinary } from '../../shared/code-viewer/binary';
 import { CODE_VIEW_MAX_BYTES, CODE_VIEW_MAX_LINES } from '../../shared/code-viewer/limits';
 import { standaloneHtml } from '../../shared/export/document-html';
 import { inlineImages, readFileBytes } from './inline-images';
+import { resolveAssetPath } from '../protocol/asset-guard';
 import { buildTreeRowMenu, trashLabel } from './tree-row-menu';
 import {
   findPandoc,
@@ -887,6 +888,9 @@ export class WorkspaceSession {
     const body = await inlineImages(request.html, {
       noteDirectory: path.dirname(note),
       read: readFileBytes,
+      // Export reads the same files the asset protocol would serve: inside a
+      // session root, after every symbolic link in the path has been followed.
+      resolve: (absolute) => resolveAssetPath(absolute, { roots: this.imageRoots(), realpath }),
     });
     const page = standaloneHtml({
       title: request.title,
