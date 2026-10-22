@@ -108,6 +108,8 @@ export class FileTruthStoreV1 {
   private document: NotoDocument | null = null;
   private acceptedPath: string | null = null;
   private acceptedFingerprint: FileFingerprintV1 | null = null;
+  /** True after the watcher saw the file disappear; a save may recreate it. */
+  private acceptedMissing = false;
   private acceptedMode = 0;
   private editorRevision = 0;
   private recovery: JournalV1 | null = null;
@@ -201,6 +203,7 @@ export class FileTruthStoreV1 {
     this.document = null;
     this.acceptedPath = null;
     this.acceptedFingerprint = null;
+    this.acceptedMissing = false;
     this.acceptedMode = 0;
     this.editorRevision = 0;
     this.recovery = null;
@@ -214,6 +217,7 @@ export class FileTruthStoreV1 {
     this.document = parsed.document;
     this.acceptedPath = captured.identity.canonicalPath;
     this.acceptedFingerprint = captured.identity.fingerprint;
+    this.acceptedMissing = false;
     this.acceptedMode = captured.identity.posixMode;
     let initialOutcome: FileTruthFailureV1 | null = null;
     try {
@@ -338,7 +342,11 @@ export class FileTruthStoreV1 {
     let primary: FileTruthSaveOutcomeV1 | null = null;
     try {
       const current = await this.platform.fingerprint(this.acceptedPath);
-      if (!this.platform.sameFingerprint(this.acceptedFingerprint, current)) {
+      // The watcher may have seen the file disappear. The buffer is then the
+      // only copy; let this save recreate the path instead of refusing it as a
+      // conflict against a file that no longer exists.
+      const recreating = this.acceptedMissing && current === null;
+      if (!recreating && !this.platform.sameFingerprint(this.acceptedFingerprint, current)) {
         primary = this.conflict(attemptId, stage, current);
         return this.finish(primary);
       }
@@ -361,9 +369,14 @@ export class FileTruthStoreV1 {
       tempHandle = null;
       stage = 'precondition-confirmed';
       await this.persistJournal({ ...recovery, stage });
-      const replacement = await this.platform.validateExpectedAndReplace(recovery.tempPath!, this.acceptedPath, this.acceptedFingerprint,
-        () => { this.watcher.suspend(); });
-      if (replacement.status === 'conflict') {
+      const replacement = recreating
+        ? null
+        : await this.platform.validateExpectedAndReplace(recovery.tempPath!, this.acceptedPath, this.acceptedFingerprint,
+          () => { this.watcher.suspend(); });
+      if (recreating) {
+        this.watcher.suspend();
+        await this.platform.replace(recovery.tempPath!, this.acceptedPath);
+      } else if (replacement && replacement.status === 'conflict') {
         primary = this.conflict(attemptId, stage, replacement.current);
         return await this.cleanupThen(primary, recovery);
       }
@@ -378,6 +391,7 @@ export class FileTruthStoreV1 {
       await this.persistJournal({ ...recovery, stage });
       this.document = serialized.document;
       this.acceptedFingerprint = accepted.fingerprint;
+      this.acceptedMissing = false;
       // The file this document lives in is a new one now, because a save
       // replaces it by rename. The watcher was suspended over the replacement
       // and has to be pointed at the file that exists after it.
@@ -594,6 +608,7 @@ export class FileTruthStoreV1 {
     }
     this.document = document;
     this.acceptedFingerprint = accepted.fingerprint;
+    this.acceptedMissing = false;
     this.acceptedMode = accepted.posixMode;
     this.editorRevision += 1;
     const primary = { version: 1, status: 'saved', attemptId, safeStage: 'replacement-verified', dirtyPreserved: false,
@@ -804,6 +819,7 @@ export class FileTruthStoreV1 {
     if (current === null) {
       this.watcherEvents.foreign += 1;
       this.logger.log('file_truth_external_missing', { generation: this.watcherGeneration });
+      this.acceptedMissing = true;
       // The accepted identity is left alone on purpose: the buffer now holds
       // the only copy of this note, and a save has to be able to write it back.
       this.onExternalChange?.({ kind: 'missing', saveToken: null });
@@ -819,6 +835,7 @@ export class FileTruthStoreV1 {
 
     if (current.contentSha256 === accepted.contentSha256) {
       this.acceptedFingerprint = current;
+      this.acceptedMissing = false;
       this.watcherEvents.self += 1;
       this.logger.log('file_truth_external_rebased', { generation: this.watcherGeneration });
       this.onExternalChange?.({ kind: 'rebased', saveToken: this.saveToken() });
@@ -826,6 +843,7 @@ export class FileTruthStoreV1 {
     }
 
     this.watcherEvents.foreign += 1;
+    this.acceptedMissing = false;
     this.logger.log('file_truth_external_changed', { generation: this.watcherGeneration });
     this.onExternalChange?.({ kind: 'changed', saveToken: null });
   }
@@ -866,6 +884,7 @@ export class FileTruthStoreV1 {
         // Same bytes. Move the identity so the next save has a precondition
         // that still names a file, and leave the buffer untouched.
         this.acceptedFingerprint = captured.identity.fingerprint;
+        this.acceptedMissing = false;
         return { version: 1, status: 'unchanged' };
       }
       const parsed = parseDocument(captured.bytes);
@@ -873,6 +892,7 @@ export class FileTruthStoreV1 {
 
       this.document = { ...parsed.document, documentId: previousId };
       this.acceptedFingerprint = captured.identity.fingerprint;
+      this.acceptedMissing = false;
       this.acceptedMode = captured.identity.posixMode;
       this.editorRevision = 0;
       this.state = 'opened';
