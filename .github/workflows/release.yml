@@ -131,11 +131,9 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        # macos-14 = Apple silicon. macos-13 (Intel) runners are scarce and
-        # leave Release jobs queued for hours, so only arm64 ships. That leaves
-        # Intel Macs without a build: Rosetta runs Intel code on Apple silicon,
-        # not the other way round. A universal or cross-built x64 package is
-        # the open question (decision D8 on the docs site).
+        # macos-14 = Apple silicon. The Intel zip is cross-built on the same
+        # runner and renamed to Noto-<version>-macos-x64.zip below, so both
+        # architectures ship from one job (D8).
         # ubuntu-24.04, not ubuntu-latest: latest moved to 26.04 on
         # 2026-10-20, and its rpm 6 builds in a directory electron-installer-
         # redhat's spec does not expect (`cp -r usr/*` finds nothing), so every
