@@ -237,6 +237,7 @@ function NotoWorkspace({ platform }: { platform: NotoPlatform }) {
   const editorDirtyRef = useRef(false);
   const [pending, setPending] = useState(false);
   const [recoveryBarrier, setRecoveryBarrier] = useState(false);
+  const [alertDismissed, setAlertDismissed] = useState(false);
   const recoveryBarrierRef = useRef(false);
   const outcome = active?.outcome ?? null;
   const recoveryRecord = active?.recovery ?? null;
@@ -1129,6 +1130,7 @@ function NotoWorkspace({ platform }: { platform: NotoPlatform }) {
   // re-rendered the whole shell (~React commit) on the caret-in-viewport path.
   const autoSaveTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const noteTagsTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const alertRef = useRef<HTMLElement>(null);
   const clearAutoSaveTimer = useCallback(() => {
     if (autoSaveTimerRef.current !== null) {
       clearTimeout(autoSaveTimerRef.current);
@@ -2197,6 +2199,12 @@ function NotoWorkspace({ platform }: { platform: NotoPlatform }) {
     : fileTruthActions(state, editorDirty, recoveryBarrier);
   const saveBlocked = recoveryBarrier || state === 'External conflict' || state === 'Stale editor revision';
   const alert = exceptionalAlertPresentation(recoveryBarrier, outcome, localMessage, state);
+  useEffect(() => {
+    setAlertDismissed(false);
+  }, [state, outcome]);
+  useEffect(() => {
+    if (alert && !alertDismissed) alertRef.current?.focus();
+  }, [state, alert?.message, alertDismissed]);
   const nextTheme = theme === 'light' ? 'dark' : 'light';
   /* Every platform has the idea and none of them share a name for it, so the
      label says the one the reader will recognise on their own machine. */
@@ -2631,8 +2639,9 @@ function NotoWorkspace({ platform }: { platform: NotoPlatform }) {
         />
       )}
 
-      {alert && (
-        <section className={`file-truth-alert alert-${state.toLowerCase().replaceAll(' ', '-')}`}
+      {alert && !alertDismissed && (
+        <section ref={alertRef} tabIndex={-1}
+          className={`file-truth-alert alert-${state.toLowerCase().replaceAll(' ', '-')}`}
           role="alert" data-testid="file-truth-alert">
           <strong>{state}</strong>
           <p>{alert.message}</p>
@@ -2652,6 +2661,10 @@ function NotoWorkspace({ platform }: { platform: NotoPlatform }) {
               </button>
             )}
             {actions.includes('save-copy') && <button type="button" disabled={pending} onClick={() => void saveCopy()}>Save a copy</button>}
+            <button type="button" data-testid="dismiss-file-truth-alert"
+              onClick={() => { setAlertDismissed(true); editorRef.current?.focus(); }}>
+              Keep editing
+            </button>
           </div>
           {outcome?.status === 'copy-saved' && <p>The original is unchanged. Your current edits are still unsaved.</p>}
         </section>
