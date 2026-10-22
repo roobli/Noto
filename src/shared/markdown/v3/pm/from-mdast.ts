@@ -15,7 +15,9 @@ import type { BlockSpan } from '../blocks';
 import {
   blockFromEngineSpan,
   collectFootnoteDefinitionIds,
+  collectLinkDefinitionIds,
   withKnownFootnoteIds,
+  withKnownLinkDefinitionIds,
 } from './from-engine';
 
 const schema = notoSchema;
@@ -260,8 +262,10 @@ export function blockFromSpan(span: BlockSpan): ProseNode {
  * only when a matching definition exists (micromark parity).
  */
 export function blocksFromSpans(spans: readonly BlockSpan[]): ProseNode[] {
-  const ids = collectFootnoteDefinitionIds(spans);
-  return withKnownFootnoteIds(ids, () => spans.map(blockFromSpan));
+  const footnoteIds = collectFootnoteDefinitionIds(spans);
+  const linkIds = collectLinkDefinitionIds(spans);
+  return withKnownLinkDefinitionIds(linkIds,
+    () => withKnownFootnoteIds(footnoteIds, () => spans.map(blockFromSpan)));
 }
 
 /** Convert a whole document, preserving each block's source derived style. */
