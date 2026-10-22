@@ -12,7 +12,7 @@ const MANY = 60;
  * A vault named on the command line, as `noto ~/notes`, with a folder deep
  * enough and long enough to scroll inside.
  */
-async function launch(name: string): Promise<{ app: ElectronApplication; page: Page; vault: string }> {
+async function launch(name: string, options: { longName?: boolean } = {}): Promise<{ app: ElectronApplication; page: Page; vault: string }> {
   const workspace = path.join(resultRoot, name);
   await rm(workspace, { recursive: true, force: true });
   const vault = path.join(workspace, 'vault');
@@ -23,6 +23,9 @@ async function launch(name: string): Promise<{ app: ElectronApplication; page: P
   await writeFile(path.join(vault, 'notes.md'), '# Notes\n', 'utf8');
   for (let index = 1; index <= MANY; index += 1) {
     await writeFile(path.join(chapters, `chapter-${String(index).padStart(2, '0')}.md`), `# ${index}\n`, 'utf8');
+  }
+  if (options.longName) {
+    await writeFile(path.join(chapters, 'a-name-long-enough-to-scroll-the-rail-sideways-past-the-editor-width.md'), '# Long\n', 'utf8');
   }
   await writeFile(path.join(chapters, 'drafts', 'idea.md'), '# Idea\n', 'utf8');
 
@@ -106,6 +109,36 @@ test.describe('the rail tree', () => {
       // Back at the top, the folder rests in place again.
       await page.locator('.rail-view').evaluate((element) => element.scrollTo(0, 0));
       await expect(chapters).not.toHaveAttribute('data-stuck');
+    } finally {
+      await app.close();
+    }
+  });
+
+  test('keeps the leading twisty and glyph at the edge while a long name scrolls under them', async () => {
+    const { app, page } = await launch('horizontal', { longName: true });
+    try {
+      await page.getByTestId('tree-directory').filter({ hasText: 'chapters' }).click();
+      const row = page.getByTestId('tree-file').filter({ hasText: 'a-name-long-enough' });
+      await row.scrollIntoViewIfNeeded();
+      const scroller = page.locator('.rail-view');
+      const rail = await scroller.boundingBox();
+      if (!rail) throw new Error('Expected a visible rail');
+      const width = await scroller.evaluate((element) => ({ scroll: element.scrollWidth, client: element.clientWidth }));
+      expect(width.scroll).toBeGreaterThan(width.client + 100);
+      await scroller.evaluate((element) => element.scrollTo({ left: 0 }));
+      const metrics = () => row.evaluate((element) => ({
+        leading: element.querySelector('.tree-leading')!.getBoundingClientRect().left,
+        name: element.querySelector('.tree-name')!.getBoundingClientRect().left,
+      }));
+      const before = await metrics();
+      await scroller.evaluate((element) => element.scrollTo({ left: 300 }));
+      await page.waitForTimeout(50);
+      const after = await metrics();
+      // The leading column pins to the rail's left edge instead of leaving
+      // the viewport with the name it belongs to.
+      expect(after.leading).toBeGreaterThanOrEqual(rail.x - 1);
+      expect(after.leading).toBeLessThan(rail.x + 24);
+      expect(after.name).toBeLessThan(before.name - 200);
     } finally {
       await app.close();
     }

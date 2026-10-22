@@ -1585,6 +1585,27 @@
    to clear to be read. */
 .tree-directory.tree-row:hover { color: var(--ink); }
 
+/* In the rail's horizontal scroll, the twisty and glyph stay put while the
+   name runs under them. The opaque ground follows the row's hover and active
+   surface; the guide arms sit to the left of this column, outside it. */
+.tree-leading {
+  position: sticky;
+  left: 0;
+  z-index: 1;
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  flex: 0 0 auto;
+  background: var(--panel);
+}
+.tree-row:hover > .tree-leading {
+  background: color-mix(in srgb, var(--accent) 8%, var(--panel));
+}
+.tree-file-active > .tree-leading,
+.tree-file-active:hover > .tree-leading {
+  background: var(--surface-active);
+}
+
 /* A CSS triangle rather than an icon font, so it inherits colour and needs no
    asset. */
 .tree-twisty {
