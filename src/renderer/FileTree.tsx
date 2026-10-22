@@ -408,8 +408,10 @@ export function FileTree({
                   onClick={() => toggle(entry.path)}
                   onContextMenu={(event) => { event.preventDefault(); onRowMenu(entry.path, 'directory'); }}
                 >
-                  <span className={isOpen ? 'tree-twisty tree-twisty-open' : 'tree-twisty'} aria-hidden="true" />
-                  <FolderGlyph open={isOpen} />
+                  <span className="tree-leading">
+                    <span className={isOpen ? 'tree-twisty tree-twisty-open' : 'tree-twisty'} aria-hidden="true" />
+                    <FolderGlyph open={isOpen} />
+                  </span>
                   {editing?.intent === 'rename' && editing.path === entry.path
                     ? <NameField initial={entry.name} onDone={commitEdit} />
                     : <span className="tree-name">{entry.name}</span>}
@@ -419,8 +421,10 @@ export function FileTree({
                   <div className="tree-level" style={{ '--tree-depth': depth + 1 } as React.CSSProperties}>
                     <div className="tree-node">
                       <div className="tree-row tree-directory" data-depth={depth + 1}>
-                        <span className="tree-twisty tree-twisty-blank" aria-hidden="true" />
-                        <FolderGlyph open={false} />
+                        <span className="tree-leading">
+                          <span className="tree-twisty tree-twisty-blank" aria-hidden="true" />
+                          <FolderGlyph open={false} />
+                        </span>
                         <NameField initial="New Folder" onDone={commitEdit} />
                       </div>
                     </div>
@@ -446,8 +450,10 @@ export function FileTree({
                 onClick={() => onOpenFile(entry.path)}
                 onContextMenu={(event) => { event.preventDefault(); onRowMenu(entry.path, 'file'); }}
               >
-                <span className="tree-twisty tree-twisty-blank" aria-hidden="true" />
-                <FileGlyph />
+                <span className="tree-leading">
+                  <span className="tree-twisty tree-twisty-blank" aria-hidden="true" />
+                  <FileGlyph />
+                </span>
                 {editing?.intent === 'rename' && editing.path === entry.path
                   ? <NameField initial={entry.name} onDone={commitEdit} />
                   : <span className="tree-name">{entry.name}</span>}
