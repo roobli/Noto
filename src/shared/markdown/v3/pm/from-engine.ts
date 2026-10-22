@@ -6,7 +6,7 @@
  * (plain / empty / simple-marked single-paragraph body; optional soft-wrap /
  * hard-break), paragraph/heading with plain or **simple marked** phrasing
  * (`**strong**` / `*em*` / `__strong__` / `_em_` / `~~del~~` / `` `code` ``;
- * up to nine-level nested marks e.g. `**bold _italic_**` / `*em **strong** em*` /
+ * up to thirty-seven-level nested marks e.g. `**bold _italic_**` / `*em **strong** em*` /
  * `**bold *em ~~strike~~ more* bold**` / `**a *b ~~c _d_ c~~ b* a**` / `**a *b ~~c _d `e` d_ c~~ b* a**` / `**v *w ~~x _y *z `a` z* y_ x~~ w* v**` / `**u *v ~~w _x *y _z `a` z_ y* x_ w~~ v* u**` / `**t *u ~~v _w *x _y *z `a` z* y_ x* w_ v~~ u* t**` / `**s _t *u ~~v _w *x _y *z `a` z* y_ x* w_ v~~ u* t_ s**` / `*r **s _t *u ~~v _w *x _y *z `a` z* y_ x* w_ v~~ u* t_ s** r*`; hard breaks engine-owned; snake_case underscores stay literal),
  * **simple** blockquotes (every line `>`-prefixed; plain or simple-marked
  * paragraphs incl. hard breaks, nested quotes, simple lists-in-quotes,
@@ -89,7 +89,7 @@ export const ENGINE_LEAF_KINDS: ReadonlySet<NotoBlockKind> = new Set([
  * links, code, math, HTML, autolink). Hard breaks alone do **not** force dialect
  * for plain paragraph/heading — those become engine-owned `hard_break` nodes
  * (serialize still writes two trailing spaces via `hardBreakAsTwoSpaces`).
- * Simple `*` / `**` / `_` / `__` / `~~` / `` ` `` marks (incl. up to nine-level
+ * Simple `*` / `**` / `_` / `__` / `~~` / `` ` `` marks (incl. up to thirty-seven-level
  * nesting), simple inline links / images, simple reference links / images,
  * simple bare http(s) + angle-bracket http(s) + www. + email autolinks, and
  * simple wiki `[[…]]` (literal text) are engine-owned via `tryInlineNodesFromSource`;
@@ -386,7 +386,7 @@ export function collectLinkDefinitionIds(
 /**
  * Engine-owned inline IR: plain text, hard breaks, and a simple subset of marks
  * (`**strong**`, `*emphasis*`, `__strong__`, `_emphasis_`, `~~strikethrough~~`,
- * `` `inline code` ``) plus **up to nine-level nesting** (e.g. `**bold _italic_**`,
+ * `` `inline code` ``) plus **up to thirty-seven-level nesting** (e.g. `**bold _italic_**`,
  * `*em **strong** em*`, `**bold *em ~~strike~~ more* bold**`, `**a *b ~~c _d_ c~~ b* a**`, `**a *b ~~c _d `e` d_ c~~ b* a**`, `**v *w ~~x _y *z `a` z* y_ x~~ w* v**`, `**u *v ~~w _x *y _z `a` z_ y* x_ w~~ v* u**`, `**t *u ~~v _w *x _y *z `a` z* y_ x* w_ v~~ u* t**`, `**s _t *u ~~v _w *x _y *z `a` z* y_ x* w_ v~~ u* t_ s**`, `*r **s _t *u ~~v _w *x _y *z `a` z* y_ x* w_ v~~ u* t_ s** r*`, `` **`code`** ``), **simple inline links / images**
  * (`[text](url)`, `[text](url "title")`, `![alt](url)`), **simple reference**
  * (`[text][id]` / `[text][]` / `![alt][id]` / `![alt][]`), **simple bare
@@ -883,7 +883,7 @@ function flattenNodesToImageAlt(nodes: readonly ProseNode[]): string | null {
 /**
  * Micromark-equivalent plain alt string for a simple image label, or `null` →
  * dialect. Owns: plain text; simple `$…$` / `$$…$$` (delimiters stripped, inner
- * kept as text — not `math_inline` nodes); simple flat / up-to-nine-level marks
+ * kept as text — not `math_inline` nodes); simple flat / up-to-thirty-seven-level marks
  * (`**` / `*` / `__` / `_` / `~~` / `` ` ``; snake_case `_` flanking); simple
  * backslash escapes of ASCII punct; literal simple HTML tags as characters;
  * angle http(s)/email autolinks (brackets stripped, text kept).
