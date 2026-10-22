@@ -59,7 +59,7 @@ function messageOf(error: unknown): string {
  * removed the durable identity map the v2 journal had to carry, along with the
  * whole class of rebind failures it could produce.
  */
-type JournalV1 = FileTruthRecoveryRecordV1;
+type JournalV1 = FileTruthRecoveryRecordV1 & { recreate?: boolean };
 
 /** What the store tells its owner when the file moved under the document. */
 export interface ExternalChange {
@@ -89,7 +89,9 @@ function isFingerprint(value: unknown): value is FileFingerprintV1 {
 }
 
 function publicRecovery(journal: JournalV1 | null): FileTruthRecoveryRecordV1 | null {
-  return journal;
+  if (!journal) return null;
+  const { recreate: _recreate, ...published } = journal;
+  return published;
 }
 
 function classifySaveFailure(error: unknown, stage: FileTruthStageV1): FileTruthFailureV1['status'] {
@@ -346,6 +348,7 @@ export class FileTruthStoreV1 {
       // only copy; let this save recreate the path instead of refusing it as a
       // conflict against a file that no longer exists.
       const recreating = this.acceptedMissing && current === null;
+      recovery.recreate = recreating;
       if (!recreating && !this.platform.sameFingerprint(this.acceptedFingerprint, current)) {
         primary = this.conflict(attemptId, stage, current);
         return this.finish(primary);
@@ -528,7 +531,8 @@ export class FileTruthStoreV1 {
         if ((error as NodeJS.ErrnoException).code !== 'ENOENT') throw error;
       }
       const current = currentCapture?.identity.fingerprint ?? null;
-      if (!this.platform.sameFingerprint(journal.acceptedFingerprint, current)) {
+      const recreating = journal.recreate === true && current === null;
+      if (!recreating && !this.platform.sameFingerprint(journal.acceptedFingerprint, current)) {
         const candidateAlreadyPublished = journal.stage === 'precondition-confirmed'
           && currentCapture !== null
           && currentCapture.identity.posixMode === journal.posixMode
@@ -547,15 +551,23 @@ export class FileTruthStoreV1 {
       try { await this.platform.writeTemp(handle, bytes); await this.platform.flush(handle); await this.platform.applyAndVerifyMode(handle, journal.posixMode); }
       finally { await this.platform.closeHandle(handle); }
       stage = 'metadata-applied';
-      const replacement = await this.platform.validateExpectedAndReplace(replayTemp, journal.originalPath, journal.acceptedFingerprint,
-        () => { this.watcher.suspend(); });
-      if (replacement.status === 'conflict') {
-        const primary = this.conflict(attemptId, stage, replacement.current);
-        try { await this.platform.remove(replayTemp); replayTemp = null; return this.finish(primary); }
-        catch (error) {
-          const evidence = await this.residueEvidence([replayTemp, journal.journalPath, journal.payloadPath, journal.tempPath]);
-          return this.cleanupFailure(primary, evidence.paths,
-            `Recovery detected an external conflict, then replay-temp cleanup failed: ${messageOf(error)}${evidence.errors.length ? `; evidence:${evidence.errors.join('|')}` : ''}`);
+      if (recreating) {
+        // The file was deleted under the buffer and this save recreated it. A
+        // crash before the replace leaves no inode to compare against; publish
+        // the durable candidate only while the path is still missing.
+        this.watcher.suspend();
+        await this.platform.replace(replayTemp, journal.originalPath);
+      } else {
+        const replacement = await this.platform.validateExpectedAndReplace(replayTemp, journal.originalPath, journal.acceptedFingerprint,
+          () => { this.watcher.suspend(); });
+        if (replacement.status === 'conflict') {
+          const primary = this.conflict(attemptId, stage, replacement.current);
+          try { await this.platform.remove(replayTemp); replayTemp = null; return this.finish(primary); }
+          catch (error) {
+            const evidence = await this.residueEvidence([replayTemp, journal.journalPath, journal.payloadPath, journal.tempPath]);
+            return this.cleanupFailure(primary, evidence.paths,
+              `Recovery detected an external conflict, then replay-temp cleanup failed: ${messageOf(error)}${evidence.errors.length ? `; evidence:${evidence.errors.join('|')}` : ''}`);
+          }
         }
       }
       stage = 'replacement-complete';
@@ -700,7 +712,10 @@ export class FileTruthStoreV1 {
     const value = JSON.parse(raw) as unknown;
     const keys = ['version', 'schema', 'attemptId', 'stage', 'originalPath', 'payloadPath', 'journalPath', 'tempPath',
       'candidateSha256', 'candidateByteLength', 'acceptedFingerprint', 'posixMode'];
-    const safe = record(value) && exact(value, keys)
+    const safe = record(value)
+      && keys.every((key) => key in value)
+      && Object.keys(value).every((key) => keys.includes(key) || key === 'recreate')
+      && (value.recreate === undefined || typeof value.recreate === 'boolean')
       && value.version === 1 && value.schema === 'noto-file-truth-journal-v2'
       && value.originalPath === this.acceptedPath && value.journalPath === expected
       && typeof value.payloadPath === 'string' && path.dirname(value.payloadPath) === this.recoveryRoot
