@@ -49,6 +49,7 @@ import { parseMarkdown, topLevelNodes } from './syntax';
 import {
   canSkipDialectEnrich,
   collectFootnoteDefinitionIds,
+  collectLinkDefinitionIds,
   engineSemanticKey,
   engineOwnedSemanticKey,
   parseLinkDefinitionSource,
@@ -57,6 +58,7 @@ import {
   type ParsedFlatList,
   type ParsedListItemChild,
   type ParsedQuoteChild,
+  withKnownLinkDefinitionIds,
 } from './pm/from-engine';
 
 export interface AdapterBlockSpan {
@@ -355,8 +357,9 @@ export function enrichSpansInRange<T extends AdapterBlockSpan>(
   // Doc-wide footnote defs (may sit outside `range`) so `[^id]` in callout
   // titles/bodies can be engine-owned with micromark promote/literal parity.
   const knownFootnoteIds = collectFootnoteDefinitionIds(spans);
+  const knownLinkDefinitionIds = collectLinkDefinitionIds(spans);
   const stubs = referenceDefinitionStubs(spans);
-  return withKnownFootnoteIds(knownFootnoteIds, () => {
+  return withKnownLinkDefinitionIds(knownLinkDefinitionIds, () => withKnownFootnoteIds(knownFootnoteIds, () => {
     const out = spans.slice() as AdapterBlockSpan[];
     let i = from;
     while (i < to) {
@@ -377,7 +380,7 @@ export function enrichSpansInRange<T extends AdapterBlockSpan>(
       i = j;
     }
     return out as T[];
-  });
+  }));
 }
 
 
@@ -454,12 +457,13 @@ export function createEnrichFlags(
     }
     if (unknown) {
       const knownFootnoteIds = collectFootnoteDefinitionIds(spans);
-      withKnownFootnoteIds(knownFootnoteIds, () => {
+      const knownLinkDefinitionIds = collectLinkDefinitionIds(spans);
+      withKnownLinkDefinitionIds(knownLinkDefinitionIds, () => withKnownFootnoteIds(knownFootnoteIds, () => {
         for (let i = to; i < n; i += 1) {
           const span = spans[i]!;
           if (span.engineOwned === undefined && canSkipDialectEnrich(span.kind, span.markdown)) flags[i] = 1;
         }
-      });
+      }));
     }
   }
   return flags;
@@ -858,11 +862,12 @@ export function splitBlocksViaRoobli(
   const split = engineParseBlocks(text);
   const mode: SpanEnrichMode = options?.enrich ?? 'bulk';
   const knownFootnoteIds = collectFootnoteDefinitionIds(split.spans);
-  const spans =
+  const knownLinkDefinitionIds = collectLinkDefinitionIds(split.spans);
+  const spans = withKnownLinkDefinitionIds(knownLinkDefinitionIds, () =>
     mode === 'none'
       ? withKnownFootnoteIds(knownFootnoteIds, () => split.spans.map(enrichSpanNone))
       : mode === 'per-span' ? split.spans.map(enrichSpan)
-      : enrichSplitBulk(split, text);
+      : enrichSplitBulk(split, text));
   return {
     spans,
     leading: split.leading,

@@ -186,6 +186,24 @@ describe('the fast reader reads what micromark reads', () => {
     }
   }, 20_000);
 
+  it('hands off left-flanking, reference and indented-continuation shapes', () => {
+    for (const text of [
+      'a*.*b',
+      'a~~.b~~c',
+      'a_._b',
+      'a**.b**c',
+      'foo_(bar)_baz',
+      '[x][y]',
+      '[x][]',
+      '![alt][img]',
+      'a\n b',
+      'a\n\tb',
+      '#',
+    ]) {
+      expect(differences('fixed', text)).toEqual([]);
+    }
+  });
+
   for (const [name, known] of Object.entries(EXPECTED_FAIL)) {
     it(`still needs the expected-fail for ${name}`, () => {
       expect(mismatches.some((m) => known(m.markdown)), `no mismatch left for "${name}"; remove its entry`).toBe(true);

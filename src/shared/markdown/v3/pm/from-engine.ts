@@ -260,7 +260,11 @@ function plainRunNodes(
   marks: readonly Mark[] = [],
   trimTrailing = false,
 ): ProseNode[] {
-  const normalized = md.replace(/\r\n/g, '\n');
+  const normalized = md
+    .replace(/\r\n/g, '\n')
+    // A continuation line's leading spaces are not part of the paragraph;
+    // micromark strips them, so the fast reader must too.
+    .replace(/\n[ \t]+/g, '\n');
   if (!HARD_BREAK_RE.test(normalized)) {
     const body = trimTrailing ? normalized.trimEnd() : normalized;
     return textNodes(body, marks);
@@ -293,10 +297,18 @@ export interface TryInlineOptions {
    * see the same set without threading options through every helper.
    */
   readonly knownFootnoteIds?: ReadonlySet<string>;
+  /**
+   * Lowercased link-definition identifiers known in the document. A reference
+   * link or image is owned only when its id is in the set; otherwise the block
+   * goes to the document-aware path rather than inventing an empty href.
+   */
+  readonly knownLinkDefinitionIds?: ReadonlySet<string>;
 }
 
 /** Active doc-wide footnote def ids for the current IR→PM build (sync only). */
 let activeKnownFootnoteIds: ReadonlySet<string> | undefined;
+/** Active doc-wide link-definition ids for the current IR→PM build (sync only). */
+let activeKnownLinkDefinitionIds: ReadonlySet<string> | undefined;
 
 /**
  * Run `fn` with doc-wide footnote definition ids visible to the inline
@@ -313,6 +325,19 @@ export function withKnownFootnoteIds<T>(
     return fn();
   } finally {
     activeKnownFootnoteIds = prev;
+  }
+}
+
+export function withKnownLinkDefinitionIds<T>(
+  ids: ReadonlySet<string>,
+  fn: () => T,
+): T {
+  const prev = activeKnownLinkDefinitionIds;
+  activeKnownLinkDefinitionIds = ids;
+  try {
+    return fn();
+  } finally {
+    activeKnownLinkDefinitionIds = prev;
   }
 }
 
@@ -333,6 +358,26 @@ export function collectFootnoteDefinitionIds(
     const label = m[1]!.slice(1);
     if (label.length === 0 || /[\s\]]/u.test(label)) continue;
     ids.add(label.toLowerCase());
+  }
+  return ids;
+}
+
+/**
+ * Collect normalized link-definition identifiers from structural spans. Uses
+ * the first-line `[label]:` shape only, so a deferred enrich can know the
+ * document's references before the dialect attaches.
+ */
+export function collectLinkDefinitionIds(
+  spans: readonly { readonly kind: string; readonly markdown: string }[],
+): ReadonlySet<string> {
+  const ids = new Set<string>();
+  for (const span of spans) {
+    if (span.kind !== 'link-definition') continue;
+    const line = span.markdown.replace(/\r\n/g, '\n').split('\n')[0] ?? '';
+    const m = /^ {0,3}\[([^\]\n]+)\]:/u.exec(line);
+    if (!m) continue;
+    const id = normalizeReferenceIdentifier(m[1]!);
+    if (id.length > 0) ids.add(id);
   }
   return ids;
 }
@@ -373,6 +418,12 @@ export function tryInlineNodesFromSource(
     return withKnownFootnoteIds(options.knownFootnoteIds, () => tryInlineNodesFromSource(md, {
       ...options,
       knownFootnoteIds: undefined,
+    }));
+  }
+  if (options.knownLinkDefinitionIds !== undefined && options.knownLinkDefinitionIds !== activeKnownLinkDefinitionIds) {
+    return withKnownLinkDefinitionIds(options.knownLinkDefinitionIds, () => tryInlineNodesFromSource(md, {
+      ...options,
+      knownLinkDefinitionIds: undefined,
     }));
   }
   const normalized = md.replace(/\r\n/g, '\n');
@@ -435,6 +486,16 @@ function isWordChar(ch: string | undefined): boolean {
   if (!ch) return false;
   // Match syntax.ts WORD: ASCII alnum + Latin-1 supplement + CJK ideographs.
   return /[0-9A-Za-z\u00C0-\u024F\u3400-\u4DBF\u4E00-\u9FFF]/u.test(ch);
+}
+
+/** CommonMark punctuation: Unicode P (punctuation) or S (symbol). */
+function isPunctChar(ch: string | undefined): boolean {
+  return ch !== undefined && /[\p{P}\p{S}]/u.test(ch);
+}
+
+/** CJK ideograph, where the CJK-friendly extension relaxes flanking. */
+function isCjkChar(ch: string | undefined): boolean {
+  return ch !== undefined && /[\u3400-\u4DBF\u4E00-\u9FFF]/u.test(ch);
 }
 
 
@@ -883,6 +944,21 @@ function parseSimpleAsteriskTildeCode(
 
   const isWs = (ch: string | undefined): boolean =>
     ch === ' ' || ch === '\t' || ch === '\n' || ch === '\r';
+
+  /**
+   * CommonMark left-flanking for `*`, `_`, `**`, `__`, `~~`. A run may open
+   * only when it is not followed by whitespace and either the next character
+   * is not punctuation or the previous one is whitespace, punctuation or CJK.
+   * The CJK exception is the extension Noto already uses for `*`, `_` and
+   * `~~`: `文~~删~~` opens where bare CommonMark would not.
+   */
+  const canOpen = (at: number, length: number): boolean => {
+    const previous = at > 0 ? input[at - 1] : undefined;
+    const next = input[at + length];
+    if (!next || isWs(next)) return false;
+    if (!isPunctChar(next)) return true;
+    return !previous || isWs(previous) || isPunctChar(previous) || isCjkChar(previous);
+  };
 
   /**
    * Advance past a CommonMark backslash escape at `at`. Escaped punctuation
@@ -2217,7 +2293,7 @@ function parseSimpleAsteriskTildeCode(
     }
 
     if (input.startsWith('~~', i)) {
-      if (isWs(input[i + 2])) {
+      if (!canOpen(i, 2)) {
         emitPlain(i, i + 2);
         i += 2;
         continue;
@@ -2231,7 +2307,7 @@ function parseSimpleAsteriskTildeCode(
     }
 
     if (input.startsWith('**', i)) {
-      if (isWs(input[i + 2])) {
+      if (!canOpen(i, 2)) {
         emitPlain(i, i + 2);
         i += 2;
         continue;
@@ -2266,7 +2342,7 @@ function parseSimpleAsteriskTildeCode(
         i += 2;
         continue;
       }
-      if (isWs(input[i + 2])) {
+      if (!canOpen(i, 2)) {
         emitPlain(i, i + 2);
         i += 2;
         continue;
@@ -2295,8 +2371,8 @@ function parseSimpleAsteriskTildeCode(
     }
 
     if (input[i] === '*') {
-      // Not left-flanking → literal asterisk (e.g. `2 * 3`).
-      if (isWs(input[i + 1])) {
+      // Not left-flanking → literal asterisk (e.g. `2 * 3`, `a*.*b`).
+      if (!canOpen(i, 1)) {
         emitPlain(i, i + 1);
         i += 1;
         continue;
@@ -2317,7 +2393,7 @@ function parseSimpleAsteriskTildeCode(
         continue;
       }
       // Not left-flanking → literal.
-      if (isWs(input[i + 1])) {
+      if (!canOpen(i, 1)) {
         emitPlain(i, i + 1);
         i += 1;
         continue;
@@ -2447,6 +2523,12 @@ function parseSimpleAsteriskTildeCode(
           emitPlain(i, end);
           i = end;
           continue;
+        }
+        // The block-local reader cannot resolve a reference. Own it only when
+        // the document build supplied the definitions; otherwise hand the
+        // block to the document-aware path rather than inventing an empty href.
+        if (activeKnownLinkDefinitionIds === undefined || !activeKnownLinkDefinitionIds.has(refIdentifier)) {
+          return null;
         }
         const referenceType = isCollapsed ? 'collapsed' : 'full';
 
@@ -2649,6 +2731,10 @@ export interface ParsedHeading {
 /** ATX or setext heading body text (no inline marks). */
 export function parseHeadingSource(md: string): ParsedHeading | null {
   const trimmed = md.trimEnd();
+  const empty = /^(#{1,6})[ \t]*$/u.exec(trimmed);
+  if (empty) {
+    return { level: Math.min(6, empty[1]!.length), text: '' };
+  }
   const atx = /^(#{1,6})[ \t]+(.+?)[ \t]*#*[ \t]*$/s.exec(trimmed);
   if (atx) {
     return { level: Math.min(6, atx[1]!.length), text: atx[2]! };
