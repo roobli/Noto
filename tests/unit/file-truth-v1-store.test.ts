@@ -97,6 +97,21 @@ describe('Noto file-truth v1 save transaction', () => {
     expect(await readFile(file, 'utf8')).toBe(before.replace('Original paragraph.', 'Edited paragraph.'));
   });
 
+  it('replays a crash that happened while recreating a deleted file', async () => {
+    const { file, store, candidate } = await harness();
+    const before = await readFile(file, 'utf8');
+    await store.platform.remove(file);
+    await settle();
+    store.platform.injector.arm('before-replacement');
+    const interrupted = await store.save(candidate);
+    if (!('recovery' in interrupted) || !interrupted.recovery) throw new Error('Expected a durable recovery record');
+    const journal = JSON.parse(await readFile(interrupted.recovery.journalPath, 'utf8'));
+    expect(journal.recreate).toBe(true);
+    const recovered = await store.recover();
+    expect(recovered.status).toBe('saved');
+    expect(await readFile(file, 'utf8')).toBe(before.replace('Original paragraph.', 'Edited paragraph.'));
+  });
+
   it('admits only one main-process file-truth transaction at a time', async () => {
     const { store, candidate } = await harness();
     const first = store.save(candidate);
