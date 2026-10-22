@@ -172,6 +172,23 @@ export function FileTree({
   }, [collapseToken]);
   const bodyRef = useRef<HTMLElement>(null);
 
+  /*
+   * The tree scrolls sideways for long names. In the narrow-window overlay the
+   * pane is much smaller, so an offset chosen at desktop width would leave the
+   * twisty and glyph column off-screen and the rows would read as bare words.
+   */
+  useEffect(() => {
+    const narrow = window.matchMedia('(max-width: 900px)');
+    const reset = () => {
+      if (!narrow.matches) return;
+      const scroller = bodyRef.current?.closest<HTMLElement>('.rail-view');
+      if (scroller) scroller.scrollLeft = 0;
+    };
+    reset();
+    narrow.addEventListener('change', reset);
+    return () => narrow.removeEventListener('change', reset);
+  }, []);
+
   const load = useCallback(async (directory: string) => {
     try {
       const entries = await list(directory);
