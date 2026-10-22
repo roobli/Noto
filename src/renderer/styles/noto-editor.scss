@@ -1077,8 +1077,10 @@
      from it but lies over it, from the left edge under the title bar, and a
      press anywhere else puts it away (App.tsx, RAIL_OVERLAY_MEDIA). So the
      toggle stays where it always is; it used to vanish here, and with it the
-     only visible way to the files. Taken out of flow, the rail leaves its grid
-     column empty, and the column, sized to its content, closes to nothing. */
+     only visible way to the files. The first track is explicitly zero: the
+     rail is out of flow, and the base grid's `--shell-rail` track would
+     otherwise reserve its width and push the document right. */
+  .app-shell { grid-template-columns: 0 minmax(0, 1fr); }
   .app-shell > .workspace-rail {
     position: absolute;
     top: 0;
@@ -1577,7 +1579,7 @@
   &.tree-row:hover { background: color-mix(in srgb, var(--accent) 8%, transparent); }
 }
 
-.tree-directory { color: var(--muted); }
+.tree-directory:not(.tree-vault-row) { color: var(--muted); }
 /* Under the pointer a folder brightens to ink, as the chrome's icons do: the
    muted ink on the hover's accent wash came to 4.25:1, under what a name has
    to clear to be read. */

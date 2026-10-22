@@ -63,7 +63,7 @@ body {
 /* A panel comes in from its own edge with the weight of a physical thing,
    decelerating rather than stopping on a timer. */
 @keyframes noto-rail-in {
-  from { opacity: 0; translate: -12px 0; }
+  from { opacity: 0; }
 }
 
 @keyframes noto-status-say {
@@ -137,7 +137,10 @@ button:disabled { color: var(--muted); opacity: 0.7; }
   /* Two columns: the rail and the page. The title bar spans both so macOS
      traffic lights and the sidebar/trail controls share one Claude-style row;
      the rail starts on the row below rather than under the lights. */
-  grid-template-columns: auto minmax(0, 1fr);
+  grid-template-columns: var(--shell-rail, auto) minmax(0, 1fr);
+  /* The rail is clipped by the shell as its column grows, so the document
+     moves with the surface instead of jumping before it appears. */
+  transition: grid-template-columns var(--motion-slow) var(--ease-out);
   width: 100%;
   max-width: 100%;
   height: 100%;
@@ -2015,8 +2018,7 @@ button:disabled { color: var(--muted); opacity: 0.7; }
 
 /* The path is in the title bar; the strip does not say it twice. */
 .status-path { display: none; }
-/* One heading at a time, as Typora has it: no indicator under the tabs. */
-.rail-tabs::after { display: none; }
+
 
 /* The thumb shows while the pointer is over the pane, as an overlay
    scrollbar would; styled scrollbars otherwise paint all the time. */
