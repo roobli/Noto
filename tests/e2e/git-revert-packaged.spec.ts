@@ -188,17 +188,21 @@ test.describe('revert to committed', () => {
       await expect(popover(page)).toBeVisible();
       await expect(revertButton(page)).toHaveText('Revert to Committed');
       await expect(revertButton(page)).toHaveAttribute('data-git-revert', 'restore');
-      // Under the panel, at its end.
+      // Measure the settled window: the arrival animation scales the whole
+      // popover, and a scrollbar in the code panel can narrow that panel
+      // without moving the action. The action is flush with the popover's
+      // content edge, which is the alignment the panel frame shares.
+      await settle(page);
+      const popoverBox = (await popover(page).boundingBox())!;
+      const insets = await popover(page).evaluate((element) => {
+        const style = getComputedStyle(element);
+        return parseFloat(style.paddingRight) + parseFloat(style.borderRightWidth);
+      });
       const panelBox = (await page.getByTestId('git-popover-text').boundingBox())!;
       const buttonBox = (await revertButton(page).boundingBox())!;
       expect(buttonBox.y).toBeGreaterThan(panelBox.y + panelBox.height);
-      // Right edges align within a rendered pixel. At 2x scaling the measured
-      // gap can be about 1.05px, which is not a layout error.
-      expect(Math.abs(buttonBox.x + buttonBox.width - (panelBox.x + panelBox.width))).toBeLessThanOrEqual(2);
-      if (SHOTS) {
-        await settle(page);
-        await capture(app, path.join(SHOTS, 'pr3-light-popover.png'));
-      }
+      expect(Math.abs(buttonBox.x + buttonBox.width - (popoverBox.x + popoverBox.width - insets))).toBeLessThanOrEqual(1);
+      if (SHOTS) await capture(app, path.join(SHOTS, 'pr3-light-popover.png'));
       await revertButton(page).click();
       await expect(popover(page)).toHaveCount(0);
       expect(await focusInEditor(page)).toBe(true);
