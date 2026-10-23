@@ -152,7 +152,7 @@ describe('shell failure containment', () => {
   it('rejects a refused capture before pending or IPC, without fabricating a recovery barrier', async () => {
     const app = await shell();
     const saveFlow = between(app, 'const save = async () => {', '  const recover = async () => {');
-    const captureIndex = saveFlow.indexOf('editor.captureSave()');
+    const captureIndex = saveFlow.indexOf('editor.captureSaveTicket()');
     const captureCatch = saveFlow.indexOf('catch (error) {', captureIndex);
     const rejection = saveFlow.slice(captureCatch, saveFlow.indexOf('try {', captureCatch));
     expect(captureIndex).toBeGreaterThan(-1);
@@ -164,6 +164,22 @@ describe('shell failure containment', () => {
     expect(rejection).not.toContain('setPending(');
     expect(rejection).not.toContain('window.notoFileTruth.save');
     expect(rejection).not.toContain('updateRecoveryBarrier(');
+  });
+
+  it('guards save with a synchronous ref and resolves only its own capture', async () => {
+    const app = await shell();
+    const saveFlow = between(app, 'const save = async () => {', '  const recover = async () => {');
+    // React state does not change until the next render, so a second trigger in
+    // the same tick would pass a `pending` check. The ref is checked and set
+    // before anything is captured, and released only once the save is over.
+    const guard = saveFlow.indexOf('if (fileTruthBusyRef.current) return;');
+    expect(guard).toBeGreaterThan(-1);
+    expect(guard).toBeLessThan(saveFlow.indexOf('editor.captureSaveTicket()'));
+    expect(saveFlow.indexOf('fileTruthBusyRef.current = true;')).toBeLessThan(saveFlow.indexOf('editor.captureSaveTicket()'));
+    expect(saveFlow).toContain('fileTruthBusyRef.current = false;');
+    expect(saveFlow).not.toContain('editor.abandonSave()');
+    expect(saveFlow).toContain('editor.abandonSave(capture.captureId)');
+    expect(saveFlow).toContain('present(result.value, capture.captureId);');
   });
 
   it('contains a rejected save transport and leaves the editor dirty', async () => {
@@ -224,7 +240,7 @@ describe('shell failure containment', () => {
   it('contains save-copy failure without reporting a clean copy', async () => {
     const app = await shell();
     const saveCopy = between(app, 'const saveCopy = async (): Promise<boolean> => {', '  const confirmDiscard =');
-    expect(saveCopy.indexOf('editor.captureSave()')).toBeGreaterThan(saveCopy.indexOf('try {'));
+    expect(saveCopy.indexOf('editor.captureSaveTicket()')).toBeGreaterThan(saveCopy.indexOf('try {'));
     expect(saveCopy.indexOf('await window.notoFileTruth.saveCopy')).toBeGreaterThan(saveCopy.indexOf('try {'));
     expect(saveCopy).toContain('Save a copy failed. The original is unchanged.');
     expect(saveCopy).toContain("setState('Save failed');");
@@ -233,7 +249,7 @@ describe('shell failure containment', () => {
 
   it('adopts the saved document as the clean baseline and gates save behind recovery evidence', async () => {
     const app = await shell();
-    expect(app).toContain('editorRef.current?.commit(accepted.document);');
+    expect(app).toContain('editorRef.current?.commit(accepted.document, captureId);');
     // The accepted revision replaces the document's own state, keyed by the
     // document the save belonged to rather than whichever tab is in front.
     expect(app).toContain("patchDoc(id, { token: accepted.saveToken, document: accepted.document");
