@@ -372,14 +372,15 @@ export class FileTruthStoreV1 {
       tempHandle = null;
       stage = 'precondition-confirmed';
       await this.persistJournal({ ...recovery, stage });
+      // A recreate publishes only while the path is still missing: something
+      // may have put a file back during the fsyncs above, and that file wins.
+      if (recreating) this.watcher.suspend();
       const replacement = recreating
-        ? null
+        ? await this.platform.publishIfAbsent(recovery.tempPath!, this.acceptedPath)
         : await this.platform.validateExpectedAndReplace(recovery.tempPath!, this.acceptedPath, this.acceptedFingerprint,
           () => { this.watcher.suspend(); });
-      if (recreating) {
-        this.watcher.suspend();
-        await this.platform.replace(recovery.tempPath!, this.acceptedPath);
-      } else if (replacement && replacement.status === 'conflict') {
+      if (replacement.status === 'conflict') {
+        if (recreating) this.startWatcher();
         primary = this.conflict(attemptId, stage, replacement.current);
         return await this.cleanupThen(primary, recovery);
       }
@@ -555,8 +556,20 @@ export class FileTruthStoreV1 {
         // The file was deleted under the buffer and this save recreated it. A
         // crash before the replace leaves no inode to compare against; publish
         // the durable candidate only while the path is still missing.
+        // If something put a file back meanwhile, that file wins and the
+        // record stays: the payload may be the only copy of the candidate.
         this.watcher.suspend();
-        await this.platform.replace(replayTemp, journal.originalPath);
+        const published = await this.platform.publishIfAbsent(replayTemp, journal.originalPath);
+        if (published.status === 'conflict') {
+          this.startWatcher();
+          const primary = this.conflict(attemptId, stage, published.current);
+          try { await this.platform.remove(replayTemp); replayTemp = null; return this.finish(primary); }
+          catch (error) {
+            const evidence = await this.residueEvidence([replayTemp, journal.journalPath, journal.payloadPath, journal.tempPath]);
+            return this.cleanupFailure(primary, evidence.paths,
+              `Recovery found the file recreated on disk, then replay-temp cleanup failed: ${messageOf(error)}${evidence.errors.length ? `; evidence:${evidence.errors.join('|')}` : ''}`);
+          }
+        }
       } else {
         const replacement = await this.platform.validateExpectedAndReplace(replayTemp, journal.originalPath, journal.acceptedFingerprint,
           () => { this.watcher.suspend(); });
