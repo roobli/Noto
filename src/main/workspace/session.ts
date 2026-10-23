@@ -15,7 +15,7 @@ import { GraphCache, linksForNote } from './note-graph';
 import { buildTagIndex, notesForTag, type TagIndex } from './tag-index';
 import type { SearchFlags } from '../../shared/search/pattern';
 import path from 'node:path';
-import { access, cp, mkdir, readFile, readdir, realpath, rename, rm, stat, writeFile } from 'node:fs/promises';
+import { access, cp, lstat, mkdir, readFile, readdir, realpath, rename, rm, stat, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { randomUUID } from 'node:crypto';
 import { BrowserWindow, Menu, clipboard, dialog, shell, type MenuItemConstructorOptions } from 'electron';
@@ -162,6 +162,8 @@ export class WorkspaceSession {
     private readonly treeSort: () => TreeSortV1 = () => 'name',
     /** Whether non-Markdown text/code files open in the read-only viewer. */
     private readonly codeViewer: () => boolean = () => true,
+    /** The remote-images setting, which a Pandoc export honours too. */
+    private readonly remoteImages: () => boolean = () => false,
   ) {}
 
   get current(): FileTruthOpenReplyV1 | null {
@@ -867,7 +869,9 @@ export class WorkspaceSession {
       const outcome = await this.exportThroughPandoc(request.target, request.dirty);
       return outcome.exported
         ? { version: NOTO_WORKSPACE_VERSION, exported: true, path: outcome.path }
-        : { version: NOTO_WORKSPACE_VERSION, exported: false, reason: outcome.reason };
+        : outcome.reason === 'unsafe-images' && outcome.detail
+          ? { version: NOTO_WORKSPACE_VERSION, exported: false, reason: outcome.reason, detail: outcome.detail }
+          : { version: NOTO_WORKSPACE_VERSION, exported: false, reason: outcome.reason };
     }
     if (request.html === null) {
       return { version: NOTO_WORKSPACE_VERSION, exported: false, reason: 'failed' };
@@ -988,6 +992,13 @@ export class WorkspaceSession {
       ),
       findPandoc: () => findPandoc(),
       run: runPandoc,
+      images: {
+        roots: this.imageRoots(),
+        remoteImages: this.remoteImages(),
+        resolve: (absolute) => resolveAssetPath(absolute, { roots: this.imageRoots(), realpath }),
+        exists: (absolute) => lstat(absolute).then(() => true, () => false),
+        read: readFileBytes,
+      },
     });
     this.logger.log(outcome.exported ? 'exported' : 'export_refused',
       { target, reason: outcome.exported ? 'ok' : outcome.reason });
