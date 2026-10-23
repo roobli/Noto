@@ -108,6 +108,13 @@ export type ExpectedReplaceResultV1 =
   | { readonly status: 'conflict'; readonly current: FileFingerprintV1 | null };
 
 /**
+ * Errors a hard link raises when the volume cannot make one at all, as opposed
+ * to refusing this particular link. FAT and exFAT, and some network shares,
+ * answer with one of these.
+ */
+const LINK_UNSUPPORTED = new Set(['ENOTSUP', 'EOPNOTSUPP', 'ENOSYS', 'EPERM', 'EINVAL', 'EXDEV']);
+
+/**
  * The filesystem side of file truth, for every platform Noto ships on.
  *
  * The algorithm is shared; the three places platforms genuinely differ are
@@ -215,6 +222,63 @@ export class NodeFileTruthPlatform {
     this.injector.hit('before-replacement');
     this.injector.hit('replacement');
     await rename(tempPath, originalPath);
+  }
+
+  /** A hard link, as its own step so a test can stand in for a volume without them. */
+  async hardLink(existingPath: string, newPath: string): Promise<void> {
+    await link(existingPath, newPath);
+  }
+
+  /**
+   * Publish the temp at a path that was missing, and only while it still is.
+   *
+   * A recreate decides the path is missing, then spends several fsyncs making
+   * its candidate durable. A rename at the end would replace whatever arrived
+   * in between: git switching back, a sync client restoring the file, another
+   * editor. A hard link cannot replace anything; it fails with EEXIST instead,
+   * which is reported as a conflict and leaves the arrival untouched. The temp
+   * name is dropped once the link exists, so the published file is the only
+   * name for that inode, as it would be after a rename.
+   *
+   * Without hard links (FAT, exFAT, some network shares) the path is
+   * fingerprinted immediately before a rename. That narrows the window to the
+   * gap between those two calls but does not close it; a file created in that
+   * gap is still replaced. No portable primitive closes it there.
+   */
+  async publishIfAbsent(tempPath: string, destinationPath: string): Promise<ExpectedReplaceResultV1> {
+    this.injector.hit('before-replacement');
+    this.injector.hit('replacement');
+    if (this.capabilities.canHardLink) {
+      try {
+        await this.hardLink(tempPath, destinationPath);
+        // Dropping the temp name is cleanup, not publication. If it fails the
+        // caller's cleanup removes the temp and reports any residue.
+        await rm(tempPath, { force: true }).catch(() => undefined);
+        return { status: 'replaced' };
+      } catch (error) {
+        const code = (error as NodeJS.ErrnoException).code;
+        if (code === 'EEXIST') return { status: 'conflict', current: await this.fingerprintIfReadable(destinationPath) };
+        if (!code || !LINK_UNSUPPORTED.has(code)) throw error;
+      }
+    }
+    if (await this.existsAtAll(destinationPath)) {
+      return { status: 'conflict', current: await this.fingerprintIfReadable(destinationPath) };
+    }
+    await rename(tempPath, destinationPath);
+    return { status: 'replaced' };
+  }
+
+  /** The fingerprint of whatever is at the path, or null when it cannot be read as a note. */
+  private async fingerprintIfReadable(filePath: string): Promise<FileFingerprintV1 | null> {
+    try { return await this.fingerprint(filePath); } catch { return null; }
+  }
+
+  /** Whether anything at all, a symlink or a directory included, occupies the path. */
+  private async existsAtAll(filePath: string): Promise<boolean> {
+    try { await lstat(filePath); return true; } catch (error) {
+      if ((error as NodeJS.ErrnoException).code === 'ENOENT') return false;
+      throw error;
+    }
   }
 
   async validateExpectedAndReplace(tempPath: string, originalPath: string, expected: FileFingerprintV1, beforeReplace?: () => void): Promise<ExpectedReplaceResultV1> {
