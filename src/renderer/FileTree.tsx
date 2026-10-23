@@ -160,6 +160,11 @@ export function FileTree({
   const [children, setChildren] = useState<ReadonlyMap<string, readonly WorkspaceEntryV1[]>>(new Map());
   const [expanded, setExpanded] = useState<ReadonlySet<string>>(new Set());
   const [failed, setFailed] = useState<string | null>(null);
+  // Which row is being dragged and which folder is under it. Declared here,
+  // with every other hook, because the tree returns early while no folder is
+  // open and React needs the same hooks on every render.
+  const [dragging, setDragging] = useState<string | null>(null);
+  const [over, setOver] = useState<string | null>(null);
 
   // Collapse All: every folder shut at once, which a tree of seven thousand
   // notes needs after an afternoon of opening things. The first render is not
@@ -472,11 +477,9 @@ export function FileTree({
    *
    * The path travels in the drag as text, and the folder under the pointer is
    * held in state so it can be drawn as the one that will take the drop. Main
-   * checks everything: this only says what was dragged onto what.
+   * checks everything: this only says what was dragged onto what. The two
+   * pieces of state are declared at the top, with the other hooks.
    */
-  const [dragging, setDragging] = useState<string | null>(null);
-  const [over, setOver] = useState<string | null>(null);
-
   const dragProps = (path: string) => (onMoveEntry === undefined ? {} : {
     draggable: true,
     onDragStart: (event: React.DragEvent) => {
