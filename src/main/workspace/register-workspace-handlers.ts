@@ -173,10 +173,10 @@ export function registerWorkspaceHandlers(deps: {
       return openReply(reply);
     });
 
-  register(WORKSPACE_CHANNELS.saveAsDialog, isWorkspaceRequestV1, async () => ({
-    version: NOTO_WORKSPACE_VERSION,
-    path: await deps.session.saveAsWithDialog(),
-  } as const));
+  register(WORKSPACE_CHANNELS.saveAsDialog, isWorkspaceRequestV1, async () => {
+    const chosen = await deps.session.saveAsWithDialog();
+    return { version: NOTO_WORKSPACE_VERSION, path: chosen?.path ?? null, token: chosen?.token ?? null } as const;
+  });
 
   register(WORKSPACE_CHANNELS.recent, isWorkspaceRequestV1, async (_request: WorkspaceRequestV1) => {
     await deps.recent.load();

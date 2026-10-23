@@ -1273,7 +1273,7 @@ function NotoWorkspace({ platform }: { platform: NotoPlatform }) {
       version: 1,
       requestId: rid('save-as-dialog'),
     });
-    if (!chosen.ok || chosen.value.path === null) return false;
+    if (!chosen.ok || chosen.value.token === null) return false;
 
     setPending(true);
     try {
@@ -1281,7 +1281,7 @@ function NotoWorkspace({ platform }: { platform: NotoPlatform }) {
       const result = await window.notoFileTruth.saveCopy({
         version: 1,
         requestId: rid('ft-copy'),
-        destinationPath: chosen.value.path,
+        destinationToken: chosen.value.token,
         candidate: { version: 3, saveToken: token, transaction },
       });
       if (!result.ok) {
