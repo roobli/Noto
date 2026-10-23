@@ -17,6 +17,7 @@ beforeAll(async () => {
   await writeFile(path.join(vault, 'notes', 'a.md'), '# a');
   await writeFile(path.join(outside, 'secret.png'), 'png');
   await symlink(path.join(outside, 'secret.png'), path.join(vault, 'notes', 'pics', 'escape.png'));
+  await symlink(vault, path.join(base, 'alias'), process.platform === 'win32' ? 'junction' : 'dir');
 });
 
 afterAll(async () => {
@@ -58,5 +59,34 @@ describe('the asset guard', () => {
   it('skips a root that does not exist rather than failing the request', async () => {
     const inside = path.join(vault, 'notes', 'pics', 'a.png');
     await expect(guard(inside, [path.join(outside, 'gone'), vault])).resolves.toBe(inside);
+  });
+
+  it('never asks the filesystem about a path outside every root', async () => {
+    const asked: string[] = [];
+    const recording = async (target: string) => {
+      asked.push(target);
+      return realpath(target);
+    };
+    const refused = [
+      path.join(outside, 'secret.png'),
+      path.join(vault, '..', 'outside', 'secret.png'),
+      // UNC and device paths: resolving one on Windows opens a network
+      // session before any containment check could refuse it.
+      '//host/share/a.png',
+      '\\\\host\\share\\a.png',
+      '\\\\?\\C:\\a.png',
+      '\\\\.\\pipe\\a.png',
+    ];
+    for (const requested of refused) {
+      await expect(resolveAssetPath(requested, { roots: [vault], realpath: recording })).resolves.toBeNull();
+    }
+    expect(asked.filter((target) => target !== vault)).toEqual([]);
+  });
+
+  it('serves through a root that is spelled through a link', async () => {
+    const alias = path.join(path.dirname(vault), 'alias');
+    const inside = path.join(vault, 'notes', 'pics', 'a.png');
+    await expect(guard(path.join(alias, 'notes', 'pics', 'a.png'), [alias])).resolves.toBe(inside);
+    await expect(guard(inside, [alias])).resolves.toBe(inside);
   });
 });
