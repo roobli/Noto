@@ -206,8 +206,10 @@ export function isWorkspaceCodeViewEventV1(value: unknown): value is WorkspaceCo
 }
 
 function isSaveAsReply(value: unknown): value is WorkspaceSaveAsReplyV1 {
-  return record(value) && exact(value, ['version', 'path']) && value.version === 1
-    && (value.path === null || (typeof value.path === 'string' && value.path.length > 0 && value.path.length <= 4096));
+  if (!record(value) || !exact(value, ['version', 'path', 'token']) || value.version !== 1) return false;
+  if (value.path === null) return value.token === null;
+  return typeof value.path === 'string' && value.path.length > 0 && value.path.length <= 4096
+    && typeof value.token === 'string' && /^[0-9a-f]{32}$/.test(value.token);
 }
 
 function isRecentReply(value: unknown): value is WorkspaceRecentReplyV1 {

@@ -208,7 +208,10 @@ export type WorkspaceOpenReplyV1 =
 
 export interface WorkspaceSaveAsReplyV1 {
   readonly version: typeof NOTO_WORKSPACE_VERSION;
+  /** What the user chose, for showing; null when they dismissed the dialog. */
   readonly path: string | null;
+  /** What a save-copy request hands back to write there; null with `path`. */
+  readonly token: string | null;
 }
 
 /**

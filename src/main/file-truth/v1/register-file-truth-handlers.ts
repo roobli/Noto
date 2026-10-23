@@ -34,6 +34,8 @@ export function registerFileTruthHandlers(deps: {
     storeForDocument(documentId: string): FileTruthStoreV1 | null;
     /** A save landed, so what git reports about the folder may have changed. */
     refreshGitMarks?(): void;
+    /** The path main's own save dialog chose, behind a one-time token. */
+    takeCopyDestination(token: string): string | null;
   };
   getWindow: () => BrowserWindow | null;
   logger: StructuredLogger;
@@ -99,8 +101,14 @@ export function registerFileTruthHandlers(deps: {
     });
   register<FileTruthSaveCopyRequestV1, Awaited<ReturnType<FileTruthStoreV1['saveCopy']>>>(FILE_TRUTH_CHANNELS.saveCopy, isFileTruthSaveCopyRequestV1,
     async (request) => {
+      // The renderer names a token, never a path: only somewhere the user
+      // picked in main's dialog can be written, and only once.
+      const destination = deps.session.takeCopyDestination(request.destinationToken);
+      if (destination === null) {
+        throw new Error('COPY_DESTINATION_UNKNOWN: choose where to save the copy again');
+      }
       const outcome = await storeForSave(request.candidate.transaction.documentId)
-        .saveCopy(request.candidate, request.destinationPath);
+        .saveCopy(request.candidate, destination);
       deps.session.refreshGitMarks?.();
       return outcome;
     });

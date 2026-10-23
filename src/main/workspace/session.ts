@@ -52,6 +52,7 @@ import { CODE_VIEW_MAX_BYTES, CODE_VIEW_MAX_LINES } from '../../shared/code-view
 import { standaloneHtml } from '../../shared/export/document-html';
 import { inlineImages, readFileBytes } from './inline-images';
 import { resolveAssetPath } from '../protocol/asset-guard';
+import { CopyDestinations } from '../file-truth/v1/copy-destinations';
 import { buildTreeRowMenu, trashLabel } from './tree-row-menu';
 import {
   findPandoc,
@@ -1305,8 +1306,16 @@ export class WorkspaceSession {
     };
   }
 
-  /** Ask the user where to write a copy. Returns null when dismissed. */
-  async saveAsWithDialog(): Promise<string | null> {
+  /** Where the save dialog sent copies, until a save-copy request takes them. */
+  private readonly copyDestinations = new CopyDestinations();
+
+  /**
+   * Ask the user where to write a copy. Returns null when dismissed.
+   *
+   * The answer is kept here behind a one-time token, and the save-copy channel
+   * only accepts the token, so the renderer never names a path to write.
+   */
+  async saveAsWithDialog(): Promise<{ path: string; token: string } | null> {
     const window = this.getWindow();
     const current = this.currentPath;
     const suggested = current
@@ -1321,7 +1330,13 @@ export class WorkspaceSession {
     const result = window
       ? await dialog.showSaveDialog(window, { ...options, properties: [...options.properties] })
       : await dialog.showSaveDialog({ ...options, properties: [...options.properties] });
-    return result.canceled || !result.filePath ? null : result.filePath;
+    if (result.canceled || !result.filePath) return null;
+    return { path: result.filePath, token: this.copyDestinations.issue(result.filePath) };
+  }
+
+  /** The path behind a save-copy token, once. */
+  takeCopyDestination(token: string): string | null {
+    return this.copyDestinations.take(token);
   }
 
   /** Re-send the current state, for a renderer that just finished loading. */

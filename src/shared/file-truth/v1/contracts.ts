@@ -113,7 +113,11 @@ export interface FileTruthSaveRequestV1 extends FileTruthRequestV1 {
 
 export interface FileTruthSaveCopyRequestV1 extends FileTruthRequestV1 {
   readonly candidate: FileTruthEditCandidateV1;
-  readonly destinationPath: string;
+  /**
+   * The token main issued when it ran the save dialog. Never a path: where a
+   * copy goes is decided in main, so a renderer cannot name a file to write.
+   */
+  readonly destinationToken: string;
 }
 
 export type FileTruthStageV1 =

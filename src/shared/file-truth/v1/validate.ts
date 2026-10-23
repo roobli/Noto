@@ -212,10 +212,10 @@ export function isFileTruthSaveRequestV1(value: unknown): value is FileTruthSave
 }
 
 export function isFileTruthSaveCopyRequestV1(value: unknown): value is FileTruthSaveCopyRequestV1 {
-  return record(value) && exact(value, ['version', 'requestId', 'candidate', 'destinationPath'])
+  return record(value) && exact(value, ['version', 'requestId', 'candidate', 'destinationToken'])
     && value.version === 1 && typeof value.requestId === 'string' && requestId.test(value.requestId)
-    && isCandidate(value.candidate) && typeof value.destinationPath === 'string'
-    && value.destinationPath.length > 0 && value.destinationPath.length <= 4096;
+    && isCandidate(value.candidate) && typeof value.destinationToken === 'string'
+    && /^[0-9a-f]{32}$/.test(value.destinationToken);
 }
 
 function isResult<T>(value: unknown, expectedRequestId: string, validateValue: (candidate: unknown) => candidate is T): value is FileTruthResultV1<T> {
