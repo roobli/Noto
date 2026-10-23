@@ -688,3 +688,93 @@ describe('Noto file-truth v1 save transaction', () => {
     store.close();
   });
 });
+
+/**
+ * A recreate publishes into a path that was missing when the save began. The
+ * save then spends several fsyncs making its candidate durable, and anything
+ * can put a file back at that path in the meantime: git switching branches
+ * back, a sync client restoring it, another editor. Publishing must not
+ * replace whatever arrived.
+ */
+describe('Noto file-truth v1 recreate publishes without clobbering', () => {
+  const external = 'Somebody else put this file back.\n';
+
+  /** Write the external file at the last step before the publish. */
+  function recreateExternallyBeforePublish(store: FileTruthStoreV1, file: string) {
+    const platform = store.platform;
+    const original = platform.applyAndVerifyMode.bind(platform);
+    platform.applyAndVerifyMode = async (handle, mode) => {
+      await writeFile(file, external);
+      return original(handle, mode);
+    };
+  }
+
+  /** Make the platform behave as if the volume had no hard links (FAT, exFAT, some shares). */
+  function withoutHardLinks(store: FileTruthStoreV1) {
+    store.platform.hardLink = async () => {
+      throw Object.assign(new Error('ENOTSUP: operation not supported'), { code: 'ENOTSUP' });
+    };
+  }
+
+  it('reports a conflict when the path is recreated during a recreate save', async () => {
+    const { file, store, candidate } = await harness();
+    await store.platform.remove(file);
+    await settle();
+    recreateExternallyBeforePublish(store, file);
+    const outcome = await store.save(candidate);
+    expect(outcome).toMatchObject({ status: 'external-conflict', dirtyPreserved: true });
+    expect(await readFile(file, 'utf8')).toBe(external);
+    expect(await store.platform.listOwnedTemps(file)).toEqual([]);
+  });
+
+  it('reports a conflict and keeps the recovery record when the path is recreated during replay', async () => {
+    const { file, store, candidate } = await harness();
+    await store.platform.remove(file);
+    await settle();
+    store.platform.injector.arm('before-replacement');
+    const interrupted = await store.save(candidate);
+    if (!('recovery' in interrupted) || !interrupted.recovery) throw new Error('Expected a durable recovery record');
+    const { journalPath, payloadPath } = interrupted.recovery;
+    store.platform.injector.clear();
+    recreateExternallyBeforePublish(store, file);
+    const outcome = await store.recover();
+    expect(outcome).toMatchObject({ status: 'external-conflict', dirtyPreserved: true });
+    expect(await readFile(file, 'utf8')).toBe(external);
+    // The payload is the only copy of the candidate once the window that held
+    // the buffer is gone, so a conflict must not take it away.
+    expect(await store.platform.exists(journalPath)).toBe(true);
+    expect(await store.platform.exists(payloadPath)).toBe(true);
+    expect(await store.platform.listOwnedTemps(file)).toEqual([]);
+  });
+
+  it('still recreates through the fingerprint fallback when the volume has no hard links', async () => {
+    const { file, store, candidate } = await harness();
+    const before = await readFile(file, 'utf8');
+    await store.platform.remove(file);
+    await settle();
+    withoutHardLinks(store);
+    const outcome = await store.save(candidate);
+    expect(outcome.status).toBe('saved');
+    expect(await readFile(file, 'utf8')).toBe(before.replace('Original paragraph.', 'Edited paragraph.'));
+  });
+
+  it('refuses through the fingerprint fallback when the path came back before the publish', async () => {
+    const { file, store, candidate } = await harness();
+    await store.platform.remove(file);
+    await settle();
+    withoutHardLinks(store);
+    recreateExternallyBeforePublish(store, file);
+    const outcome = await store.save(candidate);
+    expect(outcome).toMatchObject({ status: 'external-conflict', dirtyPreserved: true });
+    expect(await readFile(file, 'utf8')).toBe(external);
+  });
+
+  it('leaves no second link to the published file behind', async () => {
+    const { file, store, candidate } = await harness();
+    await store.platform.remove(file);
+    await settle();
+    expect((await store.save(candidate)).status).toBe('saved');
+    expect((await stat(file)).nlink).toBe(1);
+    expect(await store.platform.listOwnedTemps(file)).toEqual([]);
+  });
+});
