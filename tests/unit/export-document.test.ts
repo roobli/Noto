@@ -21,6 +21,7 @@ import {
 import { standaloneHtml, escapeHtml } from '../../src/shared/export/document-html';
 import { EXPORT_PALETTE_COMMANDS, EXPORT_TARGET_SHAPES } from '../../src/shared/export/targets';
 import { EXPORT_KINDS } from '../../src/shared/workspace/v1/contracts';
+import { isWorkspaceExportReplyV1 } from '../../src/shared/workspace/v1/validate';
 
 describe('the export targets', () => {
   it('renders PDF and HTML itself, and converts the rest', () => {
@@ -307,5 +308,20 @@ describe('the exported stylesheet', () => {
     expect(page).toContain('.noto-alert-note');
     expect(page).toContain('.noto-diagram svg');
     expect(page).toContain('break-inside: avoid');
+  });
+});
+
+describe('the export reply at the boundary', () => {
+  const reply = (extra: Record<string, unknown>) => ({ version: 1, exported: false, ...extra });
+
+  it('carries the new refusals, and the list of refused pictures', () => {
+    expect(isWorkspaceExportReplyV1(reply({ reason: 'pandoc-sandbox' }))).toBe(true);
+    expect(isWorkspaceExportReplyV1(reply({ reason: 'unsafe-images', detail: '/etc/a.png (outside-folder)' }))).toBe(true);
+  });
+
+  it('takes a detail only with the picture refusal', () => {
+    expect(isWorkspaceExportReplyV1(reply({ reason: 'failed', detail: 'x' }))).toBe(false);
+    expect(isWorkspaceExportReplyV1(reply({ reason: 'unsafe-images', detail: 'x'.repeat(1001) }))).toBe(false);
+    expect(isWorkspaceExportReplyV1(reply({ reason: 'something-else' }))).toBe(false);
   });
 });

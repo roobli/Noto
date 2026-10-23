@@ -309,6 +309,7 @@ async function run(): Promise<void> {
     createStore, recent, () => editorWindow, logger, recentFolders,
     () => settings.current().treeSort,
     () => settings.current().codeViewer,
+    () => settings.current().remoteImages,
   );
   app.once('before-quit', () => session?.closeAll());
 

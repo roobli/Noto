@@ -595,8 +595,20 @@ export type WorkspaceExportReplyV1 =
   | {
       readonly version: typeof NOTO_WORKSPACE_VERSION;
       readonly exported: false;
-      readonly reason: 'no-document' | 'unsaved' | 'cancelled' | 'no-pandoc' | 'failed';
+      readonly reason: WorkspaceExportRefusalV1;
+      /** For `unsafe-images`, the pictures that were refused and why. */
+      readonly detail?: string;
     };
+
+/**
+ * Why an export did not happen. `unsafe-images` is a note naming pictures
+ * outside the folder (or on the web, with remote images off); `pandoc-sandbox`
+ * is a Pandoc build that cannot convert from inside its sandbox.
+ */
+export const WORKSPACE_EXPORT_REFUSALS = [
+  'no-document', 'unsaved', 'cancelled', 'no-pandoc', 'failed', 'unsafe-images', 'pandoc-sandbox',
+] as const;
+export type WorkspaceExportRefusalV1 = typeof WORKSPACE_EXPORT_REFUSALS[number];
 
 export interface WorkspaceContentLineV1 {
   readonly line: string;

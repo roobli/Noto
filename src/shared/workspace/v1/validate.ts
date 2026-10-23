@@ -8,6 +8,7 @@
 
 import { isEntryName } from './entry-names';
 import {
+  WORKSPACE_EXPORT_REFUSALS,
   ENTRY_ACTIONS,
   MAX_CONTENT_QUERY,
   NOTO_WORKSPACE_VERSION,
@@ -575,8 +576,11 @@ export function isWorkspaceExportReplyV1(value: unknown): value is WorkspaceExpo
     return exact(value, ['version', 'exported', 'path'])
       && typeof value.path === 'string' && value.path.length > 0;
   }
-  return value.exported === false && exact(value, ['version', 'exported', 'reason'])
-    && ['no-document', 'unsaved', 'cancelled', 'no-pandoc', 'failed'].includes(String(value.reason));
+  if (value.exported !== false) return false;
+  if (!(WORKSPACE_EXPORT_REFUSALS as readonly string[]).includes(String(value.reason))) return false;
+  if (exact(value, ['version', 'exported', 'reason'])) return true;
+  return value.reason === 'unsafe-images' && exact(value, ['version', 'exported', 'reason', 'detail'])
+    && typeof value.detail === 'string' && value.detail.length > 0 && value.detail.length <= 1000;
 }
 
 export const isWorkspaceExportResultV1 = (value: unknown, id: string): value is WorkspaceResultV1<WorkspaceExportReplyV1> =>

@@ -59,7 +59,7 @@ import {
 } from '../shared/settings/v1/contracts';
 import type { AssetRefusalV1 } from '../shared/assets/v1/contracts';
 import { copyThroughSelection } from './editor/noto/clipboard';
-import type { WorkspaceEntryRefusalV1, WorkspaceExportKindV1, WorkspaceGitBlocksV1, WorkspaceGitMarksV1 } from '../shared/workspace/v1/contracts';
+import type { WorkspaceEntryRefusalV1, WorkspaceExportKindV1, WorkspaceExportRefusalV1, WorkspaceGitBlocksV1, WorkspaceGitMarksV1 } from '../shared/workspace/v1/contracts';
 import { EXPORT_PALETTE_COMMANDS } from '../shared/export/targets';
 import { EMPTY_TRAIL, forget as forgetTrail, record as recordTrail, stepBack, stepForward, type Trail } from './trail';
 import { wikiCandidates, wikiTargetFor } from './wiki-target';
@@ -104,8 +104,14 @@ function noteTitle(notePath: string): string {
   return dot > 0 ? base.slice(0, dot) : base;
 }
 
-function exportRefusalMessage(reason: 'no-document' | 'unsaved' | 'cancelled' | 'no-pandoc' | 'failed'): string {
+function exportRefusalMessage(reason: WorkspaceExportRefusalV1, detail?: string): string {
   if (reason === 'unsaved') return 'Save the note first. This converts the file, not the screen.';
+  if (reason === 'unsafe-images') {
+    return `Not exported: the note names pictures outside this folder, on the web with remote images off, or too large to include${detail ? `: ${detail}` : '.'}`;
+  }
+  if (reason === 'pandoc-sandbox') {
+    return 'This Pandoc keeps its templates on disk, where its sandbox cannot read them. Install Pandoc from pandoc.org or Homebrew.';
+  }
   if (reason === 'no-pandoc') return 'That format needs Pandoc, which is not installed.';
   if (reason === 'no-document') return 'Open a note first.';
   return 'That could not be exported.';
@@ -1879,7 +1885,7 @@ function NotoWorkspace({ platform }: { platform: NotoPlatform }) {
         return;
       }
       if (result.value.reason !== 'cancelled') {
-        setLocalMessage(exportRefusalMessage(result.value.reason));
+        setLocalMessage(exportRefusalMessage(result.value.reason, result.value.detail));
       }
     });
   }, []);
