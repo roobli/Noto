@@ -106,6 +106,8 @@ import { sliceToMarkdown } from './clipboard';
 import { rootSpellCheck, SPELL_CHECK_RESCAN, spellCheckScopeKey, spellCheckScopePlugin } from './spell-check-scope';
 
 /** How long after the last keystroke the document is counted. */
+/** Save captures kept unresolved at once; a commit for an older one stays dirty. */
+const MAX_OPEN_CAPTURES = 8;
 const COUNT_DELAY_MS = 400;
 
 /**
@@ -216,10 +218,18 @@ export class NotoEditor implements NotoEditorPort {
    * swaps a stand-in for the same bytes, which is not an edit.
    */
   private editVersion = 0;
-  /** The edit version a save captured, or null when no save is in flight. */
-  private capturedEditVersion: number | null = null;
-  /** The source buffer a save captured, so a source edit that lands mid-save survives. */
-  private capturedSource: string | null = null;
+  /**
+   * What each save in flight captured, by capture id: the edit version, and
+   * the source buffer so a source edit that lands mid-save survives.
+   *
+   * One entry per capture rather than a single slot, because a slot let a
+   * second capture overwrite the first, and the first save's commit then
+   * called edits typed between the two clean although disk never held them.
+   */
+  private readonly captures = new Map<number, { readonly editVersion: number; readonly source: string | null }>();
+  /** The id the most recent capture got, for callers that commit without one. */
+  private latestCapture: number | null = null;
+  private nextCaptureId = 1;
   private readonly host: HTMLElement;
   private readonly options: NotoEditorOptions;
   /** What each accepted block looked like, keyed by block id. */
@@ -1319,13 +1329,35 @@ export class NotoEditor implements NotoEditorPort {
    * capture, which names the same blocks.
    */
   captureSave(): NotoTransactionWire {
+    return this.captureSaveTicket().transaction;
+  }
+
+  /**
+   * `captureSave`, plus the id this capture is known by.
+   *
+   * Hand the id back to `commit` or `abandonSave` for this save, so a save
+   * that overlaps it can neither stand in for its capture nor clear it.
+   */
+  captureSaveTicket(): { captureId: number; transaction: NotoTransactionWire } {
     const view = this.view;
     if (!view) throw new Error('EDITOR_NOT_READY: the editor is not mounted');
     if (view.composing) {
       throw new Error('IME_COMPOSITION_ACTIVE: finish the current word before saving');
     }
-    this.capturedEditVersion = this.editVersion;
-    this.capturedSource = this.pendingSource;
+    const transaction = this.buildSaveWire(view);
+    const captureId = this.nextCaptureId;
+    this.nextCaptureId += 1;
+    this.captures.set(captureId, { editVersion: this.editVersion, source: this.pendingSource });
+    this.latestCapture = captureId;
+    // Captures nobody resolved (a caller that never committed) must not pile
+    // up. Dropping the oldest is safe: a commit for a dropped id stays dirty.
+    while (this.captures.size > MAX_OPEN_CAPTURES) {
+      this.captures.delete(this.captures.keys().next().value as number);
+    }
+    return { captureId, transaction };
+  }
+
+  private buildSaveWire(view: EditorView): NotoTransactionWire {
     if (this.pendingSource !== null) return this.captureWithStats().transaction;
 
     const input = {
@@ -1390,30 +1422,51 @@ export class NotoEditor implements NotoEditorPort {
    * Without this, a later open or reload commit would compare against a capture
    * that no longer corresponds to anything on disk.
    */
-  abandonSave(): void {
-    this.capturedEditVersion = null;
-    this.capturedSource = null;
+  abandonSave(captureId?: number): void {
+    // With an id, only that save's capture goes: another save may still be in
+    // flight. Without one, every capture goes, as before ids existed.
+    if (captureId === undefined) {
+      this.captures.clear();
+      this.latestCapture = null;
+      return;
+    }
+    this.captures.delete(captureId);
+    if (this.latestCapture === captureId) this.latestCapture = null;
   }
 
-  commit(document: NotoDocumentWire): void {
+  /**
+   * Adopt a document main accepted.
+   *
+   * `captureId` names the capture this document was saved from. Without it
+   * (an open or a reload) the most recent capture is used, as before.
+   */
+  commit(document: NotoDocumentWire, captureId?: number): void {
     const view = this.view;
     if (!view) return;
 
-    const capturedVersion = this.capturedEditVersion;
-    const capturedSource = this.capturedSource;
-    this.capturedEditVersion = null;
-    this.capturedSource = null;
+    const key = captureId ?? this.latestCapture;
+    const captured = key === null ? undefined : this.captures.get(key);
+    if (captureId === undefined) {
+      this.captures.clear();
+    } else {
+      this.captures.delete(captureId);
+    }
+    if (key !== null && this.latestCapture === key) this.latestCapture = null;
     // A save takes a moment, and the reader can keep typing. Only a buffer that
     // did not move can be called clean: comparing the version captured by the
     // save with the one on screen now is the difference between "the file holds
-    // this" and "the file holds what this used to be".
-    const changedDuringSave = capturedVersion !== null
-      && savedSnapshotLeavesDirty(capturedVersion, this.editVersion);
+    // this" and "the file holds what this used to be". A save naming a capture
+    // this editor no longer holds cannot vouch for anything, so the buffer
+    // stays dirty.
+    const unknownCapture = captureId !== undefined && captured === undefined;
+    const changedDuringSave = unknownCapture || (captured !== undefined
+      && savedSnapshotLeavesDirty(captured.editVersion, this.editVersion));
+    const capturedSource = captured?.source ?? null;
 
     this.document = document;
     // Clear the source buffer only when this save carried it. A source edit
     // that landed while the save was in flight is still waiting to be saved.
-    if (this.pendingSource === capturedSource) this.pendingSource = null;
+    if (!unknownCapture && this.pendingSource === capturedSource) this.pendingSource = null;
     /*
      * Clear the pending change only when this document is what it asked for.
      *

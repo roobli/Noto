@@ -236,6 +236,13 @@ function NotoWorkspace({ platform }: { platform: NotoPlatform }) {
   const editorDirty = active?.dirty ?? false;
   const editorDirtyRef = useRef(false);
   const [pending, setPending] = useState(false);
+  /**
+   * Whether a save, a copy or a recovery is in flight, read and set in the same
+   * tick. `pending` only changes on the next render, so two triggers in one
+   * tick (a menu save through a stale closure, an autosave timer) both passed
+   * it and captured over each other.
+   */
+  const fileTruthBusyRef = useRef(false);
   const [recoveryBarrier, setRecoveryBarrier] = useState(false);
   const [alertDismissed, setAlertDismissed] = useState(false);
   const recoveryBarrierRef = useRef(false);
@@ -1073,7 +1080,7 @@ function NotoWorkspace({ platform }: { platform: NotoPlatform }) {
     if (id) patchDoc(id, { outcome: value });
   };
 
-  const present = (value: FileTruthSaveOutcomeV1) => {
+  const present = (value: FileTruthSaveOutcomeV1, captureId?: number) => {
     // The document this save belongs to, not whichever tab is in front now. A
     // save that finishes after the user switched tabs must land on its own
     // document rather than overwrite the state of the one they moved to.
@@ -1107,7 +1114,7 @@ function NotoWorkspace({ platform }: { platform: NotoPlatform }) {
       cleanStateRef.current = 'Saved';
       // Adopt the saved document as the clean baseline without disturbing the
       // caret or the undo history.
-      editorRef.current?.commit(accepted.document);
+      editorRef.current?.commit(accepted.document, captureId);
     }
   };
 
@@ -1186,15 +1193,20 @@ function NotoWorkspace({ platform }: { platform: NotoPlatform }) {
     // The editor's own word on being dirty, because the flush above may have
     // just made it so and the state this closure holds is from before.
     if (!editor || !token || pending || !(editorDirty || editor.isDirty)) return;
-    let transaction: ReturnType<NotoEditor['captureSave']>;
+    // Checked and set before anything is captured, so a second trigger in the
+    // same tick finds the first one and leaves.
+    if (fileTruthBusyRef.current) return;
+    fileTruthBusyRef.current = true;
+    let capture: ReturnType<NotoEditor['captureSaveTicket']>;
     let base: NotoDocumentWire;
     try {
-      transaction = editor.captureSave();
+      capture = editor.captureSaveTicket();
       // The revision the transaction was captured against, which a saved
       // revision comes back as a patch to.
       base = editor.acceptedDocument;
     } catch (error) {
-      editor.abandonSave();
+      // Nothing was captured, so there is nothing of this save to abandon.
+      fileTruthBusyRef.current = false;
       setLocalMessage(actionableFileTruthMessage(error,
         'The editor refused this save. Finish the current word, then save again.'));
       setState('Unsaved changes');
@@ -1206,7 +1218,7 @@ function NotoWorkspace({ platform }: { platform: NotoPlatform }) {
       const reply = await window.notoFileTruth.save({
         version: 1,
         requestId: rid('ft-save'),
-        candidate: { version: 3, saveToken: token, transaction },
+        candidate: { version: 3, saveToken: token, transaction: capture.transaction },
       });
       const result = await materializeSaveReply(reply, base, async (revisionId) => {
         const whole = await window.notoFileTruth.document({
@@ -1215,25 +1227,32 @@ function NotoWorkspace({ platform }: { platform: NotoPlatform }) {
         return whole.ok ? whole.value : null;
       });
       if (!result.ok) {
-        editor.abandonSave();
+        editor.abandonSave(capture.captureId);
         setPending(false);
         setOutcome(null);
         setLocalMessage(actionableFileTruthMessage(result.error.message, 'The save transport failed. Your edits are still here.'));
         setState('Save failed');
         return;
       }
-      present(result.value);
+      // A refusal (a conflict, another transaction) never commits, and this
+      // capture is done with either way.
+      if (!acceptedSaveOutcome(result.value)) editor.abandonSave(capture.captureId);
+      present(result.value, capture.captureId);
     } catch (error) {
-      editor.abandonSave();
+      editor.abandonSave(capture.captureId);
       setPending(false);
       setOutcome(null);
       updateRecoveryBarrier(true);
       setLocalMessage(actionableFileTruthMessage(error, 'The save transport failed. Your edits are still here.'));
       setState('Save failed');
+    } finally {
+      fileTruthBusyRef.current = false;
     }
   };
 
   const recover = async () => {
+    if (fileTruthBusyRef.current) return;
+    fileTruthBusyRef.current = true;
     try {
       setPending(true);
       const result = await window.notoFileTruth.recover({ version: 1, requestId: rid('ft-recover') });
@@ -1250,6 +1269,8 @@ function NotoWorkspace({ platform }: { platform: NotoPlatform }) {
       updateRecoveryBarrier(true);
       setLocalMessage(actionableFileTruthMessage(error, 'Recovery transport failed. Evidence remains on disk.'));
       setState('Recovery failed');
+    } finally {
+      fileTruthBusyRef.current = false;
     }
   };
 
@@ -1269,9 +1290,13 @@ function NotoWorkspace({ platform }: { platform: NotoPlatform }) {
     });
     if (!chosen.ok || chosen.value.path === null) return false;
 
+    if (fileTruthBusyRef.current) return false;
+    fileTruthBusyRef.current = true;
+    let copyCapture: number | null = null;
     setPending(true);
     try {
-      const transaction = editor.captureSave();
+      const { captureId, transaction } = editor.captureSaveTicket();
+      copyCapture = captureId;
       const result = await window.notoFileTruth.saveCopy({
         version: 1,
         requestId: rid('ft-copy'),
@@ -1292,6 +1317,10 @@ function NotoWorkspace({ platform }: { platform: NotoPlatform }) {
       setLocalMessage(actionableFileTruthMessage(error, 'Save a copy failed. The original is unchanged.'));
       setState('Save failed');
       return false;
+    } finally {
+      // A copy never becomes the clean baseline, so its capture is dropped.
+      if (copyCapture !== null) editor.abandonSave(copyCapture);
+      fileTruthBusyRef.current = false;
     }
   };
 

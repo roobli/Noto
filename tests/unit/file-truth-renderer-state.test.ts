@@ -187,8 +187,8 @@ describe('shell failure containment', () => {
     const saveFlow = between(app, 'const save = async () => {', '  const recover = async () => {');
     const invoke = saveFlow.indexOf('await window.notoFileTruth.save');
     const transportCatch = saveFlow.indexOf('catch (error) {', invoke);
-    expect(saveFlow.indexOf('present(result.value);')).toBeGreaterThan(invoke);
-    expect(saveFlow.indexOf('present(result.value);')).toBeLessThan(transportCatch);
+    expect(saveFlow.indexOf('present(result.value, capture.captureId);')).toBeGreaterThan(invoke);
+    expect(saveFlow.indexOf('present(result.value, capture.captureId);')).toBeLessThan(transportCatch);
     const failure = saveFlow.slice(transportCatch);
     expect(failure).toContain("actionableFileTruthMessage(error, 'The save transport failed. Your edits are still here.')");
     expect(failure).toContain('setOutcome(null);');
