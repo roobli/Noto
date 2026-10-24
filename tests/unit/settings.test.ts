@@ -1,4 +1,4 @@
-import { mkdtemp, readFile, rm, writeFile } from 'node:fs/promises';
+import { mkdir, mkdtemp, readFile, rm, writeFile } from 'node:fs/promises';
 import os from 'node:os';
 import path from 'node:path';
 import { afterEach, describe, expect, it } from 'vitest';
@@ -79,6 +79,39 @@ describe('writing settings', () => {
     await store.drain();
     await pending;
     expect(JSON.parse(await readFile(file, 'utf8'))).toMatchObject({ quickOpenWidth: 'wide' });
+  });
+
+  // Command and a bracket three times in quick succession is three writes in
+  // flight at once. Each must land after the one before it, so the file and
+  // the last reply both hold the last width, not whichever write won a race
+  // on the shared temporary file.
+  it('persists overlapping patches one after another, in the order they were made', async () => {
+    const { store, file } = await storeIn();
+    await store.load();
+    const widths = ['wide', 'full', 'default'] as const;
+    const settled: number[] = [];
+    const writes = Array.from({ length: 30 }, (_, index) => store
+      .update({ widthMode: widths[index % widths.length] })
+      .then((snapshot) => { settled.push(index); return snapshot; }));
+
+    const replies = await Promise.all(writes);
+
+    expect(settled).toEqual(writes.map((_, index) => index));
+    expect(replies.at(-1)!.widthMode).toBe(widths[29 % widths.length]);
+    expect(JSON.parse(await readFile(file, 'utf8'))).toMatchObject({ widthMode: widths[29 % widths.length] });
+  });
+
+  it('keeps writing after one persist fails, and drain still settles', async () => {
+    const { store, file } = await storeIn();
+    await store.load();
+    // A folder where the temporary file goes makes exactly one persist fail.
+    await mkdir(`${file}.tmp`);
+    await expect(store.update({ theme: 'dark' })).rejects.toThrow();
+    await rm(`${file}.tmp`, { recursive: true });
+
+    await store.update({ theme: 'light' });
+    await expect(store.drain()).resolves.toBeUndefined();
+    expect(JSON.parse(await readFile(file, 'utf8'))).toMatchObject({ theme: 'light' });
   });
 });
 
