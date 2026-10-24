@@ -160,7 +160,8 @@ export class HtmlBlockView implements NodeView {
         if (resolved.kind === 'url') picture.setAttribute('src', resolved.url);
         else picture.removeAttribute('src');
       }
-      this.markup.replaceChildren(drawn);
+      // Only now, with every address final, does the copy join the page.
+      this.markup.replaceChildren(document.adoptNode(drawn));
       if (!this.markup.isConnected) this.dom.append(this.markup);
       this.dom.dataset.preview = 'markup';
       return;

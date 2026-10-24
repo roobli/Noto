@@ -96,3 +96,52 @@ test('a note draws its own HTML, and nothing in it can act', async () => {
     await app.close();
   }
 });
+
+test('a picture in a note\u2019s HTML is not fetched while web images are off', async () => {
+  const workspace = path.join(process.cwd(), 'test-results', 'html-blocks-remote');
+  await rm(workspace, { recursive: true, force: true });
+  await mkdir(path.join(workspace, 'user-data'), { recursive: true });
+  const vault = path.join(workspace, 'vault');
+  await mkdir(vault, { recursive: true });
+  const note = (name: string) => `# Web\n\n<div align="center"><img src="https://example.invalid/${name}.png" alt="web"></div>\n\nAfter.\n`;
+  await writeFile(path.join(vault, 'a-off.md'), note('off'), 'utf8');
+  await writeFile(path.join(vault, 'b-on.md'), note('on'), 'utf8');
+  // Web images start off, so the note's first drawing is with them off.
+  await writeFile(path.join(workspace, 'user-data', 'settings.json'), JSON.stringify({ remoteImages: false }), 'utf8');
+  const app = await electron.launch({
+    executablePath: packagedExecutable(),
+    args: [`--user-data-dir=${path.join(workspace, 'user-data')}`, vault],
+  });
+  try {
+    const page = await app.firstWindow();
+    await page.waitForSelector('[data-testid="file-tree"]', { state: 'visible', timeout: 30_000 });
+    const asked: string[] = [];
+    page.on('request', (request) => {
+      if (request.url().includes('example.invalid')) asked.push(request.url());
+    });
+    const write = (remoteImages: boolean) => page.evaluate(async (value) => {
+      const result = await (window as unknown as {
+        notoSettings: { write(request: unknown): Promise<{ ok: boolean }> };
+      }).notoSettings.write({ version: 1, requestId: `e2e-html-remote-${value}`, patch: { remoteImages: value } });
+      return result.ok;
+    }, remoteImages);
+
+    // The block is cleaned before its address is judged; the cleaning must
+    // not ask for the picture on its own.
+    await page.getByTestId('tree-file').first().click();
+    const editor = page.locator('.canvas-slot:not([hidden]) .ProseMirror');
+    await expect(editor.locator('.noto-html-drawn div[align="center"]')).toHaveCount(1);
+    await expect(editor.locator('.noto-html-drawn img[alt="web"]')).not.toHaveAttribute('src', /./);
+    await page.waitForTimeout(1_000);
+    expect(asked).toEqual([]);
+
+    // With web images on, the same picture in another note is asked for,
+    // which shows the listener above would have heard a request.
+    expect(await write(true)).toBe(true);
+    await page.getByTestId('tree-file').nth(1).click();
+    await expect.poll(() => asked, { timeout: 10_000 }).toContain('https://example.invalid/on.png');
+    expect(asked).not.toContain('https://example.invalid/off.png');
+  } finally {
+    await app.close();
+  }
+});

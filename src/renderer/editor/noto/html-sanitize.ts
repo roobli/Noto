@@ -155,13 +155,31 @@ function copyAttributes(source: Element, copy: HTMLElement): void {
 }
 
 /**
+ * A document with no window, where the cleaned copy is built.
+ *
+ * An `<img>` given a `src` while it belongs to the page's own document starts
+ * loading at once, attached or not, which is how `new Image()` preloads. The
+ * copy keeps the address the note wrote so the image resolver can judge it,
+ * so the copy must not belong to the page until that judgement is made, or a
+ * web picture is fetched with web images turned off. A document made by
+ * `createHTMLDocument` has no browsing context: nothing created in it loads,
+ * runs or draws. The caller adopts the fragment once each address is final.
+ */
+let inert: Document | null = null;
+export function inertDocument(): Document {
+  inert ??= document.implementation.createHTMLDocument('');
+  return inert;
+}
+
+/**
  * The fragment a note's HTML becomes, cleaned.
  *
  * Parsed by the browser into a document of its own, which is inert: the
  * parser of `DOMParser` runs no script and fetches nothing, so the walk
- * happens before anything in the markup could act.
+ * happens before anything in the markup could act. The copy is built in
+ * `inertDocument()` for the same reason; see there.
  */
-export function sanitizeHtml(html: string, into: Document = document): DocumentFragment {
+export function sanitizeHtml(html: string, into: Document = inertDocument()): DocumentFragment {
   const parsed = new DOMParser().parseFromString(`<body>${html}</body>`, 'text/html');
   const walk = (source: Node, target: Node): void => {
     for (const child of [...source.childNodes]) {
@@ -186,7 +204,7 @@ export function sanitizeHtml(html: string, into: Document = document): DocumentF
 }
 
 /** The same, as markup, which is what a test can read. */
-export function sanitizeToHtml(html: string, into: Document = document): string {
+export function sanitizeToHtml(html: string, into: Document = inertDocument()): string {
   const holder = into.createElement('div');
   holder.appendChild(sanitizeHtml(html, into));
   return holder.innerHTML;
@@ -198,7 +216,7 @@ export function sanitizeToHtml(html: string, into: Document = document): string 
  * A block of one tag with nothing in it says less drawn than written, and a
  * block that survives the cleaning as nothing at all would draw as a hole.
  */
-export function worthDrawing(html: string, into: Document = document): boolean {
+export function worthDrawing(html: string, into: Document = inertDocument()): boolean {
   const trimmed = html.trim();
   if (trimmed.length === 0 || !trimmed.startsWith('<')) return false;
   const holder = into.createElement('div');
