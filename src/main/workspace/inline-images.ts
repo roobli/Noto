@@ -17,7 +17,6 @@
  */
 
 import path from 'node:path';
-import { readFile } from 'node:fs/promises';
 import { ASSET_ORIGIN, fromAssetUrl } from '../../shared/assets/v1/contracts';
 
 /** Past this, a picture is left as it is rather than bloating the file. */
@@ -87,6 +86,10 @@ export function fileFor(source: string, noteDirectory: string): string | null {
 export interface InlineDeps {
   /** The folder the note lives in, which relative addresses are relative to. */
   readonly noteDirectory: string;
+  /**
+   * Read a path `resolve` returned. Main passes `readResolvedAsset`, which
+   * reads through a handle checked to still be that path.
+   */
   readonly read: (absolute: string) => Promise<Uint8Array>;
   /**
    * Resolve a local path to a file the session is allowed to read, or null.
@@ -154,6 +157,3 @@ export async function inlineImages(html: string, deps: InlineDeps): Promise<stri
     return replacement ? `${before}${replacement}${after}` : whole;
   });
 }
-
-/** The reader used in the app, kept apart so the rewriting stays testable. */
-export const readFileBytes = async (absolute: string): Promise<Uint8Array> => readFile(absolute);
