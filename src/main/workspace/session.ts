@@ -50,8 +50,9 @@ import { languageFor, isViewableCodeFile } from '../../shared/code-viewer/langua
 import { isProbablyBinary } from '../../shared/code-viewer/binary';
 import { CODE_VIEW_MAX_BYTES, CODE_VIEW_MAX_LINES } from '../../shared/code-viewer/limits';
 import { standaloneHtml } from '../../shared/export/document-html';
-import { inlineImages, readFileBytes } from './inline-images';
+import { inlineImages } from './inline-images';
 import { resolveAssetPath } from '../protocol/asset-guard';
+import { readResolvedAsset } from '../protocol/asset-read';
 import { CopyDestinations } from '../file-truth/v1/copy-destinations';
 import { buildTreeRowMenu, trashLabel } from './tree-row-menu';
 import {
@@ -892,7 +893,7 @@ export class WorkspaceSession {
     // address resolves to nothing at all.
     const body = await inlineImages(request.html, {
       noteDirectory: path.dirname(note),
-      read: readFileBytes,
+      read: readResolvedAsset,
       // Export reads the same files the asset protocol would serve: inside a
       // session root, after every symbolic link in the path has been followed.
       resolve: (absolute) => resolveAssetPath(absolute, { roots: this.imageRoots(), realpath }),
@@ -998,7 +999,7 @@ export class WorkspaceSession {
         remoteImages: this.remoteImages(),
         resolve: (absolute) => resolveAssetPath(absolute, { roots: this.imageRoots(), realpath }),
         exists: (absolute) => lstat(absolute).then(() => true, () => false),
-        read: readFileBytes,
+        read: readResolvedAsset,
       },
     });
     this.logger.log(outcome.exported ? 'exported' : 'export_refused',

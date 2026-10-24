@@ -1,10 +1,9 @@
-import { realpath } from 'node:fs/promises';
 import path from 'node:path';
 import { pathToFileURL } from 'node:url';
 import { net, protocol, session } from 'electron';
-import { ASSET_HOST, fromAssetUrl } from '../../shared/assets/v1/contracts';
+import { ASSET_HOST } from '../../shared/assets/v1/contracts';
 import type { StructuredLogger } from '../logger';
-import { resolveAssetPath } from './asset-guard';
+import { serveAsset } from './serve-asset';
 
 export const RENDERER_ORIGIN = 'noto://bundle';
 
@@ -127,22 +126,6 @@ export async function installNotoProtocol(
     if (details.resourceType === 'script') headers['Access-Control-Allow-Origin'] = ['*'];
     callback({ responseHeaders: headers });
   });
-}
-
-/**
- * A local image, if the guard allows it.
- *
- * The path is not logged: a refusal is a note naming a file outside the
- * folder, which is ordinary, and the file's name is the reader's business.
- */
-async function serveAsset(url: URL, roots: readonly string[], logger: StructuredLogger): Promise<Response> {
-  const requested = fromAssetUrl(url);
-  const real = requested ? await resolveAssetPath(requested, { roots, realpath }) : null;
-  if (!real) {
-    logger.log('asset_refused', { roots: roots.length });
-    return notFound();
-  }
-  return net.fetch(pathToFileURL(real).toString());
 }
 
 export function isAllowedRendererUrl(rawUrl: string): boolean {
