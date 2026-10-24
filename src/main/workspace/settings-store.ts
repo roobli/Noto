@@ -17,7 +17,11 @@ import { coerceSettings } from '../../shared/settings/v1/validate';
 export class SettingsStore {
   private settings: NotoSettingsV1 = DEFAULT_SETTINGS;
   private loaded = false;
-  /** Serializes disk writes so overlapping patches do not race the tmp rename. */
+  /**
+   * The last persist queued, settled either way. Every persist starts only
+   * after it, so overlapping patches never share the temporary file at once
+   * and land on disk, and reply, in the order they were made.
+   */
   private writeChain: Promise<void> = Promise.resolve();
 
   constructor(private readonly filePath: string) {}
@@ -58,8 +62,10 @@ export class SettingsStore {
     await this.load();
     this.settings = coerceSettings({ ...this.settings, ...patch });
     const snapshot = this.settings;
-    const persist = this.persistSnapshot(snapshot);
-    this.writeChain = this.writeChain.then(() => persist, () => persist);
+    const persist = this.writeChain.then(() => this.persistSnapshot(snapshot));
+    // A failed persist is reported to its own caller and must not stop the
+    // ones queued behind it, or make drain reject on quit.
+    this.writeChain = persist.catch(() => undefined);
     await persist;
     return snapshot;
   }
