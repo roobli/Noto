@@ -136,11 +136,17 @@ test('a picture in a note\u2019s HTML is not fetched while web images are off', 
     expect(asked).toEqual([]);
 
     // With web images on, the same picture in another note is asked for,
-    // which shows the listener above would have heard a request.
+    // which shows the listener above would have heard a request. The note
+    // already open is drawn again under the new setting, as its markdown
+    // pictures are, so its picture is asked for now and not before.
     expect(await write(true)).toBe(true);
     await page.getByTestId('tree-file').nth(1).click();
     await expect.poll(() => asked, { timeout: 10_000 }).toContain('https://example.invalid/on.png');
-    expect(asked).not.toContain('https://example.invalid/off.png');
+    await expect.poll(() => asked, { timeout: 10_000 }).toContain('https://example.invalid/off.png');
+
+    // Switched off again, the open note's drawn picture gives up its address.
+    expect(await write(false)).toBe(true);
+    await expect(editor.locator('.noto-html-drawn img[alt="web"]')).not.toHaveAttribute('src', /./);
   } finally {
     await app.close();
   }

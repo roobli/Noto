@@ -55,7 +55,7 @@ const pictureOf = (tag: HtmlImage): Picture => ({
   styleWidth: tag.styleWidth,
 });
 
-export class HtmlBlockView implements NodeView {
+export class HtmlBlockView implements NodeView, Refreshable {
   readonly dom: HTMLElement;
   readonly contentDOM: HTMLElement;
   private readonly preview: HTMLElement;
@@ -67,7 +67,7 @@ export class HtmlBlockView implements NodeView {
     private readonly view: EditorView,
     private readonly getPos: () => number | undefined,
     private readonly context: () => ImageContext,
-    registry: Set<Refreshable>,
+    private readonly registry: Set<Refreshable>,
   ) {
     this.dom = document.createElement('div');
     this.dom.className = 'noto-html-block';
@@ -109,6 +109,7 @@ export class HtmlBlockView implements NodeView {
     });
     this.dom.append(this.contentDOM);
     this.render();
+    registry.add(this);
   }
 
   update(node: ProseNode): boolean {
@@ -116,6 +117,19 @@ export class HtmlBlockView implements NodeView {
     this.node = node;
     this.render();
     return true;
+  }
+
+  /**
+   * Draw again under a changed image context.
+   *
+   * A lone picture is the frame's, and the frame refreshes itself. Drawn
+   * markup resolved its pictures' addresses against the context it was drawn
+   * under, so with web images switched or a folder opened since, it is drawn
+   * again. Markup without a picture has nothing that depends on the context
+   * and is left as it is, a `<details>` the reader opened included.
+   */
+  refresh(): void {
+    if (this.dom.dataset.preview === 'markup' && this.markup.querySelector('img')) this.render();
   }
 
   /** Only the source is the editor's. */
@@ -129,6 +143,7 @@ export class HtmlBlockView implements NodeView {
   }
 
   destroy(): void {
+    this.registry.delete(this);
     this.frame.destroy();
   }
 
