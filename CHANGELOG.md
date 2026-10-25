@@ -9,6 +9,13 @@ How releases are made, and what each channel receives, is in
 
 ## [Unreleased]
 
+## [0.0.4-alpha.1] - 2026-10-25
+
+The first alpha after `0.0.3`, on the Testing channel. Git changes show in the
+file tree and beside each block, the command palette and narrow windows work
+from the keyboard and at 720px, and a round of fixes makes saving, recovery
+and what a note may read from disk safer. Like `0.0.3`, it is not signed.
+
 ### Added
 - **The file tree shows what changed since the last commit** when the folder
   is in a git repository: an amber dot on a changed note, a green plus on a new
@@ -36,6 +43,33 @@ How releases are made, and what each channel receives, is in
   page, and the setting to download updates automatically is hidden. In-app
   install returns with signed builds. `0.0.3` itself can still install an
   update on macOS and Windows.
+- **The command palette is a real dialog.** It takes the keyboard when it
+  opens, so a key typed no longer lands in the note behind it. A field at the
+  top filters the commands, the arrow keys and Enter pick one, and Escape,
+  Close or a press outside puts it away and returns you to the note.
+- **A narrow window keeps its files.** Below 900px wide the sidebar button
+  stays, and the sidebar opens over the page instead of pushing the text; a
+  press outside puts it away. At any width, opening the sidebar now moves the
+  text along with it instead of jumping first.
+- **Two inline formulas that come to touch become one.** Markdown cannot
+  write `$x$` and `$y$` with nothing between them, so deleting the text
+  between them, or pasting one beside the other, joins them as `$x y$`. One
+  undo takes back the edit and the join together.
+- **Easier to read and to hit.** Muted text in the dark theme and code
+  comments in both themes are a little stronger, readable text no longer dims
+  by transparency, shadows in the dark theme darken instead of glowing, and
+  the small sidebar and table controls answer a press across 24px.
+- **Calmer motion.** Panels opened from the keyboard appear at once; opened
+  with the pointer they still arrive. With Reduce Motion on, they fade instead
+  of moving, and a press no longer scales a button.
+- When a note changed on disk while you were editing it, the alert now offers
+  **Keep editing**, which hides it until you next save.
+- Settings rows no longer stretch across a wide window, and the status line
+  keeps its message and word count in place however many recent notes it
+  shows.
+- In the file tree, the arrow and icon of a row stay in view when a long name
+  is scrolled sideways, the folder at the top is set apart from its contents,
+  and the active Files or Outline tab is underlined again.
 
 ### Removed
 - The `NOTO_MARKDOWN_ENGINE=micromark` switch and the old Markdown pipelines
@@ -43,6 +77,44 @@ How releases are made, and what each channel receives, is in
   now the only engine.
 
 ### Fixed
+- **Typing during a save is kept.** Keys pressed while a save was still being
+  written could be marked as saved without being written, and were lost when
+  the window closed. Two saves started at once can no longer do the same.
+- **A note deleted on disk while open can be saved back** to where it was.
+  If Noto quits partway through that save, the next launch finishes it; and if
+  another file appears at that path during the save, Noto leaves that file
+  alone and keeps your note unsaved.
+- **A note can no longer read files outside its folders.** Pictures in an
+  export (HTML, PDF and the Pandoc formats) come only from the folders Noto
+  has open, Pandoc runs sandboxed, and a network path (`\\server\share`) is
+  refused without contacting the server. Save a Copy writes only where you
+  chose in its dialog.
+- With web images turned off, a web picture inside an HTML block is no longer
+  downloaded. Switching web images on or off now redraws pictures in HTML
+  blocks at once, rather than after the block was edited.
+- The window no longer goes blank when a folder opens after Noto started
+  without one.
+- Changing several settings in quick succession no longer loses one of them.
+- A paragraph of thousands of unmatched stars (`*a *a *a …`) no longer crashes
+  the window.
+- Strikethrough beside Chinese, Japanese or Korean text no longer reopens as
+  literal tildes in a paragraph that also holds a character reference or a
+  `***` run.
+- More text comes back as written after its paragraph is edited and saved:
+  italic inside bold glued to a word, struck text that is itself `~~`, a
+  literal star beside bold or italic, a space before the end of a link's
+  text or of a style around another, and link text starting with `^` or `[`.
+- Text such as `a*.*b`, `foo_(bar)_baz` or `[x][y]` with no definition now
+  opens as plain text, as other Markdown apps show it, instead of as emphasis
+  or a link.
+- Inside quotes and list items, a heading, fence, rule or nested quote now
+  ends the paragraph before it, a line shaped like a link definition no longer
+  splits a paragraph, and a nested quote's paragraph carries on through a line
+  without `>`.
+- A long folder name in the title bar shortens before it runs under the
+  window controls or the Settings button.
+- The `h1`–`h6` badge beside the heading being written is on one line again,
+  not stacked.
 - A backslash right before a letter that touches italic, bold or
   strikethrough (`C:\d` before italic `(see)`) no longer turns the letter into
   `&#x64;` text when its paragraph is edited and saved. The letter is written
