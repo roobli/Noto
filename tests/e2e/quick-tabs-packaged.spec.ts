@@ -1,7 +1,7 @@
 import { mkdir, readFile, rm, writeFile } from 'node:fs/promises';
 import path from 'node:path';
 import { expect, test, _electron as electron, type ElectronApplication, type Page } from '@playwright/test';
-import { packagedExecutable } from './packaged-app';
+import { finishAnimations, packagedExecutable } from './packaged-app';
 
 async function invokeMenu(app: ElectronApplication, id: string): Promise<void> {
   await app.evaluate(({ Menu }, wanted) => {
@@ -90,7 +90,11 @@ test.describe('quick open, as the author built it', () => {
       const palette = page.getByTestId('quick-open');
       await expect(palette).toBeVisible();
       await expect(palette).toHaveAttribute('data-width', 'default');
+      // Measured settled: on its arrival frame the palette is drawn at 0.98
+      // of its width.
+      await finishAnimations(page);
       const narrow = await palette.evaluate((node) => Math.round(node.getBoundingClientRect().width));
+      expect(narrow).toBe(740);
 
       await page.keyboard.press(process.platform === 'darwin' ? 'Meta+]' : 'Control+]');
       await expect(palette).toHaveAttribute('data-width', 'wide');

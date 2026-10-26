@@ -208,3 +208,18 @@ export async function selectTextIn(
     document.dispatchEvent(new Event('selectionchange'));
   }, { startOffset, endOffset });
 }
+
+/**
+ * Bring every running animation to its end, so what is measured next is the
+ * settled layout rather than a frame of the arrival.
+ *
+ * Under a virtual display the window's animation clock does not advance
+ * between frames nobody asked for, so an overlay can sit on its first frame
+ * indefinitely. Its arrival scales it (`noto-arrive` starts at 0.98), and a
+ * box read then is 2% short of the one the stylesheet asks for, on every run.
+ */
+export async function finishAnimations(page: Page): Promise<void> {
+  await page.evaluate(() => {
+    for (const animation of document.getAnimations()) animation.finish();
+  });
+}
