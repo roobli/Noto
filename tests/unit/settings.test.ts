@@ -231,3 +231,24 @@ describe('update preferences', () => {
     })).toBe(false);
   });
 });
+
+describe('loading settings once', () => {
+  it('gives a caller that arrives mid-read the file, not the defaults', async () => {
+    // The first load marks the store loaded before its read finishes. A second
+    // caller in that gap was handed the defaults, and an update in it wrote
+    // them over the user's file.
+    const { store, file } = await storeIn(JSON.stringify({ theme: 'dark' }));
+    const first = store.load();
+    const updated = store.update({ spellCheck: !DEFAULT_SETTINGS.spellCheck });
+    await first;
+    expect((await updated).theme).toBe('dark');
+    expect(JSON.parse(await readFile(file, 'utf8')).theme).toBe('dark');
+  });
+
+  it('answers concurrent loads with the same read', async () => {
+    const { store } = await storeIn(JSON.stringify({ theme: 'dark' }));
+    const [a, b] = await Promise.all([store.load(), store.load()]);
+    expect(a.theme).toBe('dark');
+    expect(b.theme).toBe('dark');
+  });
+});

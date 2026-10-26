@@ -63,4 +63,18 @@ describe('RecentFiles', () => {
     const raw = JSON.parse(await readFile(filePath, 'utf8')) as unknown[];
     expect(raw).toHaveLength(1);
   });
+
+  it('keeps the listed files when a remember arrives mid-read', async () => {
+    // A remember during the first load's read used to see an empty list, write
+    // just itself, and lose every file already listed.
+    const first = await fresh();
+    await first.remember('/notes/a.md');
+    const reopened = new RecentFiles(path.join(directory, 'recent-files.json'));
+    const loading = reopened.load();
+    const remembering = reopened.remember('/notes/b.md');
+    await Promise.all([loading, remembering]);
+    expect(reopened.list().map((entry) => entry.path)).toEqual(['/notes/b.md', '/notes/a.md']);
+    const onDisk = JSON.parse(await readFile(path.join(directory, 'recent-files.json'), 'utf8')) as { path: string }[];
+    expect(onDisk.map((entry) => entry.path)).toEqual(['/notes/b.md', '/notes/a.md']);
+  });
 });
