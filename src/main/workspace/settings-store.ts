@@ -21,7 +21,7 @@ export class SettingsStore {
    * flight waits for it rather than seeing the defaults, which an update in
    * that gap would otherwise write over the user's file.
    */
-  private loading: Promise<NotoSettingsV1> | undefined;
+  private loading: Promise<void> | undefined;
   /**
    * The last persist queued, settled either way. Every persist starts only
    * after it, so overlapping patches never share the temporary file at once
@@ -31,12 +31,13 @@ export class SettingsStore {
 
   constructor(private readonly filePath: string) {}
 
-  load(): Promise<NotoSettingsV1> {
-    this.loading ??= this.read();
-    return this.loading;
+  /** The settings as they stand, once the file has been read. */
+  async load(): Promise<NotoSettingsV1> {
+    await (this.loading ??= this.read());
+    return this.settings;
   }
 
-  private async read(): Promise<NotoSettingsV1> {
+  private async read(): Promise<void> {
     try {
       this.settings = coerceSettings(JSON.parse(await readFile(this.filePath, 'utf8')));
     } catch {
@@ -44,7 +45,6 @@ export class SettingsStore {
       // Neither is worth interrupting the user for.
       this.settings = DEFAULT_SETTINGS;
     }
-    return this.settings;
   }
 
   current(): NotoSettingsV1 {

@@ -245,6 +245,12 @@ describe('loading settings once', () => {
     expect(JSON.parse(await readFile(file, 'utf8')).theme).toBe('dark');
   });
 
+  it('answers a load after an update with the updated settings', async () => {
+    const { store } = await storeIn(JSON.stringify({ theme: 'dark' }));
+    await store.update({ theme: 'light' });
+    expect((await store.load()).theme).toBe('light');
+  });
+
   it('answers concurrent loads with the same read', async () => {
     const { store } = await storeIn(JSON.stringify({ theme: 'dark' }));
     const [a, b] = await Promise.all([store.load(), store.load()]);
