@@ -22,13 +22,20 @@ function isRecentFile(value: unknown): value is RecentFileV1 {
 
 export class RecentFiles {
   private entries: RecentFileV1[] = [];
-  private loaded = false;
+  /**
+   * The one read of the file, shared, so a remember that arrives while it is
+   * in flight builds on the stored list instead of an empty one.
+   */
+  private loading: Promise<void> | undefined;
 
   constructor(private readonly filePath: string) {}
 
-  async load(): Promise<void> {
-    if (this.loaded) return;
-    this.loaded = true;
+  load(): Promise<void> {
+    this.loading ??= this.read();
+    return this.loading;
+  }
+
+  private async read(): Promise<void> {
     try {
       const parsed: unknown = JSON.parse(await readFile(this.filePath, 'utf8'));
       if (Array.isArray(parsed)) this.entries = parsed.filter(isRecentFile).slice(0, MAX_RECENT);
