@@ -15,7 +15,7 @@ import { mkdirSync, mkdtempSync, readFileSync, realpathSync, rmSync, writeFileSy
 import os from 'node:os';
 import path from 'node:path';
 import { expect, test, _electron as electron, type ElectronApplication, type Page } from '@playwright/test';
-import { MOD, packagedExecutable, placeCaretAtEnd } from './packaged-app';
+import { MOD, finishAnimations, packagedExecutable, placeCaretAtEnd } from './packaged-app';
 
 /** Screenshots for review, when asked for: `NOTO_GIT_SHOTS=/some/dir`. */
 const SHOTS = process.env.NOTO_GIT_SHOTS ?? '';
@@ -143,13 +143,12 @@ async function pressGutter(page: Page, target: ReturnType<typeof block>): Promis
 }
 
 /**
- * The arrival animation at its end. Under a virtual display the window's
- * animation clock does not advance between frames nobody asked for, so a
- * capture would catch the popover at opacity 0.
+ * The arrival animation at its end, and kept there: otherwise a capture would
+ * catch the popover at opacity 0.
  */
 async function settle(page: Page): Promise<void> {
+  await finishAnimations(page);
   await page.evaluate(() => {
-    for (const animation of document.getAnimations()) animation.finish();
     document.querySelector<HTMLElement>('.noto-git-popover')?.style.setProperty('animation', 'none');
   });
 }
