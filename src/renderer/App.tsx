@@ -913,7 +913,11 @@ function NotoWorkspace({ platform }: { platform: NotoPlatform }) {
       });
     });
     const unsubscribeTree = window.notoWorkspace.onTreeChanged(() => {
-      if (active) setTreeVersion((current) => current + 1);
+      if (!active) return;
+      setTreeVersion((current) => current + 1);
+      // What quick open and wiki links match against is stale too. Main walks
+      // again only when the change was structural; otherwise this is its cache.
+      void ensureFileIndexRef.current();
     });
     const unsubscribeGit = window.notoWorkspace.onGitMarksChanged((event) => {
       if (active) setGitMarks(event);

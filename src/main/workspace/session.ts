@@ -76,6 +76,7 @@ import {
 } from '../../shared/workspace/v1/entry-names';
 import { buildFileIndex } from './file-index';
 import { GitMarks, defaultGitRunner } from './git-marks';
+import { VaultWatcher, classifyTouched, inspectTouched } from './vault-watcher';
 import { gitBlockDiff } from './git-blocks';
 import type { WorkspaceGitBlocksV1 } from '../../shared/workspace/v1/contracts';
 import { searchContent } from './content-search';
@@ -146,6 +147,16 @@ export class WorkspaceSession {
     // Whatever made the tree's marks stale made the gutter stale too.
     onRefresh: () => this.scheduleGutter(),
   });
+  /**
+   * The open folder as it changes on disk, from Noto or from anything else.
+   * Settled batches only; see `followDisk` for what they decide.
+   */
+  private readonly vaultWatcher = new VaultWatcher({
+    onSettled: (touched) => { void this.followDisk(touched); },
+    log: (event, fields) => this.logger.log(event, fields ?? {}),
+  });
+  /** Folder-relative paths of every row the tree has been sent since the last structural change. */
+  private readonly listed = new Set<string>();
   private gutterTimer: ReturnType<typeof setTimeout> | null = null;
   /** Rises per gutter run, so an answer for a note no longer in front is dropped. */
   private gutterRun = 0;
@@ -423,6 +434,7 @@ export class WorkspaceSession {
   /** Release every store, for shutdown. */
   closeAll(): void {
     this.git.close();
+    this.vaultWatcher.close();
     if (this.gutterTimer !== null) clearTimeout(this.gutterTimer);
     for (const document of this.documents.values()) document.store.close();
     this.documents.clear();
@@ -491,6 +503,8 @@ export class WorkspaceSession {
     // A new folder invalidates the old index rather than serving it stale.
     this.indexCache = null;
     this.tagIndexCache = null;
+    this.listed.clear();
+    this.vaultWatcher.open(root);
     // Not awaited: a status is a background read, and the folder shows without it.
     void this.git.open(root);
     await this.recentFolders?.remember(root);
@@ -1296,12 +1310,59 @@ export class WorkspaceSession {
 
   async listFolder(target: string): Promise<{ version: typeof NOTO_WORKSPACE_VERSION; entries: FileTreeEntryV1[] }> {
     if (!this.folderRoot) throw new Error('NO_FOLDER_OPEN: choose a folder first');
-    return {
-      version: NOTO_WORKSPACE_VERSION,
-      entries: await listDirectory(
-        this.folderRoot, path.resolve(target), this.treeSort(), this.codeViewer(),
-      ),
-    };
+    const root = this.folderRoot;
+    const entries = await listDirectory(root, path.resolve(target), this.treeSort(), this.codeViewer());
+    // Rows carry real paths; the watcher reports names under the folder as opened.
+    const base = await realpath(root).catch(() => root);
+    if (root === this.folderRoot) {
+      for (const entry of entries) this.listed.add(path.relative(base, entry.path).split(path.sep).join('/'));
+    }
+    return { version: NOTO_WORKSPACE_VERSION, entries };
+  }
+
+  /**
+   * The folder changed on disk: drop what no longer matches it, and tell the
+   * renderer once.
+   *
+   * Only a structural change (something shown appeared, went or moved) re-lists
+   * the tree and re-walks the index. A note whose text was saved, by Noto or by
+   * anything else, changes neither, and redrawing the tree on every autosave
+   * would be the one way to make a watcher felt while typing.
+   */
+  private async followDisk(touched: readonly string[] | null): Promise<void> {
+    const root = this.folderRoot;
+    if (!root) return;
+    let change = { structural: true, notes: true };
+    if (touched !== null) {
+      const indexed = this.indexCache?.root === root ? this.indexCache.reply.entries : [];
+      const knownFiles = new Set(indexed.map((entry) => entry.relativePath));
+      // A folder holding an indexed note is known even if the tree never showed it,
+      // so moving it to the Trash still empties quick open.
+      const knownFolders = new Set<string>();
+      for (const file of knownFiles) {
+        for (let at = file.lastIndexOf('/'); at > 0; at = file.lastIndexOf('/', at - 1)) {
+          const folder = file.slice(0, at);
+          if (knownFolders.has(folder)) break;
+          knownFolders.add(folder);
+        }
+      }
+      const showCode = this.codeViewer();
+      change = classifyTouched(
+        await inspectTouched(root, touched),
+        (relative) => this.listed.has(relative) || knownFiles.has(relative) || knownFolders.has(relative),
+        (relative, kind) => kind === 'directory' || isEditableFile(relative) || (showCode && isViewableCodeFile(relative)),
+      );
+    }
+    if (root !== this.folderRoot) return;
+    if (change.structural) {
+      this.logger.log('workspace_disk_changed', { touched: touched === null ? 'unknown' : touched.length });
+      this.indexCache = null;
+      this.listed.clear();
+      this.announceTreeChanged();
+    } else if (change.notes) {
+      // Saved text can change a note's tags, and nothing else the folder caches.
+      this.tagIndexCache = null;
+    }
   }
 
   /** The folder open now, for a renderer that subscribed after it opened. */

@@ -7,7 +7,7 @@
  * link into the real document.
  */
 
-import { mkdir, readFile, rm, writeFile } from 'node:fs/promises';
+import { mkdir, readFile, rename, rm, writeFile } from 'node:fs/promises';
 import path from 'node:path';
 import { expect, test, _electron as electron, type ElectronApplication, type Page } from '@playwright/test';
 import { packagedExecutable, placeCaret } from './packaged-app';
@@ -61,6 +61,28 @@ async function launch(name: string): Promise<Workspace> {
 }
 
 test.describe('quick open', () => {
+  test('follows a note that another program renamed and moved', async () => {
+    const { app, page, folder } = await launch('follow-disk');
+    try {
+      await invokeMenu(app, 'quick-open');
+      await expect(page.getByTestId('quick-input')).toHaveAttribute('placeholder', /4 notes/);
+      await page.keyboard.press('Escape');
+      await expect(page.getByTestId('file-tree')).toContainText('release-notes');
+
+      // Finder, a shell or another editor: anything that is not Noto.
+      await rename(path.join(folder, 'release-notes.md'), path.join(folder, 'chapters', 'changelog.md'));
+      await expect(page.getByTestId('file-tree')).not.toContainText('release-notes');
+
+      await invokeMenu(app, 'quick-open');
+      await page.getByTestId('quick-input').fill('changelog');
+      await expect(page.getByTestId('quick-result').first()).toContainText('changelog.md');
+      await page.getByTestId('quick-input').fill('release');
+      await expect(page.getByTestId('quick-open')).not.toContainText('release-notes.md');
+    } finally {
+      await app.close();
+    }
+  });
+
   test('finds a note by name and opens it', async () => {
     const { app, page } = await launch('open');
     try {
