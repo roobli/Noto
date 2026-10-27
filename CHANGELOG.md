@@ -9,6 +9,40 @@ How releases are made, and what each channel receives, is in
 
 ## [Unreleased]
 
+## [0.0.4-alpha.2] - 2026-10-27
+
+Typing no longer changes what a note saves, the sidebar runs the full height
+of the window again, and the folder follows notes renamed or moved outside
+Noto. Out of the usual weekly rhythm because the typing fixes protect files.
+Like `0.0.3`, it is not signed.
+
+### Fixed
+- **Typing no longer changes what is saved.** Five ordinary things did:
+  emphasis deleted the character before it (`中文*斜体*` was saved as
+  `中*斜体*`), an underscore inside a word became italics (`snake_case_name`
+  was saved as `snak*case*name`), inline code left a stray backtick after the
+  caret, three typed backticks showed four, and a typed `[text](url)` was
+  saved escaped. Emphasis now follows CommonMark, and a typed link becomes a
+  link when its closing parenthesis is typed.
+- **The sidebar runs from the top of the window to the bottom**, with the
+  window buttons on it, as in Typora and Finder. It used to start below a band
+  across the whole window. The sidebar button stays where it is when the
+  sidebar opens or closes, and the note's name is centred over the page.
+- **The file tree, quick open and wiki links follow notes renamed or moved
+  outside Noto**, in Finder, another editor or git, and after Noto's own
+  renames, about a quarter of a second after the folder goes quiet. Quick open
+  used to keep the folder as it was when it opened.
+
+### Added
+- **Return after a fence line opens a code block**, as in Typora: type
+  ```` ```js ```` and press Return. `$$` and Return opens a math block.
+
+### Changed
+- **Smart quotes, dashes and ellipsis are off for new installs.** They change
+  the bytes a note holds, and in technical notes the change is usually wrong
+  (`"--flag"` became `“—flag”`). Turn them on in Settings → Markdown. A
+  settings file that already holds a choice keeps it.
+
 ## [0.0.4-alpha.1] - 2026-10-25
 
 The first alpha after `0.0.3`, on the Testing channel. Git changes show in the
