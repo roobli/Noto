@@ -366,6 +366,7 @@ export class NotoEditor implements NotoEditorPort {
         smartQuotes: () => this.substitutions.quotes,
         smartDashes: () => this.substitutions.dashes,
         smartEllipsis: () => this.substitutions.ellipsis,
+        autoPair: () => this.autoPair,
       }),
       ...notoKeymap({
         mac: this.options.mac,

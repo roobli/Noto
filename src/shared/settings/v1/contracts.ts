@@ -384,11 +384,12 @@ export const DEFAULT_SETTINGS: NotoSettingsV1 = Object.freeze({
   fontSize: 15,
   lineHeight: 1.58,
   widthMode: 'default',
-  // On by default because it is what a writing tool should do, and it is
-  // reversible per document by undoing the substitution.
-  smartQuotes: true,
-  smartDashes: true,
-  smartEllipsis: true,
+  // Off by default, unlike Typora. Each one changes the bytes the file ends up
+  // holding, and in technical notes the change is wrong more often than not:
+  // `"--flag"` came out as `“—flag”`. A reader who wants them turns them on.
+  smartQuotes: false,
+  smartDashes: false,
+  smartEllipsis: false,
   spellCheck: true,
   remoteImages: true,
   codeLineNumbers: true,

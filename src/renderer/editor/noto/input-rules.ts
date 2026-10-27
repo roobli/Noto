@@ -16,7 +16,7 @@ import {
   wrappingInputRule,
 } from 'prosemirror-inputrules';
 import type { MarkType, NodeType } from 'prosemirror-model';
-import type { EditorState, Plugin, Transaction } from 'prosemirror-state';
+import { TextSelection, type EditorState, type Plugin, type Transaction } from 'prosemirror-state';
 import { notoSchema } from '../../../shared/markdown/v3/pm/schema';
 
 export interface InputRuleOptions {
@@ -32,28 +32,69 @@ export interface InputRuleOptions {
   readonly smartQuotes?: () => boolean;
   readonly smartDashes?: () => boolean;
   readonly smartEllipsis?: () => boolean;
+  /**
+   * Whether auto-pair is on. A rule that completes a pair (`` `x` ``, a link's
+   * `)`) runs before auto-pair sees the key, so it also takes the closer
+   * auto-pair put after the caret when the opener was typed; otherwise that
+   * closer stays in the file.
+   */
+  readonly autoPair?: () => boolean;
+}
+
+/** Whether the text right after `pos` is `closer`, the way auto-pair leaves it. */
+function closerAfter(state: EditorState, pos: number, closer: string): boolean {
+  return state.doc.textBetween(pos, Math.min(state.doc.content.size, pos + closer.length)) === closer;
 }
 
 /**
- * Apply a mark to the text captured by `pattern`, then delete the markers.
+ * Apply a mark to the text captured by `pattern`, then delete the delimiters.
  *
- * The single capture group is the content. Markers are removed back to front so
- * the earlier offsets stay valid.
+ * The single capture group is the content, and it sits directly between the
+ * opening and the closing `delimiter`. Anything earlier in the match is a
+ * guard (the character that keeps `**` from reading as `*`, or a space) and
+ * belongs to the text, so positions are counted back from the end of the
+ * match rather than found by searching it: searching deleted the guard, which
+ * turned `中文*斜体*` into `中*斜体*`, and found the content inside the guard
+ * when the two were the same letter. Deletions run back to front so earlier
+ * offsets stay valid.
  */
-function markInputRule(pattern: RegExp, markType: MarkType): InputRule {
+function markInputRule(pattern: RegExp, markType: MarkType, delimiter: string, autoPair: () => boolean): InputRule {
   return new InputRule(pattern, (state, match, start, end) => {
     const content = match[1];
     if (content === undefined || content.length === 0) return null;
 
-    const contentStart = start + match[0].indexOf(content);
+    const contentStart = start + match[0].length - delimiter.length - content.length;
     const contentEnd = contentStart + content.length;
+    const openStart = contentStart - delimiter.length;
 
     const tr = state.tr;
+    if (autoPair() && closerAfter(state, end, delimiter)) tr.delete(end, end + delimiter.length);
     if (end > contentEnd) tr.delete(contentEnd, end);
-    if (contentStart > start) tr.delete(start, contentStart);
-    tr.addMark(start, start + content.length, markType.create());
+    tr.delete(openStart, contentStart);
+    tr.addMark(openStart, openStart + content.length, markType.create());
     // Otherwise the mark would keep applying to whatever is typed next.
     tr.removeStoredMark(markType);
+    return tr;
+  });
+}
+
+/**
+ * `[text](url)` becomes a link once its closing parenthesis is typed.
+ *
+ * Without this the brackets stayed text, and text brackets are escaped on
+ * save, so a typed link reached the file as `\[text]\(https\://...)`
+ * while the same link pasted worked. `![alt](src)` is an image and an escaped
+ * `\[` is meant literally, so neither is touched.
+ */
+function linkInputRule(autoPair: () => boolean): InputRule {
+  return new InputRule(/(^|[^!\\])\[([^\]]+)\]\(([^()\s]+)\)$/, (state, match, start, end) => {
+    const [, guard = '', text, href] = match;
+    if (!text || !href) return null;
+    const tr = state.tr;
+    if (autoPair() && closerAfter(state, end, ')')) tr.delete(end, end + 1);
+    const link = notoSchema.marks.link.create({ href, title: null });
+    tr.replaceWith(start + guard.length, end, notoSchema.text(text, link.addToSet(state.doc.resolve(start).marks())));
+    tr.removeStoredMark(notoSchema.marks.link);
     return tr;
   });
 }
@@ -98,6 +139,32 @@ function taskMarkerRule(itemType: NodeType): InputRule {
 const { nodes, marks } = notoSchema;
 
 /**
+ * Enter after a fence line or `$$` opens the block.
+ *
+ * The input rules only fire on a typed space, but a fence is written by
+ * typing ```` ```js ```` and pressing Return, which left the backticks as a
+ * paragraph. Only at the end of a paragraph that is nothing but the fence,
+ * and only where the block may stand.
+ */
+export function fenceOnEnter(state: EditorState, dispatch?: (tr: Transaction) => void): boolean {
+  const { $from, empty } = state.selection;
+  if (!empty || $from.parent.type !== nodes.paragraph || $from.parentOffset !== $from.parent.content.size) return false;
+  const text = $from.parent.textContent;
+  const fence = /^```([a-zA-Z0-9+#.-]*)$/.exec(text);
+  const block = fence
+    ? nodes.code_block.create({ lang: fence[1] ?? '', fenced: true })
+    : text === '$$' ? nodes.math_block.create() : null;
+  if (!block) return false;
+  const index = $from.index(-1);
+  if (!$from.node(-1).canReplaceWith(index, index + 1, block.type)) return false;
+  if (dispatch) {
+    const tr = state.tr.replaceWith($from.before(), $from.after(), block);
+    dispatch(tr.setSelection(TextSelection.create(tr.doc, $from.before() + 1)).scrollIntoView());
+  }
+  return true;
+}
+
+/**
  * Wrap rules so they only fire while `enabled` is true.
  *
  * The rules stay registered either way. Rebuilding the plugin list to add or
@@ -139,6 +206,7 @@ export function notoInputRules(options: InputRuleOptions = {}): Plugin {
   const quotes = options.smartQuotes ?? (() => false);
   const dashes = options.smartDashes ?? (() => false);
   const dots = options.smartEllipsis ?? (() => false);
+  const autoPair = options.autoPair ?? (() => false);
   return inputRules({
     rules: [
       ...gatedRules([...smartQuotes], quotes),
@@ -163,12 +231,16 @@ export function notoInputRules(options: InputRuleOptions = {}): Plugin {
         state.tr.replaceRangeWith(start, end, nodes.horizontal_rule.create())),
 
       // Inline. Strong is tried before emphasis so `**x**` is not read as `*` plus `*x*`.
-      markInputRule(/\*\*([^*]+)\*\*$/, marks.strong),
-      markInputRule(/__([^_]+)__$/, marks.strong),
-      markInputRule(/(?:^|[^*])\*([^*\s][^*]*)\*$/, marks.emphasis),
-      markInputRule(/(?:^|[^_])_([^_\s][^_]*)_$/, marks.emphasis),
-      markInputRule(/~~([^~]+)~~$/, marks.strikethrough),
-      markInputRule(new RegExp('`([^`]+)`$'), marks.inline_code),
+      // Emphasis follows CommonMark's flanking: the content neither starts nor
+      // ends with a space, and an underscore after a letter or digit is part
+      // of a word (`snake_case`), never an opener.
+      markInputRule(/\*\*([^*]+)\*\*$/, marks.strong, '**', autoPair),
+      markInputRule(/__([^_]+)__$/, marks.strong, '__', autoPair),
+      markInputRule(/(?:^|[^*])\*([^*\s](?:[^*]*[^*\s])?)\*$/, marks.emphasis, '*', autoPair),
+      markInputRule(/(?:^|[^_\p{L}\p{N}])_([^_\s](?:[^_]*[^_\s])?)_$/u, marks.emphasis, '_', autoPair),
+      markInputRule(/~~([^~]+)~~$/, marks.strikethrough, '~~', autoPair),
+      markInputRule(new RegExp('`([^`]+)`$'), marks.inline_code, '`', autoPair),
+      linkInputRule(autoPair),
       inlineMathRule(),
     ],
   });
