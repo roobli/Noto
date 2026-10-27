@@ -40,6 +40,7 @@ import type { Node as ProseNode, ResolvedPos } from 'prosemirror-model';
 import { moveBlock, moveColumn } from './move-block';
 import { enterInTable, tableFromRows, unwrapAtStart } from './block-edges';
 import { openLinkEditor } from './link-plugin';
+import { fenceOnEnter } from './input-rules';
 import {
   sortTasks,
   toggleTaskStatus,
@@ -342,6 +343,7 @@ export const outdentEmptyListItem: Command = (state, dispatch) => {
 
 const enter: Command = chainCommands(
   tableFromRows,
+  fenceOnEnter,
   enterInTable,
   newlineInCode,
   createParagraphNear,

@@ -1,4 +1,4 @@
-import { mkdir, rm, writeFile } from 'node:fs/promises';
+import { mkdir, readFile, rm, writeFile } from 'node:fs/promises';
 import path from 'node:path';
 import { expect, test, _electron as electron, type ElectronApplication, type Page } from '@playwright/test';
 import { packagedExecutable, placeCaret, selectTextIn } from './packaged-app';
@@ -30,6 +30,40 @@ async function atEnd(page: Page): Promise<void> {
 
 const text = (page: Page) => page.locator('.ProseMirror > p').last().innerText();
 
+async function invokeMenu(app: ElectronApplication, id: string): Promise<void> {
+  await app.evaluate(({ Menu }, wanted) => {
+    const find = (items: Electron.MenuItem[]): Electron.MenuItem | null => {
+      for (const item of items) {
+        if (item.id === wanted) return item;
+        const nested = item.submenu ? find(item.submenu.items) : null;
+        if (nested) return nested;
+      }
+      return null;
+    };
+    const target = find(Menu.getApplicationMenu()!.items);
+    if (!target) throw new Error(`no menu item ${wanted}`);
+    target.click();
+  }, id);
+}
+
+test.describe('what the file holds', () => {
+  // Each of these used to change the saved bytes: the character before a single
+  // star went, an identifier became italics, auto-pair's closer stayed behind
+  // after inline code, and a typed link was saved escaped.
+  test('keeps every character typed around marks, code and links', async () => {
+    const { app, page } = await launch('typed-bytes');
+    try {
+      await atEnd(page);
+      await page.keyboard.type(' 中文*斜体*中文 snake_case_name a `x` b see [text](https://a.b) after');
+      await invokeMenu(app, 'save');
+      await expect.poll(() => readFile(path.join(resultRoot, 'typed-bytes', 'note.md'), 'utf8'))
+        .toBe('# Pairs\n\nHere. 中文*斜体*中文 snake_case_name a `x` b see [text](https://a.b) after\n');
+    } finally {
+      await app.close();
+    }
+  });
+});
+
 test.describe('closing what you open', () => {
   test('writes the partner, steps over it, and takes both on backspace', async () => {
     const { app, page } = await launch('pairs');
@@ -57,9 +91,9 @@ test.describe('closing what you open', () => {
     try {
       await atEnd(page);
       await page.keyboard.type(" don't");
-      // Smart typography curls it, which is the other feature doing its job.
+      // Smart quotes are off by default, so the apostrophe stays straight.
       // What matters here is that there is one apostrophe and not two.
-      await expect.poll(() => text(page)).toBe('Here. don\u2019t');
+      await expect.poll(() => text(page)).toBe("Here. don't");
     } finally {
       await app.close();
     }

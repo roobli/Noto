@@ -78,6 +78,9 @@ export function pairActionFor(
   if (SYMMETRIC.has(typed) && after === typed) return { kind: 'step-over' };
 
   if (close === undefined) return { kind: 'none' };
+  // The third backtick of a fence: pairing it again showed four, and the spare
+  // one ended up inside the code block.
+  if (typed === '`' && before === '`') return { kind: 'none' };
   /*
    * A bracket typed after a word is the commonest bracket there is.
    *
