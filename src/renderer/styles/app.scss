@@ -134,10 +134,15 @@ button:disabled { color: var(--muted); opacity: 0.7; }
      it said 38 while the bar is 32, and the six pixels between showed the
      page's own ground as a pale band across the top of the rail. */
   grid-template-rows: auto auto minmax(0, 1fr) auto auto;
-  /* Two columns: the rail and the page. The title bar spans both so macOS
-     traffic lights and the sidebar/trail controls share one Claude-style row;
-     the rail starts on the row below rather than under the lights. */
+  /* Two columns, each with its own ground from the top of the window to the
+     bottom: the rail and the page. The title bar lies across both without a
+     ground of its own, so the traffic lights sit on the rail the way they sit
+     on a Finder or Typora sidebar, and the divide between rail and page runs
+     floor to ceiling. A bar painted across both (2026-09) put the lights on a
+     band that belonged to neither column, and the left edge read as two
+     stacked grounds. */
   grid-template-columns: var(--shell-rail, auto) minmax(0, 1fr);
+  --titlebar-height: 32px;
   /* The rail is clipped by the shell as its column grows, so the document
      moves with the surface instead of jumping before it appears. */
   transition: grid-template-columns var(--motion-slow) var(--ease-out);
@@ -154,12 +159,12 @@ button:disabled { color: var(--muted); opacity: 0.7; }
    the row a region landed in depended on how many of its siblings happened to
    be rendered. Naming the rows makes the layout independent of what is on
    screen. */
-.app-shell > .titlebar { grid-row: 1; grid-column: 1 / -1; }
+.app-shell > .titlebar { grid-row: 1; grid-column: 1 / -1; z-index: 26; }
 .app-shell > .tab-bar { grid-row: 2; grid-column: 2; }
 .app-shell > .workspace-layout { grid-row: 3; grid-column: 2; }
 .app-shell > .file-truth-alert { grid-row: 4; grid-column: 2; }
 .app-shell > .operational-status { grid-row: 5; grid-column: 2; }
-.app-shell > .workspace-rail { grid-row: 2 / -1; grid-column: 1; }
+.app-shell > .workspace-rail { grid-row: 1 / -1; grid-column: 1; }
 
 /* Title bar
    -------------------------------------------------------------------------
@@ -170,26 +175,31 @@ button:disabled { color: var(--muted); opacity: 0.7; }
 .titlebar {
   -webkit-app-region: drag;
   position: relative;
-  /* Three columns: the controls on either side and the filename between.
-     The side columns are the same width whenever both fit, so the name sits
-     in the centre of the window; each is never narrower than what it holds,
-     so when the window is too narrow for that the name gives up the width,
-     never the controls, and it can not reach under either group. */
+  /* The rail's width, then three columns over the page: the controls on
+     either side and the filename between. The side columns are the same width
+     whenever both fit, so the name sits in the centre of the page, as Typora
+     centres it over its editor rather than over the window; each is never
+     narrower than what it holds, so when the window is too narrow for that
+     the name gives up the width, never the controls, and it can not reach
+     under either group. With the rail closed the first column is empty and
+     the page is the window. */
   display: grid;
-  grid-template-columns: minmax(max-content, 1fr) minmax(0, max-content) minmax(max-content, 1fr);
+  grid-template-columns: var(--title-rail, 0px) minmax(max-content, 1fr) minmax(0, max-content) minmax(max-content, 1fr);
+  transition: grid-template-columns var(--motion-slow) var(--ease-out);
   align-items: center;
-  column-gap: 8px;
+  /* No column gap: with the rail closed its column is empty, and a gap after
+     it would push the toggle off the place it holds with the rail open. The
+     name carries the space it needs on either side instead. */
   min-width: 0;
   max-width: 100%;
   padding: 0 8px;
   /* Typora spends 28px on its title bar and puts one thing in it. This holds
      a few controls that have to stay reachable, so it is 32: enough for a
      26px control with air, and six pixels less window furniture than before. */
-  height: 32px;
-  /* No gradient any more. The rail is a column of the grid rather than a
-     region painted under a full width bar, so the two grounds meet at a real
-     edge and there is nothing to fake. */
-  background: var(--paper);
+  height: var(--titlebar-height);
+  /* No ground of its own: the rail's shows through above the rail and the
+     page's above the page. */
+  background: transparent;
 }
 
 /* Platform system-button avoidance (see docs/design/chrome.md).
@@ -227,8 +237,18 @@ button:disabled { color: var(--muted); opacity: 0.7; }
   gap: 2px;
 }
 
-.title-left { grid-column: 1; justify-self: start; }
-.title-actions { grid-column: 3; justify-self: end; }
+.title-left { grid-column: var(--title-left-column, 2); justify-self: start; }
+.title-actions { grid-column: 4; justify-self: end; }
+
+/* With the rail open, the toggle and the trail sit on the rail's head, beside
+   the traffic lights, exactly where they are with it closed: opening the rail
+   moves nothing under the pointer. The filename is centred in what is left to
+   the rail's right, whether the rail takes a column or, below 900, lies over
+   the page; centred on the window it would run onto the overlay. */
+.app-shell:has(> .workspace-rail) {
+  --title-rail: var(--shell-rail);
+  --title-left-column: 1;
+}
 
 /* The filename sits in the optical centre of the window, which is where a
    window title belongs, rather than being pushed around by however many icons
@@ -236,8 +256,14 @@ button:disabled { color: var(--muted); opacity: 0.7; }
    room between the two groups, so a long folder name is cut short there
    instead of running under the gear. */
 .document-identity {
-  grid-column: 2;
-  justify-self: center;
+  grid-column: 3;
+  /* Stretched to its column and centred inside it, rather than centred as a
+     box: a centred grid item is never narrower than its unwrapped text, so
+     beside the open rail in a narrow window it ran under Settings instead of
+     letting the folder take the ellipsis. */
+  justify-self: stretch;
+  justify-content: center;
+  margin-inline: 8px;
   display: flex;
   align-items: center;
   gap: 6px;
@@ -383,6 +409,8 @@ button:disabled { color: var(--muted); opacity: 0.7; }
   min-width: 0;
   min-height: 0;
   border-right: 1px solid var(--hairline);
+  /* Its head is the title bar's row, where the lights and the toggle are. */
+  padding-top: var(--titlebar-height);
   background: var(--panel);
 }
 
@@ -403,9 +431,9 @@ button:disabled { color: var(--muted); opacity: 0.7; }
   gap: 14px;
   /* The bottom margin is small on purpose: the padding below already holds the
      underline off the words, and a second gap under that put the best part of
-     a row's height of nothing between the tabs and the first file. Traffic
-     lights live in the title bar above the rail now, so the top margin is only
-     air under that bar. */
+     a row's height of nothing between the tabs and the first file. The rail's
+     own padding clears the title bar's row, so the top margin is only air
+     under it. */
   margin: 8px 12px 3px;
   padding: 0 0 6px;
 }

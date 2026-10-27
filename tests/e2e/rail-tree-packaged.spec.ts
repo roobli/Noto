@@ -387,34 +387,51 @@ test.describe('a note opened on its own', () => {
     }, id);
   }
 
-  test('keeps the rail under the title bar, and lays it over the page when the window is narrow', async () => {
+  test('runs the rail floor to ceiling under the traffic lights, and lays it over the page when the window is narrow', async () => {
     const { app, page } = await launchFile('narrow');
     try {
-      // Claude-style shell: the title bar spans the window; the rail starts on
-      // the row below so traffic lights never cover the sidebar toggle / trail.
+      // As Typora and Finder have it: the rail is a column from the top of the
+      // window to the bottom, the title bar lies across it without a ground of
+      // its own, and the toggle sits on the rail's head in the same place it
+      // holds with the rail closed.
       await page.setViewportSize({ width: 1200, height: 700 });
+      const closedToggle = await page.getByTestId('sidebar-toggle').boundingBox();
       await invokeMenu(app, 'toggle-sidebar');
       await expect(page.getByTestId('file-tree')).toBeVisible();
       const geometry = await page.evaluate(() => {
         const title = document.querySelector('.titlebar');
         const rail = document.querySelector('.workspace-rail');
         const shell = document.querySelector('.app-shell');
-        if (!title || !rail || !shell) return null;
+        const tabs = document.querySelector('.rail-tabs');
+        const toggle = document.querySelector('[data-testid="sidebar-toggle"]');
+        if (!title || !rail || !shell || !tabs || !toggle) return null;
         const t = title.getBoundingClientRect();
         const r = rail.getBoundingClientRect();
         const s = shell.getBoundingClientRect();
+        const b = toggle.getBoundingClientRect();
+        const hit = document.elementFromPoint(b.left + b.width / 2, b.top + b.height / 2);
         return {
-          titleLeft: t.left,
-          titleWidth: t.width,
+          shellTop: s.top,
           shellWidth: s.width,
+          titleWidth: t.width,
           titleBottom: t.bottom,
+          titleGround: getComputedStyle(title).backgroundColor,
           railTop: r.top,
+          railRight: r.right,
+          tabsTop: tabs.getBoundingClientRect().top,
+          toggleRight: b.right,
+          toggleHit: hit !== null && toggle.contains(hit),
         };
       });
       expect(geometry).not.toBeNull();
-      expect(geometry!.titleLeft).toBeLessThanOrEqual(1);
       expect(geometry!.titleWidth).toBeGreaterThan(geometry!.shellWidth - 2);
-      expect(geometry!.railTop).toBeGreaterThanOrEqual(geometry!.titleBottom - 1);
+      expect(geometry!.railTop).toBeLessThanOrEqual(geometry!.shellTop + 1);
+      expect(geometry!.titleGround).toBe('rgba(0, 0, 0, 0)');
+      expect(geometry!.tabsTop).toBeGreaterThanOrEqual(geometry!.titleBottom - 1);
+      expect(geometry!.toggleRight).toBeLessThan(geometry!.railRight);
+      expect(geometry!.toggleHit).toBe(true);
+      const openToggle = await page.getByTestId('sidebar-toggle').boundingBox();
+      expect(Math.abs(openToggle!.x - closedToggle!.x)).toBeLessThanOrEqual(1);
 
       // Below 900 the rail stays open but lies over the document, out of the
       // layout, and its toggle stays so it can be put away.
