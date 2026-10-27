@@ -240,21 +240,14 @@ button:disabled { color: var(--muted); opacity: 0.7; }
 .title-left { grid-column: var(--title-left-column, 2); justify-self: start; }
 .title-actions { grid-column: 4; justify-self: end; }
 
-/* With the rail open in its own column, the toggle and the trail sit on the
-   rail's head, beside the traffic lights, exactly where they are with it
-   closed: opening the rail moves nothing under the pointer. */
+/* With the rail open, the toggle and the trail sit on the rail's head, beside
+   the traffic lights, exactly where they are with it closed: opening the rail
+   moves nothing under the pointer. The filename is centred in what is left to
+   the rail's right, whether the rail takes a column or, below 900, lies over
+   the page; centred on the window it would run onto the overlay. */
 .app-shell:has(> .workspace-rail) {
   --title-rail: var(--shell-rail);
   --title-left-column: 1;
-}
-
-/* Below 900 the rail lies over the page instead of taking a column from it
-   (noto-editor.scss), so the page is the window again. */
-@media (max-width: 900px) {
-  .app-shell:has(> .workspace-rail) {
-    --title-rail: 0px;
-    --title-left-column: 2;
-  }
 }
 
 /* The filename sits in the optical centre of the window, which is where a
@@ -264,7 +257,12 @@ button:disabled { color: var(--muted); opacity: 0.7; }
    instead of running under the gear. */
 .document-identity {
   grid-column: 3;
-  justify-self: center;
+  /* Stretched to its column and centred inside it, rather than centred as a
+     box: a centred grid item is never narrower than its unwrapped text, so
+     beside the open rail in a narrow window it ran under Settings instead of
+     letting the folder take the ellipsis. */
+  justify-self: stretch;
+  justify-content: center;
   margin-inline: 8px;
   display: flex;
   align-items: center;
