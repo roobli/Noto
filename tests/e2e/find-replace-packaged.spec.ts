@@ -200,14 +200,19 @@ test.describe('find and replace', () => {
       await expect(page.locator('.noto-match-active')).toHaveCount(1);
       const second = await page.locator('.noto-match-active').boundingBox();
 
+      // The highlight moves a frame after the command, so wait for it rather
+      // than reading the box once: on a slow runner the single read came
+      // before the move and saw the match it had just left.
+      const active = async () => {
+        const box = await page.locator('.noto-match-active').boundingBox();
+        return `${box?.x},${box?.y}`;
+      };
       await invokeMenu(app, 'find-next');
-      const third = await page.locator('.noto-match-active').boundingBox();
-      expect(`${third?.x},${third?.y}`).not.toBe(`${second?.x},${second?.y}`);
+      await expect.poll(active).not.toBe(`${second?.x},${second?.y}`);
 
       // And back the other way lands where it was.
       await invokeMenu(app, 'find-previous');
-      const back = await page.locator('.noto-match-active').boundingBox();
-      expect(`${back?.x},${back?.y}`).toBe(`${second?.x},${second?.y}`);
+      await expect.poll(active).toBe(`${second?.x},${second?.y}`);
     } finally {
       await app.close();
     }
