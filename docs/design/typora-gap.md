@@ -241,6 +241,18 @@ panel-coloured bar across the whole width, which cut the page off from its
 own title. The bar now carries the rail's ground above the rail and the
 page's above the page, and the divide runs floor to ceiling.
 
+Reopened on 2026-09-11, when the bar was spread across both columns again to
+keep the rail toggle beside the traffic lights, and the rail started under it.
+The author's side-by-side with Typora on 2026-10-27 showed what that cost: the
+native buttons sat on a band that matched neither the rail nor the page.
+Closed again without giving up the toggle's place: the rail runs floor to
+ceiling, the bar has no ground of its own and lies above the rail (above the
+narrow window's overlay too), the toggle and trail sit on the rail's head
+exactly where they are with the rail closed, and the filename is centred over
+the page. `rail-tree-packaged` checks the full-height rail, the transparent
+bar, that the toggle is on top and does not move, and
+`titlebar-identity-packaged` the centring.
+
 ## 17. Three bars of furniture where Typora has one. Closed.
 
 Typora spends the top 28px of its window on the file's name and draws nothing

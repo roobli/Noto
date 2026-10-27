@@ -46,8 +46,19 @@ spine, and it is under five percent of any viewport.
 actions. The same restraint on every platform: one gear for Settings, Save only
 when dirty, no second Plugins entry, no menu-echo buttons.
 
-The filename sits in the optical centre of the window at 13px in `--muted`, with
-the unsaved dot beside it.
+The bar has no ground of its own. The rail is a column from the top of the
+window to the bottom, as a Typora or Finder sidebar is, and the bar lies across
+it: above the rail the rail's ground shows, above the page the page's, and the
+divide between them runs floor to ceiling. On macOS that puts the traffic
+lights on the rail's head, the one place native buttons look like they belong.
+A bar painted across the whole width (2026-09) put them on a band that belonged
+to neither column, and the left edge read as two stacked grounds. The rail
+toggle and the trail sit just right of the lights and hold that place whether
+the rail is open or closed, so opening it moves nothing under the pointer.
+
+The filename sits in the optical centre of the page at 13px in `--muted`, with
+the unsaved dot beside it: over the window with the rail closed, to the rail's
+right while it takes a column, as Typora centres its title over the editor.
 The bar is three columns, the two control groups and the identity between
 them, with the side columns kept equal while both fit. When the window is too
 narrow for that, the identity gives up the width: the folder before the name is
@@ -61,7 +72,7 @@ product chrome does not.
 
 | Platform | BrowserWindow | Where system buttons sit | What the renderer reserves |
 | --- | --- | --- | --- |
-| macOS | `titleBarStyle: 'hiddenInset'` + `trafficLightPosition` | Traffic lights over the left of the bar | 78px padding-left so the rail toggle and trail sit to their right, never under them |
+| macOS | `titleBarStyle: 'hiddenInset'` + `trafficLightPosition` | Traffic lights on the rail's head, or the page's top left with the rail closed | `.title-left` starts 70px in, so the rail toggle and trail sit to their right, never under them, in the same place open or closed |
 | Windows | `titleBarStyle: 'hidden'` + `titleBarOverlay` (height 32, paper/ink) | Caption buttons in the Window Controls Overlay on the right | `padding-right` from `env(titlebar-area-*)` (fallback ~138px) so Settings and Save are never under them |
 | Linux | Same as Windows | Same overlay contract where the WM cooperates | Same right-edge reservation |
 

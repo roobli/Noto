@@ -16,6 +16,8 @@ import { packagedExecutable } from './packaged-app';
 
 type Geometry = {
   window: number;
+  /** Where the page begins: the rail's right edge while it takes a column, else the window's left. */
+  page: number;
   /** Where the caption buttons begin, or the window's edge where there are none. */
   controls: number;
   left: [number, number];
@@ -36,8 +38,11 @@ const measure = (page: Page): Promise<Geometry> => page.evaluate(() => {
     windowControlsOverlay?: { visible: boolean; getTitlebarAreaRect(): DOMRect };
   }).windowControlsOverlay;
   const window = document.documentElement.clientWidth;
+  const rail = document.querySelector<HTMLElement>('.workspace-rail');
+  const inFlow = rail !== null && getComputedStyle(rail).position !== 'absolute';
   return {
     window,
+    page: inFlow ? rail.getBoundingClientRect().right : 0,
     controls: overlay?.visible ? overlay.getTitlebarAreaRect().right : window,
     left: span('.title-left [data-testid="nav-forward"]'),
     actions: span('.title-actions [data-testid="settings-toggle"]'),
@@ -95,14 +100,16 @@ test('a long folder name is cut short before the controls, and the name stays wh
       expect(g.nameCut).toBe(false);
     }
 
-    // With room on both sides the identity is in the window's middle. Poll the
-    // centre itself: the window width and the overlay geometry can settle in
+    // With room on both sides the identity is in the middle of the page, as
+    // Typora centres its title over the editor: over the window when the rail
+    // is closed or lies over the page, and to the rail's right while it takes
+    // a column (this folder opens with the rail open). Poll the centre itself: the window width and the overlay geometry can settle in
     // different frames, and a single measure here made this test fail only on
     // the Linux runner. Measuring the settled frame also keeps the assertion
     // about the layout rather than about a transient caption reservation.
     await expect.poll(async () => {
       const m = await measure(page);
-      return Math.abs((m.identity[0] + m.identity[1]) / 2 - m.window / 2);
+      return Math.abs((m.identity[0] + m.identity[1]) / 2 - (m.page + m.window) / 2);
     }).toBeLessThanOrEqual(1);
   } finally {
     await app.close();
