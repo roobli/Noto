@@ -317,6 +317,18 @@ sit below as a quiet name list; it does not out-shout the buttons. No Plugins,
 Remote, or graph pitch on that screen. The title bar likewise does not promote
 Remote or Plugins.
 
+The shell has the main window's frame. A title-bar row runs the width of the
+window and drags it. The categories' ground runs from floor to ceiling under the
+traffic lights, with the search field below them. The pane's name and Done sit
+on the lights' line over the pane, where System Settings puts its own, and Done
+keeps clear of the caption buttons on Windows and Linux. Drawn from the top edge,
+the column put the search field under the lights, and the overlay covered the
+only place the window could be dragged. The pane is held to a 680px measure and
+centred, with its scroll bar at the window's edge, and "changes apply at once"
+is said once, at the foot of the categories. Editor's switches sit in three
+groups, Writing, Code blocks and Files, because fourteen in a row read as a list
+nobody finished sorting.
+
 `Esc`, Done, or `Cmd+,` again leaves immediately for the document. Focus returns
 to the editor when a note is open so the next keystroke types; with nothing open
 it returns to the gear.
