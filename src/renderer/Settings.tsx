@@ -818,10 +818,19 @@ export function Settings({
             );
           })}
           {matching.length === 0 && <p className="pref-no-match">Nothing by that name.</p>}
+          {/* Said once, at the foot of the categories, rather than under
+              every pane where it floated over a screen of nothing. */}
+          <p className="pref-footnote">Changes apply at once and are remembered.</p>
         </nav>
 
-        <div className="pref-body">
-          <header className="pref-body-header">
+        {/* The window's title bar, as the main window has one: it runs the
+            width of the window and moves it, the traffic lights sit on the
+            categories' ground at its left, and the pane's name and Done sit
+            on the lights' line over the pane, where System Settings puts its
+            own. Drawn over the page, the overlay used to take the title bar
+            away, and with it the only place the window could be dragged. */}
+        <header className="pref-titlebar">
+          <div className="pref-heading">
             <h2 className="settings-title">
               {section === 'plugins' && pluginDetailId ? (
                 <>
@@ -835,8 +844,10 @@ export function Settings({
             <button type="button" className="pref-close"
               data-testid="settings-close" aria-label="Close settings"
               onClick={onClose}>Done</button>
-          </header>
+          </div>
+        </header>
 
+        <div className="pref-body">
           <div className="pref-content">
             {section === 'appearance' && (
               <>
@@ -883,6 +894,10 @@ export function Settings({
 
             {section === 'editor' && (
               <>
+                {/* Fourteen switches in a row read as one list nobody finished
+                    sorting; grouped by what they act on, the eye finds the
+                    group first. Web images live under Images alone. */}
+                <p className="pref-group">Writing</p>
                 <Switch
                   label="Check spelling"
                   hint="In a note of thousands of paragraphs, only the ones around the caret, so the whole note is never checked in one go."
@@ -896,55 +911,6 @@ export function Settings({
                   checked={settings.autoPair}
                   onChange={(value) => onChange({ autoPair: value })}
                   testId="setting-auto-pair"
-                />
-                <Switch
-                  label="Task check time"
-                  hint="Appends ✅ and today's date when a task is checked. Off leaves a bare tick."
-                  checked={settings.todoCheckTime}
-                  onChange={(value) => onChange({ todoCheckTime: value })}
-                  testId="setting-todo-check-time"
-                />
-                <Switch
-                  label="File tags"
-                  hint="Chips for the tags in a note's frontmatter. Click one to open other notes that share it."
-                  checked={settings.fileTags}
-                  onChange={(value) => onChange({ fileTags: value })}
-                  testId="setting-file-tags"
-                />
-                <Switch
-                  label="Indent guides in code blocks"
-                  hint="A rule at each tab stop of a line's indentation."
-                  checked={settings.codeIndentGuides}
-                  onChange={(value) => onChange({ codeIndentGuides: value })}
-                  testId="setting-code-indent-guides"
-                />
-                <Switch
-                  label="Tab markers in code blocks"
-                  hint="A quiet arrow on every tab character, so a Makefile or a Go file reads as structure rather than as empty gaps."
-                  checked={settings.codeTabMarkers}
-                  onChange={(value) => onChange({ codeTabMarkers: value })}
-                  testId="setting-code-tab-markers"
-                />
-                <Switch
-                  label="Timelines"
-                  hint="Draws a timeline fence as a vertical chronology. Off leaves the fence as source."
-                  checked={settings.timelines}
-                  onChange={(value) => onChange({ timelines: value })}
-                  testId="setting-timelines"
-                />
-                <Switch
-                  label="Code viewer"
-                  hint="Open non-Markdown text and code files as a read-only highlighted pane. The original file is never modified."
-                  checked={settings.codeViewer}
-                  onChange={(value) => onChange({ codeViewer: value })}
-                  testId="setting-code-viewer"
-                />
-                <Switch
-                  label="Follow changes made outside Noto"
-                  hint="Another program edits the file and the note follows it, as one undoable step. A note with unsaved changes is never replaced this way: it asks."
-                  checked={settings.reloadExternalChanges}
-                  onChange={(value) => onChange({ reloadExternalChanges: value })}
-                  testId="setting-reload-external"
                 />
                 <Switch
                   label="Focus mode"
@@ -961,19 +927,49 @@ export function Settings({
                   testId="setting-typewriter-mode"
                 />
                 <Switch
-                  label="Line numbers in code blocks"
+                  label="Task check time"
+                  hint="Appends ✅ and today's date when a task is checked. Off leaves a bare tick."
+                  checked={settings.todoCheckTime}
+                  onChange={(value) => onChange({ todoCheckTime: value })}
+                  testId="setting-todo-check-time"
+                />
+                <Switch
+                  label="File tags"
+                  hint="Chips for the tags in a note's frontmatter. Click one to open other notes that share it."
+                  checked={settings.fileTags}
+                  onChange={(value) => onChange({ fileTags: value })}
+                  testId="setting-file-tags"
+                />
+                <p className="pref-group">Code blocks</p>
+                <Switch
+                  label="Line numbers"
                   hint="The gutter is as wide as each block's own line count."
                   checked={settings.codeLineNumbers}
                   onChange={(value) => onChange({ codeLineNumbers: value })}
                   testId="setting-code-line-numbers"
                 />
                 <Switch
-                  label="Load images from the web"
-                  hint="Every web image in a note is a request to its server. Off shows the image's name in its place. Images in the open folder always show."
-                  checked={settings.remoteImages}
-                  onChange={(value) => onChange({ remoteImages: value })}
-                  testId="setting-remote-images"
+                  label="Indent guides"
+                  hint="A rule at each tab stop of a line's indentation."
+                  checked={settings.codeIndentGuides}
+                  onChange={(value) => onChange({ codeIndentGuides: value })}
+                  testId="setting-code-indent-guides"
                 />
+                <Switch
+                  label="Tab markers"
+                  hint="A quiet arrow on every tab character, so a Makefile or a Go file reads as structure rather than as empty gaps."
+                  checked={settings.codeTabMarkers}
+                  onChange={(value) => onChange({ codeTabMarkers: value })}
+                  testId="setting-code-tab-markers"
+                />
+                <Switch
+                  label="Timelines"
+                  hint="Draws a timeline fence as a vertical chronology. Off leaves the fence as source."
+                  checked={settings.timelines}
+                  onChange={(value) => onChange({ timelines: value })}
+                  testId="setting-timelines"
+                />
+                <p className="pref-group">Files</p>
                 <Switch
                   label="Save automatically"
                   hint="Save on a timer after typing stops. A save is still refused if the file changed underneath it."
@@ -986,6 +982,20 @@ export function Settings({
                     format={(value) => `${(value / 1000).toFixed(1)} s`} testId="setting-auto-save-delay"
                     onChange={(value) => onChange({ autoSaveDelayMs: Math.round(value) })} />
                 )}
+                <Switch
+                  label="Follow changes made outside Noto"
+                  hint="Another program edits the file and the note follows it, as one undoable step. A note with unsaved changes is never replaced this way: it asks."
+                  checked={settings.reloadExternalChanges}
+                  onChange={(value) => onChange({ reloadExternalChanges: value })}
+                  testId="setting-reload-external"
+                />
+                <Switch
+                  label="Code viewer"
+                  hint="Open non-Markdown text and code files as a read-only highlighted pane. The original file is never modified."
+                  checked={settings.codeViewer}
+                  onChange={(value) => onChange({ codeViewer: value })}
+                  testId="setting-code-viewer"
+                />
               </>
             )}
 
@@ -1082,8 +1092,6 @@ export function Settings({
             )}
             {section === 'plugins' && plugins}
           </div>
-
-          <p className="pref-note">Changes apply immediately and are remembered.</p>
         </div>
       </section>
     </div>
