@@ -941,10 +941,24 @@ function NotoWorkspace({ platform }: { platform: NotoPlatform }) {
       // Main owns which documents exist, so anything it no longer lists has
       // been closed and its editor should be released.
       const live = new Set(event.tabs.map((tab) => tab.documentId));
+      // A note renamed or moved keeps its document, and main lists it at its
+      // new path. The path it was opened at is what the title bar, links and
+      // exports read, so it follows. Compared with the last list rather than
+      // with the open reply, which may spell the same file another way.
+      const moved = new Map<string, string>();
+      for (const tab of event.tabs) {
+        const before = tabPathsRef.current.get(tab.documentId);
+        if (before !== undefined && before !== tab.path) moved.set(tab.documentId, tab.path);
+      }
+      tabPathsRef.current = new Map(event.tabs.map((tab) => [tab.documentId, tab.path]));
       setDocs((current) => {
-        if ([...current.keys()].every((id) => live.has(id))) return current;
+        if ([...current.keys()].every((id) => live.has(id) && !moved.has(id))) return current;
         const next = new Map<string, OpenDocumentState>();
-        for (const [id, doc] of current) if (live.has(id)) next.set(id, doc);
+        for (const [id, doc] of current) {
+          if (!live.has(id)) continue;
+          const path = moved.get(id);
+          next.set(id, path === undefined ? doc : { ...doc, opened: { ...doc.opened, path } });
+        }
         return next;
       });
       for (const id of [...editorsRef.current.keys()]) {
@@ -1748,6 +1762,8 @@ function NotoWorkspace({ platform }: { platform: NotoPlatform }) {
   const [treeEditing, setTreeEditing] = useState<
     { path: string; intent: 'rename' | 'new-folder' } | null
   >(null);
+  /** Where main last listed each open document; see the tabs listener. */
+  const tabPathsRef = useRef(new Map<string, string>());
   /** Bumped whenever something in the tree moved, so listings are read again. */
   const [treeVersion, setTreeVersion] = useState(0);
 

@@ -64,6 +64,28 @@ test.describe('acting on a row of the tree', () => {
     }
   });
 
+  test('calls an open note by its new name once it is renamed, wherever it is shown', async () => {
+    const { app, page, vault } = await launch('rename-open');
+    try {
+      await page.getByTestId('tree-file').filter({ hasText: 'note.md' }).click();
+      await expect(page.locator('.titlebar')).toContainText('note.md');
+
+      expect(await act(page, 'rename', path.join(vault, 'note.md'), 'Renamed.md')).toMatchObject({ done: true });
+      await expect(page.locator('.titlebar')).toContainText('Renamed.md');
+
+      // Brought forward again from the tree, it is still the renamed note,
+      // in the title bar and in the window's own title.
+      await page.getByTestId('tree-file').filter({ hasText: 'other.md' }).click();
+      await expect(page.locator('.titlebar')).toContainText('other.md');
+      await page.getByTestId('tree-file').filter({ hasText: 'Renamed.md' }).click();
+      await expect(page.locator('.titlebar')).toContainText('Renamed.md');
+      await expect.poll(() => app.evaluate(({ BrowserWindow }) => BrowserWindow.getAllWindows()[0].getTitle()))
+        .toBe('Renamed.md');
+    } finally {
+      await app.close();
+    }
+  });
+
   test('keeps the extension when none was typed, so the note stays findable', async () => {
     const { app, page, vault } = await launch('rename-extension');
     try {

@@ -842,12 +842,17 @@ export class WorkspaceSession {
    * The map is rebuilt in order rather than having entries deleted and
    * re-inserted, because insertion order decides which neighbour `close` falls
    * back to and reordering it would move the reader to a different tab.
+   *
+   * The open reply moves with the store. It is what bringing the note forward
+   * again hands back and what the window title is read from, so leaving it at
+   * the old path kept a renamed note called by its old name in the title bar.
    */
   private async followMove(from: string, to: string): Promise<void> {
     const moved = [...this.documents.keys()].filter((openPath) => openPath === from || isInside(from, openPath));
     if (moved.length === 0) return;
 
     const rebuilt = new Map<string, OpenDocument>();
+    let activeMoved = false;
     for (const [openPath, document] of this.documents) {
       if (!moved.includes(openPath)) {
         rebuilt.set(openPath, document);
@@ -855,11 +860,15 @@ export class WorkspaceSession {
       }
       const next = openPath === from ? to : path.join(to, path.relative(from, openPath));
       document.store.adoptPath(next);
-      rebuilt.set(next, document);
-      if (this.activePath === openPath) this.activePath = next;
+      rebuilt.set(next, { ...document, opened: { ...document.opened, path: next } });
+      if (this.activePath === openPath) {
+        this.activePath = next;
+        activeMoved = true;
+      }
     }
     this.documents.clear();
     for (const [openPath, document] of rebuilt) this.documents.set(openPath, document);
+    if (activeMoved && this.activePath !== null) this.applyWindowTitle(this.activePath);
     this.publishTabs();
     await this.recent.remember(this.activePath ?? to).catch(() => {});
   }
