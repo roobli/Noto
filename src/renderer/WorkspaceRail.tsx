@@ -42,6 +42,8 @@ export interface WorkspaceRailProps {
   /** The heading the caret is under, so the outline can say where you are. */
   readonly currentHeading?: number;
   readonly tree: FileTreeProps;
+  /** Shut every folder but the current note's; see `FileTreeProps.collapseToken`. */
+  readonly onCollapseTree: () => void;
   /** The search view's own wiring; the rail only shows it. */
   readonly search: RailSearchProps;
   /** The links view's wiring, the same way. */
@@ -167,7 +169,7 @@ const INDICATOR: Record<RailView, { left: string; width: string }> = {
 };
 
 export function WorkspaceRail({
-  view, onView, showLinks, width, onResize, outline, onGoToBlock, currentHeading, tree, search, links,
+  view, onView, showLinks, width, onResize, outline, onGoToBlock, currentHeading, tree, onCollapseTree, search, links,
 }: WorkspaceRailProps) {
   const railRef = useRef<HTMLElement>(null);
   const outlineRef = useRef<HTMLElement>(null);
@@ -271,6 +273,18 @@ export function WorkspaceRail({
         <Tab id="outline" current={view} onSelect={onView} testId="outline-toggle">Outline</Tab>
         {showLinks && (
           <Tab id="links" current={view} onSelect={onView} testId="links-toggle">Links</Tab>
+        )}
+        {/* In the head rather than on the folder's row, because the row
+            scrolls away with the tree, and a tree long enough to need tidying
+            is one that has been scrolled. */}
+        {view === 'files' && tree.root !== null && (
+          <button type="button" data-testid="rail-collapse" className="icon-button rail-collapse"
+            aria-label="Collapse other folders" title="Collapse other folders"
+            onClick={onCollapseTree}>
+            <svg viewBox="0 0 16 16" aria-hidden="true">
+              <path d="m5 3 3 3 3-3M5 13l3-3 3 3" />
+            </svg>
+          </button>
         )}
         <button type="button" data-testid="rail-search"
           className={view === 'search' ? 'icon-button rail-search is-on' : 'icon-button rail-search'}

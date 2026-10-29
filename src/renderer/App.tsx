@@ -1790,7 +1790,7 @@ function NotoWorkspace({ platform }: { platform: NotoPlatform }) {
     setTreeVersion((current) => current + 1);
   }, [settings.codeViewer]);
 
-  /** Bumped to shut every folder in the tree, which the tree watches for. */
+  /** Bumped to shut every folder but the current note's, which the tree watches for. */
   const [treeCollapse, setTreeCollapse] = useState(0);
 
   /**
@@ -2381,6 +2381,7 @@ function NotoWorkspace({ platform }: { platform: NotoPlatform }) {
               collapseToken: treeCollapse,
               gitMarks: treeGitMarks,
             }}
+            onCollapseTree={() => setTreeCollapse((current) => current + 1)}
           />
       )}
 

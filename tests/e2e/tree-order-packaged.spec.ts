@@ -55,7 +55,7 @@ test('the tree can be ordered and shut, and the order is remembered', async () =
     await invokeMenu(app, 'tree-sort-name-desc');
     await expect.poll(files).toEqual(['cherry.md', 'banana.md', 'apple.md']);
 
-    // Collapse All shuts a folder that was opened.
+    // Collapsing shuts a folder that was opened, when no note is in it.
     await page.getByTestId('tree-directory').filter({ hasText: 'folder' }).click();
     await expect(page.getByTestId('tree-file').filter({ hasText: 'inside' })).toHaveCount(1);
     await invokeMenu(app, 'tree-collapse-all');
@@ -71,6 +71,55 @@ test('the tree can be ordered and shut, and the order is remembered', async () =
     await page.waitForSelector('[data-testid="file-tree"]', { state: 'visible', timeout: 30_000 });
     await expect.poll(() => page.getByTestId('tree-file').allTextContents())
       .toEqual(['cherry.md', 'banana.md', 'apple.md']);
+  } finally {
+    await app.close();
+  }
+});
+
+test('collapsing keeps the folders the open note is in and shuts the rest', async () => {
+  const workspace = path.join(process.cwd(), 'test-results', 'tree-collapse');
+  await rm(workspace, { recursive: true, force: true });
+  const userData = path.join(workspace, 'user-data');
+  await mkdir(userData, { recursive: true });
+  const vault = path.join(workspace, 'vault');
+  await mkdir(path.join(vault, 'alpha', 'deep'), { recursive: true });
+  await mkdir(path.join(vault, 'beta'), { recursive: true });
+  await mkdir(path.join(vault, 'gamma'), { recursive: true });
+  await writeFile(path.join(vault, 'alpha', 'deep', 'found.md'), '# Found\n', 'utf8');
+  await writeFile(path.join(vault, 'beta', 'looked.md'), '# Looked\n', 'utf8');
+  await writeFile(path.join(vault, 'gamma', 'passed.md'), '# Passed\n', 'utf8');
+
+  const app = await electron.launch({
+    executablePath: packagedExecutable(),
+    args: [`--user-data-dir=${userData}`, vault],
+  });
+  try {
+    const page = await app.firstWindow();
+    await page.setViewportSize({ width: 1280, height: 900 });
+    await page.waitForSelector('[data-testid="file-tree"]', { state: 'visible', timeout: 30_000 });
+    const folder = (name: string) => page.getByTestId('tree-directory').filter({ hasText: name });
+    const file = (name: string) => page.getByTestId('tree-file').filter({ hasText: name });
+
+    // An afternoon of looking: three folders opened, a note found in one.
+    for (const name of ['beta', 'gamma', 'alpha', 'deep']) await folder(name).click();
+    await file('found.md').click();
+    await expect(page.locator('.titlebar')).toContainText('found.md');
+    await expect(file('looked.md')).toHaveCount(1);
+
+    await page.getByTestId('rail-collapse').click();
+    await expect(file('looked.md')).toHaveCount(0);
+    await expect(file('passed.md')).toHaveCount(0);
+    await expect(file('found.md')).toBeVisible();
+    await expect(folder('alpha')).toHaveAttribute('aria-expanded', 'true');
+    await expect(folder('deep')).toHaveAttribute('aria-expanded', 'true');
+    await expect(folder('beta')).toHaveAttribute('aria-expanded', 'false');
+
+    // The menu item does the same.
+    await folder('gamma').click();
+    await expect(file('passed.md')).toHaveCount(1);
+    await invokeMenu(app, 'tree-collapse-all');
+    await expect(file('passed.md')).toHaveCount(0);
+    await expect(file('found.md')).toBeVisible();
   } finally {
     await app.close();
   }

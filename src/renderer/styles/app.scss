@@ -453,6 +453,23 @@ button:disabled { color: var(--muted); opacity: 0.7; }
   svg { width: 13px; height: 13px; }
 }
 
+/* Collapse sits just before search when the files are showing, and takes the
+   push to the right edge from it. The tabs' 14px gap is for words; between two
+   icons it read as two unrelated controls, so the pair is drawn 4px apart. */
+.rail-collapse {
+  @include hit-area.extend;
+  margin-left: auto;
+  width: 22px;
+  min-width: 22px;
+  height: 22px;
+  min-height: 22px;
+  margin-top: -3px;
+
+  svg { width: 13px; height: 13px; }
+}
+
+.rail-collapse + .rail-search { margin-left: -10px; }
+
 /* The moving rule. One element under both labels, positioned by a custom
    property the pressed tab sets, so there is no measuring in script and no
    flash of the wrong position on first paint. */

@@ -49,7 +49,13 @@ export interface FileTreeProps {
   readonly onEditingDone?: (name: string | null) => void;
   /** Refreshed listings, so a folder changed on disk is read again. */
   readonly reloadToken?: number;
-  /** Bumped to shut every folder, which is Typora's Collapse All. */
+  /**
+   * Bumped to shut every folder except the ones holding the current note.
+   *
+   * Typora's Collapse All shuts the lot, which after an afternoon of looking
+   * through folders also shuts away the note you found. Keeping its branch
+   * open is what the reader was tidying towards.
+   */
   readonly collapseToken?: number;
   /**
    * Which notes differ from the last commit, when the folder is in a git
@@ -154,6 +160,19 @@ function NameField({ initial, onDone }: {
 /** The height of one row, which the sticky offsets are multiples of. */
 export const TREE_ROW_HEIGHT = 32;
 
+/** The folders between the root and a path under it, outermost first. */
+function foldersBetween(root: string, target: string | null): string[] {
+  if (target === null) return [];
+  const separator = root.includes('\\') ? '\\' : '/';
+  const prefix = root.endsWith(separator) ? root : `${root}${separator}`;
+  if (!target.startsWith(prefix)) return [];
+  const folders: string[] = [];
+  for (let index = target.indexOf(separator, prefix.length); index !== -1; index = target.indexOf(separator, index + 1)) {
+    folders.push(target.slice(0, index));
+  }
+  return folders;
+}
+
 export function FileTree({
   root, rootName, activePath, list, onOpenFile, onRowMenu, onChooseFolder, onMoveEntry, vaultMenu,
   editing = null, onEditingDone, reloadToken = 0, collapseToken = 0, gitMarks = null,
@@ -167,15 +186,23 @@ export function FileTree({
   const [dragging, setDragging] = useState<string | null>(null);
   const [over, setOver] = useState<string | null>(null);
 
-  // Collapse All: every folder shut at once, which a tree of seven thousand
-  // notes needs after an afternoon of opening things. The first render is not
-  // one, so the token is compared rather than acted on.
+  /** The file last scrolled into view, so a tree change never scrolls the rail again. */
+  const shownRef = useRef<string | null>(null);
+  const activeRef = useRef(activePath);
+  activeRef.current = activePath;
+
+  // Collapse: every folder shut at once but the ones the current note is in,
+  // which a tree of seven thousand notes needs after an afternoon of opening
+  // things. The note's row is brought back into view, since the folders that
+  // shut above it move it. The first render is not one, so the token is
+  // compared rather than acted on.
   const collapsedAt = useRef(collapseToken);
   useEffect(() => {
     if (collapsedAt.current === collapseToken) return;
     collapsedAt.current = collapseToken;
-    setExpanded(new Set());
-  }, [collapseToken]);
+    setExpanded(new Set(root ? foldersBetween(root, activeRef.current) : []));
+    shownRef.current = null;
+  }, [collapseToken, root]);
   const bodyRef = useRef<HTMLElement>(null);
 
   /*
@@ -241,13 +268,7 @@ export function FileTree({
   }, [reloadToken]);
   useEffect(() => {
     if (!root || !activePath) return;
-    const separator = root.includes('\\') ? '\\' : '/';
-    const prefix = root.endsWith(separator) ? root : `${root}${separator}`;
-    if (!activePath.startsWith(prefix)) return;
-    const ancestors: string[] = [];
-    for (let index = activePath.indexOf(separator, prefix.length); index !== -1; index = activePath.indexOf(separator, index + 1)) {
-      ancestors.push(activePath.slice(0, index));
-    }
+    const ancestors = foldersBetween(root, activePath);
     if (ancestors.length === 0) return;
     setExpanded((current) => {
       if (ancestors.every((directory) => current.has(directory))) return current;
@@ -259,9 +280,6 @@ export function FileTree({
       if (!childrenRef.current.has(directory)) void load(directory);
     }
   }, [root, activePath, load]);
-
-  /** The file last scrolled into view, so a tree change never scrolls the rail again. */
-  const shownRef = useRef<string | null>(null);
 
   /*
    * Which rows are stuck to the top.
