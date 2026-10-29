@@ -842,12 +842,17 @@ export class WorkspaceSession {
    * The map is rebuilt in order rather than having entries deleted and
    * re-inserted, because insertion order decides which neighbour `close` falls
    * back to and reordering it would move the reader to a different tab.
+   *
+   * The open reply moves with the store. It is what bringing the note forward
+   * again hands back and what the window title is read from, so leaving it at
+   * the old path kept a renamed note called by its old name in the title bar.
    */
   private async followMove(from: string, to: string): Promise<void> {
     const moved = [...this.documents.keys()].filter((openPath) => openPath === from || isInside(from, openPath));
     if (moved.length === 0) return;
 
     const rebuilt = new Map<string, OpenDocument>();
+    let activeMoved = false;
     for (const [openPath, document] of this.documents) {
       if (!moved.includes(openPath)) {
         rebuilt.set(openPath, document);
@@ -855,11 +860,15 @@ export class WorkspaceSession {
       }
       const next = openPath === from ? to : path.join(to, path.relative(from, openPath));
       document.store.adoptPath(next);
-      rebuilt.set(next, document);
-      if (this.activePath === openPath) this.activePath = next;
+      rebuilt.set(next, { ...document, opened: { ...document.opened, path: next } });
+      if (this.activePath === openPath) {
+        this.activePath = next;
+        activeMoved = true;
+      }
     }
     this.documents.clear();
     for (const [openPath, document] of rebuilt) this.documents.set(openPath, document);
+    if (activeMoved && this.activePath !== null) this.applyWindowTitle(this.activePath);
     this.publishTabs();
     await this.recent.remember(this.activePath ?? to).catch(() => {});
   }
@@ -1067,7 +1076,9 @@ export class WorkspaceSession {
    *
    * The name is the first free one, and the file is created with the flag that
    * fails if something is already there, so a note is never written over even
-   * if one appears between the check and the write.
+   * if one appears between the check and the write. It is only a placeholder:
+   * the renderer is asked for the real name on the note's row at once, as a
+   * file manager asks for one, and giving none keeps it.
    */
   async newFile(inside?: string): Promise<WorkspaceNewFileReplyV1> {
     const directory = inside ?? this.folderRoot ?? (this.activePath ? path.dirname(this.activePath) : null);
@@ -1084,6 +1095,15 @@ export class WorkspaceSession {
       }
       await this.openPath(target);
       this.git.refresh();
+      this.send(WORKSPACE_CHANNELS.treeChanged, { version: NOTO_WORKSPACE_VERSION });
+      // Only when the tree will draw a row at this spelling of the path. One
+      // reached through a link, spelled differently from the open folder,
+      // would leave the renderer waiting on a row that never comes.
+      if (this.folderRoot !== null && isInside(this.folderRoot, target)) {
+        this.send(WORKSPACE_CHANNELS.renameRow, {
+          version: NOTO_WORKSPACE_VERSION, path: target, intent: 'new-note',
+        });
+      }
       this.logger.log('workspace_note_created', {});
       return { version: NOTO_WORKSPACE_VERSION, created: true, path: target };
     }

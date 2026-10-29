@@ -171,6 +171,13 @@ row holds what acts on the folder: open another, reveal it in the file manager,
 refresh, and the folders you opened before. `Cmd+Shift+R` reveals the current
 note instead.
 
+After looking through a large folder, the arrows beside the rail's search shut
+every folder except the ones holding the note in front, and bring that note back
+into view; View → Collapse Other Folders does the same. A new note, from
+`Cmd+N` or a folder's New Note, asks for its name on its own row at once, with
+`Untitled` selected: type a name and press `Enter` to start writing in it, or
+press `Escape` to keep the placeholder.
+
 `Cmd+/` opens Source Code Mode: the whole note as the Markdown it is saved as,
 the way Typora's Command-slash does. `Cmd+Alt+/` still toggles source for the
 single block under the caret, which is the escape hatch when you want to fix

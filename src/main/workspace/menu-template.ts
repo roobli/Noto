@@ -392,7 +392,9 @@ export function buildMenuTemplate(options: MenuTemplateOptions): MenuItemConstru
           { id: 'tree-sort-modified-old', label: 'Longest untouched first', type: 'radio', checked: treeSort === 'modified-old', click: () => sendCommand('tree-sort-modified-old') },
         ],
       },
-      command('Collapse All Folders', undefined, 'tree-collapse-all'),
+      // Every folder but the ones holding the note in front, which is what a
+      // reader tidying the tree after a search is tidying towards.
+      command('Collapse Other Folders', undefined, 'tree-collapse-all'),
       { type: 'separator' },
       {
         // Typora's own: the stylesheets in a folder, one of them in use.

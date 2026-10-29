@@ -453,6 +453,23 @@ button:disabled { color: var(--muted); opacity: 0.7; }
   svg { width: 13px; height: 13px; }
 }
 
+/* Collapse sits just before search when the files are showing, and takes the
+   push to the right edge from it. The tabs' 14px gap is for words; between two
+   icons it read as two unrelated controls, so the pair is drawn 4px apart. */
+.rail-collapse {
+  @include hit-area.extend;
+  margin-left: auto;
+  width: 22px;
+  min-width: 22px;
+  height: 22px;
+  min-height: 22px;
+  margin-top: -3px;
+
+  svg { width: 13px; height: 13px; }
+}
+
+.rail-collapse + .rail-search { margin-left: -10px; }
+
 /* The moving rule. One element under both labels, positioned by a custom
    property the pressed tab sets, so there is no measuring in script and no
    flash of the wrong position on first paint. */
@@ -780,12 +797,21 @@ button:disabled { color: var(--muted); opacity: 0.7; }
   padding: 0;
 }
 
+/* The same frame as the window under it: a title-bar row across the top, the
+   categories' ground from floor to ceiling down the left with the traffic
+   lights on its head, the pane on paper to its right. Drawn as a column that
+   began at the top edge, the search field sat under the lights and the page
+   had no title bar to drag the window by. */
 .pref-dialog,
 .settings-shell {
+  --pref-nav-width: 220px;
+  /* Wide enough for a label, its hint and a control on one line; narrow
+     enough that a two-line hint is still read as one thought. */
+  --pref-measure: 680px;
   animation: noto-arrive var(--motion-default) var(--ease-out);
   display: grid;
-  grid-template-columns: 220px minmax(0, 1fr);
-  grid-template-rows: minmax(0, 1fr);
+  grid-template-columns: var(--pref-nav-width) minmax(0, 1fr);
+  grid-template-rows: var(--titlebar-height, 32px) minmax(0, 1fr);
   width: 100%;
   height: 100%;
   max-height: none;
@@ -804,13 +830,68 @@ button:disabled { color: var(--muted); opacity: 0.7; }
 .pref-dialog:focus-visible { outline: none; }
 
 .pref-sections {
+  grid-row: 1 / -1;
+  grid-column: 1;
   display: flex;
   flex-direction: column;
   gap: 1px;
   min-width: 0;
+  min-height: 0;
+  overflow-y: auto;
   border-right: 1px solid var(--hairline);
   background: var(--panel);
-  padding: 12px 10px;
+  /* Its head is the title bar's row, where the lights are. */
+  padding: calc(var(--titlebar-height, 32px) + 6px) 10px 12px;
+}
+
+/* Said once for every pane, at the foot of the column that names them. */
+.pref-footnote {
+  margin: auto 8px 0;
+  padding-top: 16px;
+  color: var(--muted);
+  font-size: 11px;
+  line-height: 1.5;
+}
+
+/* No ground of its own, like the main window's bar: the categories' panel
+   shows through on the left and the page's paper on the right. Above the
+   column, so the lights' corner of it still drags the window. */
+.pref-titlebar {
+  -webkit-app-region: drag;
+  position: relative;
+  z-index: 1;
+  grid-row: 1;
+  grid-column: 1 / -1;
+  display: grid;
+  grid-template-columns: var(--pref-nav-width) minmax(0, 1fr);
+  min-width: 0;
+}
+
+/* The pane's name and Done, over the pane and on the measure its rows are set
+   to, so the title starts where the labels start and Done ends where the
+   controls end. The rule under it spans the pane, not the categories, so the
+   left column stays one ground from top to bottom. */
+.pref-heading {
+  grid-column: 2;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  min-width: 0;
+  border-bottom: 1px solid var(--hairline);
+  padding-inline: max(24px, calc((100% - var(--pref-measure)) / 2));
+
+  button { -webkit-app-region: no-drag; }
+}
+
+/* Windows and Linux draw their caption buttons over the right of this row,
+   so Done keeps clear of them as the main bar's actions do. */
+[data-platform='win32'] .pref-heading,
+[data-platform='linux'] .pref-heading {
+  padding-right: max(
+    max(24px, calc((100% - var(--pref-measure)) / 2)),
+    min(180px, max(0px, calc(100vw - env(titlebar-area-width, calc(100vw - 138px)) - env(titlebar-area-x, 0px) - 8px)))
+  );
 }
 
 /* A reader who knows the name of a setting should not have to know which pane
@@ -921,29 +1002,24 @@ button:disabled { color: var(--muted); opacity: 0.7; }
 }
 
 .pref-body {
+  grid-row: 2;
+  grid-column: 2;
   display: grid;
-  grid-template-rows: auto minmax(0, 1fr) auto;
+  grid-template-rows: minmax(0, 1fr);
   min-width: 0;
   min-height: 0;
 }
 
-.pref-body-header {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  gap: 12px;
-  border-bottom: 1px solid var(--hairline);
-  padding: 14px 18px;
-}
-
-.pref-body-header h2 {
+/* The size of a window title rather than of a page heading: it sits on the
+   lights' line, and anything larger would sit on it like a banner. */
+.pref-heading h2 {
   margin: 0;
-  font-size: 15px;
-  font-weight: 650;
-  letter-spacing: -0.01em;
+  font-size: 13.5px;
+  font-weight: 600;
+  letter-spacing: -0.005em;
 }
 
-.pref-close { min-height: 26px; padding: 3px 10px; font-size: 12px; }
+.pref-close { min-height: 24px; padding: 2px 12px; font-size: 12px; }
 
 .pref-select {
   flex: 0 1 240px;
@@ -1028,19 +1104,13 @@ button:disabled { color: var(--muted); opacity: 0.7; }
   white-space: nowrap;
 }
 
+/* The scroller spans the pane, so its bar is at the window's edge; the rows
+   are held to the measure by the padding, centred in whatever is left. */
 .pref-content {
-  max-width: 860px;
   min-height: 0;
   overflow: auto;
   overscroll-behavior: contain;
-  padding: 6px 18px 18px;
-}
-
-.pref-note {
-  margin: 0;
-  padding: 4px 18px 14px;
-  color: var(--muted);
-  font-size: 11px;
+  padding: 18px max(24px, calc((100% - var(--pref-measure)) / 2)) 40px;
 }
 
 /* One row per setting: what it is on the left, the control on the right at its
@@ -1290,7 +1360,10 @@ button:disabled { color: var(--muted); opacity: 0.7; }
 
 /* A real switch. A bare checkbox beside a sentence reads as a form field in a
    window that is otherwise an application. */
-.pref-switch { cursor: default; }
+/* The row holds the hidden input. Without it the input's containing block was
+   the fixed page, so it stayed where it was drawn when the pane scrolled: a
+   switch below the fold could not be scrolled to by focus or by a test. */
+.pref-switch { position: relative; cursor: default; }
 .pref-switch input {
   position: absolute;
   width: 1px;
@@ -1981,24 +2054,33 @@ button:disabled { color: var(--muted); opacity: 0.7; }
   .status-message, .recent-strip { display: none; }
   .settings-page,
   .pref-scrim { padding: 0; }
+  /* One column: the title bar, the categories as a strip under it, then the
+     pane. The title moves past the lights, as the main bar's controls do. */
   .pref-dialog,
   .settings-shell {
     grid-template-columns: minmax(0, 1fr);
-    grid-template-rows: auto minmax(0, 1fr);
+    grid-template-rows: var(--titlebar-height, 32px) auto minmax(0, 1fr);
     width: 100%;
     height: 100%;
     border: 0;
     border-radius: 0;
   }
+  .pref-titlebar { grid-template-columns: minmax(0, 1fr); }
+  .pref-heading { grid-column: 1; padding-inline: 16px; }
+  [data-platform='darwin'] .pref-heading { padding-left: 78px; }
   .pref-sections {
+    grid-row: 2;
     flex-direction: row;
     gap: 4px;
     overflow-x: auto;
+    overflow-y: hidden;
     border-right: 0;
     border-bottom: 1px solid var(--hairline);
     padding: 8px;
   }
-  .pref-title { display: none; }
+  .pref-footnote { display: none; }
+  .pref-body { grid-row: 3; grid-column: 1; }
+  .pref-content { padding-inline: 16px; }
   .pref-section.is-current { box-shadow: none; }
   .pref-row { flex-wrap: wrap; }
 }

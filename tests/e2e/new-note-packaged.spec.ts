@@ -77,6 +77,73 @@ test.describe('making a new note', () => {
     }
   });
 
+  test('asks for its name on its own row, then hands the keys to the note', async () => {
+    const { app, page, vault } = await launch('named');
+    try {
+      await invokeMenu(app, 'new-file');
+
+      const field = page.getByTestId('tree-name-field');
+      await expect(field).toBeFocused();
+      await expect(field).toHaveValue('Untitled.md');
+      // The placeholder is selected without its extension, so typing replaces it.
+      expect(await field.evaluate((input: HTMLInputElement) =>
+        input.value.slice(input.selectionStart ?? 0, input.selectionEnd ?? 0))).toBe('Untitled');
+      await page.keyboard.type('Plan');
+      await page.keyboard.press('Enter');
+
+      await expect.poll(async () => (await readdir(vault)).sort()).toEqual(['Plan.md', 'existing.md']);
+      // The title bar follows the rename rather than keeping the first name.
+      await expect(page.locator('.titlebar')).toContainText('Plan.md');
+      await expect(page.locator('.titlebar')).not.toContainText('Untitled');
+
+      // The next keys write the note, and the save lands at the new name.
+      await page.keyboard.type('First words.');
+      await page.getByTestId('save-button').click();
+      await expect.poll(async () => readFile(path.join(vault, 'Plan.md'), 'utf8')).toContain('First words.');
+    } finally {
+      await app.close();
+    }
+  });
+
+  test('opens the rail to be named in and puts it away again', async () => {
+    const { app, page, vault } = await launch('rail-away');
+    try {
+      await page.getByTestId('sidebar-toggle').click();
+      await expect(page.getByTestId('file-tree')).toBeHidden();
+
+      await invokeMenu(app, 'new-file');
+      await expect(page.getByTestId('tree-name-field')).toBeFocused();
+      // Giving no name keeps the placeholder, and the rail goes back.
+      await page.keyboard.press('Escape');
+      await expect(page.getByTestId('file-tree')).toBeHidden();
+      expect((await readdir(vault)).sort()).toEqual(['Untitled.md', 'existing.md']);
+      await expect(page.locator('.titlebar')).toContainText('Untitled.md');
+    } finally {
+      await app.close();
+    }
+  });
+
+  test('names the latest of two new notes and leaves the first as it was made', async () => {
+    const { app, page, vault } = await launch('twice');
+    try {
+      await invokeMenu(app, 'new-file');
+      await expect(page.getByTestId('tree-name-field')).toHaveValue('Untitled.md');
+      await invokeMenu(app, 'new-file');
+      await expect(page.getByTestId('tree-name-field')).toHaveValue('Untitled 2.md');
+      await expect(page.getByTestId('tree-name-field')).toHaveCount(1);
+
+      await page.getByTestId('tree-name-field').focus();
+      await page.keyboard.type('Second');
+      await page.keyboard.press('Enter');
+      await expect.poll(async () => (await readdir(vault)).sort())
+        .toEqual(['Second.md', 'Untitled.md', 'existing.md']);
+      await expect(page.getByTestId('tree-name-field')).toHaveCount(0);
+      await expect(page.locator('.titlebar')).toContainText('Second.md');
+    } finally {
+      await app.close();
+    }
+  });
+
   test('says where a note would go when no folder is open', async () => {
     const workspace = path.join(resultRoot, 'nowhere');
     await rm(workspace, { recursive: true, force: true });
