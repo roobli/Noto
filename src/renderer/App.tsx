@@ -349,6 +349,8 @@ function NotoWorkspace({ platform }: { platform: NotoPlatform }) {
    * question and now take turns in one region.
    */
   const [rail, setRail] = useState<{ open: boolean; view: RailView }>({ open: false, view: 'files' });
+  const railStateRef = useRef(rail);
+  railStateRef.current = rail;
   const [settings, setSettings] = useState<NotoSettingsV1>(DEFAULT_SETTINGS);
   /* The menu handler is registered once, so it would otherwise close over the
      settings as they were at launch and step the width from 66 every time. */
@@ -933,7 +935,17 @@ function NotoWorkspace({ platform }: { platform: NotoPlatform }) {
       .then((result) => { if (active && result.ok) setGitMarks((current) => current ?? result.value); })
       .catch(() => { /* No marks is the ordinary answer. */ });
     const unsubscribeRename = window.notoWorkspace.onRenameRow((event) => {
-      if (active) setTreeEditing({ path: event.path, intent: event.intent });
+      if (!active) return;
+      const next = { path: event.path, intent: event.intent };
+      treeEditingRef.current = next;
+      setTreeEditing(next);
+      // A note just made is named on its own row, so the tree has to be on
+      // screen. The rail is put back as it was once the name is given.
+      const rail = railStateRef.current;
+      if (event.intent === 'new-note' && !(rail.open && rail.view === 'files')) {
+        railBeforeNamingRef.current = rail;
+        setRail({ open: true, view: 'files' });
+      }
     });
     const unsubscribeTabs = window.notoWorkspace.onTabsChanged((event) => {
       if (!active) return;
@@ -1758,12 +1770,16 @@ function NotoWorkspace({ platform }: { platform: NotoPlatform }) {
   /** Reading rather than writing, for the status line to say so. */
   const [readOnly, setReadOnly] = useState(false);
 
-  /** The row wearing a name field, put there by the row menu in main. */
+  /** The row wearing a name field, put there by the row menu or a new note in main. */
   const [treeEditing, setTreeEditing] = useState<
-    { path: string; intent: 'rename' | 'new-folder' } | null
+    { path: string; intent: 'rename' | 'new-folder' | 'new-note' } | null
   >(null);
+  /** The latest edit asked for, ahead of the render that shows it. */
+  const treeEditingRef = useRef<typeof treeEditing>(null);
   /** Where main last listed each open document; see the tabs listener. */
   const tabPathsRef = useRef(new Map<string, string>());
+  /** The rail as it was before a new note opened it to be named, if it did. */
+  const railBeforeNamingRef = useRef<{ open: boolean; view: RailView } | null>(null);
   /** Bumped whenever something in the tree moved, so listings are read again. */
   const [treeVersion, setTreeVersion] = useState(0);
 
@@ -1795,7 +1811,22 @@ function NotoWorkspace({ platform }: { platform: NotoPlatform }) {
 
   const finishTreeEdit = useCallback((name: string | null) => {
     const editing = treeEditing;
-    setTreeEditing(null);
+    // A second new note can arrive while the first is still being named. The
+    // field that finishes speaks for its own edit only: it does not clear the
+    // newer one, and the rail and the caret wait for the last.
+    const latest = treeEditingRef.current === editing;
+    if (latest) {
+      treeEditingRef.current = null;
+      setTreeEditing(null);
+    }
+    if (editing?.intent === 'new-note' && latest) {
+      // The note was made to be written in, named or not: the caret goes to
+      // it, and a rail opened only for the name closes again.
+      const before = railBeforeNamingRef.current;
+      railBeforeNamingRef.current = null;
+      if (before) setRail(before);
+      queueMicrotask(() => editorRef.current?.focus());
+    }
     if (!editing || name === null) return;
     void window.notoWorkspace.manageEntry({
       version: 1,

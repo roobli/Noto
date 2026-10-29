@@ -520,7 +520,7 @@ export function isWorkspaceRenameRowEventV1(value: unknown): value is WorkspaceR
   return record(value) && exact(value, ['version', 'path', 'intent'])
     && value.version === NOTO_WORKSPACE_VERSION
     && typeof value.path === 'string' && value.path.length > 0 && value.path.length <= 4096
-    && (value.intent === 'rename' || value.intent === 'new-folder');
+    && (value.intent === 'rename' || value.intent === 'new-folder' || value.intent === 'new-note');
 }
 
 const isMarkPath = (value: unknown): value is string =>

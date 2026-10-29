@@ -41,9 +41,10 @@ export interface FileTreeProps {
    * The row wearing a name field, and what will be done with what is typed.
    *
    * Driven from outside because main is what starts a rename, from the row
-   * menu, and the tree is what has the row to put the field on.
+   * menu, and the tree is what has the row to put the field on. A note that
+   * was just made is renamed on its own row, like any other.
    */
-  readonly editing?: { readonly path: string; readonly intent: 'rename' | 'new-folder' } | null;
+  readonly editing?: { readonly path: string; readonly intent: 'rename' | 'new-folder' | 'new-note' } | null;
   /** The typed name, or null when the reader gave up. */
   readonly onEditingDone?: (name: string | null) => void;
   /** Refreshed listings, so a folder changed on disk is read again. */
@@ -417,7 +418,7 @@ export function FileTree({
                     <span className={isOpen ? 'tree-twisty tree-twisty-open' : 'tree-twisty'} aria-hidden="true" />
                     <FolderGlyph open={isOpen} />
                   </span>
-                  {editing?.intent === 'rename' && editing.path === entry.path
+                  {editing && editing.intent !== 'new-folder' && editing.path === entry.path
                     ? <NameField initial={entry.name} onDone={commitEdit} />
                     : <span className="tree-name">{entry.name}</span>}
                   {holdsChanges && <GitMark kind="folder" />}
@@ -459,7 +460,7 @@ export function FileTree({
                   <span className="tree-twisty tree-twisty-blank" aria-hidden="true" />
                   <FileGlyph />
                 </span>
-                {editing?.intent === 'rename' && editing.path === entry.path
+                {editing && editing.intent !== 'new-folder' && editing.path === entry.path
                   ? <NameField initial={entry.name} onDone={commitEdit} />
                   : <span className="tree-name">{entry.name}</span>}
                 {change && <GitMark kind={change} />}

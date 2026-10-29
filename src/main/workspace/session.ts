@@ -1076,7 +1076,9 @@ export class WorkspaceSession {
    *
    * The name is the first free one, and the file is created with the flag that
    * fails if something is already there, so a note is never written over even
-   * if one appears between the check and the write.
+   * if one appears between the check and the write. It is only a placeholder:
+   * the renderer is asked for the real name on the note's row at once, as a
+   * file manager asks for one, and giving none keeps it.
    */
   async newFile(inside?: string): Promise<WorkspaceNewFileReplyV1> {
     const directory = inside ?? this.folderRoot ?? (this.activePath ? path.dirname(this.activePath) : null);
@@ -1093,6 +1095,15 @@ export class WorkspaceSession {
       }
       await this.openPath(target);
       this.git.refresh();
+      this.send(WORKSPACE_CHANNELS.treeChanged, { version: NOTO_WORKSPACE_VERSION });
+      // Only when the tree will draw a row at this spelling of the path. One
+      // reached through a link, spelled differently from the open folder,
+      // would leave the renderer waiting on a row that never comes.
+      if (this.folderRoot !== null && isInside(this.folderRoot, target)) {
+        this.send(WORKSPACE_CHANNELS.renameRow, {
+          version: NOTO_WORKSPACE_VERSION, path: target, intent: 'new-note',
+        });
+      }
       this.logger.log('workspace_note_created', {});
       return { version: NOTO_WORKSPACE_VERSION, created: true, path: target };
     }

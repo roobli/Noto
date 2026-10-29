@@ -554,9 +554,12 @@ export interface WorkspaceGitBlocksV1 {
 
 export interface WorkspaceRenameRowEventV1 {
   readonly version: typeof NOTO_WORKSPACE_VERSION;
-  /** For `rename`, the row to rename. For `new-folder`, the folder to make one in. */
+  /**
+   * For `rename`, the row to rename. For `new-folder`, the folder to make one
+   * in. For `new-note`, the note just made, to be renamed from its first name.
+   */
   readonly path: string;
-  readonly intent: 'rename' | 'new-folder';
+  readonly intent: 'rename' | 'new-folder' | 'new-note';
 }
 
 /**
