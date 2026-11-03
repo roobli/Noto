@@ -33,6 +33,13 @@ async function launch(name: string): Promise<{ app: ElectronApplication; page: P
   const app = await electron.launch({
     executablePath: packagedExecutable(),
     args: [`--user-data-dir=${path.join(workspace, 'user-data')}`, `--open=${file}`],
+    // Shown off macOS. On Windows and Linux a window that is never shown does
+    // not lay out what scrolls into view until some input arrives: the blocks
+    // around the paragraph brought to the middle sat at their placeholder
+    // height on screen, and grew under the click being measured. A reader's
+    // window is shown. On macOS a hidden window lays out as a shown one does,
+    // and staying hidden keeps the suite off the screen of whoever runs it.
+    env: { ...process.env, NOTO_HEADLESS: process.platform === 'darwin' ? '1' : '0' },
   });
   const page = await app.firstWindow();
   await page.waitForSelector('[data-testid="noto-editor"]', { state: 'visible', timeout: 30_000 });
