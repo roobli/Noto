@@ -260,10 +260,11 @@ export function FileTree({
   /*
    * Read every open folder again when something moved.
    *
-   * The tree holds a listing per folder and nothing on disk tells it when one
-   * went stale. After a rename, a duplicate or a trash, every listing already
-   * on screen is suspect, and re-reading only the folder that changed would
-   * leave a moved file showing in its old place.
+   * The tree holds a listing per folder. Main follows the folder on disk and
+   * bumps the token on any structural change, from Noto or from anything
+   * else, and on Refresh Folder. Every listing already on screen is then
+   * suspect, and re-reading only the folder that changed would leave a moved
+   * file showing in its old place.
    */
   useEffect(() => {
     if (reloadToken === 0) return;
@@ -377,6 +378,28 @@ export function FileTree({
     );
   }
 
+  /**
+   * A press on a pinned row brings that row back to where it lives rather
+   * than acting on it.
+   *
+   * A pinned row covers the rows scrolled under it, so a press near the top of
+   * the rail lands on a held folder far more often than it is meant for one.
+   * Collapsing the folder there threw every row under the pointer somewhere
+   * else, and the next press opened a note nobody pointed at. Scrolling the
+   * row's own place back under it leaves it exactly where it was drawn, now
+   * as an ordinary row, so a second press does what a press on it always does.
+   */
+  const revealPinned = (row: HTMLElement): boolean => {
+    if (!row.hasAttribute('data-stuck')) return false;
+    const node = row.parentElement;
+    const scroller = bodyRef.current?.closest<HTMLElement>('.rail-view');
+    if (!node || !scroller) return false;
+    const by = node.getBoundingClientRect().top - row.getBoundingClientRect().top;
+    const smooth = !window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+    scroller.scrollBy({ top: by, behavior: smooth ? 'smooth' : 'auto' });
+    return true;
+  };
+
   const toggle = (directory: string) => {
     setExpanded((current) => {
       const next = new Set(current);
@@ -442,7 +465,7 @@ export function FileTree({
                   aria-expanded={isOpen}
                   {...dragProps(entry.path)}
                   {...dropProps(entry.path)}
-                  onClick={() => toggle(entry.path)}
+                  onClick={(event) => { if (!revealPinned(event.currentTarget)) toggle(entry.path); }}
                   onContextMenu={(event) => { event.preventDefault(); onRowMenu(entry.path, 'directory'); }}
                 >
                   <span className="tree-leading">
@@ -484,7 +507,7 @@ export function FileTree({
                 title={change ? `${entry.name}, ${GIT_WORDS[change]}` : entry.name}
                 aria-current={isActive ? 'true' : undefined}
                 {...dragProps(entry.path)}
-                onClick={() => onOpenFile(entry.path)}
+                onClick={(event) => { if (!revealPinned(event.currentTarget)) onOpenFile(entry.path); }}
                 onContextMenu={(event) => { event.preventDefault(); onRowMenu(entry.path, 'file'); }}
               >
                 <span className="tree-leading">

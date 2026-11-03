@@ -179,6 +179,35 @@ test.describe('the guide lines under a held row', () => {
     }
   });
 
+  test('bring a held row back to its place when it is pressed, rather than closing its folder', async () => {
+    const { app, page } = await launch('reveal', { siblings: true });
+    try {
+      for (const name of ['works', 'jobs', 'aside', 'data']) {
+        await page.getByTestId('tree-directory').filter({ hasText: name }).first().click();
+      }
+      await page.getByTestId('tree-file').filter({ hasText: 'note_28' }).click();
+      const data = page.getByTestId('tree-directory').filter({ hasText: 'data' }).first();
+      await expect(data).toHaveAttribute('data-stuck');
+      const before = await data.boundingBox();
+
+      // A press on the held row covers the rows scrolled under it. It used to
+      // close the folder and throw every row under the pointer elsewhere; now
+      // the row's own place scrolls back under it and the folder stays open.
+      await data.click();
+      await expect(data).not.toHaveAttribute('data-stuck');
+      await expect(data).toHaveAttribute('aria-expanded', 'true');
+      await expect(page.getByTestId('tree-file').filter({ hasText: 'note_28' })).toBeVisible();
+      const after = await data.boundingBox();
+      expect(Math.abs((after?.y ?? 0) - (before?.y ?? 0))).toBeLessThan(2);
+
+      // Now an ordinary row, a second press closes it as a press always did.
+      await data.click();
+      await expect(data).toHaveAttribute('aria-expanded', 'false');
+    } finally {
+      await app.close();
+    }
+  });
+
   test('light the branch only as far as the corner that finishes it', async () => {
     const { app, page } = await launch('lit');
     try {
