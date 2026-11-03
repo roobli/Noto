@@ -462,6 +462,13 @@ export class RendererPluginHost {
           'editor-extension',
         );
       },
+      runEditorCommand: (name: string) => {
+        this.assertCapabilityLive(runtime, 'editor.transform');
+        // The adapter is the editor in front; a test's fake may not run
+        // commands, and then nothing happens rather than a throw.
+        const runner = this.adapter as Partial<{ runCommand(command: string): boolean }> | null;
+        return typeof runner?.runCommand === 'function' ? runner.runCommand(name) : false;
+      },
       registerUiExtension: (id: string) => registerExtension(
         this.uiExtensions,
         id,

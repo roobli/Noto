@@ -136,7 +136,10 @@ export async function listDirectory(
   if (!realRoot || !realTarget) throw new Error('WORKSPACE_PATH_UNREADABLE');
   if (!isInside(realRoot, realTarget)) throw new Error('WORKSPACE_PATH_OUTSIDE_ROOT');
 
-  const entries = await readdir(realTarget, { withFileTypes: true });
+  // In name order before the cap, so a folder past it always shows the same
+  // rows rather than whichever the file system happened to return first.
+  const entries = (await readdir(realTarget, { withFileTypes: true }))
+    .sort((a, b) => (a.name < b.name ? -1 : a.name > b.name ? 1 : 0));
   const results: FileTreeEntryV1[] = [];
 
   for (const entry of entries) {

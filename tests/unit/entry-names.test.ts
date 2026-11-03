@@ -86,18 +86,26 @@ describe('duplicateName', () => {
 });
 
 describe('renamedFileName', () => {
+  const opens = (extension: string) => ['.md', '.markdown', '.txt'].includes(extension);
+
   it('keeps the extension when the reader typed none', () => {
     // Otherwise the note leaves the tree, which lists only what it can open,
     // and cannot be opened again: lost without being deleted.
-    expect(renamedFileName('Ideas', 'note.md')).toBe('Ideas.md');
+    expect(renamedFileName('Ideas', 'note.md', opens)).toBe('Ideas.md');
   });
 
-  it('takes the extension the reader typed, when they typed one', () => {
-    expect(renamedFileName('Ideas.markdown', 'note.md')).toBe('Ideas.markdown');
-    expect(renamedFileName('Ideas.md', 'note.md')).toBe('Ideas.md');
+  it('takes the extension the reader typed, when Noto opens it', () => {
+    expect(renamedFileName('Ideas.markdown', 'note.md', opens)).toBe('Ideas.markdown');
+    expect(renamedFileName('Ideas.md', 'note.md', opens)).toBe('Ideas.md');
+    expect(renamedFileName('Ideas.MD', 'note.md', opens)).toBe('Ideas.MD');
+  });
+
+  it('keeps the note\u2019s extension when the dot in the name is part of the name', () => {
+    expect(renamedFileName('Meeting 3.5', 'note.md', opens)).toBe('Meeting 3.5.md');
+    expect(renamedFileName('v2.0 plan', 'note.md', opens)).toBe('v2.0 plan.md');
   });
 
   it('leaves a name alone when the old one had no extension either', () => {
-    expect(renamedFileName('LICENCE', 'README')).toBe('LICENCE');
+    expect(renamedFileName('LICENCE', 'README', opens)).toBe('LICENCE');
   });
 });

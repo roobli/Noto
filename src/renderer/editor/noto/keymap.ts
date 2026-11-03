@@ -49,6 +49,7 @@ import {
 
 import { TextSelection, type Command, type EditorState, type Plugin, type Transaction } from 'prosemirror-state';
 import { notoSchema } from '../../../shared/markdown/v3/pm/schema';
+import { normalizeChord } from '../../../shared/shortcuts/chord';
 import { TIMELINE_LANGUAGE, TIMELINE_TEMPLATE } from './timeline';
 import {
   insertFootnote,
@@ -135,28 +136,6 @@ export function surroundTag(tag: string): Command {
   };
 }
 
-/**
- * Wrap the selection in a sidenote, as the author's Typora plugin does.
- *
- * The open tag carries `class="sidenote"`, which a bare `surroundTag('span')`
- * cannot write. An empty selection still inserts the pair so the caret can
- * fill the note; a fence or maths block refuses, as the other wraps do.
- */
-export const surroundSidenote: Command = (state, dispatch) => {
-  const { $from, from, to, empty } = state.selection;
-  if (!$from.parent.isTextblock || $from.parent.type.spec.code) return false;
-  if (!dispatch) return true;
-  const open = nodes.inline_html.create({ value: '<span class="sidenote">' });
-  const close = nodes.inline_html.create({ value: '</span>' });
-  const tr = state.tr;
-  tr.insert(to, close);
-  tr.insert(from, open);
-  tr.setSelection(empty
-    ? TextSelection.create(tr.doc, from + open.nodeSize)
-    : TextSelection.create(tr.doc, from + open.nodeSize, to + open.nodeSize));
-  dispatch(tr.scrollIntoView());
-  return true;
-};
 
 /**
  * Turn the selection into inline maths, as Typora's Inline Math does.
@@ -585,7 +564,6 @@ export const EDITOR_COMMANDS: Readonly<Record<string, Command>> = {
   'mark-code': toggleMark(marks.inline_code),
   'mark-strike': toggleMark(marks.strikethrough),
   'mark-underline': surroundTag('u'),
-  'insert-sidenote': surroundSidenote,
   'mark-highlight': surround('==', '=='),
   'mark-math': wrapInMath,
   'table-insert': insertTable(2, 3),
@@ -647,6 +625,13 @@ export interface KeymapOptions {
    * keymap, the same way smart typography is read.
    */
   readonly taskStamp?: TaskStampOptions;
+  /**
+   * Whether a chord, in canonical form, is switched off in the Shortcuts pane.
+   * A getter, read on every press, so a chord turned off takes effect without
+   * the keymap being rebuilt. A binding whose chord is off passes the key on
+   * as though it were not bound.
+   */
+  readonly isDisabled?: (chord: string) => boolean;
 }
 
 export function notoBindings({ mac, onWidthStep, taskStamp }: KeymapOptions): Record<string, Command> {
@@ -669,7 +654,9 @@ export function notoBindings({ mac, onWidthStep, taskStamp }: KeymapOptions): Re
     [`${mod}-b`]: toggleMark(marks.strong),
     [`${mod}-i`]: toggleMark(marks.emphasis),
     [`${mod}-Shift-x`]: toggleMark(marks.strikethrough),
-    [`${mod}-e`]: toggleMark(marks.inline_code),
+    // No Command-E for inline code: the Edit menu's Select Styled Scope holds
+    // that chord, and the menu answers first, so it never reached here.
+    // Inline code is on Control and the backtick, as in Typora.
 
     [`${mod}-0`]: setBlockType(nodes.paragraph),
     ...Object.fromEntries([1, 2, 3, 4, 5, 6].map((level) => [
@@ -687,20 +674,20 @@ export function notoBindings({ mac, onWidthStep, taskStamp }: KeymapOptions): Re
     [`${mod}-Alt-x`]: toggleTaskList,
     [`${mod}-Alt--`]: insertRule,
     [`${mod}-Alt-t`]: insertTable(2, 3),
-    // The author's sidenote plugin: wrap the selection as a margin note.
-    [`${mod}-Alt-s`]: surroundSidenote,
     // Typora's own bindings for the marks markdown has no key for, so a hand
     // that learned them there does not have to learn them again. Its inline
-    // code, strike and maths are on Control rather than Command.
+    // code, strike and maths are on Control rather than Command. Off macOS
+    // Control is the command key and Control-M is Minimize, so maths moves to
+    // Alt with Shift, where the menu puts it too.
     'Ctrl-`': toggleMark(marks.inline_code),
     'Ctrl-Shift-`': toggleMark(marks.strikethrough),
-    'Ctrl-m': wrapInMath,
+    [mac ? 'Ctrl-m' : 'Alt-Shift-m']: wrapInMath,
     [`${mod}-u`]: surroundTag('u'),
     [`${mod}-Shift-h`]: surround('==', '=='),
-    // Typora names these Command+plus and Command+minus. A keyboard gives the
-    // plus only with Shift on most layouts, so both spellings are taken.
+    // Typora names these Command+plus and Command+minus. The plus, Command
+    // with Shift and the equals key, is Zoom In in the View menu, which
+    // answers first; the equals key alone is the heading's.
     [`${mod}-=`]: shiftHeading(true),
-    [`${mod}-+`]: shiftHeading(true),
     [`${mod}--`]: shiftHeading(false),
     [`${mod}-Shift-q`]: wrapIn(nodes.blockquote),
     [`${mod}-k`]: openLinkEditor,
@@ -729,13 +716,35 @@ export function notoBindings({ mac, onWidthStep, taskStamp }: KeymapOptions): Re
     'Alt-Shift-ArrowLeft': moveColumn(true),
     'Alt-Shift-ArrowRight': moveColumn(false),
 
-    // Typora's own chord for it.
-    'Ctrl-x': toggleTaskStatus(undefined, taskStamp),
+    // Typora's own chord for it on macOS. Off macOS Control-X is Cut.
+    [mac ? 'Ctrl-x' : 'Alt-Shift-x']: toggleTaskStatus(undefined, taskStamp),
     [`${mod}-]`]: chainCommands(sinkListItem(nodes.list_item), stepWidth(1)),
     [`${mod}-[`]: chainCommands(liftListItem(nodes.list_item), stepWidth(-1)),
   };
 }
 
+/*
+ * Chords the browser itself acts on inside an editable page: bold, italic,
+ * underline, undo and redo. Passed on, a switched-off Command-B would bold
+ * the text through the browser, behind the editor's back, and the next press
+ * would find it bold. Switched off, these are swallowed; every other chord is
+ * passed on, so Option and an arrow moves the caret again once Move Block is
+ * off.
+ */
+const BROWSER_EDITS = new Set(['Mod+B', 'Mod+I', 'Mod+U', 'Mod+Z', 'Mod+Shift+Z', 'Mod+Y']);
+
+/** The bindings with each one checked against the switched-off chords first. */
+export function guardedBindings(options: KeymapOptions): Record<string, Command> {
+  const bindings = notoBindings(options);
+  const isDisabled = options.isDisabled;
+  if (!isDisabled) return bindings;
+  return Object.fromEntries(Object.entries(bindings).map(([key, command]): [string, Command] => {
+    const chord = normalizeChord(key, 'prosemirror', options.mac);
+    if (!chord) return [key, command];
+    return [key, (state, dispatch, view) => (isDisabled(chord) ? BROWSER_EDITS.has(chord) : command(state, dispatch, view))];
+  }));
+}
+
 export function notoKeymap(options: KeymapOptions): Plugin[] {
-  return [keymap(notoBindings(options)), keymap(baseKeymap)];
+  return [keymap(guardedBindings(options)), keymap(baseKeymap)];
 }

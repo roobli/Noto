@@ -27,6 +27,9 @@ export interface NotoCanvasProps {
   /** Where the document lives, so its relative images know where to start. */
   readonly documentPath: string | null;
   readonly remoteImages?: boolean;
+  readonly webEmbeds?: boolean;
+  /** Chords switched off in the Shortcuts pane, which the editor's keys ignore. */
+  readonly disabledShortcuts?: readonly string[];
   /** Keep the line being written at the middle of the window. */
   readonly typewriterMode?: boolean;
   /** Close a bracket or a quote as it is opened. */
@@ -36,8 +39,6 @@ export interface NotoCanvasProps {
   readonly markHighlight?: boolean;
   readonly markSuperscript?: boolean;
   readonly markSubscript?: boolean;
-  /** Draw `<span class="sidenote">` as numbered margin notes. */
-  readonly sidenotes?: boolean;
   /** The top level block the caret is in, when it changes. */
   readonly onActiveBlockChanged?: (index: number) => void;
   readonly onDirtyChange: (dirty: boolean) => void;
@@ -65,13 +66,14 @@ export function NotoCanvas({
   spellCheck,
   documentPath,
   remoteImages,
+  webEmbeds,
+  disabledShortcuts,
   typewriterMode,
   autoPair,
   todoCheckTime,
   markHighlight,
   markSuperscript,
   markSubscript,
-  sidenotes,
   onActiveBlockChanged,
   onDirtyChange,
   onDocumentChanged,
@@ -88,6 +90,17 @@ export function NotoCanvas({
 }: NotoCanvasProps) {
   const hostRef = useRef<HTMLDivElement>(null);
   const editorRef = useRef<NotoEditor | null>(null);
+  // The settings as of this render. An editor finishes building after an
+  // await, by which time a setting may have changed again; it reads this
+  // rather than what the building effect captured when it began.
+  const settingsNow = useRef({
+    smartQuotes, smartDashes, smartEllipsis, spellCheck, remoteImages, webEmbeds, typewriterMode, autoPair,
+    todoCheckTime, disabledShortcuts, markHighlight, markSuperscript, markSubscript,
+  });
+  settingsNow.current = {
+    smartQuotes, smartDashes, smartEllipsis, spellCheck, remoteImages, webEmbeds, typewriterMode, autoPair,
+    todoCheckTime, disabledShortcuts, markHighlight, markSuperscript, markSubscript,
+  };
 
   useLayoutEffect(() => {
     const host = hostRef.current;
@@ -127,7 +140,7 @@ export function NotoCanvas({
           smartDashes,
           smartEllipsis,
           spellCheck,
-          images: { documentDir: documentDirOf(documentPath), remote: remoteImages ?? true },
+          images: { documentDir: documentDirOf(documentPath), remote: remoteImages ?? true, embeds: webEmbeds ?? false },
           onActiveBlockChanged,
           onDirtyChange,
           onDocumentChanged,
@@ -153,6 +166,10 @@ export function NotoCanvas({
       }
 
       editorRef.current = editor;
+      // The settings effect below ran before this editor existed, so the
+      // editor starts from the settings as they are now rather than from its
+      // own defaults: a note opened with auto-pairing off pairs nothing.
+      editor.applySettings(settingsNow.current);
       onReady(editor);
 
       if (deferredRemainderFrom !== null) {
@@ -189,11 +206,11 @@ export function NotoCanvas({
   // preference never costs the user their undo history or cursor.
   useEffect(() => {
     editorRef.current?.applySettings({
-      smartQuotes, smartDashes, smartEllipsis, spellCheck, remoteImages, typewriterMode, autoPair,
-      todoCheckTime,
-      markHighlight, markSuperscript, markSubscript, sidenotes,
+      smartQuotes, smartDashes, smartEllipsis, spellCheck, remoteImages, webEmbeds, typewriterMode, autoPair,
+      todoCheckTime, disabledShortcuts,
+      markHighlight, markSuperscript, markSubscript,
     });
-  }, [smartQuotes, smartDashes, smartEllipsis, spellCheck, remoteImages, typewriterMode, autoPair, todoCheckTime, markHighlight, markSuperscript, markSubscript, sidenotes]);
+  }, [smartQuotes, smartDashes, smartEllipsis, spellCheck, remoteImages, webEmbeds, typewriterMode, autoPair, todoCheckTime, disabledShortcuts, markHighlight, markSuperscript, markSubscript]);
 
   return <div ref={hostRef} className="noto-editor-host" data-testid="noto-editor" />;
 }

@@ -38,6 +38,7 @@ import {
   WorkspaceTagNoteV1,
   WorkspaceRemoteEventV1,
   WorkspaceDirtyEventV1,
+  WorkspaceUnsavedEventV1,
   WorkspaceTextRequestV1,
   WorkspaceTextReplyV1,
 } from './contracts';
@@ -100,7 +101,9 @@ export function isWorkspaceOpenPathRequestV1(value: unknown): value is Workspace
 
 /** Activate and close share a shape, so they share a validator. */
 export function isWorkspaceTabRequestV1(value: unknown): value is WorkspaceTabRequestV1 {
-  return record(value) && exact(value, ['version', 'requestId', 'path'])
+  return record(value)
+    && (exact(value, ['version', 'requestId', 'path'])
+      || (exact(value, ['version', 'requestId', 'path', 'release']) && typeof value.release === 'boolean'))
     && value.version === 1 && typeof value.requestId === 'string' && requestId.test(value.requestId)
     && typeof value.path === 'string' && value.path.length > 0 && value.path.length <= 4096;
 }
@@ -314,6 +317,15 @@ export function isWorkspaceTextReplyV1(value: unknown): value is WorkspaceTextRe
 export function isWorkspaceDirtyEventV1(value: unknown): value is WorkspaceDirtyEventV1 {
   return record(value) && exact(value, ['version', 'dirty'])
     && value.version === 1 && typeof value.dirty === 'boolean';
+}
+
+/** More than this many loaded notes is past what the renderer keeps. */
+const UNSAVED_PATHS_MAX = 64;
+
+export function isWorkspaceUnsavedEventV1(value: unknown): value is WorkspaceUnsavedEventV1 {
+  return record(value) && exact(value, ['version', 'paths']) && value.version === 1
+    && Array.isArray(value.paths) && value.paths.length <= UNSAVED_PATHS_MAX
+    && value.paths.every((entry) => typeof entry === 'string' && entry.length > 0 && entry.length <= 4096);
 }
 
 export function isWorkspaceRemoteEventV1(value: unknown): value is WorkspaceRemoteEventV1 {

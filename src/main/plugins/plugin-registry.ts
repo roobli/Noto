@@ -1,6 +1,6 @@
 import { randomUUID } from 'node:crypto';
 import { createPluginCatalog, type PluginCatalog } from '../../shared/plugins/catalog';
-import {
+import { type PluginInstallPresentation,
   RENDERER_TRANSPORT_FAILURE_CODES,
   type PluginCapabilitySnapshot,
   type PluginActivationReason,
@@ -19,6 +19,7 @@ import {
   rendererProofManifest,
   titleShiftManifest,
   markdownPaddingManifest,
+  sidenotesManifest,
 } from '../../shared/plugins/proof-manifests';
 import {
   cloneLocalPluginState,
@@ -79,6 +80,8 @@ interface PluginRegistryOptions {
   leaseId?: () => string;
   cleanupTimeoutMs?: number;
   initialDiscoveryFailure?: string;
+  /** How the renderer loads a plugin the reader installed; null for a bundled one. */
+  install?: (pluginId: string) => PluginInstallPresentation | null;
 }
 
 interface GenerationRuntime {
@@ -138,9 +141,19 @@ const MAX_DIAGNOSTICS = 8;
 export const bundledPluginCatalog = createPluginCatalog([
   rendererProofManifest,
   titleShiftManifest,
+  sidenotesManifest,
   markdownPaddingManifest,
   filesystemProofManifest,
 ]);
+
+/**
+ * Whether a plugin runs against the editor, through a renderer lease: a
+ * bundled renderer plugin, or one the reader installed, whose worker or
+ * module the renderer starts. Everything else is the filesystem service.
+ */
+function runsInEditor(manifest: PluginManifest): boolean {
+  return manifest.runtime === 'trusted-renderer' || manifest.runtime === 'sandboxed';
+}
 
 export class PluginRegistry {
   private readonly catalog: PluginCatalog;
@@ -544,7 +557,7 @@ export class PluginRegistry {
     }
     const generationNumber = ++runtime.generationCounter;
     const controller = new AbortController();
-    const leaseId = runtime.manifest.runtime === 'trusted-renderer' ? this.createLeaseId() : null;
+    const leaseId = runsInEditor(runtime.manifest) ? this.createLeaseId() : null;
     let resolveActivation!: (snapshot: PluginLifecycleSnapshot) => void;
     let rejectActivation!: (cause: unknown) => void;
     const activation = new Promise<PluginLifecycleSnapshot>((resolve, reject) => {
@@ -567,7 +580,7 @@ export class PluginRegistry {
     runtime.lastFailure = null;
     this.publish(runtime);
 
-    const work = runtime.manifest.runtime === 'trusted-renderer'
+    const work = runsInEditor(runtime.manifest)
       ? this.options.rendererHost.openLease({
         pluginId: runtime.manifest.id,
         leaseId: leaseId as string,
@@ -616,7 +629,7 @@ export class PluginRegistry {
     } catch {
       return false;
     }
-    const work = runtime.manifest.runtime === 'trusted-renderer'
+    const work = runsInEditor(runtime.manifest)
       ? this.options.rendererHost.executeLeaseCommand(
         generation.leaseId as string,
         commandId,
@@ -668,7 +681,7 @@ export class PluginRegistry {
   ): Promise<unknown[]> {
     const failures: unknown[] = [];
     try {
-      if (runtime.manifest.runtime === 'trusted-renderer') {
+      if (runsInEditor(runtime.manifest)) {
         const release = await withTimeout(
           this.options.rendererHost.closeLease(generation.leaseId as string),
           this.cleanupTimeoutMs,
@@ -829,7 +842,7 @@ export class PluginRegistry {
         : [];
       const generation = runtime.generation;
       if (runtime.desiredEnabled
-        && runtime.manifest.runtime === 'trusted-renderer'
+        && runsInEditor(runtime.manifest)
         && generation?.leaseId
         && changedSettingKeys.length > 0) {
         settingTasks.push(this.reconcileLiveSettings(runtime, generation, changedSettingKeys));
@@ -922,6 +935,14 @@ export class PluginRegistry {
         grant: runtime.capability.grant ? Object.freeze({ ...runtime.capability.grant }) : null,
         request: runtime.capability.request ? Object.freeze({ ...runtime.capability.request }) : null,
         restartRequired: runtime.capability.restartRequired,
+      }),
+      presentation: Object.freeze({
+        name: runtime.manifest.name,
+        description: runtime.manifest.description ?? '',
+        origin: runtime.manifest.runtime === 'sandboxed' ? 'user' as const : 'bundled' as const,
+        install: this.options.install?.(runtime.manifest.id) ?? null,
+        commands: Object.freeze(runtime.manifest.commands.map((command) => Object.freeze({ id: command.id, title: command.title }))),
+        hotkeys: Object.freeze(runtime.manifest.hotkeys.map((hotkey) => Object.freeze({ command: hotkey.command, keys: hotkey.keys }))),
       }),
     });
   }

@@ -44,13 +44,52 @@ describe('the Typora marks plugin', () => {
     expect(drawn(state)).toEqual(['noto-typora-delim', 'noto-mark-highlight', 'noto-typora-delim']);
   });
 
-  it('reveals the syntax while the selection touches the block', () => {
+  it('reveals the syntax of the span the caret is in, and not while the caret is elsewhere in the block', () => {
     let state = stateFor('Mark ==key== here.\n\nelsewhere');
     expect(drawn(state)).not.toContain('noto-marks-editing');
+    // In the block, outside the mark: nothing moves.
     state = state.apply(state.tr.setSelection(TextSelection.create(state.doc, 2)));
+    expect(drawn(state)).not.toContain('noto-marks-editing');
+    expect(drawn(state).filter((name) => name.includes('noto-source-live'))).toEqual([]);
+    // In the mark: its two delimiters show.
+    state = state.apply(state.tr.setSelection(TextSelection.create(state.doc, positionOf(state, 'key') + 1)));
     expect(drawn(state)).toContain('noto-marks-editing');
+    expect(drawn(state).filter((name) => name.includes('noto-source-live'))).toEqual([
+      'noto-typora-delim noto-source-live', 'noto-typora-delim noto-source-live',
+    ]);
     state = state.apply(state.tr.setSelection(TextSelection.create(state.doc, state.doc.content.size - 1)));
     expect(drawn(state)).not.toContain('noto-marks-editing');
+  });
+
+  it('shows one span at a time when a paragraph holds several, and none for a range', () => {
+    let state = stateFor('First ==one== then ^two^ and <u>three</u> end.\n\nelsewhere');
+    // A tag is a node of its own with no text, so positions come from the
+    // text nodes rather than from the paragraph's text.
+    const positionOf = (_state: EditorState, text: string): number => {
+      let found = -1;
+      state.doc.descendants((node, position) => {
+        if (found < 0 && node.isText && node.text!.includes(text)) found = position + node.text!.indexOf(text);
+        return found < 0;
+      });
+      return found;
+    };
+    const liveText = () => {
+      const set = typoraMarksKey.getState(state)!;
+      return set.find()
+        .filter((decoration) => ((decoration as Decoration & { type: { attrs: { class: string } } }).type.attrs.class).includes('noto-source-live'))
+        .map((decoration) => state.doc.textBetween(decoration.from, decoration.to, '', '\u0000'));
+    };
+    state = state.apply(state.tr.setSelection(TextSelection.create(state.doc, positionOf(state, 'two') + 1)));
+    expect(liveText()).toEqual(['^', '^']);
+    state = state.apply(state.tr.setSelection(TextSelection.create(state.doc, positionOf(state, 'one') + 1)));
+    expect(liveText()).toEqual(['==', '==']);
+    // A tag pair: its two tags, which hold no text of their own here.
+    state = state.apply(state.tr.setSelection(TextSelection.create(state.doc, positionOf(state, 'three') + 1)));
+    expect(liveText()).toEqual(['\u0000', '\u0000']);
+    state = state.apply(state.tr.setSelection(TextSelection.create(state.doc, positionOf(state, 'end'))));
+    expect(liveText()).toEqual([]);
+    state = state.apply(state.tr.setSelection(TextSelection.create(state.doc, positionOf(state, 'one'), positionOf(state, 'end'))));
+    expect(liveText()).toEqual([]);
   });
 
   it('does not scan inside inline code', () => {

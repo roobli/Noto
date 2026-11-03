@@ -27,15 +27,23 @@ import {
   type UpdateChannelSettingV1,
 } from '../shared/settings/v1/contracts';
 import type { UpdateStatusV1 } from '../shared/updates/v1/contracts';
+import { isComposing } from './ime';
+import { ShortcutsBoard } from './ShortcutsBoard';
+import type { PluginHotkeySource } from './shortcuts/catalog';
 
-export type SettingsSection = 'appearance' | 'editor' | 'markdown' | 'images' | 'updates' | 'remote' | 'plugins';
+export type SettingsSection = 'appearance' | 'editor' | 'markdown' | 'images' | 'updates' | 'shortcuts' | 'remote' | 'plugins';
 
 export interface SettingsProps {
   readonly open: boolean;
+  /** Keys are written with macOS's glyphs there, with words elsewhere. */
+  readonly mac?: boolean;
+  /** Every plugin main knows, with the keys it declares, for the Shortcuts pane. */
+  readonly pluginHotkeys?: readonly PluginHotkeySource[];
   readonly section: SettingsSection;
   readonly onSection: (section: SettingsSection) => void;
   readonly settings: NotoSettingsV1;
-  readonly onChange: (patch: Partial<NotoSettingsV1>) => void;
+  /** A patch, or a function of the settings as they are when it is applied. */
+  readonly onChange: (patch: Partial<NotoSettingsV1> | ((current: NotoSettingsV1) => Partial<NotoSettingsV1>)) => void;
   readonly onClose: () => void;
   /** The plugin section's contents, supplied by the shell so this file stays
    *  free of plugin lifecycle concerns. */
@@ -69,6 +77,7 @@ function SectionGlyph({ name }: { name: SettingsSection }) {
     updates: 'M8 2.5v6.2 M5.2 6.5 8 9.3l2.8-2.8 M3 11.5h10v2H3z',
     remote: 'M2.5 4.5h11v7h-11z M5.5 13.5h5 M8 11.5v2',
     plugins: 'M6 2.5v2.2a1.3 1.3 0 1 1-2.6 0V2.5 M2.5 6h11v7.5h-11z M2.5 6V3.4h1',
+    shortcuts: 'M2 4.5h12v7H2z M4.3 6.8h.01 M6.4 6.8h.01 M8.5 6.8h.01 M10.6 6.8h.01 M5 9.3h6',
   };
   return (
     <svg className="pref-glyph" viewBox="0 0 16 16" width="15" height="15" aria-hidden="true"
@@ -82,11 +91,24 @@ const SECTIONS: readonly { value: SettingsSection; label: string; keywords: stri
   { value: 'appearance', label: 'Appearance', keywords: 'theme dark light text size line height width rail stylesheet css font serif sans mono system family always on top float window links graph moc related backlinks' },
   { value: 'editor', label: 'Editor', keywords: 'spell check images brackets pairs focus typewriter save autosave line numbers guides reload external disk sync watch file tags frontmatter' },
   { value: 'markdown', label: 'Markdown', keywords: 'smart quotes dashes ellipsis punctuation typography syntax' },
-  { value: 'images', label: 'Images', keywords: 'image picture paste drop screenshot assets folder copy relative path escape url upload picgo bucket' },
+  { value: 'images', label: 'Images', keywords: 'image picture paste drop screenshot assets folder copy relative path escape url upload picgo bucket web remote iframe embed page video' },
   { value: 'updates', label: 'Updates', keywords: 'update upgrade release version github alpha stable testing channel download auto check launch' },
+  { value: 'shortcuts', label: 'Shortcuts', keywords: 'shortcut shortcuts keyboard key keys hotkey chord accelerator binding command menu disable conflict', buried: true },
   { value: 'remote', label: 'Remote', keywords: 'remote control api token port script agent automation', buried: true },
   { value: 'plugins', label: 'Plugins', keywords: 'plugin extension enable disable palette', buried: true },
 ];
+
+/** One line under each pane's name, saying what the pane is for. */
+const LEADS: Readonly<Partial<Record<SettingsSection, string>>> = {
+  appearance: 'Theme, type and the window around the page.',
+  editor: 'How writing, code blocks and files behave.',
+  markdown: 'How the punctuation you type is set.',
+  images: 'Where pasted pictures go, and what loads from the web.',
+  updates: 'Which builds this copy follows, and when it looks for them.',
+  shortcuts: 'Every key the app answers to, where it comes from, and a switch to turn it off.',
+  remote: 'Let a script on this machine drive the editor.',
+  plugins: 'What extends the editor, and where it comes from.',
+};
 
 const THEMES: readonly { value: NotoTheme; label: string }[] = [
   { value: 'system', label: 'System' },
@@ -291,7 +313,7 @@ function ThemeFile({ settings, onChange, problem, onReload }: {
           aria-label="Custom stylesheet path"
           onChange={(event) => setDraft(event.target.value)}
           onBlur={commit}
-          onKeyDown={(event) => { if (event.key === 'Enter') { event.preventDefault(); commit(); } }}
+          onKeyDown={(event) => { if (!isComposing(event) && event.key === 'Enter') { event.preventDefault(); commit(); } }}
         />
         <button type="button" className="pref-inline-action" data-testid="reload-custom-css"
           disabled={!settings.customCssPath} onClick={onReload}>Reload</button>
@@ -424,7 +446,7 @@ function ImageFolder({ settings, onChange }: {
           aria-label="Image folder"
           onChange={(event) => setDraft(event.target.value)}
           onBlur={commit}
-          onKeyDown={(event) => { if (event.key === 'Enter') { event.preventDefault(); commit(); } }}
+          onKeyDown={(event) => { if (!isComposing(event) && event.key === 'Enter') { event.preventDefault(); commit(); } }}
         />
       </span>
     </div>
@@ -714,7 +736,7 @@ function Switch({ label, hint, checked, onChange, testId }: {
 }
 
 export function Settings({
-  open, section, onSection, settings, onChange, onClose, plugins,
+  open, mac = false, pluginHotkeys = [], section, onSection, settings, onChange, onClose, plugins,
   pluginDetailId, onPluginDetailClear, pluginDetailName,
   themeProblem, onReloadCss,
 }: SettingsProps) {
@@ -746,6 +768,7 @@ export function Settings({
   useEffect(() => {
     if (!open) return;
     const onKeyDown = (event: KeyboardEvent) => {
+      if (isComposing(event)) return;
       if (event.key === 'Escape') {
         event.preventDefault();
         onClose();
@@ -792,12 +815,17 @@ export function Settings({
               onChange={(event) => setQuery(event.target.value)}
             />
           </label>
+          {/* Two groups, named rather than ruled apart: what most people come
+              here for, and what extends or drives the app. Unnamed while a
+              search narrows the list, where a heading over one row says
+              nothing. */}
+          {query.length === 0 && <span className="pref-nav-label" aria-hidden="true">General</span>}
           {matching.map((entry, index) => {
             const prev = matching[index - 1];
             const showSep = entry.buried === true && prev?.buried !== true;
             return (
               <span key={entry.value} className={showSep ? 'pref-nav-block' : undefined}>
-                {showSep && <span className="pref-nav-sep" aria-hidden="true" />}
+                {showSep && query.length === 0 && <span className="pref-nav-sep pref-nav-label" aria-hidden="true">Advanced</span>}
                 <button
                   type="button"
                   aria-current={section === entry.value ? 'true' : undefined}
@@ -831,16 +859,6 @@ export function Settings({
             away, and with it the only place the window could be dragged. */}
         <header className="pref-titlebar">
           <div className="pref-heading">
-            <h2 className="settings-title">
-              {section === 'plugins' && pluginDetailId ? (
-                <>
-                  <button type="button" className="settings-crumb" data-testid="plugins-crumb"
-                    onClick={onPluginDetailClear}>Plugins</button>
-                  <span className="settings-crumb-sep" aria-hidden="true">›</span>
-                  <span>{pluginDetailName ?? 'Detail'}</span>
-                </>
-              ) : title}
-            </h2>
             <button type="button" className="pref-close"
               data-testid="settings-close" aria-label="Close settings"
               onClick={onClose}>Done</button>
@@ -849,6 +867,26 @@ export function Settings({
 
         <div className="pref-body">
           <div className="pref-content">
+            {/* The pane's name at the head of the pane, in the document's own
+                face: the one place the settings borrow the page's type, so
+                they read as the same app rather than as a form beside it. It
+                was a caption on the title bar's line, which left the pane a
+                column of rows with nothing saying what they were. */}
+            <header className="pref-pane-head">
+              <h2 className="settings-title">
+                {section === 'plugins' && pluginDetailId ? (
+                  <>
+                    <button type="button" className="settings-crumb" data-testid="plugins-crumb"
+                      onClick={onPluginDetailClear}>Plugins</button>
+                    <span className="settings-crumb-sep" aria-hidden="true">›</span>
+                    <span>{pluginDetailName ?? 'Detail'}</span>
+                  </>
+                ) : title}
+              </h2>
+              {!(section === 'plugins' && pluginDetailId) && LEADS[section] && (
+                <p className="pref-pane-lead">{LEADS[section]}</p>
+              )}
+            </header>
             {section === 'appearance' && (
               <>
                 {/* Glance surface: theme, type, width, then the CSS escape hatch.
@@ -939,6 +977,13 @@ export function Settings({
                   checked={settings.fileTags}
                   onChange={(value) => onChange({ fileTags: value })}
                   testId="setting-file-tags"
+                />
+                <Switch
+                  label="Git changes"
+                  hint="Bars beside changed blocks and marks on changed notes in the tree, in a folder under git. Off for a clean screenshot; View > Show Git Changes flips it too."
+                  checked={settings.gitMarks}
+                  onChange={(value) => onChange({ gitMarks: value })}
+                  testId="setting-git-marks"
                 />
                 <p className="pref-group">Code blocks</p>
                 <Switch
@@ -1045,13 +1090,6 @@ export function Settings({
                   onChange={(value) => onChange({ markSubscript: value })}
                   testId="setting-mark-subscript"
                 />
-                <Switch
-                  label="Sidenotes"
-                  hint="Draws a span.sidenote as a numbered margin note. Off leaves the tags as source."
-                  checked={settings.sidenotes}
-                  onChange={(value) => onChange({ sidenotes: value })}
-                  testId="setting-sidenotes"
-                />
               </>
             )}
 
@@ -1075,16 +1113,28 @@ export function Settings({
                 />
                 <Switch
                   label="Load images from the web"
-                  hint="Off shows a placeholder for a `https://` picture and leaves the note untouched."
+                  hint="Off shows a placeholder for a picture on the web and leaves the note untouched."
                   checked={settings.remoteImages}
                   onChange={(value) => onChange({ remoteImages: value })}
                   testId="setting-remote-images-image-pane"
+                />
+                <Switch
+                  label="Load web pages embedded in notes"
+                  hint="A page a note embeds with <iframe>, in a sandboxed frame. Off shows a card naming the page, with a button that loads that one."
+                  checked={settings.webEmbeds}
+                  onChange={(value) => onChange({ webEmbeds: value })}
+                  testId="setting-web-embeds"
                 />
               </>
             )}
 
             {section === 'updates' && (
               <UpdatesPane settings={settings} onChange={onChange} />
+            )}
+
+            {section === 'shortcuts' && (
+              <ShortcutsBoard mac={mac} disabled={settings.disabledShortcuts} plugins={pluginHotkeys}
+                onChange={(change) => onChange((current) => ({ disabledShortcuts: change(current.disabledShortcuts) }))} />
             )}
 
             {section === 'remote' && (

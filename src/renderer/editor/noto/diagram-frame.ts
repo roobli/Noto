@@ -10,6 +10,7 @@
  * file keeps its bytes.
  */
 
+import { diagramDialect, toMermaid } from '../../diagram/legacy-diagrams';
 import type { DiagramPalette, DiagramReply, DiagramRequest } from '../../diagram/protocol';
 
 /** Typing pauses this long before the drawing is asked for again. */
@@ -65,8 +66,9 @@ export function paletteNow(): DiagramPalette {
   };
 }
 
+/** Mermaid, and Typora's `flow` and `sequence`, which are drawn as mermaid. */
 export function isDiagramLanguage(lang: string): boolean {
-  return lang.trim().toLowerCase() === 'mermaid';
+  return diagramDialect(lang) !== null;
 }
 
 export class DiagramFrame {
@@ -112,10 +114,25 @@ export class DiagramFrame {
     });
   }
 
-  /** Draw this source, once typing pauses. */
-  render(source: string): void {
-    if (source === this.source) return;
-    this.source = source;
+  /**
+   * Draw this fence, once typing pauses. A `flow` or `sequence` fence is
+   * rewritten as mermaid first; one that cannot be read says which line, the
+   * way a mermaid fence that does not parse does.
+   */
+  render(source: string, lang = 'mermaid'): void {
+    const mermaid = toMermaid(diagramDialect(lang) ?? 'mermaid', source);
+    if ('error' in mermaid) {
+      if (this.timer !== null) clearTimeout(this.timer);
+      this.timer = null;
+      this.source = null;
+      this.serial += 1;
+      this.frame.style.height = '0px';
+      this.dom.dataset.state = 'failed';
+      this.status.textContent = `The diagram could not be drawn: ${mermaid.error}`;
+      return;
+    }
+    if (mermaid.source === this.source) return;
+    this.source = mermaid.source;
     if (this.timer !== null) clearTimeout(this.timer);
     this.timer = setTimeout(() => {
       this.timer = null;

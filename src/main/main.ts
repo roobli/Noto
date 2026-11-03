@@ -1,7 +1,7 @@
 import { randomUUID } from 'node:crypto';
 import { isTrustedRendererSender } from './ipc/trusted-renderer';
 import { ipcMain } from 'electron';
-import { isWorkspaceDirtyEventV1, isWorkspaceTextReplyV1 } from '../shared/workspace/v1/validate';
+import { isWorkspaceDirtyEventV1, isWorkspaceTextReplyV1, isWorkspaceUnsavedEventV1 } from '../shared/workspace/v1/validate';
 import {
   NOTO_WORKSPACE_VERSION, WORKSPACE_CHANNELS,
 } from '../shared/workspace/v1/contracts';
@@ -9,7 +9,7 @@ import { startRemoteServer, type RunningRemote } from './remote/server';
 import { TokenStore } from './remote/token-store';
 import { confineRemoteOpenPath } from './remote/resolve-open-path';
 import {
-  NOTO_SETTINGS_VERSION, SETTINGS_CHANNELS, type NotoSettingsV1, type NotoTheme, type RemoteStatusReplyV1,
+  NOTO_SETTINGS_VERSION, SETTINGS_CHANNELS, type MenuShortcutV1, type NotoSettingsV1, type NotoTheme, type RemoteStatusReplyV1,
 } from '../shared/settings/v1/contracts';
 import { ensureThemeFolder, listThemes } from './workspace/themes';
 import path from 'node:path';
@@ -30,6 +30,9 @@ import {
 import { RendererLeaseBridge } from './plugins/renderer-lease-bridge';
 import { ServiceHost } from './plugins/service-host';
 import { ExperimentalPluginRuntimeHost } from './plugins/experimental-plugin-runtime-host';
+import { PluginInstaller } from './plugins/plugin-installer';
+import { discoverUserPlugins, FRESH_MARKER, joinCatalog, readUserPluginCode, userPluginCodeUrl, type SetAsidePlugin, type UserPlugin } from './plugins/user-plugins';
+import { describeSource } from '../shared/plugins/install-record';
 import { installNotoProtocol, isAllowedRendererUrl, registerNotoScheme } from './protocol/register-app-protocol';
 import { IPC_CHANNELS } from '../shared/ipc/contracts';
 import type { PluginCatalog } from '../shared/plugins/catalog';
@@ -43,7 +46,7 @@ import {
 import { RecentFiles } from './workspace/recent-files';
 import { SettingsStore } from './workspace/settings-store';
 import { registerSettingsHandlers } from './workspace/register-settings-handlers';
-import { WorkspaceSession } from './workspace/session';
+import { WorkspaceSession, MAX_TABS } from './workspace/session';
 import { installApplicationMenu, sendPasteText } from './workspace/menu';
 import { registerWorkspaceHandlers } from './workspace/register-workspace-handlers';
 import { registerAssetHandlers } from './workspace/register-asset-handlers';
@@ -51,6 +54,17 @@ import { AppUpdater } from './updates/app-updater';
 import { registerUpdateHandlers } from './updates/register-update-handlers';
 import { useSha256 } from '../shared/sha256';
 import { nativeSha256 } from './native-sha256';
+
+/** An `http://127.0.0.1:<port>` origin, and nothing that only starts like one. */
+function isLoopbackOrigin(value: string | undefined): value is string {
+  if (!value) return false;
+  try {
+    const url = new URL(value);
+    return url.protocol === 'http:' && url.hostname === '127.0.0.1' && url.port !== '' && value === url.origin;
+  } catch {
+    return false;
+  }
+}
 
 // The shared Markdown layer hashes in plain JavaScript so that it runs in any
 // host. This process has Node's native hash, which gives the same digests three
@@ -91,10 +105,10 @@ const isDirectory = (candidate: string): boolean => {
  * by a relative path. In development the first argument is the app itself,
  * which is a directory, so the scan starts after it there.
  */
-const folderArgument = (argv: readonly string[]): string | null => {
+const folderArgument = (argv: readonly string[], cwd: string = process.cwd()): string | null => {
   for (const value of argv) {
     if (value.startsWith('-')) continue;
-    const candidate = path.resolve(value);
+    const candidate = path.resolve(cwd, value);
     if (isDirectory(candidate)) return candidate;
   }
   return null;
@@ -123,7 +137,7 @@ const evidenceDirectory = path.resolve(
   process.env.NTO_EVIDENCE_DIR ?? path.join(app.getPath('userData'), 'evidence'),
 );
 const logger = createLogger(evidenceDirectory);
-const rendererConsole: RendererConsoleState = { errors: 0, warnings: 0 };
+const rendererConsole: RendererConsoleState = { errors: 0, warnings: 0, recent: [] };
 let editorWindow: BrowserWindow | null = null;
 let session: WorkspaceSession | null = null;
 
@@ -144,16 +158,20 @@ app.on('open-file', (event, filePath) => {
 if (!app.requestSingleInstanceLock()) {
   app.quit();
 } else {
-  app.on('second-instance', (_event, argv) => {
-    const folder = folderArgument(argv.slice(1));
+  app.on('second-instance', (_event, argv, workingDirectory) => {
+    // Relative to where the second launch was run, not to this process: a
+    // shell's `noto notes.md` means the notes.md beside that shell.
+    const folder = folderArgument(argv.slice(1), workingDirectory);
     if (folder && session) {
       void session.openFolderPath(folder).catch(() => logger.log('workspace_open_folder_failed', {}));
     }
-    const candidate = markdownArgument(argv);
+    const named = markdownArgument(argv);
+    const candidate = named ? path.resolve(workingDirectory, named) : null;
     if (candidate && session) {
-      void session.openPath(candidate).catch((error) => logger.log('workspace_open_file_failed', {
-        code: error instanceof Error ? error.message.split(':', 1)[0] : 'OPEN_FAILED',
-      }));
+      void session.openPath(candidate).catch((error) => {
+        const message = error instanceof Error ? error.message : '';
+        logger.log('workspace_open_file_failed', { code: message.split(':', 1)[0] || 'OPEN_FAILED', error: message.slice(0, 300) });
+      });
     }
     if (editorWindow && !headless()) {
       if (editorWindow.isMinimized()) editorWindow.restore();
@@ -176,6 +194,55 @@ app.on('web-contents-created', (_event, contents) => {
  */
 let windowAlwaysOnTop = false;
 
+/*
+ * Unsaved notes, as the renderer last reported them, and the question asked
+ * before they are lost.
+ *
+ * Nothing used to ask: Close Tab, closing the window and quitting all went
+ * through with edits in notes that were never saved, and autosave is off by
+ * default. Each now asks first. Main only learns about the note in front
+ * through `dirtyChanged`, so the renderer reports every loaded note that has
+ * unsaved changes. A packaged test build asks only when a test opts in, since
+ * the harness closes the app between tests with notes left unsaved.
+ */
+let unsavedPaths: readonly string[] = [];
+/** Set once the reader chose to discard, so the quit that follows goes through. */
+let discardConfirmed = false;
+const unsavedPromptEnabled = __NTO_PACKAGE_VARIANT__ !== 'e2e' || process.env.NOTO_UNSAVED_PROMPT === '1';
+const quitHeldForUnsaved = (): boolean => unsavedPromptEnabled && !discardConfirmed && unsavedPaths.length > 0;
+let askingAboutUnsaved = false;
+
+function holdQuitForUnsaved(): void {
+  if (askingAboutUnsaved) return;
+  askingAboutUnsaved = true;
+  const names = unsavedPaths.map((filePath) => path.basename(filePath));
+  const listed = names.slice(0, 6).join('\n') + (names.length > 6 ? `\nand ${names.length - 6} more` : '');
+  const options: Electron.MessageBoxOptions = {
+    type: 'warning',
+    message: names.length === 1 ? `"${names[0]}" has unsaved changes.` : `${names.length} notes have unsaved changes.`,
+    detail: `${names.length > 1 ? `${listed}\n\n` : ''}Quitting now loses those changes.`,
+    buttons: ['Review Changes', 'Discard and Quit'],
+    defaultId: 0,
+    cancelId: 0,
+    noLink: true,
+  };
+  const window = editorWindow && !editorWindow.isDestroyed() ? editorWindow : null;
+  void (window ? dialog.showMessageBox(window, options) : dialog.showMessageBox(options)).then(({ response }) => {
+    askingAboutUnsaved = false;
+    if (response === 1) {
+      logger.log('unsaved_discarded_on_quit', { notes: names.length });
+      discardConfirmed = true;
+      app.quit();
+      return;
+    }
+    // Back to the first of them, so the reader can save or drop it.
+    window?.show();
+    window?.focus();
+    const first = unsavedPaths[0];
+    if (first) void session?.openPath(first).catch(() => {});
+  });
+}
+
 function createApplicationWindow(preloadPath: string, theme: NotoTheme = 'system'): BrowserWindow {
   editorWindow = createEditorWindow(preloadPath, logger, rendererConsole, {
     theme,
@@ -183,6 +250,13 @@ function createApplicationWindow(preloadPath: string, theme: NotoTheme = 'system
   });
   if (windowAlwaysOnTop) editorWindow.setAlwaysOnTop(true);
   editorWindow.on('closed', () => { editorWindow = null; });
+  // Closing the window quits the app (`window-all-closed`), so it asks the
+  // same question quitting does, while the window is still there to go back to.
+  editorWindow.on('close', (event) => {
+    if (!quitHeldForUnsaved()) return;
+    event.preventDefault();
+    holdQuitForUnsaved();
+  });
   // Back from another program, which may have been a terminal that committed
   // or an editor that wrote a note. Not a poll: once per return, debounced.
   editorWindow.on('focus', () => session?.refreshGitMarks());
@@ -207,7 +281,16 @@ async function run(): Promise<void> {
   await app.whenReady();
   app.setAppUserModelId('dev.lr00rl.noto');
   const rendererRoot = path.join(__dirname, '..', 'renderer', 'main_window');
-  await installNotoProtocol(rendererRoot, logger, { roots: () => session?.imageRoots() ?? [] });
+  // Plugins the reader installed, found below once the bundled ones are; the
+  // protocol asks this map for a plugin's code, so it is declared first.
+  let userPlugins = new Map<string, UserPlugin>();
+  let userPluginsSetAside: SetAsidePlugin[] = [];
+  await installNotoProtocol(rendererRoot, logger, { roots: () => session?.imageRoots() ?? [] }, async (id, digest, trust) => {
+    // Served only at the address for the trust it has: a sandboxed plugin's
+    // code never at the page's own origin.
+    const plugin = userPlugins.get(id);
+    return plugin && plugin.trust === trust ? readUserPluginCode(plugin, digest) : null;
+  });
 
   const serviceModulePath = app.isPackaged
     ? path.join(process.resourcesPath, 'app.asar.unpacked', '.vite', 'build', 'fs-service.js')
@@ -239,6 +322,40 @@ async function run(): Promise<void> {
     pluginDiscoveryFailure = error instanceof Error ? error.message.split(':', 1)[0] : 'PLUGIN_DISCOVERY_UNAVAILABLE';
     logger.log('plugin_manifest_discovery_failed_visible', { code: pluginDiscoveryFailure });
   }
+  const userPluginRoot = path.join(app.getPath('userData'), 'plugins', 'user');
+  try {
+    const found = await discoverUserPlugins(userPluginRoot);
+    const joined = joinCatalog(pluginCatalog, found.plugins);
+    pluginCatalog = joined.catalog;
+    userPlugins = new Map(joined.joined.map((plugin) => [plugin.manifest.id, plugin]));
+    userPluginsSetAside = [...found.setAside, ...joined.setAside];
+    if (userPluginsSetAside.length > 0) {
+      logger.log('user_plugins_set_aside', { plugins: userPluginsSetAside.map((item) => `${item.folder}: ${item.reason}`.slice(0, 200)) });
+    }
+  } catch (error) {
+    logger.log('user_plugins_unreadable', { error: error instanceof Error ? error.message.slice(0, 200) : 'unknown' });
+  }
+  const pluginInstaller = new PluginInstaller({
+    root: userPluginRoot,
+    getWindow: () => editorWindow,
+    logger,
+    installed: () => userPlugins,
+    setAside: () => userPluginsSetAside,
+    bundled: () => {
+      const bundledManifests = pluginCatalog.plugins.filter((manifest) => !userPlugins.has(manifest.id));
+      return {
+        ids: new Set(bundledManifests.map((manifest) => manifest.id)),
+        hotkeys: new Map(bundledManifests.flatMap((manifest) => manifest.hotkeys.map((hotkey) => [hotkey.keys, manifest.name] as const))),
+      };
+    },
+    marketplace: () => settings.current().pluginMarketplace,
+    // A test serves plugin files from this machine instead of GitHub; only
+    // the end-to-end build reads the variable.
+    ...(__NTO_PACKAGE_VARIANT__ === 'e2e' && isLoopbackOrigin(process.env.NOTO_PLUGIN_RAW_ORIGIN)
+      ? { rawOrigin: process.env.NOTO_PLUGIN_RAW_ORIGIN }
+      : {}),
+  });
+  pluginInstaller.register();
   const pluginStateStore = new LocalPluginStateStore(
     path.join(app.getPath('userData'), 'plugins', 'local-state.json'),
     pluginCatalog,
@@ -259,6 +376,15 @@ async function run(): Promise<void> {
   let pluginRegistry!: PluginRegistry;
   pluginRegistry = new PluginRegistry({
     catalog: pluginCatalog,
+    install: (pluginId) => {
+      const plugin = userPlugins.get(pluginId);
+      return plugin ? {
+        source: describeSource(plugin.record?.source ?? null),
+        trust: plugin.trust,
+        codeUrl: userPluginCodeUrl(plugin),
+        manifest: plugin.manifest,
+      } : null;
+    },
     initialDiscoveryFailure: pluginDiscoveryFailure,
     stateStore: pluginStateStore,
     rendererHost: rendererLeaseBridge,
@@ -279,6 +405,13 @@ async function run(): Promise<void> {
   });
   try {
     await pluginRegistry.hydrate();
+    // Installed or replaced since the last start: switched off, whatever the
+    // id's switch said before.
+    for (const plugin of userPlugins.values()) {
+      if (!plugin.fresh) continue;
+      await pluginRegistry.disable(plugin.manifest.id).catch(() => undefined);
+      await rm(path.join(plugin.directory, '.noto', FRESH_MARKER), { force: true }).catch(() => undefined);
+    }
   } catch (error) {
     logger.log('plugin_state_hydration_failed_visible', {
       code: error instanceof Error ? error.message.split(':', 1)[0] : 'PLUGIN_FAILED',
@@ -311,7 +444,19 @@ async function run(): Promise<void> {
     () => settings.current().codeViewer,
     () => settings.current().remoteImages,
   );
-  app.once('before-quit', () => session?.closeAll());
+  // Registered first of the quit listeners. Node runs every listener even
+  // when one prevents the quit, so the others check the same hold.
+  app.prependListener('before-quit', (event) => {
+    if (!quitHeldForUnsaved()) return;
+    event.preventDefault();
+    holdQuitForUnsaved();
+  });
+  let documentsClosed = false;
+  app.on('before-quit', () => {
+    if (quitHeldForUnsaved() || documentsClosed) return;
+    documentsClosed = true;
+    session?.closeAll();
+  });
 
   /*
    * The two ticks in the View menu.
@@ -360,15 +505,20 @@ async function run(): Promise<void> {
   const menuState = {
     readOnly: false,
     alwaysOnTop: windowAlwaysOnTop,
+    gitMarks: settings.current().gitMarks,
     treeSort: settings.current().treeSort,
     themes,
     themePath: settings.current().customCssPath,
+    disabledShortcuts: settings.current().disabledShortcuts,
   };
+  // What the menu held when it was last built, for the Shortcuts pane.
+  let menuShortcutList: readonly MenuShortcutV1[] = [];
   if (windowAlwaysOnTop) editorWindow?.setAlwaysOnTop(true);
-  const refreshMenu = () => installApplicationMenu(() => editorWindow, recent.list(), {
+  const refreshMenu = () => { menuShortcutList = installApplicationMenu(() => editorWindow, recent.list(), {
     openDialog: () => { void session?.openWithDialog().then(refreshMenu).catch(reportOpenFailure); },
     openPath: (filePath) => { void session?.openPath(filePath).then(refreshMenu).catch(reportOpenFailure); },
     openFolder: () => { void session?.openFolderWithDialog().catch(reportOpenFailure); },
+    refreshFolder: () => { session?.refreshFolder(); },
     pastePlain: () => sendPasteText(editorWindow),
     print: () => {
       editorWindow?.webContents.print({ printBackground: true }, (ok, reason) => {
@@ -383,7 +533,30 @@ async function run(): Promise<void> {
     },
     closeTab: () => {
       const current = session?.currentPath;
-      if (current) session?.close(current);
+      if (!current) return;
+      if (!unsavedPromptEnabled || !unsavedPaths.includes(current)) {
+        session?.close(current);
+        return;
+      }
+      const window = editorWindow;
+      if (!window || window.isDestroyed()) return;
+      void dialog.showMessageBox(window, {
+        type: 'warning',
+        message: `Save the changes to "${path.basename(current)}" before closing it?`,
+        detail: 'If you don\'t save, the changes are lost.',
+        buttons: ['Save', 'Don\'t Save', 'Cancel'],
+        defaultId: 0,
+        cancelId: 2,
+        noLink: true,
+      }).then(({ response }) => {
+        // The note in front may have changed while the question was up.
+        if (session?.currentPath !== current) return;
+        if (response === 0) {
+          window.webContents.send(WORKSPACE_CHANNELS.menuCommand, { version: NOTO_WORKSPACE_VERSION, command: 'save-and-close' });
+        } else if (response === 1) {
+          session?.close(current);
+        }
+      });
     },
     reopenClosed: () => {
       void session?.reopenClosed().then(() => refreshMenu()).catch(reportOpenFailure);
@@ -430,7 +603,7 @@ async function run(): Promise<void> {
     if (command !== 'toggle-read-only') return;
     menuState.readOnly = !menuState.readOnly;
     refreshMenu();
-  });
+  }); };
   /*
    * Say why an import did nothing, in a box rather than in the log.
    *
@@ -495,6 +668,11 @@ async function run(): Promise<void> {
   ipcMain.on(WORKSPACE_CHANNELS.dirtyChanged, (event, value: unknown) => {
     if (!isTrustedRendererSender(editorWindow, event) || !isWorkspaceDirtyEventV1(value)) return;
     documentDirty = value.dirty;
+  });
+  ipcMain.on(WORKSPACE_CHANNELS.unsavedChanged, (event, value: unknown) => {
+    if (!isTrustedRendererSender(editorWindow, event) || !isWorkspaceUnsavedEventV1(value)) return;
+    unsavedPaths = value.paths;
+    session?.setUnsavedPaths(value.paths);
   });
 
   /**
@@ -583,7 +761,13 @@ async function run(): Promise<void> {
       // Load once so peek() is set before the first request; the socket then
       // reads through getToken so it stays aligned with whatever the pane shows.
       await tokens.current();
+      // A second instance, a build under development beside the one in daily
+      // use, needs a port of its own or it can never listen; the default is
+      // taken. Loopback only either way, and anything not a user port is ignored.
+      const asked = Number.parseInt(process.env.NOTO_REMOTE_PORT ?? '', 10);
+      const port = Number.isInteger(asked) && asked >= 1024 && asked <= 65535 ? asked : undefined;
       remote = await startRemoteServer({
+        ...(port !== undefined ? { port } : {}),
         deps: {
           getToken: () => tokens.peek() ?? '',
           status: () => ({
@@ -633,9 +817,14 @@ async function run(): Promise<void> {
                 code: code === 'ENOENT' ? 'no-such-note'
                   : code.includes('OUTSIDE') ? 'outside-folder'
                     : 'open-failed',
+                // The app's own reason, where it has one: "That note could
+                // not be opened" alone left a caller as blind as the window
+                // was when the 25th note would not open.
                 reason: code === 'ENOENT'
                   ? 'There is no note at that path.'
-                  : 'That note could not be opened.',
+                  : error instanceof Error && error.message.length > 0
+                    ? `That note could not be opened: ${error.message.slice(0, 300)}`
+                    : 'That note could not be opened.',
               };
             }
           },
@@ -646,6 +835,25 @@ async function run(): Promise<void> {
               version: NOTO_WORKSPACE_VERSION, text, at,
             });
             return { inserted: true };
+          },
+          debug: {
+            state: () => ({
+              version: app.getVersion(),
+              platform: process.platform,
+              uptimeSeconds: Math.round(process.uptime()),
+              folder: session?.folder ?? null,
+              note: session?.currentPath ?? null,
+              dirty: documentDirty,
+              documents: {
+                open: (session?.tabs() ?? []).map((tab) => ({ name: tab.name, path: tab.path, active: tab.active, activatedAt: tab.activatedAt })),
+                max: MAX_TABS,
+              },
+              renderer: { errors: rendererConsole.errors, warnings: rendererConsole.warnings },
+              recentFailures: logger.tail(20, 'workspace_operation_failed'),
+              logFile: logger.filePath,
+            }),
+            log: (lines, event) => logger.tail(lines, event),
+            console: (lines) => rendererConsole.recent.slice(-lines),
           },
           search: async (query, flags) => {
             const found = await session?.searchContent(query, flags, '');
@@ -690,12 +898,18 @@ async function run(): Promise<void> {
   };
 
   if (settings.current().remoteControl) await applyRemote(true);
-  app.once('before-quit', () => { void applyRemote(false); });
+  let remoteStopped = false;
+  app.on('before-quit', () => {
+    if (quitHeldForUnsaved() || remoteStopped) return;
+    remoteStopped = true;
+    void applyRemote(false);
+  });
 
   registerSettingsHandlers({
     settings,
     getWindow: () => editorWindow,
     logger,
+    menuShortcuts: () => menuShortcutList,
     remote: {
       status: remoteStatus,
       regenerate: async () => {
@@ -717,9 +931,19 @@ async function run(): Promise<void> {
         editorWindow?.setAlwaysOnTop(reply.settings.alwaysOnTop);
         refreshMenu();
       }
+      if (reply.settings.gitMarks !== menuState.gitMarks) {
+        menuState.gitMarks = reply.settings.gitMarks;
+        refreshMenu();
+      }
       // The tree's order shows as a tick in the View menu, and the tree
       // itself is listed again when it changes.
       if (reply.settings.remoteControl !== (remote !== null)) void applyRemote(reply.settings.remoteControl);
+      // A chord switched off or on in the Shortcuts pane is taken off the
+      // menu, or put back, at once: the menu claims a key before the page.
+      if (reply.settings.disabledShortcuts.join('\n') !== menuState.disabledShortcuts.join('\n')) {
+        menuState.disabledShortcuts = reply.settings.disabledShortcuts;
+        refreshMenu();
+      }
       if (reply.settings.customCssPath !== menuState.themePath) {
         menuState.themePath = reply.settings.customCssPath;
         refreshMenu();
@@ -827,25 +1051,40 @@ async function run(): Promise<void> {
   });
 
   let shutdownStarted = false;
+  /*
+   * Each step of the shutdown gets a deadline. A step that never settles (a
+   * plugin whose task queue is stuck behind an activation, a service that does
+   * not answer) used to hold the quit for good: the window was gone and the
+   * process stayed. Past its deadline a step is logged and the quit goes on.
+   */
+  const step = (name: string, deadlineMs: number, work: () => Promise<unknown>): Promise<void> => {
+    const started = Date.now();
+    let timer: ReturnType<typeof setTimeout> | undefined;
+    const deadline = new Promise<'late'>((resolve) => { timer = setTimeout(() => resolve('late'), deadlineMs); });
+    const done = work().then(
+      () => 'done' as const,
+      (error: unknown) => {
+        logger.log('shutdown_step_failed', { step: name, code: error instanceof Error ? error.message.split(':', 1)[0] : 'FAILED' });
+        return 'done' as const;
+      },
+    );
+    return Promise.race([done, deadline]).then((outcome) => {
+      clearTimeout(timer);
+      const ms = Date.now() - started;
+      if (outcome === 'late') logger.log('shutdown_step_timed_out', { step: name, ms });
+      else if (ms > 1000) logger.log('shutdown_step_slow', { step: name, ms });
+    });
+  };
   app.on('before-quit', (event) => {
-    if (shutdownStarted) return;
+    if (shutdownStarted || quitHeldForUnsaved()) return;
     shutdownStarted = true;
     event.preventDefault();
-    void pluginRegistry.shutdown()
-      .catch((error) => logger.log('plugin_shutdown_failed', {
-        code: error instanceof Error ? error.message.split(':', 1)[0] : 'PLUGIN_FAILED',
-      }))
-      .then(() => experimentalRuntimeHost.shutdown().catch((error) => logger.log('experimental_runtime_shutdown_failed', {
-        code: error instanceof Error ? error.message.split(':', 1)[0] : 'EXPERIMENTAL_RUNTIME_FAILED',
-      })))
-      .then(() => serviceHost.stop().catch((error) => logger.log('service_stop_failed', {
-        code: error instanceof Error ? error.message.split(':', 1)[0] : 'SERVICE_FAILED',
-      })))
+    void step('plugins', 4000, () => pluginRegistry.shutdown())
+      .then(() => step('experimental-runtime', 3000, () => experimentalRuntimeHost.shutdown()))
+      .then(() => step('service', 3000, () => serviceHost.stop()))
       // Drain settings so a preference written moments before close (quick-open
       // width, rail width, …) lands on disk before the process exits.
-      .then(() => settings.drain().catch((error) => logger.log('settings_drain_failed', {
-        code: error instanceof Error ? error.message.split(':', 1)[0] : 'SETTINGS_FAILED',
-      })))
+      .then(() => step('settings', 5000, () => settings.drain()))
       .finally(() => {
         rendererLeaseBridge.rendererDisposed();
         app.quit();

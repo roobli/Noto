@@ -1,3 +1,4 @@
+import { validatePluginManifest } from '../plugins/manifest';
 import { NOTO_ERROR_CODES, type NotoError } from '../errors';
 import {
   PLUGIN_LIFECYCLE_VERSION,
@@ -137,6 +138,7 @@ export function isPluginLifecycleSnapshot(value: unknown): value is PluginLifecy
     || !hasExactKeys(value, [
       'id', 'manifestVersion', 'desiredEnabled', 'lifecycle', 'settings', 'activeGeneration',
       'leaseCount', 'rendererRegistrations', 'activationReason', 'persistenceHealth', 'lastFailure', 'capability',
+      'presentation',
     ])
     || !isPluginId(value.id)
     || !isBoundedString(value.manifestVersion, 256)
@@ -149,8 +151,39 @@ export function isPluginLifecycleSnapshot(value: unknown): value is PluginLifecy
     || !(value.activationReason === null || isActivationReason(value.activationReason))
     || !persistenceHealth.includes(value.persistenceHealth as typeof persistenceHealth[number])
     || !(value.lastFailure === null || isBoundedString(value.lastFailure, 2_048))
-    || !isCapabilitySnapshot(value.capability)) return false;
+    || !isCapabilitySnapshot(value.capability)
+    || !isPresentationSnapshot(value.presentation)) return false;
   return !Object.values(value.settings).some((setting) => typeof setting !== 'boolean');
+}
+
+/** How the renderer loads an installed plugin: only from its own pinned address. */
+function isInstallPresentation(value: unknown): boolean {
+  if (!isRecord(value) || !hasExactKeys(value, ['source', 'trust', 'codeUrl', 'manifest'])) return false;
+  const manifest = value.manifest;
+  if (!validatePluginManifest(manifest) || manifest.runtime !== 'sandboxed') return false;
+  const id = manifest.id;
+  return isBoundedString(value.source, 120)
+    && (value.trust === 'sandboxed' || value.trust === 'full')
+    && typeof value.codeUrl === 'string'
+    && new RegExp(value.trust === 'full'
+      ? `^noto://bundle/plugins/${id.replace(/[.]/g, '\\.')}/[0-9a-f]{64}/main\\.js$`
+      : `^noto://plugin-code/${id.replace(/[.]/g, '\\.')}/[0-9a-f]{64}/main\\.js$`).test(value.codeUrl);
+}
+
+/** A plugin's name and what it adds, bounded as the manifest validator bounds them. */
+function isPresentationSnapshot(value: unknown): boolean {
+  return isRecord(value)
+    && hasExactKeys(value, ['name', 'description', 'origin', 'commands', 'hotkeys', 'install'])
+    && (value.install === null || isInstallPresentation(value.install))
+    && isBoundedString(value.name, 80)
+    && isBoundedString(value.description, 200, true)
+    && (value.origin === 'bundled' || value.origin === 'user')
+    && Array.isArray(value.commands) && value.commands.length <= 32
+    && value.commands.every((command) => isRecord(command) && hasExactKeys(command, ['id', 'title'])
+      && isBoundedString(command.id, 128) && isBoundedString(command.title, 120))
+    && Array.isArray(value.hotkeys) && value.hotkeys.length <= 32
+    && value.hotkeys.every((hotkey) => isRecord(hotkey) && hasExactKeys(hotkey, ['command', 'keys'])
+      && isBoundedString(hotkey.command, 128) && isBoundedString(hotkey.keys, 64));
 }
 
 function isSnapshotList(value: unknown): value is PluginLifecycleSnapshot[] {

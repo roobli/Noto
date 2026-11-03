@@ -168,7 +168,7 @@ test.describe('plugin center', () => {
       await expect(page.locator('.ProseMirror')).toBeVisible();
 
       // Demote every heading through the command palette.
-      await page.keyboard.press(`${process.platform === 'darwin' ? 'Meta' : 'Control'}+KeyK`);
+      await page.keyboard.press(`${process.platform === 'darwin' ? 'Meta' : 'Control'}+Shift+KeyP`);
       // Typed and run from the field, as the palette is meant to be used.
       await expect(page.getByTestId('palette-input')).toBeFocused();
       await page.keyboard.type('demote');
@@ -212,7 +212,7 @@ test.describe('plugin center', () => {
       await section.locator('button.plugin-primary').click();
       await section.locator('button.plugin-primary').click();
 
-      await page.keyboard.press(`${process.platform === 'darwin' ? 'Meta' : 'Control'}+KeyK`);
+      await page.keyboard.press(`${process.platform === 'darwin' ? 'Meta' : 'Control'}+Shift+KeyP`);
       await page.getByRole('option', { name: /CJK spacing/i }).click();
 
       await expect(page.locator('.ProseMirror p').first())

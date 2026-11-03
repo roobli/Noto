@@ -261,7 +261,20 @@ test.describe('parity with Typora', () => {
       await placeCaret(page, key);
       await expect(tags.first()).toBeVisible();
       await expect(tags.first()).toHaveText('<kbd>');
-      await expect(page.locator('.noto-inline-break > .noto-inline-html-source')).toBeVisible();
+      // One span at a time: the break's source waits until the caret is at it.
+      const breakSource = page.locator('.noto-inline-break > .noto-inline-html-source');
+      await expect(breakSource).toBeHidden();
+      const second = await page.locator('.noto-inline-break').evaluate((element) => {
+        const text = (element.parentElement as HTMLElement).lastChild as Text;
+        const range = document.createRange();
+        range.setStart(text, text.data.indexOf('second'));
+        range.setEnd(text, text.data.indexOf('second') + 1);
+        const box = range.getBoundingClientRect();
+        return { x: box.left + 1, y: box.top + box.height / 2 };
+      });
+      await page.mouse.click(second.x, second.y);
+      await expect(breakSource).toBeVisible();
+      await expect(tags.first()).toBeHidden();
     } finally {
       await app.close();
     }

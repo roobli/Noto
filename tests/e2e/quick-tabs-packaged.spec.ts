@@ -63,6 +63,9 @@ test.describe('quick open, as the author built it', () => {
       await expect(page.getByTestId('quick-scope')).toHaveText('works');
       await page.getByTestId('quick-input').fill('');
       await expect(page.getByTestId('quick-input')).toHaveAttribute('placeholder', 'Search 2 notes');
+      // Nothing typed and no note opened from it yet: the folder still lists
+      // its notes, nearest the folder first, rather than an empty panel.
+      await expect(page.getByTestId('quick-result')).toHaveText([/plan\.md/, /hiring\.md/]);
 
       // The content tab is narrowed too: three notes mention kestrels, one is inside.
       await page.keyboard.press('Tab');
@@ -77,6 +80,51 @@ test.describe('quick open, as the author built it', () => {
       await expect(page.getByTestId('quick-scope')).toHaveCount(0);
       await page.getByTestId('quick-input').fill('kestrel');
       await expect(page.getByTestId('quick-match')).toHaveCount(3, { timeout: 15_000 });
+    } finally {
+      await app.close();
+    }
+  });
+
+  test('steps out of a nested folder one level at a time', async () => {
+    const { app, page } = await launch('nested');
+    try {
+      await invokeMenu(app, 'quick-open');
+      await page.keyboard.press('Tab');
+      await page.getByTestId('quick-input').fill('jobs');
+      await page.keyboard.press('Enter');
+      await expect(page.getByTestId('quick-scope')).toHaveText('works/jobs');
+      await expect(page.getByTestId('quick-result')).toHaveText([/hiring\.md/]);
+      // Backspace on the empty box goes up to `works`, not to a folder named
+      // by gluing the two together.
+      await page.keyboard.press('Backspace');
+      await expect(page.getByTestId('quick-scope')).toHaveText('works');
+      await page.keyboard.press('Backspace');
+      await expect(page.getByTestId('quick-scope')).toHaveCount(0);
+    } finally {
+      await app.close();
+    }
+  });
+
+  test('leaves an Enter that commits an input method\u2019s letters to the input method', async () => {
+    const { app, page } = await launch('ime');
+    try {
+      await invokeMenu(app, 'quick-open');
+      const input = page.getByTestId('quick-open').locator('input').first();
+      await input.fill('plan');
+      // The press that confirms letters typed with a Chinese input method
+      // reaches the page as a composing keydown. It used to open the first
+      // result before the letters were even in the box.
+      await input.evaluate((element) => {
+        element.dispatchEvent(new KeyboardEvent('keydown', { key: 'Enter', isComposing: true, bubbles: true, cancelable: true }));
+      });
+      await page.waitForTimeout(300);
+      await expect(page.getByTestId('quick-open')).toBeVisible();
+      await expect(page.getByTestId('document-identity')).not.toContainText('plan.md');
+
+      // An Enter outside a composition still opens it.
+      await input.press('Enter');
+      await expect(page.getByTestId('quick-open')).toHaveCount(0);
+      await expect(page.getByTestId('document-identity')).toContainText('plan.md');
     } finally {
       await app.close();
     }

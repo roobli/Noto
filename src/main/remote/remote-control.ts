@@ -126,6 +126,15 @@ export interface RemoteDeps {
   /** Put text where the caller asked for it. */
   readonly insert: (text: string, at: InsertPlace) => { inserted: boolean; reason?: string };
   readonly run: (command: RemoteCommand) => { ran: boolean; reason?: string };
+  /**
+   * What a person debugging the app needs to see, read-only: the state of the
+   * workspace, the log's last events, and the renderer's last console lines.
+   */
+  readonly debug: {
+    readonly state: () => unknown;
+    readonly log: (lines: number, event: string | null) => readonly unknown[];
+    readonly console: (lines: number) => readonly unknown[];
+  };
   /** Search the vault, the same search the rail does. */
   readonly search: (query: string, flags: SearchFlags) => Promise<{
     matches: readonly RemoteMatch[];
@@ -244,9 +253,24 @@ export async function handleRemote(request: RemoteRequest, deps: RemoteDeps): Pr
         { method: 'POST', path: '/v1/insert', body: { text: 'the text', at: INSERT_PLACES } },
         { method: 'POST', path: '/v1/command', body: { command: 'one of commands' } },
         { method: 'POST', path: '/v1/search', body: { query: 'what to look for' } },
+        { method: 'GET', path: '/v1/debug/state' },
+        { method: 'GET', path: '/v1/debug/log', query: { lines: '1 to 1000, default 100', event: 'an event name prefix' } },
+        { method: 'GET', path: '/v1/debug/console', query: { lines: '1 to 300, default 100' } },
       ],
       insertPlaces: INSERT_PLACES,
     });
+  }
+
+  // Debugging, read-only. A refusal that names no reason, or an open that
+  // silently does nothing, is answered here without anyone opening a file.
+  if (reading && path.startsWith('/v1/debug/')) {
+    const query = new URLSearchParams(request.path.split('?')[1] ?? '');
+    const asked = Number.parseInt(query.get('lines') ?? '100', 10);
+    const lines = Number.isFinite(asked) ? Math.min(Math.max(asked, 1), 1000) : 100;
+    if (path === '/v1/debug/state') return ok(deps.debug.state());
+    if (path === '/v1/debug/log') return ok({ entries: deps.debug.log(lines, query.get('event')) });
+    if (path === '/v1/debug/console') return ok({ entries: deps.debug.console(lines) });
+    return refuse(404, 'no-route', 'No such request.');
   }
 
   if (reading && path === '/v1/document') {

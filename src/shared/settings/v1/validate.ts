@@ -13,6 +13,7 @@ import {
   NOTO_SETTINGS_VERSION,
   SETTING_RANGES,
   WIDTH_MODES,
+  DIFF_LAYOUTS,
   type NotoNumericSetting,
   type NotoSettingsV1,
   type NotoTheme,
@@ -22,6 +23,7 @@ import {
   type SettingsWriteRequestV1,
   type ThemeCssReplyV1,
   type WidthModeV1,
+  type DiffLayoutV1,
   IMAGE_DESTINATIONS,
   type ImageDestinationV1,
   PROSE_FACES,
@@ -29,14 +31,32 @@ import {
   type ProseFaceV1,
   TREE_SORTS,
   type SystemFontsReplyV1,
+  type ShortcutsReplyV1,
   type TreeSortV1,
   type RemoteStatusReplyV1,
   UPDATE_CHANNEL_SETTINGS,
   type UpdateChannelSettingV1,
 } from './contracts';
+import { isCanonicalChord } from '../../shortcuts/chord';
+
+/** Past this many, a list of switched-off chords is not something a person made. */
+const DISABLED_SHORTCUTS_MAX = 200;
+
+/** `owner/repo` on GitHub, or empty for no marketplace. */
+function isMarketplaceRepo(value: unknown): value is string {
+  return typeof value === 'string'
+    && (value === '' || /^[A-Za-z0-9][A-Za-z0-9._-]{0,99}\/[A-Za-z0-9][A-Za-z0-9._-]{0,99}$/.test(value));
+}
+
+function isDisabledShortcuts(value: unknown): value is readonly string[] {
+  return Array.isArray(value) && value.length <= DISABLED_SHORTCUTS_MAX
+    && value.every(isCanonicalChord) && new Set(value).size === value.length;
+}
 
 const requestId = /^[A-Za-z0-9._:-]{1,96}$/;
 const themes: readonly NotoTheme[] = ['light', 'dark', 'system'];
+const isDiffLayout = (value: unknown): value is DiffLayoutV1 =>
+  (DIFF_LAYOUTS as readonly unknown[]).includes(value);
 const isWidthMode = (value: unknown): value is WidthModeV1 =>
   (WIDTH_MODES as readonly unknown[]).includes(value);
 const numericKeys = Object.keys(SETTING_RANGES) as NotoNumericSetting[];
@@ -120,6 +140,7 @@ export function coerceSettings(value: unknown): NotoSettingsV1 {
     fontSize: numeric(value, 'fontSize'),
     lineHeight: numeric(value, 'lineHeight'),
     widthMode: isWidthMode(value.widthMode) ? value.widthMode : DEFAULT_SETTINGS.widthMode,
+    diffLayout: isDiffLayout(value.diffLayout) ? value.diffLayout : DEFAULT_SETTINGS.diffLayout,
     /* The three were one switch called `smartTypography`. A file written by
        the older build carries only that, and its answer stands for all three
        rather than being thrown away. */
@@ -128,6 +149,13 @@ export function coerceSettings(value: unknown): NotoSettingsV1 {
     smartEllipsis: substitution(value, 'smartEllipsis'),
     spellCheck: typeof value.spellCheck === 'boolean' ? value.spellCheck : DEFAULT_SETTINGS.spellCheck,
     remoteImages: typeof value.remoteImages === 'boolean' ? value.remoteImages : DEFAULT_SETTINGS.remoteImages,
+    webEmbeds: typeof value.webEmbeds === 'boolean' ? value.webEmbeds : DEFAULT_SETTINGS.webEmbeds,
+    pluginMarketplace: isMarketplaceRepo(value.pluginMarketplace) ? value.pluginMarketplace : DEFAULT_SETTINGS.pluginMarketplace,
+    // Kept item by item: one chord a later version spells differently is
+    // dropped, and the rest stay off.
+    disabledShortcuts: Array.isArray(value.disabledShortcuts)
+      ? [...new Set(value.disabledShortcuts.filter(isCanonicalChord))].slice(0, DISABLED_SHORTCUTS_MAX)
+      : DEFAULT_SETTINGS.disabledShortcuts,
     codeLineNumbers: typeof value.codeLineNumbers === 'boolean'
       ? value.codeLineNumbers
       : DEFAULT_SETTINGS.codeLineNumbers,
@@ -148,6 +176,7 @@ export function coerceSettings(value: unknown): NotoSettingsV1 {
       ? value.todoCheckTime
       : DEFAULT_SETTINGS.todoCheckTime,
     focusMode: typeof value.focusMode === 'boolean' ? value.focusMode : DEFAULT_SETTINGS.focusMode,
+    gitMarks: typeof value.gitMarks === 'boolean' ? value.gitMarks : DEFAULT_SETTINGS.gitMarks,
     typewriterMode: typeof value.typewriterMode === 'boolean'
       ? value.typewriterMode
       : DEFAULT_SETTINGS.typewriterMode,
@@ -212,6 +241,9 @@ export function isSettingsWriteRequestV1(value: unknown): value is SettingsWrite
     if (!SETTING_KEYS.includes(key as keyof NotoSettingsV1)) return false;
     if (key === 'theme') return themes.includes(patch.theme as NotoTheme);
     if (key === 'widthMode') return isWidthMode(patch.widthMode);
+    if (key === 'diffLayout') return isDiffLayout(patch.diffLayout);
+    if (key === 'disabledShortcuts') return isDisabledShortcuts(patch.disabledShortcuts);
+    if (key === 'pluginMarketplace') return isMarketplaceRepo(patch.pluginMarketplace);
     if (key === 'proseFace') return PROSE_FACES.includes(patch.proseFace as ProseFaceV1);
     if (key === 'proseFontFamily') return isProseFontFamily(patch.proseFontFamily);
     if (key === 'treeSort') return TREE_SORTS.includes(patch.treeSort as TreeSortV1);
@@ -265,12 +297,16 @@ export function isSettingsReplyV1(value: unknown): value is SettingsReplyV1 {
   const settings = value.settings;
   return themes.includes(settings.theme as NotoTheme)
     && isWidthMode(settings.widthMode)
+    && isDiffLayout(settings.diffLayout)
     && numericKeys.every((key) => typeof settings[key] === 'number' && Number.isFinite(settings[key]))
     && typeof settings.smartQuotes === 'boolean'
     && typeof settings.smartDashes === 'boolean'
     && typeof settings.smartEllipsis === 'boolean'
     && typeof settings.spellCheck === 'boolean'
     && typeof settings.remoteImages === 'boolean'
+    && typeof settings.webEmbeds === 'boolean'
+    && isDisabledShortcuts(settings.disabledShortcuts)
+    && isMarketplaceRepo(settings.pluginMarketplace)
     && typeof settings.codeLineNumbers === 'boolean'
     && typeof settings.codeIndentGuides === 'boolean'
     && typeof settings.codeTabMarkers === 'boolean'
@@ -285,6 +321,7 @@ export function isSettingsReplyV1(value: unknown): value is SettingsReplyV1 {
     && typeof settings.autoPair === 'boolean'
     && typeof settings.todoCheckTime === 'boolean'
     && typeof settings.focusMode === 'boolean'
+    && typeof settings.gitMarks === 'boolean'
     && typeof settings.typewriterMode === 'boolean'
     && typeof settings.sidebarOnLaunch === 'boolean'
     && typeof settings.autoSave === 'boolean'
@@ -304,6 +341,27 @@ export function isSystemFontsReplyV1(value: unknown): value is SystemFontsReplyV
     && value.families.length <= 800
     && value.families.every((name) => typeof name === 'string' && name.length > 0
       && name.length <= PROSE_FONT_FAMILY_MAX && !/[\0\r\n"']/.test(name));
+}
+
+export function isShortcutsReplyV1(value: unknown): value is ShortcutsReplyV1 {
+  return record(value) && value.version === NOTO_SETTINGS_VERSION
+    && Array.isArray(value.menu) && value.menu.length <= 400
+    && value.menu.every((item) => record(item)
+      && typeof item.id === 'string' && item.id.length > 0 && item.id.length <= 96
+      && typeof item.label === 'string' && item.label.length <= 120
+      && typeof item.menu === 'string' && item.menu.length <= 60
+      && isCanonicalChord(item.chord)
+      && typeof item.locked === 'boolean' && typeof item.hidden === 'boolean');
+}
+
+export function isShortcutsResultV1(
+  value: unknown,
+  expectedRequestId: string,
+): value is SettingsResultV1<ShortcutsReplyV1> {
+  if (!record(value) || value.requestId !== expectedRequestId) return false;
+  if (value.ok === true) return isShortcutsReplyV1(value.value);
+  return value.ok === false && record(value.error)
+    && typeof value.error.code === 'string' && typeof value.error.message === 'string';
 }
 
 export function isSystemFontsResultV1(

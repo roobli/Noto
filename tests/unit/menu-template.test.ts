@@ -13,6 +13,7 @@ function template(platform: NodeJS.Platform, recent: readonly RecentFileV1[] = [
     recent,
     actions: {
       openFolder: noop,
+      refreshFolder: noop,
       closeTab: noop,
       openDialog: noop,
       openPath: noop,
@@ -100,7 +101,7 @@ describe('the menu follows each platform', () => {
   it('offers Front only on macOS, and Close in the window menu elsewhere', () => {
     expect(labels(menu(template('darwin'), '&Window'))).toContain('front');
     expect(labels(menu(template('win32'), '&Window'))).not.toContain('front');
-    expect(labels(menu(template('win32'), '&Window'))).toContain('close');
+    expect(labels(menu(template('win32'), '&Window'))).toContain('Close Window');
   });
 });
 
@@ -122,7 +123,7 @@ describe('the menu and the renderer agree on commands', () => {
     // Import belongs here too: the dialog, the conversion and the file are all
     // main's, so nothing about it has to cross the boundary and come back.
     const mainOnly = new Set([
-      'open-dialog', 'open-folder', 'close-tab', 'import-document', 'print', 'paste-plain',
+      'open-dialog', 'open-folder', 'refresh-folder', 'close-tab', 'import-document', 'print', 'paste-plain',
       'reopen-closed', 'theme-none',
       // A second chord for a command the menu already names once.
       'quick-open-period',
@@ -135,7 +136,11 @@ describe('the menu and the renderer agree on commands', () => {
 
   it('offers every command the contract defines', () => {
     const ids = new Set(menuCommandIds(template('darwin')));
+    // Sent by main itself rather than offered: Close Tab's question sends
+    // `save-and-close` when the reader chooses Save.
+    const sentByMain = new Set(['save-and-close']);
     for (const command of known) {
+      if (sentByMain.has(command)) continue;
       expect(ids.has(command)).toBe(true);
     }
   });
@@ -197,7 +202,7 @@ describe('the Themes menu', () => {
     appName: 'Noto',
     recent: [],
     actions: {
-      openFolder: noop, closeTab: noop, openDialog: noop, openPath: noop, importDocument: noop,
+      openFolder: noop, refreshFolder: noop, closeTab: noop, openDialog: noop, openPath: noop, importDocument: noop,
       print: noop, pastePlain: noop, reopenClosed: noop, chooseTheme: noop, openThemeFolder: noop,
       clearRecent: noop,
       checkUpdates: noop,

@@ -1,3 +1,7 @@
+import {
+  isPluginInstallReply, isPluginInstallRequest, PLUGIN_INSTALL_CHANNEL,
+  type NotoPluginInstallApi, type PluginInstallReplyV1, type PluginInstallRequest,
+} from '../shared/plugins/install-ipc';
 import { contextBridge, ipcRenderer, webUtils } from 'electron';
 import {
   ASSET_CHANNELS,
@@ -39,6 +43,7 @@ import {
   isSettingsResultV1,
   isThemeCssResultV1,
   isSystemFontsResultV1,
+  isShortcutsResultV1,
   isSettingsWriteRequestV1,
   isRemoteStatusResultV1,
 } from '../shared/settings/v1/validate';
@@ -112,6 +117,7 @@ import type {
   WorkspacePasteEventV1,
   WorkspaceRemoteEventV1,
   WorkspaceDirtyEventV1,
+  WorkspaceUnsavedEventV1,
   WorkspaceTextRequestV1,
   WorkspaceTextReplyV1,
   WorkspaceLinksReplyV1,
@@ -156,6 +162,7 @@ import {
   isWorkspacePasteEventV1,
   isWorkspaceRemoteEventV1,
   isWorkspaceDirtyEventV1,
+  isWorkspaceUnsavedEventV1,
   isWorkspaceTextRequestV1,
   isWorkspaceTextReplyV1,
   isWorkspaceLinksResultV1,
@@ -311,7 +318,20 @@ const api: NotoDesktopApi = Object.freeze({
   plugins: pluginsApi,
 });
 
+/**
+ * Installing, trusting and removing plugins. Main shows any folder dialog and
+ * fetches anything remote itself; the page only names ids and addresses.
+ */
+const pluginInstallApi: NotoPluginInstallApi = Object.freeze({
+  request: async (request: PluginInstallRequest): Promise<PluginInstallReplyV1> => {
+    if (!isPluginInstallRequest(request)) return { kind: 'refused', message: 'That request was not accepted.' };
+    const value: unknown = await ipcRenderer.invoke(PLUGIN_INSTALL_CHANNEL, request);
+    return isPluginInstallReply(value) ? value : { kind: 'refused', message: 'Main returned a reply the page does not accept.' };
+  },
+});
+
 contextBridge.exposeInMainWorld('notoDesktop', api);
+contextBridge.exposeInMainWorld('notoPluginInstall', pluginInstallApi);
 
 function rejectedFileTruth<T>(requestId: string, message: string): FileTruthResultV1<T> {
   return { ok: false, requestId, error: { code: 'BAD_REQUEST', message } };
@@ -478,6 +498,9 @@ const workspaceApi: NotoWorkspaceApiV1 = Object.freeze({
   reportDirty: (event: WorkspaceDirtyEventV1) => {
     if (isWorkspaceDirtyEventV1(event)) ipcRenderer.send(WORKSPACE_CHANNELS.dirtyChanged, event);
   },
+  reportUnsaved: (event: WorkspaceUnsavedEventV1) => {
+    if (isWorkspaceUnsavedEventV1(event)) ipcRenderer.send(WORKSPACE_CHANNELS.unsavedChanged, event);
+  },
   onTextRequest: (listener: (event: WorkspaceTextRequestV1) => void) =>
     subscribe(WORKSPACE_CHANNELS.documentText, isWorkspaceTextRequestV1, listener),
   replyText: (event: WorkspaceTextReplyV1) => {
@@ -554,6 +577,17 @@ const settingsApi: NotoSettingsApiV1 = Object.freeze({
       ? value
       : { ok: false as const, requestId: request.requestId,
         error: { code: 'BAD_REQUEST', message: 'Main returned an invalid font list response' } };
+  },
+  listShortcuts: async (request: SettingsRequestV1) => {
+    if (!isSettingsRequestV1(request)) {
+      return { ok: false as const, requestId: 'invalid',
+        error: { code: 'BAD_REQUEST', message: 'Invalid shortcut list request' } };
+    }
+    const value: unknown = await ipcRenderer.invoke(SETTINGS_CHANNELS.listShortcuts, request);
+    return isShortcutsResultV1(value, request.requestId)
+      ? value
+      : { ok: false as const, requestId: request.requestId,
+        error: { code: 'BAD_REQUEST', message: 'Main returned an invalid shortcut list response' } };
   },
   remoteStatus: (request: SettingsRequestV1) => askRemote(SETTINGS_CHANNELS.remoteStatus, request),
   regenerateRemoteToken: (request: SettingsRequestV1) => askRemote(SETTINGS_CHANNELS.remoteRegenerate, request),

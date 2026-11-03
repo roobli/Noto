@@ -32,19 +32,15 @@ import type { NotoDocumentWire } from '../shared/markdown/v3/contracts';
 import { materializeSaveReply } from './file-truth-save';
 import { outlineFromDocument } from './outline';
 import { PLUGIN_LIFECYCLE_VERSION, type PluginLifecycleSnapshot } from '../shared/plugins/lifecycle';
-import { rendererProofManifest } from '../shared/plugins/proof-manifests';
-import {
-  filesystemProofManifest,
-  markdownPaddingManifest,
-  titleShiftManifest,
-} from '../shared/plugins/proof-manifests';
-import { declaredHotkeys, matchHotkey } from './plugins/hotkeys';
+import { rendererProofManifest, sidenotesManifest } from '../shared/plugins/proof-manifests';
+import { chordOfEvent, normalizeChord } from '../shared/shortcuts/chord';
 import { NotoCanvas } from './editor/noto/NotoCanvas';
 import { CodeViewer } from './CodeViewer';
 import type { DocumentCount } from './editor/noto/word-count';
 import { FindBar } from './FindBar';
 import { RecentStrip } from './RecentStrip';
 import { TagStrip } from './TagStrip';
+import { UnsavedDiff } from './UnsavedDiff';
 import { TagBrowser, type TagBrowserView } from './TagBrowser';
 import { parseTagsFromMarkdown } from '../shared/tags/parse';
 import { WorkspaceRail, type RailView } from './WorkspaceRail';
@@ -76,6 +72,7 @@ import {
   type FileTruthUiState,
 } from './file-truth-state';
 import { RendererPluginHost } from './plugins/RendererPluginHost';
+import { sandboxedPlugin, trustedModulePlugin } from './plugins/sandbox/installed-plugin';
 import { createRendererPluginHosts } from './plugins/bundled/hosts';
 import { RendererPluginClient } from './plugins/RendererPluginClient';
 import { PluginCenter } from './plugins/PluginCenter';
@@ -136,21 +133,30 @@ function imageRefusalMessage(reason: AssetRefusalV1): string {
 let customThemeSheet: CSSStyleSheet | null = null;
 const themeSheet = (): CSSStyleSheet => (customThemeSheet ??= new CSSStyleSheet());
 
-const bundledManifestList = [
-  rendererProofManifest,
-  titleShiftManifest,
-  markdownPaddingManifest,
-  filesystemProofManifest,
-];
-
-const bundledManifests = new Map<string, { name: string; commands: readonly { id: string; title: string }[] }>(
-  bundledManifestList.map((manifest) => [manifest.id, manifest]),
+/** Bundled plugins that add to the editor, and so start the moment they are switched on. */
+const DRAWING_PLUGINS: ReadonlySet<string> = new Set(
+  [sidenotesManifest].filter((manifest) => manifest.editorExtensions.length > 0).map((manifest) => manifest.id),
 );
 
-const declaredPluginHotkeys = declaredHotkeys(bundledManifestList);
-
-const manifestHotkeyFor = (event: KeyboardEvent): string | null =>
-  matchHotkey(event, declaredPluginHotkeys);
+/**
+ * The plugin a chord belongs to, and the keys as its manifest writes them,
+ * among the plugins switched on. Read from the snapshots, which carry every
+ * plugin main knows, so one the reader installed answers to its keys too; a
+ * plugin that is off leaves its chord to the editor and the system.
+ */
+function enabledPluginHotkey(
+  snapshots: readonly PluginLifecycleSnapshot[],
+  chord: string,
+  mac: boolean,
+): { pluginId: string; keys: string } | null {
+  for (const snapshot of snapshots) {
+    if (!snapshot.desiredEnabled) continue;
+    for (const hotkey of snapshot.presentation.hotkeys) {
+      if (normalizeChord(hotkey.keys, 'accelerator', mac) === chord) return { pluginId: snapshot.id, keys: hotkey.keys };
+    }
+  }
+  return null;
+}
 
 type UiState = 'Opening' | 'No document' | FileTruthUiState;
 
@@ -202,10 +208,24 @@ interface OpenDocumentState {
   readonly cleanState: 'Opened' | 'Saved';
 }
 
+/**
+ * How many notes stay loaded behind the one in front.
+ *
+ * Every note opened keeps its editor, so going back to it finds its undo
+ * history, selection and scroll where they were. With the tab bar gone there
+ * was no way to close one, so they piled up until main's ceiling of 24 refused
+ * the next open, and from the reader's side the tree simply stopped opening
+ * files. The least recently used are let go past this many, never the one in
+ * front and never one with unsaved changes.
+ */
+const KEEP_LOADED = 12;
+
 function NotoWorkspace({ platform }: { platform: NotoPlatform }) {
   const [docs, setDocs] = useState<ReadonlyMap<string, OpenDocumentState>>(new Map());
   const [activeId, setActiveId] = useState<string | null>(null);
   const [tabs, setTabs] = useState<readonly WorkspaceTabV1[]>([]);
+  /** Notes being let go for `KEEP_LOADED`, so a second tabs event does not close one twice. */
+  const releasingRef = useRef(new Set<string>());
   /** A non-Markdown file shown read-only; null while editing a note. */
   const [codeView, setCodeView] = useState<WorkspaceCodeViewV1 | null>(null);
   /** Status shown when no document is open, so it has nowhere per-document to live. */
@@ -287,6 +307,13 @@ function NotoWorkspace({ platform }: { platform: NotoPlatform }) {
   /** Bumped when an editor is ready, so a source view can be given its editor. */
   const [editorsReady, setEditorsReady] = useState(0);
   const [pluginSnapshots, setPluginSnapshots] = useState<PluginLifecycleSnapshot[]>([]);
+  /** Every plugin's keys, for the Shortcuts pane; rebuilt only when a snapshot changes. */
+  const pluginHotkeys = useMemo(() => pluginSnapshots.map((snapshot) => ({
+    id: snapshot.id,
+    name: snapshot.presentation.name,
+    commands: snapshot.presentation.commands,
+    hotkeys: snapshot.presentation.hotkeys,
+  })), [pluginSnapshots]);
   const pluginSnapshotsRef = useRef(pluginSnapshots);
   pluginSnapshotsRef.current = pluginSnapshots;
   /**
@@ -464,6 +491,53 @@ function NotoWorkspace({ platform }: { platform: NotoPlatform }) {
   const countRef = useRef<(documentId: string, next: DocumentCount) => void>(() => {});
 
   const editorsRef = useRef<Map<string, NotoEditor>>(new Map());
+  /**
+   * The unsaved changes on view: the note's text as saved and as it stood
+   * when the view opened. Read once: while the view is up the page under it
+   * is inert, and a save, which would make the reading stale, closes it.
+   *
+   * The current text is the note as Source Mode shows it, which is what a
+   * save writes: a spacing edit Source Mode holds and the file's last line are
+   * in it, where the blocks alone would say nothing had changed.
+   */
+  const [unsavedDiffView, setUnsavedDiffView] = useState<{ serial: number; documentId: string; saved: string; current: string } | null>(null);
+  const unsavedDiffSerial = useRef(0);
+  const openUnsavedDiff = useCallback(() => {
+    const id = activeIdRef.current;
+    const entry = id ? docsRef.current.get(id) : undefined;
+    const editor = id ? editorsRef.current.get(id) : undefined;
+    if (!id || !entry || !editor) return;
+    unsavedDiffSerial.current += 1;
+    setUnsavedDiffView({
+      serial: unsavedDiffSerial.current,
+      documentId: id,
+      saved: entry.document.text,
+      current: sourceModeText({
+        dirty: editor.isDirty,
+        fileText: entry.document.text,
+        reconstructed: editor.getMarkdown(),
+        hasFinalNewline: editor.envelope.hasFinalNewline,
+        pendingSource: editor.pendingSourceMarkdown,
+      }),
+    });
+  }, []);
+  // A view of one note's changes does not outlive a switch to another note.
+  useEffect(() => {
+    setUnsavedDiffView((view) => (view && view.documentId !== activeId ? null : view));
+  }, [activeId]);
+  // Saved while on view, by Save or by autosave: nothing is unsaved any more,
+  // and what the view shows is stale.
+  useEffect(() => {
+    if (!editorDirty) setUnsavedDiffView(null);
+  }, [editorDirty]);
+  // The page under the view takes no focus and no input while it is up, so
+  // Tab cannot walk into the note and change it behind the reading.
+  useEffect(() => {
+    const canvas = globalThis.document.getElementById('document-canvas');
+    if (!canvas) return undefined;
+    canvas.inert = unsavedDiffView !== null;
+    return () => { canvas.inert = false; };
+  }, [unsavedDiffView]);
   /** The last git gutter per document, for an editor that mounts after it arrived. */
   const gitBlocksRef = useRef<Map<string, WorkspaceGitBlocksV1>>(new Map());
   /** Bumped when a gutter arrives, so the palette offers its command only where there is one. */
@@ -541,6 +615,19 @@ function NotoWorkspace({ platform }: { platform: NotoPlatform }) {
     if (pluginSnapshots.length === 0) return;
     awaitingSnapshotsRef.current = false;
     announceEditorRef.current();
+  }, [pluginSnapshots]);
+
+  /*
+   * A plugin that changes how notes are drawn starts as soon as it is switched
+   * on while a note is open. Left idle like a plugin of commands, Sidenotes
+   * turned back on would draw nothing until the next note opened, which reads
+   * as the switch not working.
+   */
+  useEffect(() => {
+    if (!editorRef.current) return;
+    const drawingWaits = pluginSnapshots.some((snapshot) => snapshot.desiredEnabled
+      && snapshot.lifecycle === 'enabled-idle' && DRAWING_PLUGINS.has(snapshot.id));
+    if (drawingWaits) announceEditorRef.current();
   }, [pluginSnapshots]);
 
   const pluginSnapshot = pluginSnapshots.find((snapshot) => snapshot.id === rendererProofManifest.id);
@@ -627,12 +714,12 @@ function NotoWorkspace({ platform }: { platform: NotoPlatform }) {
     root.dataset.codeLineNumbers = settings.codeLineNumbers ? 'on' : 'off';
     root.dataset.codeIndentGuides = settings.codeIndentGuides ? 'on' : 'off';
     root.dataset.codeTabMarkers = settings.codeTabMarkers ? 'on' : 'off';
-    root.dataset.sidenotes = settings.sidenotes ? 'on' : 'off';
     root.dataset.timelines = settings.timelines ? 'on' : 'off';
     root.dataset.focusMode = settings.focusMode ? 'on' : 'off';
+    root.dataset.gitMarks = settings.gitMarks ? 'on' : 'off';
   }, [settings.fontSize, settings.lineHeight, settings.widthMode, settings.proseFace, settings.proseFontFamily,
-    settings.codeLineNumbers, settings.codeIndentGuides, settings.codeTabMarkers, settings.sidenotes,
-    settings.timelines, settings.focusMode]);
+    settings.codeLineNumbers, settings.codeIndentGuides, settings.codeTabMarkers,
+    settings.timelines, settings.focusMode, settings.gitMarks]);
 
   /**
    * The user's own stylesheet, layered over the theme.
@@ -724,7 +811,16 @@ function NotoWorkspace({ platform }: { platform: NotoPlatform }) {
   }, []);
 
   useEffect(() => {
-    const client = new RendererPluginClient(pluginHostRef.current!, window.notoDesktop.plugins);
+    const client = new RendererPluginClient(pluginHostRef.current!, window.notoDesktop.plugins, (pluginId) => {
+      // A plugin the reader installed: sandboxed in a worker unless it is
+      // trusted fully, and either way gated by its own manifest.
+      const install = pluginSnapshotsRef.current.find((snapshot) => snapshot.id === pluginId)?.presentation.install;
+      if (!install) return undefined;
+      const plugin = install.trust === 'full'
+        ? trustedModulePlugin(install.codeUrl, install.manifest.name)
+        : sandboxedPlugin(install.codeUrl, install.manifest.name);
+      return new RendererPluginHost(() => undefined, { manifest: install.manifest, plugin });
+    });
     pluginClientRef.current = client;
     // The snapshots may be the second of the two to arrive, so every update
     // asks again whether there is now an editor for a waiting plugin.
@@ -769,9 +865,17 @@ function NotoWorkspace({ platform }: { platform: NotoPlatform }) {
    * renderer never invokes plugin code directly.
    */
   useEffect(() => {
+    const mac = platform === 'darwin';
     const onKeyDown = (event: KeyboardEvent) => {
-      const mod = event.metaKey || event.ctrlKey;
-      if (mod && !event.shiftKey && !event.altKey && event.code === 'KeyK') {
+      const chord = chordOfEvent(event, mac);
+      if (!chord) return;
+      // Switched off in the Shortcuts pane: the press is not this app's.
+      if (settingsRef.current.disabledShortcuts.includes(chord)) return;
+      // The palette's own chord, which the View menu holds too. On macOS the
+      // menu answers first and this never runs; elsewhere, and for a press
+      // a test synthesises, this is the way in. It was Command-K, which the
+      // Format menu's Hyperlink has held since the palette moved.
+      if (chord === 'Mod+Shift+P') {
         event.preventDefault();
         // Same reason as the menu path: preferences is modal, and its scrim
         // would sit over the palette and swallow every click on a command.
@@ -779,18 +883,21 @@ function NotoWorkspace({ platform }: { platform: NotoPlatform }) {
         setPaletteOpen((current) => !current);
         return;
       }
-      const keys = manifestHotkeyFor(event);
-      if (!keys) return;
+      // A plugin that is off leaves its chord to the editor and the system:
+      // Title Shift's Shift-Command-Up is also how macOS selects to the top,
+      // and that went dead for everyone, plugin on or not.
+      const owner = enabledPluginHotkey(pluginSnapshotsRef.current, chord, mac);
+      if (!owner) return;
       event.preventDefault();
       void window.notoDesktop.plugins.triggerHotkey({
         version: PLUGIN_LIFECYCLE_VERSION,
         requestId: rid('plugin-hotkey'),
-        keys,
+        keys: owner.keys,
       });
     };
     window.addEventListener('keydown', onKeyDown);
     return () => window.removeEventListener('keydown', onKeyDown);
-  }, []);
+  }, [platform]);
 
   /*
    * The palette owns the keyboard while it is open (`CommandPalette`); closing
@@ -979,6 +1086,25 @@ function NotoWorkspace({ platform }: { platform: NotoPlatform }) {
       const activeTab = event.tabs.find((tab) => tab.active) ?? null;
       setActiveId(activeTab?.documentId ?? null);
       activeIdRef.current = activeTab?.documentId ?? null;
+
+      // Past `KEEP_LOADED`, let go of the notes least recently in front that
+      // hold nothing unsaved. Done here, on every change to what is open, so
+      // a note opened by main (a recent file, the command line, Finder) is
+      // counted as surely as one opened from the tree.
+      const listed = new Set(event.tabs.map((tab) => tab.path));
+      for (const path of releasingRef.current) if (!listed.has(path)) releasingRef.current.delete(path);
+      const excess = event.tabs.length - releasingRef.current.size - KEEP_LOADED;
+      if (excess > 0) {
+        const idle = event.tabs
+          .filter((tab) => !tab.active && !releasingRef.current.has(tab.path)
+            && !(docsRef.current.get(tab.documentId)?.dirty ?? false))
+          .sort((a, b) => a.activatedAt - b.activatedAt)
+          .slice(0, excess);
+        for (const tab of idle) {
+          releasingRef.current.add(tab.path);
+          void window.notoWorkspace.closeTab({ version: 1, requestId: rid('tab-release'), path: tab.path, release: true });
+        }
+      }
     });
     const adoptFolder = (event: { root: string | null; name: string | null; chosen?: boolean }) => {
       setFolder({ root: event.root, name: event.name });
@@ -1116,11 +1242,18 @@ function NotoWorkspace({ platform }: { platform: NotoPlatform }) {
     if (id) patchDoc(id, { outcome: value });
   };
 
-  const present = (value: FileTruthSaveOutcomeV1, captureId?: number) => {
-    // The document this save belongs to, not whichever tab is in front now. A
-    // save that finishes after the user switched tabs must land on its own
-    // document rather than overwrite the state of the one they moved to.
-    const id = activeIdRef.current;
+  const present = (
+    value: FileTruthSaveOutcomeV1,
+    captureId?: number,
+    target?: { readonly id: string | null; readonly editor: NotoEditor | null },
+  ) => {
+    // The document this save belongs to, not whichever note is in front now. A
+    // save that finishes after the reader moved to another note must land on
+    // its own document: reading the active id here gave the other note this
+    // one's token and clean baseline, so its real edits looked saved.
+    const id = target ? target.id : activeIdRef.current;
+    const inFront = id === activeIdRef.current;
+    const editor = target ? target.editor : editorRef.current;
     const barrier = outcomeHasRecoveryEvidence(value);
     if (id) {
       patchDoc(id, {
@@ -1130,16 +1263,18 @@ function NotoWorkspace({ platform }: { platform: NotoPlatform }) {
           : !barrier && value.status === 'saved' ? { recovery: null } : {}),
       });
     }
-    updateRecoveryBarrier(barrier);
-    setLocalMessage(null);
     setPending(false);
-
-    if (barrier && value.status === 'copy-saved') {
-      const current = state;
-      setState(current === 'Recovery failed' || current === 'Cleanup failed' ? current : 'Recovery needed');
-    } else {
-      setState(presentFileTruthOutcome(value).state);
+    // The shell shows the note in front; a note behind it keeps its result in
+    // its own record and shows it when it comes forward.
+    if (inFront) {
+      updateRecoveryBarrier(barrier);
+      setLocalMessage(null);
     }
+    const shown = barrier && value.status === 'copy-saved'
+      ? (state === 'Recovery failed' || state === 'Cleanup failed' ? state : 'Recovery needed')
+      : presentFileTruthOutcome(value).state;
+    if (id) patchDoc(id, { state: shown });
+    else setState(shown);
 
     const accepted = acceptedSaveOutcome(value);
     if (accepted && id) {
@@ -1147,10 +1282,10 @@ function NotoWorkspace({ platform }: { platform: NotoPlatform }) {
       // Record the new clean state before committing. `commit` reports the
       // editor clean, and that callback reads `cleanStateRef`; setting it
       // afterwards would relabel a successful save as merely "Opened".
-      cleanStateRef.current = 'Saved';
+      if (inFront) cleanStateRef.current = 'Saved';
       // Adopt the saved document as the clean baseline without disturbing the
-      // caret or the undo history.
-      editorRef.current?.commit(accepted.document, captureId);
+      // caret or the undo history, in the editor the save was taken from.
+      editor?.commit(accepted.document, captureId);
     }
   };
 
@@ -1223,6 +1358,9 @@ function NotoWorkspace({ platform }: { platform: NotoPlatform }) {
 
   const save = async () => {
     const editor = editorRef.current;
+    // Captured with the editor: the reply may come back after the reader has
+    // moved to another note, and must land on this one.
+    const documentId = activeIdRef.current;
     // Text still settling in the source view goes into the document first,
     // so a save a moment after typing there writes what is on screen.
     sourceFlushRef.current?.();
@@ -1262,25 +1400,28 @@ function NotoWorkspace({ platform }: { platform: NotoPlatform }) {
         });
         return whole.ok ? whole.value : null;
       });
-      if (!result.ok) {
+      const failed = (message: string) => {
         editor.abandonSave(capture.captureId);
         setPending(false);
-        setOutcome(null);
-        setLocalMessage(actionableFileTruthMessage(result.error.message, 'The save transport failed. Your edits are still here.'));
-        setState('Save failed');
+        if (documentId) patchDoc(documentId, { outcome: null, state: 'Save failed' });
+        if (documentId === activeIdRef.current) setLocalMessage(message);
+      };
+      if (!result.ok) {
+        failed(actionableFileTruthMessage(result.error.message, 'The save transport failed. Your edits are still here.'));
         return;
       }
       // A refusal (a conflict, another transaction) never commits, and this
       // capture is done with either way.
       if (!acceptedSaveOutcome(result.value)) editor.abandonSave(capture.captureId);
-      present(result.value, capture.captureId);
+      present(result.value, capture.captureId, { id: documentId, editor });
     } catch (error) {
       editor.abandonSave(capture.captureId);
       setPending(false);
-      setOutcome(null);
-      updateRecoveryBarrier(true);
-      setLocalMessage(actionableFileTruthMessage(error, 'The save transport failed. Your edits are still here.'));
-      setState('Save failed');
+      if (documentId) patchDoc(documentId, { outcome: null, state: 'Save failed' });
+      if (documentId === activeIdRef.current) {
+        updateRecoveryBarrier(true);
+        setLocalMessage(actionableFileTruthMessage(error, 'The save transport failed. Your edits are still here.'));
+      }
     } finally {
       fileTruthBusyRef.current = false;
     }
@@ -1360,15 +1501,15 @@ function NotoWorkspace({ platform }: { platform: NotoPlatform }) {
     }
   };
 
-  /**
-   * Opening replaces the document, so an unsaved one is confirmed first rather
-   * than silently discarded.
+  /*
+   * Opening a note does not ask about the unsaved one in front. It used to,
+   * from when opening replaced the document, with a prompt that said the
+   * changes would be lost. Each note keeps its own editor now, and one with
+   * unsaved changes is never let go (see `KEEP_LOADED`), so nothing is lost
+   * and the prompt only stood between the reader and the next note.
    */
-  const confirmDiscard = useCallback(() => !editorDirtyRef.current
-    || window.confirm('This document has unsaved changes. Open a different file and lose them?'), []);
 
   const openWithDialog = useCallback(async () => {
-    if (!confirmDiscard()) return;
     setOpenError(null);
     try {
       const result = await window.notoWorkspace.openDialog({ version: 1, requestId: rid('open-dialog') });
@@ -1377,11 +1518,17 @@ function NotoWorkspace({ platform }: { platform: NotoPlatform }) {
     } catch (error) {
       setOpenError(actionableFileTruthMessage(error, 'That file could not be opened.'));
     }
-  }, [confirmDiscard]);
+  }, []);
 
   const openPath = useCallback(async (filePath: string) => {
-    if (!confirmDiscard()) return;
     setOpenError(null);
+    // An automatic save waiting on the note being left goes now. Its timer was
+    // cleared when the note left the front, so a note left within the delay
+    // stayed unsaved; the save captures its own note and lands there.
+    if (autoSaveTimerRef.current !== null) {
+      clearAutoSaveTimer();
+      void saveRef.current();
+    }
     try {
       const result = await window.notoWorkspace.openPath({ version: 1, requestId: rid('open-path'), path: filePath });
       if (!result.ok) {
@@ -1389,7 +1536,12 @@ function NotoWorkspace({ platform }: { platform: NotoPlatform }) {
         // not somewhere the trail should offer again.
         replayingRef.current = false;
         setTrail((current) => forgetTrail(current, filePath));
-        setOpenError(actionableFileTruthMessage(result.error.message, 'That file could not be opened.'));
+        const message = actionableFileTruthMessage(result.error.message, 'That file could not be opened.');
+        setOpenError(message);
+        // The error above is drawn only on the empty page. With a note open
+        // it said nothing, and a file that would not open looked like a
+        // click that had not landed; the status line says it instead.
+        window.dispatchEvent(new CustomEvent('noto:notice', { detail: message }));
         return;
       }
       if ('codeView' in result.value) {
@@ -1413,7 +1565,7 @@ function NotoWorkspace({ platform }: { platform: NotoPlatform }) {
       replayingRef.current = false;
       setOpenError(actionableFileTruthMessage(error, 'That file could not be opened.'));
     }
-  }, [confirmDiscard]);
+  }, []);
   openPathRef.current = openPath;
 
   /** One step along the trail, replayed as an open so nothing records it. */
@@ -1707,7 +1859,16 @@ function NotoWorkspace({ platform }: { platform: NotoPlatform }) {
     }
     const outcome = result.value;
     if (outcome.status === 'unchanged') {
-      patchDoc(documentId, { state: cleanStateRef.current, outcome: null });
+      // The file is as it was last accepted, but a reload the reader asked
+      // for over unsaved edits is a discard. Keeping them while the status
+      // said "Opened" was the one answer that was wrong either way.
+      const editor = editorsRef.current.get(documentId);
+      if (editor?.isDirty) {
+        const accepted = editor.acceptedDocument;
+        editor.replaceMarkdown(accepted.text);
+        editor.commit(accepted);
+      }
+      patchDoc(documentId, { state: cleanStateRef.current, outcome: null, dirty: false });
       setLocalMessage(null);
       return;
     }
@@ -1862,6 +2023,20 @@ function NotoWorkspace({ platform }: { platform: NotoPlatform }) {
     });
   }, []);
 
+  /*
+   * Every loaded note with unsaved changes, for main to ask about on Close
+   * Tab, on closing the window and on quitting. Sent when the set changes,
+   * which is when a note turns dirty or clean, not on every keystroke.
+   */
+  const unsavedKeyRef = useRef('');
+  useEffect(() => {
+    const paths = [...docs.values()].filter((doc) => doc.dirty).map((doc) => doc.opened.path).sort();
+    const key = paths.join('\n');
+    if (key === unsavedKeyRef.current) return;
+    unsavedKeyRef.current = key;
+    window.notoWorkspace.reportUnsaved({ version: 1, paths });
+  }, [docs]);
+
   const onDocumentDirtyChange = useCallback((documentId: string, dirty: boolean) => {
     // Main is told too: it holds the file, the renderer holds the edits, and
     // the remote control has to be able to say which is ahead.
@@ -1975,6 +2150,18 @@ function NotoWorkspace({ platform }: { platform: NotoPlatform }) {
       case 'save':
         void save();
         break;
+      case 'save-and-close': {
+        // Close Tab asked first and the reader chose Save: close only once
+        // the note is saved, so a refused save leaves it open with its edits.
+        const closing = activeIdRef.current;
+        const path = closing ? docsRef.current.get(closing)?.opened.path ?? null : null;
+        void save().then(() => {
+          const editor = closing ? editorsRef.current.get(closing) : undefined;
+          // The editor's own word, which a save that committed has already changed.
+          if (path && editor && !editor.isDirty) closeTab(path);
+        });
+        break;
+      }
       case 'save-as':
         void saveCopy();
         break;
@@ -2022,7 +2209,6 @@ function NotoWorkspace({ platform }: { platform: NotoPlatform }) {
       case 'block-code': case 'block-math': case 'block-quote':
       case 'block-ordered-list': case 'block-bullet-list': case 'block-task-list':
       case 'block-rule': case 'mark-underline': case 'mark-highlight': case 'mark-math':
-      case 'insert-sidenote':
       case 'select-scope': case 'insert-comment': case 'indent-more': case 'indent-less':
       case 'table-row-above': case 'table-row-below':
       case 'table-column-before': case 'table-column-after':
@@ -2122,6 +2308,9 @@ function NotoWorkspace({ platform }: { platform: NotoPlatform }) {
         break;
       case 'toggle-focus-mode':
         changeSettings({ focusMode: !settings.focusMode });
+        break;
+      case 'toggle-git-marks':
+        changeSettings({ gitMarks: !settings.gitMarks });
         break;
       case 'toggle-typewriter':
         changeSettings({ typewriterMode: !settings.typewriterMode });
@@ -2234,15 +2423,14 @@ function NotoWorkspace({ platform }: { platform: NotoPlatform }) {
     const plugins = pluginSnapshots
       .filter((snapshot) => snapshot.lifecycle === 'active')
       .flatMap((snapshot) => {
-        const manifest = bundledManifests.get(snapshot.id);
-        return (manifest?.commands ?? []).map((command) => ({
+        return snapshot.presentation.commands.map((command) => ({
           key: `${snapshot.id}:${command.id}`,
           testId: undefined,
           kind: 'plugin' as const,
           pluginId: snapshot.id,
           commandId: command.id,
           title: command.title,
-          source: manifest?.name ?? snapshot.id,
+          source: snapshot.presentation.name,
         }));
       });
     // The keyboard's way to the git gutter's popover, offered only while the
@@ -2264,8 +2452,12 @@ function NotoWorkspace({ platform }: { platform: NotoPlatform }) {
         source: 'Git',
       }]
       : [];
-    return [...builtin, ...git, ...plugins];
-  }, [pluginSnapshots, activeId, gitBlocksVersion]);
+    // Offered while the note in front has unsaved changes, as its name is.
+    const unsaved = editorDirty
+      ? [{ key: 'diff:unsaved', testId: 'palette-unsaved-diff', kind: 'diff' as const, title: 'Show Unsaved Changes', source: 'File' }]
+      : [];
+    return [...builtin, ...unsaved, ...git, ...plugins];
+  }, [pluginSnapshots, activeId, gitBlocksVersion, editorDirty]);
   const paletteCommandByKey = useMemo(
     () => new Map(paletteCommands.map((command) => [command.key, command])),
     [paletteCommands],
@@ -2415,12 +2607,21 @@ function NotoWorkspace({ platform }: { platform: NotoPlatform }) {
           {crumbs.map((crumb, index) => (
             <span key={`${index}-${crumb}`} className="crumb">{crumb}</span>
           ))}
-          <strong title={opened?.path} aria-label={opened ? `${filename}. ${opened.path}` : filename}>{filename}</strong>
           {/* Whether there is work to lose is the one thing worth seeing
               without reading. It is also the whole save affordance when the
-              document is clean, since the Save icon is not drawn then. */}
-          {opened && editorDirty && (
-            <span className="unsaved-dot" data-testid="unsaved-dot" role="img" aria-label="Unsaved changes" />
+              document is clean, since the Save icon is not drawn then. While
+              there is work to lose, the name and its dot are one button that
+              shows what that work is. */}
+          {opened && editorDirty ? (
+            <button type="button" className="document-name" data-testid="document-name"
+              title={`Show the unsaved changes to ${filename}`}
+              aria-label={`${filename}, unsaved. Show the changes`}
+              onClick={openUnsavedDiff}>
+              <strong>{filename}</strong>
+              <span className="unsaved-dot" data-testid="unsaved-dot" aria-hidden="true" />
+            </button>
+          ) : (
+            <strong title={opened?.path} aria-label={opened ? `${filename}. ${opened.path}` : filename}>{filename}</strong>
           )}
         </div>
 
@@ -2459,6 +2660,8 @@ function NotoWorkspace({ platform }: { platform: NotoPlatform }) {
       </header>
 
       <Settings
+        mac={platform === 'darwin'}
+        pluginHotkeys={pluginHotkeys}
         open={prefs.open}
         section={prefs.section}
         onSection={(section) => setPrefs({ open: true, section, pluginDetailId: null, pluginDetailName: null })}
@@ -2584,13 +2787,14 @@ function NotoWorkspace({ platform }: { platform: NotoPlatform }) {
                 spellCheck={settings.spellCheck}
                 documentPath={doc.opened.path}
                 remoteImages={settings.remoteImages}
+                webEmbeds={settings.webEmbeds}
+                disabledShortcuts={settings.disabledShortcuts}
                 typewriterMode={settings.typewriterMode}
                 autoPair={settings.autoPair}
                 todoCheckTime={settings.todoCheckTime}
                 markHighlight={settings.markHighlight}
                 markSuperscript={settings.markSuperscript}
                 markSubscript={settings.markSubscript}
-                sidenotes={settings.sidenotes}
                 onActiveBlockChanged={setActiveBlock}
                 onDirtyChange={(dirty) => onDocumentDirtyChange(doc.document.documentId, dirty)}
                 onDocumentChanged={() => {
@@ -2680,6 +2884,20 @@ function NotoWorkspace({ platform }: { platform: NotoPlatform }) {
                   )}
                 </section>}
         </main>
+        {unsavedDiffView && (
+          <UnsavedDiff
+            key={unsavedDiffView.serial}
+            fileName={filename}
+            saved={unsavedDiffView.saved}
+            current={unsavedDiffView.current}
+            layout={settings.diffLayout}
+            onLayout={(diffLayout) => changeSettings({ diffLayout })}
+            onClose={() => {
+              setUnsavedDiffView(null);
+              editorRef.current?.focus();
+            }}
+          />
+        )}
       </div>
 
       <TagBrowser
@@ -2703,6 +2921,7 @@ function NotoWorkspace({ platform }: { platform: NotoPlatform }) {
 
       <QuickOpen
         open={quickOpen.open}
+        disabledShortcuts={settings.disabledShortcuts}
         mode={quickOpen.mode}
         onMode={(mode) => setQuickOpen({ open: true, mode })}
         onSearchContent={(query, scope) => searchContent(query, PLAIN_FLAGS, scope)}
@@ -2728,6 +2947,7 @@ function NotoWorkspace({ platform }: { platform: NotoPlatform }) {
             setPaletteOpen(false);
             if (!chosen) return;
             if (chosen.kind === 'export') exportNote(chosen.target);
+            else if (chosen.kind === 'diff') openUnsavedDiff();
             else if (chosen.kind === 'git') {
               const done = chosen.key === 'git:revert'
                 ? editorRef.current?.revertGitAtSelection()

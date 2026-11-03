@@ -28,9 +28,14 @@ import { searchBoost, type FrecencyStoreV1 } from '../shared/search/v1/frecency'
 import { pathContext } from './quick-open-path';
 import { foldersOf, withinScope } from './quick-open-folders';
 import { completeQuery, parseQuery, removeToken, type Completion } from './quick-open-query';
+import { isComposing } from './ime';
 
-/** How many results are drawn. Beyond this nobody is reading, they are retyping. */
-const LIMIT = 12;
+/**
+ * How many results are drawn: enough to fill the panel on a tall window, so it
+ * is as tall as the window allows rather than a strip of twelve rows high on
+ * the page. Beyond this nobody is reading, they are retyping.
+ */
+const LIMIT = 30;
 
 interface Candidate extends ScoreKeys {
   readonly entry: WorkspaceIndexEntryV1;
@@ -58,6 +63,8 @@ export type QuickWidth = 'default' | 'wide';
 
 export interface QuickOpenProps {
   readonly open: boolean;
+  /** Chords switched off in the Shortcuts pane; its width keys are two of them. */
+  readonly disabledShortcuts?: readonly string[];
   readonly mode: QuickOpenMode;
   readonly onMode: (mode: QuickOpenMode) => void;
   /** Runs a content search. Replies for superseded queries are dropped by the
@@ -105,7 +112,7 @@ function Highlighted({ text, query }: { text: string; query: string }) {
 }
 
 export function QuickOpen({
-  open, mode, onMode, onSearchContent, onOpenMatch,
+  open, disabledShortcuts = [], mode, onMode, onSearchContent, onOpenMatch,
   entries, frecency, truncated, canInsertLink, linking = false, onOpenFile, onInsertLink, onClose,
   width, onWidth,
 }: QuickOpenProps) {
@@ -205,7 +212,7 @@ export function QuickOpen({
     if (trimmed.length === 0) {
       // No query, so nothing is being matched: order by history alone and take
       // the same number the ranked list would have shown.
-      return [...candidates]
+      const recent = [...candidates]
         .map((candidate) => ({
           candidate,
           score: searchBoost(frecency, candidate.entry.path, now),
@@ -213,8 +220,18 @@ export function QuickOpen({
         .filter((scored) => scored.score > 0)
         .sort((a, b) => b.score - a.score
           || a.candidate.pathKey.localeCompare(b.candidate.pathKey))
-        .slice(0, LIMIT)
         .map((scored) => scored.candidate);
+      if (effectiveScope.length === 0) return recent.slice(0, LIMIT);
+      // Inside a folder the folder is what was asked for: its notes, the ones
+      // opened lately first and then the rest, nearest the folder first. The
+      // history alone left a folder nobody had opened a note from looking
+      // empty while its placeholder counted the notes in it.
+      const seen = new Set(recent.map((candidate) => candidate.entry.path));
+      const depth = (candidate: Candidate) => candidate.pathKey.split('/').length;
+      const rest = candidates
+        .filter((candidate) => !seen.has(candidate.entry.path))
+        .sort((a, b) => depth(a) - depth(b) || a.pathKey.localeCompare(b.pathKey));
+      return [...recent, ...rest].slice(0, LIMIT);
     }
     const pathQuery = isPathQuery(trimmed);
     return rankCandidates(
@@ -226,7 +243,7 @@ export function QuickOpen({
       }),
       LIMIT,
     );
-  }, [candidates, frecency, terms]);
+  }, [candidates, frecency, terms, effectiveScope]);
 
   useEffect(() => { setSelected(0); }, [query]);
 
@@ -288,6 +305,9 @@ export function QuickOpen({
   }, [onMode]);
 
   const onKeyDown = (event: React.KeyboardEvent) => {
+    // A press the input method is composing with is the input method's: Enter
+    // there commits the letters typed, and must not open the first result.
+    if (isComposing(event)) return;
     if (event.key === 'Escape') { event.preventDefault(); onClose(); return; }
     // Tab switches what is being searched without leaving the box, which is
     // where the thought "it is in a note, I just cannot remember which" turns
@@ -307,7 +327,8 @@ export function QuickOpen({
     }
     // The width, on the same keys the author's own palette uses, and the same
     // keys the document's own column uses one level out.
-    if ((event.metaKey || event.ctrlKey) && (event.key === '[' || event.key === ']')) {
+    if ((event.metaKey || event.ctrlKey) && (event.key === '[' || event.key === ']')
+      && !disabledShortcuts.includes(event.key === ']' ? 'Mod+]' : 'Mod+[')) {
       event.preventDefault();
       onWidth(event.key === ']' ? 'wide' : 'default');
       return;
@@ -316,7 +337,7 @@ export function QuickOpen({
     // way out of a scope that does not need a control of its own.
     if ((event.key === 'Backspace' || event.key === 'ArrowLeft') && query.length === 0 && scope.length > 0) {
       event.preventDefault();
-      setScope((current) => current.split('/').slice(0, -1).join(''));
+      setScope((current) => current.split('/').slice(0, -1).join('/'));
       return;
     }
     if (event.key === 'ArrowDown' || (event.ctrlKey && event.key === 'n')) {
@@ -522,7 +543,7 @@ export function QuickOpen({
                 {entries.length === 0
                   ? 'No folder is open, so there is nothing to search yet.'
                   : terms.trim().length === 0
-                    ? 'Nothing opened yet. Type to search.'
+                    ? effectiveScope.length > 0 ? 'No notes in this folder.' : 'Nothing opened yet. Type to search.'
                     : 'No note matches that.'}
               </p>
             )

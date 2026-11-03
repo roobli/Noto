@@ -19,6 +19,11 @@ export interface ImageContext {
   readonly documentDir: string | null;
   /** Whether web images may be fetched. Off shows their name instead. */
   readonly remote: boolean;
+  /**
+   * Whether a web page a note embeds with `<iframe>` loads by itself. Off
+   * shows a card naming the page, with a button that loads that one.
+   */
+  readonly embeds?: boolean;
 }
 
 export type ImageSource =

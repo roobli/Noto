@@ -12,6 +12,7 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
 import type { WorkspaceContentMatchV1 } from '../shared/workspace/v1/contracts';
 import { PLAIN_FLAGS, type SearchFlags } from '../shared/search/pattern';
+import { isComposing } from './ime';
 
 export interface ContentResult {
   readonly matches: readonly WorkspaceContentMatchV1[];
@@ -93,6 +94,8 @@ export function RailSearch({ onSearch, onOpenMatch, currentPath, onClose }: Rail
           autoComplete="off"
           onChange={(event) => setQuery(event.target.value)}
           onKeyDown={(event) => {
+            // A press the input method is composing with is the input method's.
+            if (isComposing(event)) return;
             if (event.key === 'Escape') { event.preventDefault(); onClose(); }
             if (event.key === 'Enter' && result.matches.length > 0) {
               event.preventDefault();

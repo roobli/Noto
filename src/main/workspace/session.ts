@@ -17,7 +17,7 @@ import type { SearchFlags } from '../../shared/search/pattern';
 import path from 'node:path';
 import { access, cp, lstat, mkdir, readFile, readdir, realpath, rename, rm, stat, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
-import { randomUUID } from 'node:crypto';
+import { createHash, randomUUID } from 'node:crypto';
 import { BrowserWindow, Menu, clipboard, dialog, shell, type MenuItemConstructorOptions } from 'electron';
 import { FILE_TRUTH_CHANNELS, type FileTruthOpenReplyV1 } from '../../shared/file-truth/v1/contracts';
 import { openableExternalUrl } from '../../shared/workspace/v1/validate';
@@ -93,8 +93,12 @@ interface OpenDocument {
   activatedAt: number;
 }
 
-/** How many documents may be open at once, so a stray loop cannot exhaust handles. */
-const MAX_TABS = 24;
+/**
+ * How many documents may be open at once, so a stray loop cannot exhaust
+ * handles. The window keeps a working set well under this (`KEEP_LOADED` in the
+ * renderer), so only notes with unsaved changes can bring it this close.
+ */
+export const MAX_TABS = 24;
 
 /**
  * What an open produced, inside main.
@@ -134,6 +138,8 @@ export class WorkspaceSession {
    */
   private folderChosen = false;
   private indexCache: { root: string; reply: WorkspaceIndexReplyV1 } | null = null;
+  /** Rises at every invalidation, so a walk that began before one does not write its stale answer back. */
+  private indexGeneration = 0;
   /**
    * Which notes differ from the last commit, when the folder is in a git
    * repository. Read-only, and absent rather than an error everywhere else.
@@ -250,7 +256,7 @@ export class WorkspaceSession {
       if (this.folderRoot === null) await this.adoptFolder(path.dirname(resolved), false);
       await this.recent.remember(resolved);
       this.applyWindowTitle(resolved);
-      this.logger.log('workspace_code_view_opened', { openCount: this.documents.size });
+      this.logger.log('workspace_code_view_opened', { pathTag: pathTag(resolved), openCount: this.documents.size });
       return { version: NOTO_WORKSPACE_VERSION, codeView };
     }
     throw new Error(
@@ -263,9 +269,32 @@ export class WorkspaceSession {
     const existing = this.documents.get(resolved);
     if (existing) {
       this.activate(resolved);
+      // Logged too, so every press on a row leaves a line saying which note
+      // it brought forward, not only the presses that loaded one.
+      this.logger.log('workspace_document_shown', { pathTag: pathTag(resolved), openCount: this.documents.size });
       return existing.opened;
     }
 
+    // A second open of the same note while the first is still reading it (a
+    // double click on a slow disk, a row and Quick Open together) waits for
+    // the first. Each used to make its own store; the later one replaced the
+    // earlier in the map, which was never closed and kept watching the file,
+    // so the next save looked like another program's change.
+    const inFlight = this.opening.get(resolved);
+    if (inFlight) return inFlight;
+    const loading = this.loadMarkdownPath(resolved);
+    this.opening.set(resolved, loading);
+    try {
+      return await loading;
+    } finally {
+      this.opening.delete(resolved);
+    }
+  }
+
+  /** Opens of a note that have not finished, by resolved path. */
+  private readonly opening = new Map<string, Promise<FileTruthOpenReplyV1>>();
+
+  private async loadMarkdownPath(resolved: string): Promise<FileTruthOpenReplyV1> {
     if (this.documents.size >= MAX_TABS) {
       throw new Error('Too many documents are open. Close one before opening another.');
     }
@@ -296,6 +325,7 @@ export class WorkspaceSession {
     if (this.folderRoot === null) await this.adoptFolder(path.dirname(resolved), false);
     await this.recent.remember(opened.path);
     this.logger.log('workspace_document_opened', {
+      pathTag: pathTag(resolved),
       hasRecovery: opened.recovery !== null,
       openCount: this.documents.size,
     });
@@ -390,7 +420,14 @@ export class WorkspaceSession {
       } catch {
         continue;
       }
-      const opened = await this.openPath(candidate);
+      let opened: WorkspaceSessionOpenV1;
+      try {
+        opened = await this.openPath(candidate);
+      } catch (cause) {
+        // Still closed, so still offered the next time.
+        this.closed.push(candidate);
+        throw cause;
+      }
       return 'codeView' in opened ? null : opened.opened;
     }
     return null;
@@ -403,7 +440,7 @@ export class WorkspaceSession {
    * does and what the eye expects. Closing the last tab leaves the empty state
    * rather than quitting, so an accidental close is not destructive.
    */
-  close(filePath: string): void {
+  close(filePath: string, options: { readonly remember?: boolean } = {}): void {
     const resolved = path.resolve(filePath);
     const document = this.documents.get(resolved);
     if (!document) return;
@@ -412,22 +449,30 @@ export class WorkspaceSession {
     const index = order.indexOf(resolved);
     document.store.close();
     this.documents.delete(resolved);
-    // Remembered for Reopen Closed File, most recent last, each path once.
-    this.closed = [...this.closed.filter((known) => known !== resolved), resolved].slice(-20);
+    // Remembered for Reopen Closed File, most recent last, each path once;
+    // not a note the renderer let go of by itself.
+    if (options.remember !== false) {
+      this.closed = [...this.closed.filter((known) => known !== resolved), resolved].slice(-20);
+    }
 
+    // Only a close that changes what is in front says so. Closing a note
+    // behind it, which the window now does on its own to keep a working set,
+    // used to publish the note in front again as if it had just opened: the
+    // window took back its original open reply and could raise a recovery
+    // prompt that had long been answered.
     if (this.activePath === resolved) {
       const neighbour = order[index - 1] ?? order[index + 1] ?? null;
       this.activePath = neighbour && this.documents.has(neighbour) ? neighbour : null;
+      const next = this.activePath ? this.documents.get(this.activePath) : null;
+      if (next) {
+        this.publish(next.opened);
+        this.applyWindowTitle(next.opened.path);
+      } else {
+        this.publishClosed();
+        this.applyEmptyTitle();
+      }
     }
-
-    const next = this.activePath ? this.documents.get(this.activePath) : null;
-    if (next) {
-      this.publish(next.opened);
-      this.applyWindowTitle(next.opened.path);
-    } else {
-      this.publishClosed();
-      this.applyEmptyTitle();
-    }
+    this.logger.log('workspace_document_closed', { openCount: this.documents.size });
     this.publishTabs();
   }
 
@@ -607,10 +652,20 @@ export class WorkspaceSession {
    * the one that asks. A message box rather than something in the page because
    * it must not be dismissible by a stray keystroke aimed at the document.
    */
+  /** Loaded notes with unsaved changes, as the renderer last reported them. */
+  private unsavedPaths: readonly string[] = [];
+
+  setUnsavedPaths(paths: readonly string[]): void {
+    this.unsavedPaths = paths;
+  }
+
   private async confirmTrash(target: string, kind: 'file' | 'directory'): Promise<void> {
     const window = this.getWindow();
     if (!window) return;
     const name = path.basename(target);
+    // Trashing closes the notes it takes with it, edits and all, so the
+    // question says so when any of them has edits nobody saved.
+    const losing = this.unsavedPaths.filter((open) => open === target || isInside(target, open)).length;
     const answer = await dialog.showMessageBox(window, {
       type: 'warning',
       buttons: [trashLabel(process.platform), 'Cancel'],
@@ -619,7 +674,11 @@ export class WorkspaceSession {
       message: kind === 'directory'
         ? `Move the folder "${name}" and everything in it to the trash?`
         : `Move "${name}" to the trash?`,
-      detail: 'You can put it back from there.',
+      detail: losing === 0
+        ? 'You can put it back from there.'
+        : kind === 'file'
+          ? 'It has unsaved changes, which are lost: the trash keeps only what was saved.'
+          : `${losing === 1 ? 'A note' : `${losing} notes`} in it ${losing === 1 ? 'has' : 'have'} unsaved changes, which are lost: the trash keeps only what was saved.`,
     });
     if (answer.response !== 0) return;
     await this.manageEntry({ action: 'trash', target, name: null });
@@ -646,7 +705,20 @@ export class WorkspaceSession {
     return { version: NOTO_WORKSPACE_VERSION, done: false, reason };
   }
 
+  /**
+   * Something in the folder was made, moved or removed by Noto itself. The
+   * tree re-lists at once, which marks the new path as listed, and the watcher
+   * then judged the same change not structural; Quick Open and wiki links kept
+   * answering without a new note or a duplicate until something else moved.
+   */
+  private invalidateFolderCaches(): void {
+    this.indexCache = null;
+    this.tagIndexCache = null;
+    this.indexGeneration += 1;
+  }
+
   private done(target: string): WorkspaceEntryReplyV1 {
+    this.invalidateFolderCaches();
     this.send(WORKSPACE_CHANNELS.treeChanged, { version: NOTO_WORKSPACE_VERSION });
     this.git.refresh();
     return { version: NOTO_WORKSPACE_VERSION, done: true, path: target };
@@ -654,12 +726,17 @@ export class WorkspaceSession {
 
   private async renameEntry(real: string, typed: string | null): Promise<WorkspaceEntryReplyV1> {
     if (!isEntryName(typed)) return this.refuse('bad-name');
+    // A leading dot hides an entry from the tree, so a rename to `.draft`
+    // would make the note vanish exactly as a lost one does.
+    if (typed.startsWith('.')) return this.refuse('bad-name');
     const parent = path.dirname(real);
     const current = path.basename(real);
     const isDirectory = (await stat(real)).isDirectory();
-    // A note renamed to something with no extension would vanish from a tree
-    // that lists only what it can open, so it keeps the one it had.
-    const name = isDirectory ? typed : renamedFileName(typed, current);
+    // A note renamed to something without an extension it can be opened by
+    // would vanish from a tree that lists only those, so it keeps the one it had.
+    const showCode = this.codeViewer();
+    const name = isDirectory ? typed : renamedFileName(typed, current, (extension) =>
+      isEditableFile(`x${extension}`) || (showCode && isViewableCodeFile(`x${extension}`)));
     if (name === current) return this.done(real);
 
     const destination = path.join(parent, name);
@@ -1058,6 +1135,7 @@ export class WorkspaceSession {
     if (outcome.imported) {
       this.logger.log('document_imported', {});
       await this.openPath(outcome.path);
+      this.invalidateFolderCaches();
       this.send(WORKSPACE_CHANNELS.treeChanged, { version: NOTO_WORKSPACE_VERSION });
       this.git.refresh();
     } else {
@@ -1081,7 +1159,13 @@ export class WorkspaceSession {
    * file manager asks for one, and giving none keeps it.
    */
   async newFile(inside?: string): Promise<WorkspaceNewFileReplyV1> {
-    const directory = inside ?? this.folderRoot ?? (this.activePath ? path.dirname(this.activePath) : null);
+    // Beside the note in front when there is one inside the folder: that is
+    // where the reader is working, and a note made at the root of a deep
+    // vault was dragged down to it by hand. The root otherwise.
+    const beside = this.activePath !== null && (this.folderRoot === null || isInside(this.folderRoot, this.activePath))
+      ? path.dirname(this.activePath)
+      : null;
+    const directory = inside ?? beside ?? this.folderRoot;
     if (directory === null) return { version: NOTO_WORKSPACE_VERSION, created: false, path: null };
 
     for (let attempt = 0; attempt < 100; attempt += 1) {
@@ -1094,6 +1178,7 @@ export class WorkspaceSession {
         throw cause;
       }
       await this.openPath(target);
+      this.invalidateFolderCaches();
       this.git.refresh();
       this.send(WORKSPACE_CHANNELS.treeChanged, { version: NOTO_WORKSPACE_VERSION });
       // Only when the tree will draw a row at this spelling of the path. One
@@ -1104,7 +1189,7 @@ export class WorkspaceSession {
           version: NOTO_WORKSPACE_VERSION, path: target, intent: 'new-note',
         });
       }
-      this.logger.log('workspace_note_created', {});
+      this.logger.log('workspace_note_created', { pathTag: pathTag(target) });
       return { version: NOTO_WORKSPACE_VERSION, created: true, path: target };
     }
     throw new Error('A hundred notes here are already called Untitled.');
@@ -1183,6 +1268,20 @@ export class WorkspaceSession {
    * relative to it; a note from elsewhere is simply not known.
    */
   /** Tell the renderer its listing is stale, without saying what changed. */
+  /**
+   * Read the folder again from scratch: every listing, the quick open index
+   * and the git marks. The watcher does this by itself when the folder
+   * changes; this is the same work on request, for a change it could not see
+   * (a network drive, a folder mounted after it opened).
+   */
+  refreshFolder(): void {
+    if (!this.folderRoot) return;
+    this.invalidateFolderCaches();
+    this.listed.clear();
+    this.logger.log('workspace_folder_refreshed', {});
+    this.announceTreeChanged();
+  }
+
   announceTreeChanged(): void {
     // A rename or new note can change which tags exist; drop the scan so the
     // next Browse Tags sees the vault as it is now.
@@ -1320,11 +1419,13 @@ export class WorkspaceSession {
       return { version: NOTO_WORKSPACE_VERSION, root: null, entries: [], truncated: false };
     }
     if (this.indexCache?.root === this.folderRoot) return this.indexCache.reply;
-    const { entries, truncated } = await buildFileIndex(this.folderRoot);
+    const root = this.folderRoot;
+    const generation = this.indexGeneration;
+    const { entries, truncated } = await buildFileIndex(root);
     const reply: WorkspaceIndexReplyV1 = {
-      version: NOTO_WORKSPACE_VERSION, root: this.folderRoot, entries, truncated,
+      version: NOTO_WORKSPACE_VERSION, root, entries, truncated,
     };
-    this.indexCache = { root: this.folderRoot, reply };
+    if (generation === this.indexGeneration && root === this.folderRoot) this.indexCache = { root, reply };
     return reply;
   }
 
@@ -1376,7 +1477,7 @@ export class WorkspaceSession {
     if (root !== this.folderRoot) return;
     if (change.structural) {
       this.logger.log('workspace_disk_changed', { touched: touched === null ? 'unknown' : touched.length });
-      this.indexCache = null;
+      this.invalidateFolderCaches();
       this.listed.clear();
       this.announceTreeChanged();
     } else if (change.notes) {
@@ -1536,4 +1637,13 @@ export class WorkspaceSession {
     window.setTitle('Noto');
     window.setRepresentedFilename('');
   }
+}
+
+/**
+ * A short tag for a path in the log: the same note always gets the same tag,
+ * so a run of opens can be matched to the rows pressed, and the log never
+ * holds the vault's names. `shasum -a 256` of the path gives the same prefix.
+ */
+function pathTag(filePath: string): string {
+  return createHash('sha256').update(filePath).digest('hex').slice(0, 12);
 }

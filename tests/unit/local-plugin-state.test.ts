@@ -58,16 +58,20 @@ describe('exact persisted local plugin state', () => {
     });
   });
 
-  it('rejects surplus plugins and settings while accepting only deterministic missing-field evolution', () => {
+  it('carries a plugin the catalog no longer lists, and drops a setting a plugin no longer declares', () => {
     const valid = createDefaultLocalPluginState(catalog);
-    expect(() => parseLocalPluginState({
+    // A plugin removed or set aside keeps its switch, so it comes back as it was left.
+    const carried = parseLocalPluginState({
       ...valid,
       plugins: {
         ...valid.plugins,
-        'dev.lr00rl.noto.unknown': valid.plugins[rendererProofManifest.id],
+        'local.someone.gone': { desiredEnabled: true, settings: { tidy: false } },
       },
-    }, catalog)).toThrow('LOCAL_PLUGIN_STATE_INVALID');
-    expect(() => parseLocalPluginState({
+    }, catalog);
+    expect(carried.plugins['local.someone.gone']).toEqual({ desiredEnabled: true, settings: { tidy: false } });
+    expect(validateLocalPluginState(carried, catalog)).toBe(true);
+
+    const evolved = parseLocalPluginState({
       ...valid,
       plugins: {
         ...valid.plugins,
@@ -76,6 +80,19 @@ describe('exact persisted local plugin state', () => {
           settings: { focusEnabled: true, newPrivilege: false },
         },
       },
+    }, catalog);
+    expect(evolved.plugins[rendererProofManifest.id]?.settings).toEqual({ focusEnabled: true });
+  });
+
+  it('still refuses a damaged entry, for a plugin it knows or not', () => {
+    const valid = createDefaultLocalPluginState(catalog);
+    expect(() => parseLocalPluginState({
+      ...valid,
+      plugins: { ...valid.plugins, [rendererProofManifest.id]: { desiredEnabled: 1, settings: {} } },
+    }, catalog)).toThrow('LOCAL_PLUGIN_STATE_INVALID');
+    expect(() => parseLocalPluginState({
+      ...valid,
+      plugins: { ...valid.plugins, 'local.someone.broken': { desiredEnabled: 'yes', settings: {} } },
     }, catalog)).toThrow('LOCAL_PLUGIN_STATE_INVALID');
   });
 
@@ -85,9 +102,14 @@ describe('exact persisted local plugin state', () => {
 
     expect(validateLocalPluginState({ ...valid, schemaVersion: 2 }, catalog)).toBe(false);
     expect(validateLocalPluginState({ ...valid, grants: [] }, catalog)).toBe(false);
+    // Another plugin's well-formed entry is not damage; a malformed one is.
     expect(validateLocalPluginState({
       ...valid,
       plugins: { ...valid.plugins, 'dev.lr00rl.noto.unknown': renderer },
+    }, catalog)).toBe(true);
+    expect(validateLocalPluginState({
+      ...valid,
+      plugins: { ...valid.plugins, 'dev.lr00rl.noto.unknown': { ...renderer, active: true } },
     }, catalog)).toBe(false);
     expect(validateLocalPluginState({
       ...valid,

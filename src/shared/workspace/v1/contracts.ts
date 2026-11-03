@@ -42,6 +42,8 @@ export const WORKSPACE_CHANNELS = {
   remoteChanged: 'noto:v1:workspace:remote-changed',
   /** The renderer saying whether the note in front has unsaved changes. */
   dirtyChanged: 'noto:v1:workspace:dirty-changed',
+  /** Every loaded note with unsaved changes, so closing and quitting can ask first. */
+  unsavedChanged: 'noto:v1:workspace:unsaved-changed',
   /** Main asking the window for the note's text as the editor holds it. */
   documentText: 'noto:v1:workspace:document-text',
   documentTextReply: 'noto:v1:workspace:document-text-reply',
@@ -151,6 +153,11 @@ export interface WorkspaceOpenPathRequestV1 extends WorkspaceRequestV1 {
 /** Activating or closing a tab, both identified by path. */
 export interface WorkspaceTabRequestV1 extends WorkspaceRequestV1 {
   readonly path: string;
+  /**
+   * A note the renderer let go to stay under its loaded limit, not one the
+   * reader closed, so Reopen Closed File does not offer it.
+   */
+  readonly release?: boolean;
 }
 
 export interface RecentFileV1 {
@@ -230,6 +237,7 @@ export interface WorkspaceSaveAsReplyV1 {
 export const WORKSPACE_MENU_COMMANDS = [
   'save',
   'save-as',
+  'save-and-close',
   'undo',
   'redo',
   'settings',
@@ -250,7 +258,6 @@ export const WORKSPACE_MENU_COMMANDS = [
   'tree-collapse-all',
   'shortcuts',
   'insert-comment',
-  'insert-sidenote',
   'indent-more',
   'indent-less',
   'block-paragraph',
@@ -334,6 +341,7 @@ export const WORKSPACE_MENU_COMMANDS = [
   'block-alert-warning',
   'block-alert-caution',
   'toggle-focus-mode',
+  'toggle-git-marks',
   'toggle-typewriter',
   'toggle-outline',
   'command-palette',
@@ -719,6 +727,16 @@ export interface WorkspaceDirtyEventV1 {
 }
 
 /**
+ * The paths of every loaded note with unsaved changes. Main only hears about
+ * the note in front through `dirtyChanged`; a note left behind with edits is
+ * what closing a window or quitting has to ask about.
+ */
+export interface WorkspaceUnsavedEventV1 {
+  readonly version: typeof NOTO_WORKSPACE_VERSION;
+  readonly paths: readonly string[];
+}
+
+/**
  * The note in front as the editor holds it, unsaved changes and all.
  *
  * Asked for by main, answered by the window, and carried by its own pair of
@@ -833,6 +851,7 @@ export interface NotoWorkspaceApiV1 {
   onPasteText(listener: (event: WorkspacePasteEventV1) => void): () => void;
   onRemoteChanged(listener: (event: WorkspaceRemoteEventV1) => void): () => void;
   reportDirty(event: WorkspaceDirtyEventV1): void;
+  reportUnsaved(event: WorkspaceUnsavedEventV1): void;
   onTextRequest(listener: (event: WorkspaceTextRequestV1) => void): () => void;
   replyText(event: WorkspaceTextReplyV1): void;
   /**

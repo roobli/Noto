@@ -80,15 +80,37 @@ export function mightDecorate(block: ProseNode, characters: string): boolean {
   return found;
 }
 
+/** A drawn span with source of its own: a mark and its delimiters, a tag pair, a break. */
+interface SourceSpan {
+  readonly from: number;
+  readonly to: number;
+  /** The decorations that are its source, hidden unless the caret is in this span. */
+  readonly source: readonly { from: number; to: number; node: boolean; class: string }[];
+}
+
+/**
+ * `caret` is the collapsed selection's position when it falls in this block,
+ * else null.
+ *
+ * The source shown is the span the caret is in, the innermost when spans nest,
+ * and nothing else. It used to be every span in the block from the moment the
+ * caret entered it, so a click anywhere in a paragraph made every `==` and
+ * `<u>` in it appear, and the text after each moved right by its width. Bold,
+ * emphasis, code and links already reveal one span at a time
+ * (`active-node-plugin.ts`); these now do the same. A range selection reveals
+ * nothing, for the same reason it does there: the reader is working on the
+ * text, and delimiters appearing inside it would move what they are looking at.
+ */
 function blockDecorations(
   block: ProseNode,
   position: number,
-  editing: boolean,
+  caret: number | null,
   kinds: TyporaMarkKinds,
 ): Decoration[] {
   if (!mightDecorate(block, markCharacters(kinds))) return [];
   const contentStart = position + 1;
   const decorations: Decoration[] = [];
+  const spans: SourceSpan[] = [];
   let text = '';
   const opens = new Map<string, TagNode[]>();
   let plain = false;
@@ -103,7 +125,9 @@ function blockDecorations(
       const value = (child.attrs.value as string).trim();
       const here = contentStart + offset;
       if (BREAK_TAG.test(value)) {
-        decorations.push(Decoration.node(here, here + child.nodeSize, { class: 'noto-inline-tag noto-inline-break' }));
+        spans.push({ from: here, to: here + child.nodeSize, source: [
+          { from: here, to: here + child.nodeSize, node: true, class: 'noto-inline-tag noto-inline-break' },
+        ] });
       } else {
         const open = OPEN_TAG.exec(value);
         const close = CLOSE_TAG.exec(value);
@@ -114,8 +138,10 @@ function blockDecorations(
         } else if (close && PAIRED_TAGS.has(close[1])) {
           const opener = opens.get(close[1])?.pop();
           if (opener) {
-            decorations.push(Decoration.node(opener.position, opener.position + 1, { class: 'noto-inline-tag' }));
-            decorations.push(Decoration.node(here, here + child.nodeSize, { class: 'noto-inline-tag' }));
+            spans.push({ from: opener.position, to: here + child.nodeSize, source: [
+              { from: opener.position, to: opener.position + 1, node: true, class: 'noto-inline-tag' },
+              { from: here, to: here + child.nodeSize, node: true, class: 'noto-inline-tag' },
+            ] });
             if (here > opener.position + 1) {
               decorations.push(Decoration.inline(opener.position + 1, here, { class: `noto-html-inline noto-html-${close[1]}` }));
             }
@@ -128,21 +154,37 @@ function blockDecorations(
 
   if (plain) {
     for (const range of typoraMarkRanges(text, kinds)) {
-      decorations.push(Decoration.inline(contentStart + range.from, contentStart + range.innerFrom, { class: 'noto-typora-delim' }));
       decorations.push(Decoration.inline(contentStart + range.innerFrom, contentStart + range.innerTo, { class: MARK_CLASS[range.kind] }));
-      decorations.push(Decoration.inline(contentStart + range.innerTo, contentStart + range.to, { class: 'noto-typora-delim' }));
+      spans.push({ from: contentStart + range.from, to: contentStart + range.to, source: [
+        { from: contentStart + range.from, to: contentStart + range.innerFrom, node: false, class: 'noto-typora-delim' },
+        { from: contentStart + range.innerTo, to: contentStart + range.to, node: false, class: 'noto-typora-delim' },
+      ] });
     }
   }
 
-  if (decorations.length > 0 && editing) {
-    decorations.push(Decoration.node(position, position + block.nodeSize, { class: 'noto-marks-editing' }));
+  // The innermost span holding the caret, edges included, so the delimiters
+  // are there while the caret sits just inside or just outside them.
+  let live: SourceSpan | null = null;
+  if (caret !== null) {
+    for (const span of spans) {
+      if (caret < span.from || caret > span.to) continue;
+      if (!live || span.to - span.from < live.to - live.from) live = span;
+    }
   }
+  for (const span of spans) {
+    for (const part of span.source) {
+      const attrs = { class: span === live ? `${part.class} noto-source-live` : part.class };
+      decorations.push(part.node ? Decoration.node(part.from, part.to, attrs) : Decoration.inline(part.from, part.to, attrs));
+    }
+  }
+  if (live) decorations.push(Decoration.node(position, position + block.nodeSize, { class: 'noto-marks-editing' }));
   return decorations;
 }
 
-function touches(state: EditorState, position: number, block: ProseNode): boolean {
-  const { from, to } = state.selection;
-  return from <= position + block.nodeSize && to >= position;
+/** Where a collapsed selection sits, when it sits in this block. */
+function caretIn(state: EditorState, position: number, block: ProseNode): number | null {
+  const { empty, from } = state.selection;
+  return empty && from > position && from < position + block.nodeSize ? from : null;
 }
 
 /** The text blocks any part of a range falls in, whole. */
@@ -175,7 +217,7 @@ function scan(
     // start, which is the previous block's own node decoration.
     const stale = next.find(position + 1, position + block.nodeSize - 1);
     if (stale.length > 0) next = next.remove(stale);
-    const fresh = blockDecorations(block, position, touches(state, position, block), kinds);
+    const fresh = blockDecorations(block, position, caretIn(state, position, block), kinds);
     if (fresh.length > 0) next = next.add(state.doc, fresh);
   }
   return next;

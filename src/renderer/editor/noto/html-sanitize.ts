@@ -12,8 +12,10 @@
  * browser: an element not on the list is dropped and its children kept, an
  * attribute not on the list is dropped, and a style declaration is kept only
  * when both its property and its value are ones this file names. Scripts,
- * event handlers, frames, forms and anything that could fetch are gone
- * before the markup is ever attached to the document.
+ * event handlers, forms and anything that could fetch are gone before the
+ * markup is ever attached to the document. An `<iframe>` showing a web page
+ * becomes an inert placeholder naming its address (`embedPlaceholder`); the
+ * view decides whether a sandboxed frame is ever put in it.
  *
  * Pure, apart from the parsing, so what survives can be tested exactly.
  */
@@ -58,7 +60,19 @@ const STYLE_PROPERTIES = new Set([
   'margin-top', 'margin-bottom', 'padding', 'border', 'border-radius',
   'border-color', 'border-width', 'border-style', 'line-height', 'zoom',
   'vertical-align', 'display', 'float', 'opacity', 'letter-spacing',
+  // What a note uses to show a wide web page smaller: a box that clips, and
+  // the page inside it placed and scaled. Kept inside the block it is drawn
+  // in, which is positioned and paint-contained (`.noto-html-drawn`), so none
+  // of it can reach outside that box or over the application.
+  'position', 'left', 'top', 'right', 'bottom', 'transform', 'transform-origin',
+  'overflow', 'overflow-x', 'overflow-y', 'box-sizing',
 ]);
+
+/** The values those few may take; anything else is dropped. */
+const POSITIONS = new Set(['static', 'relative', 'absolute']);
+const OVERFLOWS = new Set(['visible', 'hidden', 'clip', 'auto', 'scroll']);
+/** Scaling and moving, the only transforms a note has a use for. */
+const TRANSFORM = /^(?:\s*(?:scale|scaleX|scaleY|translate|translateX|translateY)\([-\d.,%\spx]*\))+\s*$/i;
 
 /**
  * A style value that names nothing outside itself.
@@ -93,12 +107,74 @@ export function safeDeclarations(style: string): [string, string][] {
     if (!STYLE_PROPERTIES.has(property)) continue;
     if (value.length === 0 || value.length > 120) continue;
     if (UNSAFE_WORD.test(value) || !SAFE_VALUE.test(value)) continue;
-    // `position` is not on the list, so nothing here can leave its block; a
-    // `display` of anything but the ordinary few is dropped for the same reason.
+    // A `display` of anything but the ordinary few is dropped, and so is a
+    // position that is not relative to the block: `fixed` and `sticky` would
+    // pin the note's markup to the window rather than to its place in it.
     if (property === 'display' && !['block', 'inline', 'inline-block', 'flex', 'none', 'table', 'table-cell'].includes(value.toLowerCase())) continue;
+    if (property === 'position' && !POSITIONS.has(value.toLowerCase())) continue;
+    if (property.startsWith('overflow') && !OVERFLOWS.has(value.toLowerCase())) continue;
+    if (property === 'transform' && !TRANSFORM.test(value)) continue;
     kept.push([property, value]);
   }
   return kept;
+}
+
+/**
+ * A host a note may not embed: an address literal, this machine, or a name
+ * that only means something on the local network. A note opened from
+ * anywhere would otherwise send requests to the reader's router or printer,
+ * and could place a scaled-down admin page under the reader's click. The URL
+ * parser has already turned every IPv4 spelling (`0x7f.1`, `2130706433`) into
+ * dotted decimal and wrapped every IPv6 one in brackets.
+ */
+function isLocalHost(hostname: string): boolean {
+  const host = hostname.toLowerCase().replace(/\.$/, '');
+  if (host.startsWith('[') || /^\d{1,3}(?:\.\d{1,3}){3}$/.test(host)) return true;
+  if (!host.includes('.')) return true;
+  return /(?:^|\.)(?:localhost|local|internal|lan|home\.arpa|intranet|corp)$/.test(host);
+}
+
+/** A width or height an `<iframe>` may give as an attribute: pixels or a share. */
+const FRAME_SIZE = /^\d{1,5}(?:\.\d+)?(%|px)?$/;
+
+/**
+ * The placeholder an `<iframe>` becomes: a box the size and place the note
+ * asked for, naming the page, with nothing in it that loads.
+ *
+ * Only an `https:` page qualifies; anything else, a file, a script, an app
+ * URL, drops with nothing left. The view fills the box with a sandboxed frame
+ * when web embeds are on or the reader asks for this one, and otherwise with a
+ * card naming the site. A box placed absolutely, which is how a note scales a
+ * page down inside a clipping box, keeps its size; any other is held to the
+ * column (`data-embed-fit`), so a page 1300 pixels wide fits the note.
+ */
+export function embedPlaceholder(source: Element, into: Document = inertDocument()): HTMLElement | null {
+  const raw = (source.getAttribute('src') ?? '').trim();
+  let url: URL;
+  try {
+    // `//codepen.io/...`, as the embed codes sites hand out are often
+    // written, means the page's own scheme in a browser; for a page shown
+    // from a note that is https.
+    url = new URL(raw.startsWith('//') ? `https:${raw}` : raw);
+  } catch {
+    return null;
+  }
+  if (url.protocol !== 'https:' || url.hostname.length === 0 || url.username || url.password) return null;
+  if (isLocalHost(url.hostname)) return null;
+  const box = into.createElement('div');
+  box.className = 'noto-embed';
+  box.dataset.embedSrc = url.href;
+  for (const dimension of ['width', 'height'] as const) {
+    const value = (source.getAttribute(dimension) ?? '').trim();
+    if (FRAME_SIZE.test(value)) box.style.setProperty(dimension, /\d$/.test(value) ? `${value}px` : value);
+  }
+  for (const [property, value] of safeDeclarations(source.getAttribute('style') ?? '')) {
+    box.style.setProperty(property, value);
+  }
+  if (box.style.position !== 'absolute') box.dataset.embedFit = 'true';
+  const title = (source.getAttribute('title') ?? '').trim();
+  if (title.length > 0) box.dataset.embedTitle = title.slice(0, 200);
+  return box;
 }
 
 /** The same, joined, which is what reads well in a test. */
@@ -189,6 +265,11 @@ export function sanitizeHtml(html: string, into: Document = inertDocument()): Do
       }
       if (child.nodeType !== Node.ELEMENT_NODE) continue;
       const element = child as Element;
+      if (element.tagName.toLowerCase() === 'iframe') {
+        const embed = embedPlaceholder(element, into);
+        if (embed) target.appendChild(embed);
+        continue;
+      }
       const verdict = verdictFor(element.tagName.toLowerCase());
       if (verdict === 'drop') continue;
       if (verdict === 'unwrap') { walk(element, target); continue; }
@@ -221,5 +302,5 @@ export function worthDrawing(html: string, into: Document = inertDocument()): bo
   if (trimmed.length === 0 || !trimmed.startsWith('<')) return false;
   const holder = into.createElement('div');
   holder.appendChild(sanitizeHtml(trimmed, into));
-  return holder.childElementCount > 0 && (holder.textContent ?? '').trim().length + holder.querySelectorAll('img, br, hr').length > 0;
+  return holder.childElementCount > 0 && (holder.textContent ?? '').trim().length + holder.querySelectorAll('img, br, hr, .noto-embed').length > 0;
 }

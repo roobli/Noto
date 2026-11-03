@@ -74,7 +74,15 @@ export function registerWorkspaceHandlers(deps: {
       try {
         return { ok: true, requestId: value.requestId, value: await operation(value) };
       } catch (error) {
-        deps.logger.log('workspace_operation_failed', { channel, requestId: value.requestId });
+        // Why, as well as which: the reply carries the message to the window,
+        // and a log with only the channel could not say why every open after
+        // the 24th failed. The messages are the app's own sentences; at most
+        // they name a file, and this log is the owner's alone (mode 0600).
+        deps.logger.log('workspace_operation_failed', {
+          channel,
+          requestId: value.requestId,
+          error: error instanceof Error ? error.message.slice(0, 300) : String(error).slice(0, 300),
+        });
         return {
           ok: false,
           requestId: value.requestId,
@@ -155,7 +163,7 @@ export function registerWorkspaceHandlers(deps: {
 
   register(WORKSPACE_CHANNELS.closeTab, isWorkspaceTabRequestV1,
     (request: WorkspaceTabRequestV1) => {
-      deps.session.close(request.path);
+      deps.session.close(request.path, { remember: request.release !== true });
       deps.onMenuStale();
       return { version: NOTO_WORKSPACE_VERSION, tabs: deps.session.tabs() } as const;
     });

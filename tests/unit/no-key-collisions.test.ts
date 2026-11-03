@@ -2,6 +2,7 @@ import { describe, expect, it } from 'vitest';
 import type { MenuItemConstructorOptions } from 'electron';
 import { buildMenuTemplate } from '../../src/main/workspace/menu-template';
 import { notoBindings } from '../../src/renderer/editor/noto/keymap';
+import { normalizeChord } from '../../src/shared/shortcuts/chord';
 
 /**
  * A native accelerator is handled before the document ever sees the key, so a
@@ -62,7 +63,7 @@ describe('no key is claimed twice', () => {
     appName: 'Noto',
     recent: [],
     actions: {
-      openFolder: () => {}, closeTab: () => {}, openDialog: () => {},
+      openFolder: () => {}, refreshFolder: () => {}, closeTab: () => {}, openDialog: () => {},
       openPath: () => {},
     importDocument: () => {}, clearRecent: () => {}, print: () => {}, pastePlain: () => {}, reopenClosed: () => {}, chooseTheme: () => {}, openThemeFolder: () => {},
       checkUpdates: () => {},
@@ -75,9 +76,13 @@ describe('no key is claimed twice', () => {
     it(`by two menu items, on ${mac ? 'macOS' : 'the other platforms'}`, () => {
       // Only one of them can ever fire, and which one is not worth finding out.
       // Command and K was given to both the palette and the hyperlink.
+      // Compared as chords, not as strings: `Shift+CmdOrCtrl+T` and
+      // `CmdOrCtrl+Shift+T` are one press, and as strings Reopen Closed File
+      // and Browse Tags held it together without this test noticing.
       const seen = new Map<string, number>();
       for (const accelerator of accelerators(built(mac))) {
-        seen.set(accelerator, (seen.get(accelerator) ?? 0) + 1);
+        const chord = normalizeChord(accelerator, 'accelerator', mac) ?? accelerator;
+        seen.set(chord, (seen.get(chord) ?? 0) + 1);
       }
       expect([...seen].filter(([, count]) => count > 1)).toEqual([]);
     });

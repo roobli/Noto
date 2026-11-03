@@ -29,6 +29,7 @@ import { supportedLanguages } from './highlight';
 import { DiagramFrame, isDiagramLanguage } from './diagram-frame';
 import { TimelineFrame, isTimelineLanguage } from './timeline';
 import { copyThroughSelection } from './clipboard';
+import { isComposing } from '../../ime';
 
 /** How long "Copied" stays before the button says "Copy" again. */
 const COPIED_MS = 1400;
@@ -140,6 +141,8 @@ export class FenceView implements NodeView {
     this.language.addEventListener('focus', this.bindLanguageList);
     this.language.addEventListener('change', () => this.commitLanguage());
     this.language.addEventListener('keydown', (event) => {
+      // A press the input method is composing with is the input method's.
+      if (isComposing(event)) return;
       if (event.key === 'Enter') {
         event.preventDefault();
         this.commitLanguage();
@@ -251,14 +254,15 @@ export class FenceView implements NodeView {
     else this.dom.removeAttribute('data-lang');
     this.syncLanguageField();
 
-    // A mermaid fence is drawn as its diagram, beside the source; a press on
-    // the drawing puts the caret at the top of the source.
+    // A diagram fence (mermaid, or Typora's flow and sequence) is drawn as
+    // its diagram, beside the source; a press on the drawing puts the caret at
+    // the top of the source.
     if (isDiagramLanguage(lang)) {
       if (this.diagram === null) {
         this.diagram = new DiagramFrame(() => this.caretToLine(0));
         this.dom.append(this.diagram.dom);
       }
-      this.diagram.render(this.node.textContent);
+      this.diagram.render(this.node.textContent, lang);
     } else if (this.diagram !== null) {
       this.diagram.destroy();
       this.diagram = null;

@@ -20,7 +20,8 @@ import { createOriginPlugin } from '../../src/renderer/editor/noto/origin-plugin
 import { gitDeletedBefore, gitEntryAt, gitGutterKey, gitGutterMarks, gitGutterPlugin, setGitBlocks } from '../../src/renderer/editor/noto/git-gutter';
 import type { NotoBlockOrigin } from '../../src/shared/markdown/v3/contracts';
 import { diffBlocks } from '../../src/shared/git/block-diff';
-import { blocksOf, committedText, gitBlockDiff, GUTTER_MAX_BYTES, showArguments } from '../../src/main/workspace/git-blocks';
+import { committedText, gitBlockDiff, GUTTER_MAX_BYTES, showArguments } from '../../src/main/workspace/git-blocks';
+import { blocksOf } from '../../src/shared/markdown/v3/note-blocks';
 import { systemGit } from '../../src/main/workspace/git-marks';
 import { NOTO_WORKSPACE_VERSION, type WorkspaceGitBlocksV1 } from '../../src/shared/workspace/v1/contracts';
 

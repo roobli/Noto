@@ -81,6 +81,19 @@ describe('main-owned durable local plugin state store', () => {
     expect(await readFile(statePath, 'utf8')).toBe(corrupt);
   });
 
+  it('loads and saves a state that still names a plugin no longer installed', async () => {
+    // A user plugin removed since the state was written: the others must
+    // load as they were, and the removed one keeps its switch for its return.
+    const { statePath } = await harness();
+    const state = createDefaultLocalPluginState(catalog);
+    const written = { ...state, plugins: { ...state.plugins, 'local.someone.removed': { desiredEnabled: true, settings: {} } } };
+    await writeFile(statePath, `${JSON.stringify(written)}\n`);
+    const store = new LocalPluginStateStore(statePath, catalog);
+    const loaded = await store.load();
+    expect(loaded.plugins['local.someone.removed']).toEqual({ desiredEnabled: true, settings: {} });
+    await expect(store.save(loaded)).resolves.not.toThrow();
+  });
+
   it('rejects a symlink state path without touching its target', async () => {
     const { root, statePath } = await harness();
     const target = path.join(root, 'evidence.json');

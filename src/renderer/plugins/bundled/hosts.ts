@@ -9,16 +9,22 @@
 import {
   markdownPaddingManifest,
   rendererProofManifest,
+  sidenotesManifest,
   titleShiftManifest,
 } from '../../../shared/plugins/proof-manifests';
 import { SemanticFocusProofPlugin } from '../renderer-proof/plugin';
 import { RendererPluginHost } from '../RendererPluginHost';
 import { MarkdownPaddingPlugin, TitleShiftPlugin, type TrustedPlugin } from './index';
 import { adaptTrustedPlugin } from './adapter';
+import { SidenotesPlugin } from './sidenotes';
 
 export function createRendererPluginHosts(): ReadonlyMap<string, RendererPluginHost> {
-  const trusted: readonly [typeof titleShiftManifest | typeof markdownPaddingManifest, TrustedPlugin][] = [
+  const trusted: readonly [
+    typeof titleShiftManifest | typeof markdownPaddingManifest | typeof sidenotesManifest,
+    TrustedPlugin,
+  ][] = [
     [titleShiftManifest, new TitleShiftPlugin()],
+    [sidenotesManifest, new SidenotesPlugin()],
     [markdownPaddingManifest, new MarkdownPaddingPlugin()],
   ];
 

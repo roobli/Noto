@@ -15,7 +15,7 @@
 
 import path from 'node:path';
 import { realpath } from 'node:fs/promises';
-import { parseBlocksStructural } from '../../shared/markdown/v3/roobli-md-adapter';
+import { blocksOf } from '../../shared/markdown/v3/note-blocks';
 import { diffBlocks, type GitBlockDiffV1 } from '../../shared/git/block-diff';
 import { GitRunError, type GitRunner } from './git-marks';
 
@@ -56,12 +56,6 @@ export async function committedText(run: GitRunner, file: string): Promise<strin
     if (error instanceof GitRunError) return null;
     throw error;
   }
-}
-
-/** A note's text as the blocks the editor's top-level nodes come from. */
-export function blocksOf(text: string): string[] {
-  const body = text.startsWith('\uFEFF') ? text.slice(1) : text;
-  return parseBlocksStructural(body.replace(/\r\n?/g, '\n')).spans.map((span) => span.markdown.replace(/\r\n?/g, '\n'));
 }
 
 /** The diff for a note, or null when it has no committed version to compare with. */

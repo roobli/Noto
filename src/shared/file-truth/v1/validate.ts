@@ -109,7 +109,7 @@ export function sha256Hex(bytes: Uint8Array): string {
   return digest;
 }
 
-/** `noto-doc-v3:` and the hash of the bytes the document was parsed from. */
+/** `noto-doc-v3:` and 64 hex digits: random per open, so two files with the same bytes differ. */
 const isDocumentId = (value: unknown): value is string =>
   typeof value === 'string' && value.startsWith('noto-doc-v3:') && hash.test(value.slice('noto-doc-v3:'.length));
 

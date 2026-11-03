@@ -11,7 +11,8 @@ describe('G004 production trusted-renderer boundary', () => {
 
     // Hosts are created per plugin by the bundled tier rather than inline.
     expect(app).toContain('createRendererPluginHosts()');
-    expect(app).toContain('new RendererPluginClient(pluginHostRef.current!, window.notoDesktop.plugins)');
+    // The bundled hosts, and a factory for the reader's installed plugins.
+    expect(app).toContain('new RendererPluginClient(pluginHostRef.current!, window.notoDesktop.plugins, (pluginId) => {');
     expect(app).toContain('client.start();');
     const client = await source('../../src/renderer/plugins/RendererPluginClient.ts');
     const constructorBody = client.slice(client.indexOf('constructor('), client.indexOf('start(): void'));

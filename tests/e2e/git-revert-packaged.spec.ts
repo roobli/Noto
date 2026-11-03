@@ -278,7 +278,7 @@ test.describe('revert to committed', () => {
       await open(page, 'note.md');
       await expect(lines(page)).toHaveCount(2, { timeout: 15_000 });
       await placeCaretAtEnd(page, block(page, 'rewritten after the commit'));
-      await page.keyboard.press(`${MOD}+KeyK`);
+      await page.keyboard.press(`${MOD}+Shift+KeyP`);
       await page.getByTestId('palette-input').fill('revert block');
       await expect(page.getByTestId('palette-git-revert')).toBeVisible();
       await page.keyboard.press('Enter');
@@ -288,7 +288,7 @@ test.describe('revert to committed', () => {
 
       // Beside a deleted run, it puts the run back.
       await placeCaretAtEnd(page, block(page, 'as it was committed'));
-      await page.keyboard.press(`${MOD}+KeyK`);
+      await page.keyboard.press(`${MOD}+Shift+KeyP`);
       await page.getByTestId('palette-input').fill('revert block');
       await page.keyboard.press('Enter');
       await expect(block(page, 'since been deleted')).toHaveCount(1);
@@ -296,7 +296,7 @@ test.describe('revert to committed', () => {
 
       // On a block with nothing to revert, it does nothing and the caret stays in the note.
       await placeCaretAtEnd(page, block(page, 'has not changed since'));
-      await page.keyboard.press(`${MOD}+KeyK`);
+      await page.keyboard.press(`${MOD}+Shift+KeyP`);
       await page.getByTestId('palette-input').fill('revert block');
       await page.keyboard.press('Enter');
       expect(await focusInEditor(page)).toBe(true);

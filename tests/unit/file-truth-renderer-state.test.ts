@@ -179,7 +179,7 @@ describe('shell failure containment', () => {
     expect(saveFlow).toContain('fileTruthBusyRef.current = false;');
     expect(saveFlow).not.toContain('editor.abandonSave()');
     expect(saveFlow).toContain('editor.abandonSave(capture.captureId)');
-    expect(saveFlow).toContain('present(result.value, capture.captureId);');
+    expect(saveFlow).toContain('present(result.value, capture.captureId, { id: documentId, editor });');
   });
 
   it('contains a rejected save transport and leaves the editor dirty', async () => {
@@ -187,12 +187,13 @@ describe('shell failure containment', () => {
     const saveFlow = between(app, 'const save = async () => {', '  const recover = async () => {');
     const invoke = saveFlow.indexOf('await window.notoFileTruth.save');
     const transportCatch = saveFlow.indexOf('catch (error) {', invoke);
-    expect(saveFlow.indexOf('present(result.value, capture.captureId);')).toBeGreaterThan(invoke);
-    expect(saveFlow.indexOf('present(result.value, capture.captureId);')).toBeLessThan(transportCatch);
+    expect(saveFlow.indexOf('present(result.value, capture.captureId, { id: documentId, editor });')).toBeGreaterThan(invoke);
+    expect(saveFlow.indexOf('present(result.value, capture.captureId, { id: documentId, editor });')).toBeLessThan(transportCatch);
     const failure = saveFlow.slice(transportCatch);
     expect(failure).toContain("actionableFileTruthMessage(error, 'The save transport failed. Your edits are still here.')");
-    expect(failure).toContain('setOutcome(null);');
-    expect(failure).toContain("setState('Save failed');");
+    // Recorded on the note the save was taken from, which may no longer be
+    // the one in front; the shell's own state only when it still is.
+    expect(failure).toContain("patchDoc(documentId, { outcome: null, state: 'Save failed' });");
     expect(failure).toContain('updateRecoveryBarrier(true);');
     // Dirtiness belongs to the editor. A failed save must not clear it, and the
     // shell must not invent it either.
@@ -249,7 +250,7 @@ describe('shell failure containment', () => {
 
   it('adopts the saved document as the clean baseline and gates save behind recovery evidence', async () => {
     const app = await shell();
-    expect(app).toContain('editorRef.current?.commit(accepted.document, captureId);');
+    expect(app).toContain('editor?.commit(accepted.document, captureId);');
     // The accepted revision replaces the document's own state, keyed by the
     // document the save belonged to rather than whichever tab is in front.
     expect(app).toContain("patchDoc(id, { token: accepted.saveToken, document: accepted.document");

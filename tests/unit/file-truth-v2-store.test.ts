@@ -67,6 +67,27 @@ function editingCandidate(
 afterEach(async () => { await Promise.all(roots.splice(0).map((root) => rm(root, { recursive: true, force: true }))); });
 
 describe('file-truth store with v3 editing transactions', () => {
+  it('gives two open files with the same bytes different identities, so neither is shown or saved as the other', async () => {
+    const root = await mkdtemp(path.join(os.tmpdir(), 'noto-ft2-twins-'));
+    roots.push(root);
+    // Two empty notes, the shape every new note and every untouched template
+    // copy has. The identity used to be the hash of the bytes, so these two
+    // were one document to everything keyed by it.
+    const first = path.join(root, 'first.md');
+    const second = path.join(root, 'second.md');
+    await writeFile(first, '');
+    await writeFile(second, '');
+    const firstStore = new FileTruthStoreV1(path.join(root, 'user-data'), logger);
+    const one = await firstStore.open(first);
+    const other = await new FileTruthStoreV1(path.join(root, 'user-data'), logger).open(second);
+    expect(one.document.envelope.sourceSha256).toBe(other.document.envelope.sourceSha256);
+    expect(one.document.documentId).not.toBe(other.document.documentId);
+    // The window asks the store in front to open again on startup; that is
+    // the same document, under the same identity.
+    expect((await firstStore.open(first)).document.documentId).toBe(one.document.documentId);
+    expect(isFileTruthOpenResultV1({ ok: true, requestId: 'twin', value: other }, 'twin')).toBe(true);
+  });
+
   it('saves ordered multi-block edits and returns the newly accepted document', async () => {
     const { file, store, candidate } = await harness();
     const outcome = await store.save(candidate);
@@ -118,11 +139,11 @@ describe('file-truth store with v3 editing transactions', () => {
     const recoveryOpen = await reopened.open(file);
     expect(isFileTruthOpenResultV1({ ok: true, requestId: 'recovery-open', value: recoveryOpen }, 'recovery-open')).toBe(true);
     expect(recoveryOpen.recovery).not.toBeNull();
-    // The reopened document is the durable candidate, and its identity is a
-    // pure function of the candidate bytes.
+    // The reopened document is the durable candidate, under the identity this
+    // open was given rather than one read off the bytes.
     expect(recoveryOpen.document.text).toContain('First changed.');
     expect(recoveryOpen.document.envelope.sourceSha256).toBe(candidateSha256);
-    expect(recoveryOpen.document.documentId).toBe(`noto-doc-v3:${candidateSha256}`);
+    expect(recoveryOpen.document.documentId).not.toBe(`noto-doc-v3:${candidateSha256}`);
 
     const recovered = await reopened.recover();
     expect(recovered).toMatchObject({ status: 'saved', dirtyPreserved: false });

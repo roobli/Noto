@@ -1,0 +1,16 @@
+{
+  "schemaVersion": 1,
+  "plugins": [
+    {
+      "id": "local.example.shout",
+      "name": "Shout",
+      "description": "Upper-cases the note in front.",
+      "version": "1.0.0",
+      "repo": "owner/noto-shout",
+      "ref": "HEAD",
+      "path": "",
+      "sha256": "0000000000000000000000000000000000000000000000000000000000000000",
+      "manifestSha256": "0000000000000000000000000000000000000000000000000000000000000000"
+    }
+  ]
+}

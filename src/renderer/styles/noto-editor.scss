@@ -546,6 +546,9 @@
   }
 }
 .ProseMirror .noto-html-block.noto-html-editing > .noto-html-preview { display: none; }
+/* A block drawn as a picture is one `<img>` and nothing else, so it is always
+   a picture on a line of its own, centred as a markdown one is. */
+.ProseMirror .noto-html-block[data-preview='image'] > .noto-html-preview { text-align: center; }
 
 .ProseMirror .noto-inline-html[data-preview='image'] {
   background: none;
@@ -1436,10 +1439,16 @@
   background: var(--surface-active);
 }
 
-/* A stuck row spans the whole rail, flush. The row is an indented box, so a
-   ::before reaches past the left gutter (stems/arms) where the scrollport
-   clips it, and adds the hairline + faint shadow the theme shows when pinned.
-   The sticky element's own opaque fill stays — clearing it to transparent and
+/* A stuck row's band starts at the row's own indent, as the theme's does: it
+   pins the indented row itself, hairline and faint shadow included. The gutter
+   to its left stays open, so the stem of every level above it runs on through
+   the held stack and each held row hangs off its line exactly as it does at
+   rest. Nothing scrolled underneath can show in that gutter: whatever lies
+   under the row held at depth d belongs to that folder, so it is at least one
+   level deeper and starts to the right of where the band begins.
+   A band reaching out to the rail's edge covered every vertical in the stack
+   and left each held row a lone arm floating in the panel.
+   The sticky element's own opaque fill stays: clearing it to transparent and
    relying only on a z-index:-1 band let deeper sticky siblings and guides
    paint through as overlapping glyphs. */
 .tree-directory[data-stuck],
@@ -1453,7 +1462,7 @@
   position: absolute;
   top: 0;
   bottom: 0;
-  left: -600px;
+  left: 0;
   right: 0;
   z-index: -1;
   width: auto;
@@ -1477,11 +1486,14 @@
    the node's own corner to the pixel: it used to sit a pixel up and left with
    a smaller radius, and where the two overlapped they drew as one thick hook. */
 /*
- * The arm alone, or the corner, exactly as the row would draw it standing
- * still. A row that is not the last of its level meets its stem at a right
- * angle; only the last one turns. Held rows all drew the corner, so a row in
- * the middle of a folder grew a curve on the way up and lost it on the way
- * down, which is the tree changing shape under the reader.
+ * The lit branch into the row, exactly as the row would draw it standing
+ * still. A held row sits straight under its parent's, at the top of its own
+ * level, so the lit stem that reaches it is the stretch from the row's top
+ * down to its arm: a square elbow for a row in the middle of a folder, and the
+ * rounded corner for the last one. Held rows all drew the corner once, so a
+ * row in the middle of a folder grew a curve on the way up and lost it on the
+ * way down, which is the tree changing shape under the reader. The quiet stem
+ * carries on below the elbow from the level itself, through the open gutter.
  */
 .tree-directory[data-stuck]::after,
 .tree-node-active[data-stuck]::after {
@@ -1493,10 +1505,18 @@
   width: var(--tree-indent);
   height: var(--tree-arm);
   background: none;
-  border-left: 0;
+  border-left: 1px solid var(--tree-lit);
   border-bottom: 1px solid var(--tree-lit);
   border-bottom-left-radius: 0;
   pointer-events: none;
+}
+
+/* Once its row is held, the elbow above is the level's lit stem. The level's
+   own lit stem still reaches the row's resting arm for the first 14px of
+   scroll, and two translucent strokes over one stretch drew it darker. */
+.tree-level:has(> .tree-node > .tree-directory[data-stuck])::after,
+.tree-level:has(> .tree-node-active[data-stuck])::after {
+  height: 0;
 }
 
 /* The last row of its level keeps the corner it has when it is standing
@@ -1627,7 +1647,10 @@
 
 /* The file and folder glyphs, in the muted tier so they read as furniture
    and the names stay the text; the current file's glyph comes up to ink with
-   its name. Above the connector, like the name, so an arm never crosses it. */
+   its name. Above the connector, like the name, so an arm never crosses it.
+   At full strength: sampled from the author's window, Typora draws both in
+   the muted ink itself, the same value as the names, and a glyph faded below
+   its name read as a smudge beside it. */
 .tree-glyph {
   position: relative;
   flex: 0 0 auto;
@@ -1639,23 +1662,16 @@
   stroke-linejoin: round;
   stroke-linecap: round;
   color: var(--muted);
-  opacity: 0.85;
 }
 
 /* A folder is a solid shape, as the theme's icon font draws it; a file is a
-   page drawn in line. The open folder's flap is the same colour a shade
-   lighter, which is how a lifted flap reads without a second colour. */
+   page drawn in line. */
 .tree-glyph-folder {
   fill: currentcolor;
   stroke: none;
 }
 
-.tree-glyph-flap {
-  fill: var(--panel);
-  opacity: 0.45;
-}
-
-.tree-file-active .tree-glyph { color: var(--ink); opacity: 1; }
+.tree-file-active .tree-glyph { color: var(--ink); }
 
 /* The name sits above the stem and paints the rail's own background behind
    itself, so a connector never runs through a letter. It is also its own
@@ -2040,10 +2056,25 @@
   contain-intrinsic-size: auto 1.6em;
 }
 
+/* Painted in full, but the intrinsic size keeps its `auto`. A block without
+   `auto` there loses its last remembered size, so the blocks around the caret
+   forgot how tall they were, and once the reader scrolled on and clicked
+   elsewhere they went back to being skipped off screen at the one-line guess.
+   A table or a fence above the reader shrank to a line, everything below rose
+   with it, and the caret just placed was carried off the top of the window. */
 .ProseMirror > .noto-active-block,
 .ProseMirror > .noto-layout-live {
   content-visibility: visible;
-  contain-intrinsic-size: unset;
+}
+
+/* A block holding a margin note draws the note outside its own box, past the
+   right edge into the gutter. Paint containment (which `content-visibility`
+   implies) would clip it, and layout containment would keep one note's float
+   from stacking under the last one's, so such a block is contained by
+   neither. The Sidenotes plugin marks it. */
+.ProseMirror > .noto-sidenote-block {
+  contain: none;
+  content-visibility: visible;
 }
 
 /* Height placeholders for top-level blocks the stubbing scroller has dropped
@@ -2116,10 +2147,11 @@
 
 .ProseMirror .noto-typora-delim,
 .ProseMirror .noto-inline-html.noto-inline-tag { display: none; }
-.noto-editor-host:focus-within .ProseMirror .noto-marks-editing .noto-typora-delim,
-.noto-editor-host:focus-within .ProseMirror .noto-marks-editing .noto-inline-html.noto-inline-tag,
-.noto-editor-host[data-semantic-focus='true'] .ProseMirror .noto-marks-editing .noto-typora-delim,
-.noto-editor-host[data-semantic-focus='true'] .ProseMirror .noto-marks-editing .noto-inline-html.noto-inline-tag {
+/* Only the span the caret is in shows its source (`typora-marks-plugin.ts`). */
+.noto-editor-host:focus-within .ProseMirror .noto-typora-delim.noto-source-live,
+.noto-editor-host:focus-within .ProseMirror .noto-inline-html.noto-inline-tag.noto-source-live:not(.noto-inline-break),
+.noto-editor-host[data-semantic-focus='true'] .ProseMirror .noto-typora-delim.noto-source-live,
+.noto-editor-host[data-semantic-focus='true'] .ProseMirror .noto-inline-html.noto-inline-tag.noto-source-live:not(.noto-inline-break) {
   display: inline;
   color: var(--muted);
   font-family: tokens.$mono;
@@ -2141,7 +2173,7 @@
   > .noto-inline-html-source { display: none; }
   &::after { content: '\A'; white-space: pre; }
 }
-.ProseMirror .noto-marks-editing .noto-inline-html.noto-inline-break > .noto-inline-html-source {
+.ProseMirror .noto-inline-html.noto-inline-break.noto-source-live > .noto-inline-html-source {
   display: inline;
   color: var(--muted);
   font-family: tokens.$mono;
@@ -2151,7 +2183,7 @@
 
 /* Diagrams ---------------------------------------------------------------
  *
- * A mermaid fence is drawn as its diagram. While the caret is elsewhere the
+ * A diagram fence is drawn as its diagram. While the caret is elsewhere the
  * drawing is all there is, on the page and not in a box, as Typora has it;
  * while the caret is in the fence the source sits above the drawing in the
  * fence's own box. The source is never removed from the page, only kept out
@@ -2189,7 +2221,10 @@
 }
 .ProseMirror pre .noto-diagram:not([data-state='failed']) .noto-diagram-status { display: none; }
 
-.ProseMirror pre.noto-fence[data-lang='mermaid']:not(.noto-active-block):not(.noto-active-block *) {
+/* Every language the frame draws, Typora's flow and sequence among them, and
+   in any case: the frame reads `Mermaid` as a diagram, so the source must hide
+   for it too. */
+.ProseMirror pre.noto-fence:is([data-lang='mermaid' i], [data-lang='flow' i], [data-lang='sequence' i]):not(.noto-active-block):not(.noto-active-block *) {
   border-color: transparent;
   background: transparent;
 
@@ -2329,11 +2364,6 @@
   display: none;
 }
 
-/* Typora's folder is a solid shape and its file an outline; a tree of thin
-   outlines read as wire. The fill is the glyph's own colour at a wash so the
-   open folder's flap still shows as a line through it. */
-.tree-directory .tree-glyph { fill: color-mix(in srgb, currentColor 32%, transparent); }
-
 /* The theme outlines a picture with a hairline drawn inside its edge, so a
    white image on the page still has a boundary. */
 /* The theme draws a picture's edge as a hairline inside its own box, so a
@@ -2347,6 +2377,10 @@
 /* Typora's corner for resizing a picture: shown while the picture is
    hovered or selected, and dragged to write a zoom into the tag. */
 .ProseMirror .noto-image-frame { position: relative; display: inline-block; max-width: 100%; }
+
+/* A picture on a line of its own is centred, as a diagram is; one with words
+   beside it stays in their run. `image-line.ts` decides which is which. */
+.ProseMirror p.noto-image-line { text-align: center; }
 .ProseMirror .noto-image-handle {
   position: absolute;
   right: -1px;
@@ -2632,6 +2666,68 @@
   }
 }
 
+/* A web page a note embeds. The box takes the size and place the note gave
+   the `<iframe>`, or the column's width and a reading height; one not placed
+   absolutely is held to the column, so a page 1300 pixels wide fits. */
+.ProseMirror .noto-embed {
+  display: block;
+  position: relative;
+  width: 100%;
+  height: 420px;
+  border-radius: 4px;
+
+  &[data-embed-fit] { max-width: 100%; }
+}
+
+.ProseMirror .noto-embed-frame {
+  display: block;
+  width: 100%;
+  height: 100%;
+  border: 0;
+  background: #fff;
+}
+
+/* Not loaded: a card naming the page, laid out plainly whatever scaling the
+   note gave the frame, since a card shrunk to forty percent is unreadable. */
+.ProseMirror .noto-embed[data-state='off'] {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  position: relative !important;
+  left: auto !important;
+  top: auto !important;
+  transform: none !important;
+  width: 100% !important;
+  height: auto !important;
+  min-height: 132px;
+  border: 1px dashed var(--line-strong);
+  background: color-mix(in srgb, var(--raised) 55%, transparent);
+}
+
+.ProseMirror .noto-embed-card {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 4px;
+  max-width: 90%;
+  padding: 16px;
+  font-family: tokens.$ui;
+  text-align: center;
+}
+
+.ProseMirror .noto-embed-host { color: var(--ink); font-size: 13px; font-weight: 600; }
+
+.ProseMirror .noto-embed-path {
+  max-width: 100%;
+  overflow: hidden;
+  color: var(--muted);
+  font-size: 12px;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.ProseMirror .noto-embed-load { margin-top: 8px; font-size: 12px; cursor: pointer; }
+
 /* While the block is being edited the drawing steps aside and the source is
    back in the flow, where the caret can be moved through it. Clipped to a
    pixel, as it is behind the drawing, the arrow keys have nowhere to go and
@@ -2639,6 +2735,15 @@
 .ProseMirror .noto-html-block.noto-html-editing[data-preview='markup'] > .noto-html-drawn { display: none; }
 
 .ProseMirror .noto-html-drawn {
+  /* The box the note's markup is drawn in, and the box it stays in. A note
+     may now place and scale what it draws, which is how it shows a wide web
+     page smaller; positioned here, clipped here, and a stacking context of
+     its own, nothing it places can reach past this block or over the app. A
+     table wider than the column scrolls inside the block rather than
+     spilling over the margin. */
+  position: relative;
+  overflow: auto;
+  isolation: isolate;
   cursor: default;
 
   table {
@@ -2676,7 +2781,10 @@
 }
 
 
-/* Sidenotes: the author's Typora plugin as a native drawing.
+/* Sidenotes: drawn by the bundled Sidenotes plugin
+   (`src/renderer/plugins/bundled/sidenotes/`), the author's Typora plugin.
+   Nothing below applies while it is switched off, since only it adds these
+   classes.
    Tags hide while the caret is elsewhere; a superscript number and the note
    itself take their place. Wide enough windows float the note into a reserved
    right gutter; narrower ones keep it as an inline chip. */
@@ -2759,12 +2867,6 @@
   }
 }
 
-:root[data-sidenotes='off'] .ProseMirror .noto-sidenote-num,
-:root[data-sidenotes='off'] .ProseMirror .noto-sidenote {
-  /* The plugin stops decorating when the switch is off; this is a belt. */
-  display: none;
-}
-
 /* Git gutter ---------------------------------------------------------------- */
 
 /*
@@ -2826,6 +2928,11 @@
 
 /* Focus mode dims what is not being written; the gutter dims with it. */
 :root[data-focus-mode='on'] .noto-git-gutter { opacity: 0.32; }
+/* Show Git Changes off: neither the margin's bars nor the tree's marks are
+   drawn, for a clean screenshot. The data stays current underneath, so
+   turning it back on shows the changes as they are now. */
+:root[data-git-marks='off'] .noto-git-gutter,
+:root[data-git-marks='off'] .tree-git { display: none; }
 
 @media (forced-colors: active) {
   .noto-git-mark { forced-color-adjust: none; --git-line: CanvasText; }

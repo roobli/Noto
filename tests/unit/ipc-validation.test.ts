@@ -61,6 +61,7 @@ describe('versioned IPC runtime validation', () => {
       persistenceHealth: 'healthy',
       lastFailure: null,
       capability: { grant: null, request: null, restartRequired: false },
+      presentation: { name: 'Test', description: '', origin: 'bundled', commands: [], hotkeys: [], install: null },
     });
     expect(isPluginSnapshotEvent({ version: 1, snapshots: [snapshot('org.example.one')] })).toBe(true);
     expect(isPluginSnapshotEvent({

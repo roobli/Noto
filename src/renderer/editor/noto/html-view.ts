@@ -18,6 +18,8 @@ import { resolveImageSource } from './image-source';
 import { sanitizeHtml, worthDrawing } from './html-sanitize';
 import { zoomedTag } from './image-tag';
 import type { Node as ProseNode } from 'prosemirror-model';
+import type { Decoration } from 'prosemirror-view';
+import { EMBED_FRAME_NAME } from '../../../shared/embed-frame';
 import { TextSelection } from 'prosemirror-state';
 import type { EditorView, NodeView } from 'prosemirror-view';
 import { parseImageTag, type HtmlImage } from './html-image';
@@ -61,6 +63,10 @@ export class HtmlBlockView implements NodeView, Refreshable {
   private readonly preview: HTMLElement;
   private readonly markup: HTMLElement;
   private readonly frame: ImageFrame;
+  /** Whether the caret is in the block, so its source is shown, not its drawing. */
+  private editing = false;
+  /** The source last drawn, and whether its pages were held back while it was edited. */
+  private drawn: { source: string; held: boolean } | null = null;
 
   constructor(
     private node: ProseNode,
@@ -89,6 +95,8 @@ export class HtmlBlockView implements NodeView, Refreshable {
       if (event.target instanceof Element && event.target.closest('a[href]')) return;
       // Nor the twisty of a `<details>`, which is there to be opened.
       if (event.target instanceof Element && event.target.closest('summary')) return;
+      // Nor the button that loads an embedded page.
+      if (event.target instanceof Element && event.target.closest('.noto-embed-load')) return;
       event.preventDefault();
       const base = this.getPos();
       if (base === undefined) return;
@@ -112,9 +120,16 @@ export class HtmlBlockView implements NodeView, Refreshable {
     registry.add(this);
   }
 
-  update(node: ProseNode): boolean {
+  update(node: ProseNode, decorations: readonly Decoration[] = []): boolean {
     if (node.type !== this.node.type) return false;
     this.node = node;
+    this.editing = decorations.some((decoration) => (decoration.spec as { htmlEditing?: boolean }).htmlEditing === true);
+    // The caret moving into the block or out of it changes nothing drawn,
+    // and a page already loaded in it stays loaded: drawn again it would load
+    // again. Drawn again only when the source changed, or when pages held
+    // back during an edit can now load.
+    const same = this.drawn?.source === node.textContent;
+    if (same && !(this.drawn?.held === true && !this.editing)) return true;
     this.render();
     return true;
   }
@@ -125,11 +140,12 @@ export class HtmlBlockView implements NodeView, Refreshable {
    * A lone picture is the frame's, and the frame refreshes itself. Drawn
    * markup resolved its pictures' addresses against the context it was drawn
    * under, so with web images switched or a folder opened since, it is drawn
-   * again. Markup without a picture has nothing that depends on the context
-   * and is left as it is, a `<details>` the reader opened included.
+   * again, and so is markup holding an embedded page, which loads or not by
+   * the same context. Markup with neither has nothing that depends on the
+   * context and is left as it is, a `<details>` the reader opened included.
    */
   refresh(): void {
-    if (this.dom.dataset.preview === 'markup' && this.markup.querySelector('img')) this.render();
+    if (this.dom.dataset.preview === 'markup' && this.markup.querySelector('img, .noto-embed')) this.render();
   }
 
   /** Only the source is the editor's. */
@@ -160,6 +176,7 @@ export class HtmlBlockView implements NodeView, Refreshable {
       this.dom.dataset.preview = 'image';
       return;
     }
+    this.drawn = { source, held: false };
     this.preview.remove();
     // Everything else a note draws with: a table with a merged cell, a
     // `<details>` to fold open, a picture centred in a `<div align>`. What
@@ -175,6 +192,17 @@ export class HtmlBlockView implements NodeView, Refreshable {
         if (resolved.kind === 'url') picture.setAttribute('src', resolved.url);
         else picture.removeAttribute('src');
       }
+      // An embedded page: a frame only when embeds load by themselves or the
+      // reader asked for this one. Still in the inert copy, so nothing loads
+      // before the copy joins the page. Not while the block is being edited,
+      // when the drawing is hidden: every keystroke draws it again, and a
+      // frame drawn for `src="https://e` would ask that host for a page the
+      // writer never chose. The pages load once the caret leaves.
+      const embeds = drawn.querySelectorAll<HTMLElement>('.noto-embed');
+      for (const embed of embeds) {
+        if (!this.editing) drawEmbed(embed, this.context().embeds ?? false, () => this.render());
+      }
+      this.drawn = { source, held: this.editing && embeds.length > 0 };
       // Only now, with every address final, does the copy join the page.
       this.markup.replaceChildren(document.adoptNode(drawn));
       if (!this.markup.isConnected) this.dom.append(this.markup);
@@ -184,6 +212,73 @@ export class HtmlBlockView implements NodeView, Refreshable {
     this.markup.remove();
     this.dom.dataset.preview = 'none';
   }
+}
+
+/**
+ * Pages the reader has asked to load while web embeds are off, for as long as
+ * the app runs. Asked once, a page loads wherever a note embeds it.
+ */
+const loadedEmbeds = new Set<string>();
+
+/*
+ * What an embedded page may do in its frame. Scripts and its own origin, so a
+ * video or a map works; a cross-origin `https:` page with both still cannot
+ * reach this window, which is another origin. Forms, for a search box. No
+ * pop-ups and no presentation, which the window refuses anyway, and never
+ * `allow-top-navigation`: a page in a note must not be able to take the
+ * window somewhere else. The frame is named so the main process can tell it
+ * from the app's own frames and let it, and only it, follow web links.
+ */
+const EMBED_SANDBOX = 'allow-scripts allow-same-origin allow-forms';
+
+/**
+ * Fill an embed's placeholder: the page in a sandboxed frame when embeds load
+ * by themselves or the reader asked for this one, a card naming it otherwise.
+ */
+function drawEmbed(box: HTMLElement, live: boolean, onLoad: () => void): void {
+  const src = box.dataset.embedSrc ?? '';
+  let url: URL;
+  try {
+    url = new URL(src);
+  } catch {
+    box.remove();
+    return;
+  }
+  const doc = box.ownerDocument;
+  if (live || loadedEmbeds.has(url.href)) {
+    const frame = doc.createElement('iframe');
+    frame.className = 'noto-embed-frame';
+    frame.name = EMBED_FRAME_NAME;
+    frame.setAttribute('sandbox', EMBED_SANDBOX);
+    frame.setAttribute('referrerpolicy', 'strict-origin-when-cross-origin');
+    frame.setAttribute('loading', 'lazy');
+    frame.title = box.dataset.embedTitle ?? url.hostname;
+    frame.src = url.href;
+    box.replaceChildren(frame);
+    box.dataset.state = 'live';
+    return;
+  }
+  const card = doc.createElement('div');
+  card.className = 'noto-embed-card';
+  const host = doc.createElement('span');
+  host.className = 'noto-embed-host';
+  host.textContent = url.hostname;
+  const rest = doc.createElement('span');
+  rest.className = 'noto-embed-path';
+  rest.textContent = `${url.pathname}${url.search}`.replace(/^\/$/, '');
+  const load = doc.createElement('button');
+  load.type = 'button';
+  load.className = 'noto-embed-load';
+  load.textContent = 'Load page';
+  load.title = 'Load this page here. Web embeds can be turned on for every note in Settings > Images.';
+  load.addEventListener('click', (event) => {
+    event.preventDefault();
+    loadedEmbeds.add(url.href);
+    onLoad();
+  });
+  card.append(host, rest, load);
+  box.replaceChildren(card);
+  box.dataset.state = 'off';
 }
 
 export class InlineHtmlView implements NodeView {

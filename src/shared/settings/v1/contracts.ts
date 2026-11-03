@@ -23,6 +23,8 @@ export const SETTINGS_CHANNELS = {
   /** What the remote control is doing, and a way to ask for a new token. */
   remoteStatus: 'noto:v1:settings:remote-status',
   remoteRegenerate: 'noto:v1:settings:remote-regenerate',
+  /** Every accelerator the application menu holds, for the Shortcuts pane. */
+  listShortcuts: 'noto:v1:settings:list-shortcuts',
 } as const;
 
 /** `system` follows the operating system, which is the honest default. */
@@ -136,6 +138,15 @@ export const PROSE_FONT_FAMILY_MAX = 80;
 /** How the file tree is ordered. Typora's sidebar offers the same choice. */
 export const TREE_SORTS = ['name', 'name-desc', 'modified', 'modified-old'] as const;
 
+/**
+ * How a note's unsaved changes are laid out: the saved file and the note as
+ * it is now in two columns, in two panes one above the other, or as one text
+ * with what went struck through and what came marked in place.
+ */
+export const DIFF_LAYOUTS = ['side', 'stacked', 'inline'] as const;
+
+export type DiffLayoutV1 = (typeof DIFF_LAYOUTS)[number];
+
 export type TreeSortV1 = (typeof TREE_SORTS)[number];
 
 /**
@@ -172,15 +183,19 @@ export interface NotoSettingsV1 {
    * time, as they do for the document's own column.
    */
   readonly quickOpenWidth: 'default' | 'wide';
+  /**
+   * The layout the unsaved changes open in, which is the one last chosen
+   * there: a reader who compares side by side does so every time.
+   */
+  readonly diffLayout: DiffLayoutV1;
   readonly remoteControl: boolean;
   readonly markHighlight: boolean;
   readonly markSuperscript: boolean;
   readonly markSubscript: boolean;
   /**
-   * Draw `<span class="sidenote">` as a numbered margin note.
-   *
-   * On by default, as the author's Typora `sidenote` plugin is. Off leaves
-   * the tags as ordinary inline HTML source.
+   * Deprecated: sidenotes are the bundled Sidenotes plugin now, switched on
+   * and off in Plugin Center, and nothing reads this. Kept so a settings file
+   * that holds it still validates; it can go in a later version.
    */
   readonly sidenotes: boolean;
   /** Which face the document is set in. See `PROSE_FACES`. Serif recommended. */
@@ -220,6 +235,27 @@ export interface NotoSettingsV1 {
    * from the open folder and never leave the machine.
    */
   readonly remoteImages: boolean;
+  /**
+   * Whether a web page a note embeds with `<iframe>` loads by itself. Off by
+   * default, as web images are: opening a note should not visit other sites.
+   * Off, each embed is a card naming the page, with a button that loads it.
+   */
+  readonly webEmbeds: boolean;
+  /**
+   * Key chords switched off in the Shortcuts pane, in the canonical form of
+   * `src/shared/shortcuts/chord.ts` (`Mod+Shift+T`). A chord, not an action:
+   * turned off, the press does nothing wherever it was bound, the menu, the
+   * editor and a plugin alike, so the key is free for the system or another
+   * app. Empty by default.
+   */
+  readonly disabledShortcuts: readonly string[];
+  /**
+   * The GitHub repository whose `index.json` lists the plugins Plugin
+   * Center's marketplace offers, as `owner/repo`, or empty to turn the
+   * marketplace off. Only the repository is a setting; the host is fixed, so
+   * a settings file cannot point the app at another site.
+   */
+  readonly pluginMarketplace: string;
   /**
    * Number the lines of every code block.
    *
@@ -281,6 +317,13 @@ export interface NotoSettingsV1 {
    * reach for when a draft is fighting you, not a way to read.
    */
   readonly focusMode: boolean;
+  /**
+   * Draw what git says changed: the bars beside changed blocks in the margin
+   * and the marks on changed notes in the tree. On by default; off leaves the
+   * page and the tree clean, for a screenshot or for reading. Only the
+   * drawing stops, so turning it back on shows the current changes at once.
+   */
+  readonly gitMarks: boolean;
   /**
    * Keep the line being typed at the middle of the window.
    *
@@ -376,6 +419,7 @@ export const DEFAULT_SETTINGS: NotoSettingsV1 = Object.freeze({
   proseFontFamily: '',
   treeSort: 'name',
   quickOpenWidth: 'default',
+  diffLayout: 'side',
   remoteControl: false,
   markHighlight: true,
   markSuperscript: true,
@@ -392,6 +436,9 @@ export const DEFAULT_SETTINGS: NotoSettingsV1 = Object.freeze({
   smartEllipsis: false,
   spellCheck: true,
   remoteImages: true,
+  webEmbeds: false,
+  disabledShortcuts: [],
+  pluginMarketplace: 'roobli/noto-plugins',
   codeLineNumbers: true,
   codeIndentGuides: true,
   codeTabMarkers: true,
@@ -400,6 +447,7 @@ export const DEFAULT_SETTINGS: NotoSettingsV1 = Object.freeze({
   autoPair: true,
   todoCheckTime: true,
   focusMode: false,
+  gitMarks: true,
   typewriterMode: false,
   sidebarOnLaunch: false,
   railWidth: 272,
@@ -500,6 +548,25 @@ export interface RemoteStatusReplyV1 {
   readonly problem: string;
 }
 
+/**
+ * One accelerator the application menu holds, as main built it, with its
+ * chord in canonical form. `locked` marks a role's chord (Copy, Quit), which
+ * Electron owns and the pane shows without a switch.
+ */
+export interface MenuShortcutV1 {
+  readonly id: string;
+  readonly label: string;
+  readonly menu: string;
+  readonly chord: string;
+  readonly locked: boolean;
+  readonly hidden: boolean;
+}
+
+export interface ShortcutsReplyV1 {
+  readonly version: typeof NOTO_SETTINGS_VERSION;
+  readonly menu: readonly MenuShortcutV1[];
+}
+
 export interface SystemFontsReplyV1 {
   readonly version: typeof NOTO_SETTINGS_VERSION;
   readonly families: readonly string[];
@@ -510,6 +577,7 @@ export interface NotoSettingsApiV1 {
   write(request: SettingsWriteRequestV1): Promise<SettingsResultV1<SettingsReplyV1>>;
   readThemeCss(request: SettingsRequestV1): Promise<SettingsResultV1<ThemeCssReplyV1>>;
   listFonts(request: SettingsRequestV1): Promise<SettingsResultV1<SystemFontsReplyV1>>;
+  listShortcuts(request: SettingsRequestV1): Promise<SettingsResultV1<ShortcutsReplyV1>>;
   remoteStatus(request: SettingsRequestV1): Promise<SettingsResultV1<RemoteStatusReplyV1>>;
   regenerateRemoteToken(request: SettingsRequestV1): Promise<SettingsResultV1<RemoteStatusReplyV1>>;
   onChanged(listener: (event: SettingsReplyV1) => void): () => void;

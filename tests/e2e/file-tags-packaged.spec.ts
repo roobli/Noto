@@ -89,6 +89,32 @@ test.describe('file tags', () => {
     }
   });
 
+  test('sets the tags on the left edge of the text, at every column width', async () => {
+    const { app, page } = await launch('aligned');
+    try {
+      await expect(page.getByTestId('tag-strip')).toBeVisible();
+      // The strip was a centred 860px box keyed to a variable nothing defined,
+      // so in the wide and full columns it hung to the right of the text. The
+      // chip's own padding is the hover wash, so the edge that has to meet the
+      // text is the chip's box plus that padding: where its `#` begins.
+      for (const mode of ['default', 'wide', 'full']) {
+        await page.evaluate((value) => document.documentElement.setAttribute('data-width-mode', value), mode);
+        const edges = await page.evaluate(() => {
+          const strip = document.querySelector<HTMLElement>('[data-testid="tag-strip"]')!;
+          const chip = strip.querySelector<HTMLElement>('[data-testid="tag-chip"]')!;
+          const prose = strip.parentElement!.querySelector<HTMLElement>('.ProseMirror')!;
+          return {
+            tag: chip.getBoundingClientRect().left + Number.parseFloat(getComputedStyle(chip).paddingLeft),
+            text: prose.getBoundingClientRect().left + Number.parseFloat(getComputedStyle(prose).paddingLeft),
+          };
+        });
+        expect(Math.abs(edges.tag - edges.text), mode).toBeLessThan(1);
+      }
+    } finally {
+      await app.close();
+    }
+  });
+
   test('Browse Tags lists every tag in the vault', async () => {
     const { app, page } = await launch('browse');
     try {

@@ -53,6 +53,34 @@ export const titleShiftManifest = {
   uiExtensions: [],
 } satisfies PluginManifest;
 
+/**
+ * Margin notes from `<span class="sidenote">`, the author's Typora plugin as a
+ * bundled one. On by default, because notes written for that plugin read
+ * wrong without it; turned off, the tags stay in the text as source.
+ */
+export const sidenotesManifest = {
+  schemaVersion: 2,
+  id: 'dev.lr00rl.noto.sidenotes',
+  name: 'Sidenotes',
+  version: '1.0.0',
+  runtime: 'trusted-renderer',
+  activation: {
+    startup: false,
+    events: ['editor.ready'],
+    hotkeys: ['Mod+Alt+S'],
+  },
+  capabilities: ['editor.read', 'editor.transform', 'editor.decorate'],
+  lifecycle: ['activate', 'deactivate'],
+  commands: [{ id: 'sidenotes.insert', title: 'Sidenote: make the selection a margin note' }],
+  settings: [],
+  hotkeys: [{ command: 'sidenotes.insert', keys: 'Mod+Alt+S' }],
+  editorExtensions: ['sidenotes'],
+  uiExtensions: [],
+} satisfies PluginManifest;
+
+/** Bundled plugins that start switched on for a reader who never touched them. */
+export const BUNDLED_ON_BY_DEFAULT: ReadonlySet<string> = new Set([sidenotesManifest.id]);
+
 export const markdownPaddingManifest = {
   schemaVersion: 2,
   id: 'dev.lr00rl.noto.md-padding',

@@ -77,6 +77,30 @@ test.describe('making a new note', () => {
     }
   });
 
+  test('takes a name typed with an input method, and an Enter that commits its letters is not the name', async () => {
+    const { app, page, vault } = await launch('ime-name');
+    try {
+      await invokeMenu(app, 'new-file');
+      const field = page.getByTestId('tree-name-field');
+      await expect(field).toBeFocused();
+      await page.keyboard.insertText('计划');
+      // The Enter that confirms the input method's letters reaches the page as
+      // a composing keydown. It used to take the half-typed name as final.
+      await field.evaluate((element) => {
+        element.dispatchEvent(new KeyboardEvent('keydown', { key: 'Enter', isComposing: true, bubbles: true, cancelable: true }));
+      });
+      await page.waitForTimeout(300);
+      await expect(field).toBeFocused();
+      expect((await readdir(vault)).sort()).toEqual(['Untitled.md', 'existing.md']);
+
+      // An Enter outside a composition names the note.
+      await page.keyboard.press('Enter');
+      await expect.poll(async () => (await readdir(vault)).sort()).toEqual(['existing.md', '计划.md']);
+    } finally {
+      await app.close();
+    }
+  });
+
   test('asks for its name on its own row, then hands the keys to the note', async () => {
     const { app, page, vault } = await launch('named');
     try {
@@ -139,6 +163,58 @@ test.describe('making a new note', () => {
         .toEqual(['Second.md', 'Untitled.md', 'existing.md']);
       await expect(page.getByTestId('tree-name-field')).toHaveCount(0);
       await expect(page.locator('.titlebar')).toContainText('Second.md');
+    } finally {
+      await app.close();
+    }
+  });
+
+  test('goes beside the note in front, not to the top of the folder', async () => {
+    const { app, page, vault } = await launch('beside');
+    try {
+      await mkdir(path.join(vault, 'deep', 'down'), { recursive: true });
+      await writeFile(path.join(vault, 'deep', 'down', 'here.md'), '# Here\n', 'utf8');
+      await invokeMenu(app, 'refresh-folder');
+      await page.getByTestId('tree-directory').filter({ hasText: 'deep' }).first().click();
+      await page.getByTestId('tree-directory').filter({ hasText: 'down' }).first().click();
+      await page.getByTestId('tree-file').filter({ hasText: 'here.md' }).click();
+      await expect(page.locator('.titlebar')).toContainText('here.md');
+
+      await invokeMenu(app, 'new-file');
+      await expect(page.getByTestId('tree-name-field')).toBeFocused();
+      await page.keyboard.type('next');
+      await page.keyboard.press('Enter');
+      await expect.poll(async () => (await readdir(path.join(vault, 'deep', 'down'))).sort()).toEqual(['here.md', 'next.md']);
+      expect((await readdir(vault)).filter((name) => name.endsWith('.md'))).not.toContain('next.md');
+    } finally {
+      await app.close();
+    }
+  });
+
+  test('is found by Quick Open as soon as it is made, under the name it was given', async () => {
+    const { app, page } = await launch('found');
+    try {
+      await invokeMenu(app, 'new-file');
+      await expect(page.getByTestId('tree-name-field')).toBeFocused();
+      // Escape keeps the placeholder name: the case the index used to miss.
+      await page.keyboard.press('Escape');
+      await invokeMenu(app, 'quick-open');
+      await page.getByTestId('quick-input').fill('Untitled');
+      await expect(page.getByTestId('quick-result')).toContainText(['Untitled.md']);
+    } finally {
+      await app.close();
+    }
+  });
+
+  test('keeps the note\u2019s extension when the name has a dot in it', async () => {
+    const { app, page, vault } = await launch('dotted');
+    try {
+      await invokeMenu(app, 'new-file');
+      await expect(page.getByTestId('tree-name-field')).toBeFocused();
+      await page.keyboard.type('Meeting 3.5');
+      await page.keyboard.press('Enter');
+      // Not a file ending in `.5`, which the tree would not list.
+      await expect.poll(async () => (await readdir(vault)).sort()).toContain('Meeting 3.5.md');
+      await expect(page.getByTestId('tree-file').filter({ hasText: 'Meeting 3.5.md' })).toBeVisible();
     } finally {
       await app.close();
     }

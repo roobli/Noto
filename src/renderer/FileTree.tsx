@@ -13,6 +13,7 @@
 import { useCallback, useEffect, useRef, useState, type ReactNode } from 'react';
 import type { WorkspaceEntryV1, WorkspaceGitChangeV1 } from '../shared/workspace/v1/contracts';
 import { branchToCurrentFile, sizeTreeGuides, startTreeGuides } from './tree-guides';
+import { isComposing } from './ime';
 
 export interface FileTreeProps {
   readonly root: string | null;
@@ -145,6 +146,9 @@ function NameField({ initial, onDone }: {
       onBlur={(event) => finish(event.currentTarget.value.trim() || null)}
       onKeyDown={(event) => {
         event.stopPropagation();
+        // A press the input method is composing with is the input method's:
+        // Enter there commits the letters, not the name.
+        if (isComposing(event)) return;
         if (event.key === 'Enter') {
           event.preventDefault();
           finish(event.currentTarget.value.trim() || null);
@@ -222,9 +226,14 @@ export function FileTree({
     return () => narrow.removeEventListener('change', reset);
   }, []);
 
+  /** The latest listing asked for per folder, so an older answer arriving late is dropped. */
+  const loadSeqRef = useRef(new Map<string, number>());
   const load = useCallback(async (directory: string) => {
+    const seq = (loadSeqRef.current.get(directory) ?? 0) + 1;
+    loadSeqRef.current.set(directory, seq);
     try {
       const entries = await list(directory);
+      if (loadSeqRef.current.get(directory) !== seq) return;
       setChildren((current) => new Map(current).set(directory, entries));
       setFailed(null);
     } catch {
@@ -256,10 +265,11 @@ export function FileTree({
   /*
    * Read every open folder again when something moved.
    *
-   * The tree holds a listing per folder and nothing on disk tells it when one
-   * went stale. After a rename, a duplicate or a trash, every listing already
-   * on screen is suspect, and re-reading only the folder that changed would
-   * leave a moved file showing in its old place.
+   * The tree holds a listing per folder. Main follows the folder on disk and
+   * bumps the token on any structural change, from Noto or from anything
+   * else, and on Refresh Folder. Every listing already on screen is then
+   * suspect, and re-reading only the folder that changed would leave a moved
+   * file showing in its old place.
    */
   useEffect(() => {
     if (reloadToken === 0) return;
@@ -307,6 +317,15 @@ export function FileTree({
     let frame = 0;
     const mark = () => {
       frame = 0;
+      // The mark is set by hand, so React never takes it off. A row that has
+      // left the path, because another note was opened or its folder closed,
+      // kept it and went on drawing a held row's band and lit elbow where the
+      // branch no longer runs.
+      for (const stale of body.querySelectorAll<HTMLElement>('[data-stuck]')) {
+        if (!stale.matches('.tree-directory.tree-on-path[aria-expanded="true"], .tree-node-active')) {
+          stale.removeAttribute('data-stuck');
+        }
+      }
       // An ancestor's row is stuck when it sits below the top of its own node.
       for (const row of body.querySelectorAll<HTMLElement>('.tree-directory.tree-on-path[aria-expanded="true"]')) {
         const node = row.parentElement;
@@ -363,6 +382,28 @@ export function FileTree({
       </div>
     );
   }
+
+  /**
+   * A press on a pinned row brings that row back to where it lives rather
+   * than acting on it.
+   *
+   * A pinned row covers the rows scrolled under it, so a press near the top of
+   * the rail lands on a held folder far more often than it is meant for one.
+   * Collapsing the folder there threw every row under the pointer somewhere
+   * else, and the next press opened a note nobody pointed at. Scrolling the
+   * row's own place back under it leaves it exactly where it was drawn, now
+   * as an ordinary row, so a second press does what a press on it always does.
+   */
+  const revealPinned = (row: HTMLElement): boolean => {
+    if (!row.hasAttribute('data-stuck')) return false;
+    const node = row.parentElement;
+    const scroller = bodyRef.current?.closest<HTMLElement>('.rail-view');
+    if (!node || !scroller) return false;
+    const by = node.getBoundingClientRect().top - row.getBoundingClientRect().top;
+    const smooth = !window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+    scroller.scrollBy({ top: by, behavior: smooth ? 'smooth' : 'auto' });
+    return true;
+  };
 
   const toggle = (directory: string) => {
     setExpanded((current) => {
@@ -429,12 +470,12 @@ export function FileTree({
                   aria-expanded={isOpen}
                   {...dragProps(entry.path)}
                   {...dropProps(entry.path)}
-                  onClick={() => toggle(entry.path)}
+                  onClick={(event) => { if (!revealPinned(event.currentTarget)) toggle(entry.path); }}
                   onContextMenu={(event) => { event.preventDefault(); onRowMenu(entry.path, 'directory'); }}
                 >
                   <span className="tree-leading">
                     <span className={isOpen ? 'tree-twisty tree-twisty-open' : 'tree-twisty'} aria-hidden="true" />
-                    <FolderGlyph open={isOpen} />
+                    <FolderGlyph />
                   </span>
                   {editing && editing.intent !== 'new-folder' && editing.path === entry.path
                     ? <NameField initial={entry.name} onDone={commitEdit} />
@@ -447,7 +488,7 @@ export function FileTree({
                       <div className="tree-row tree-directory" data-depth={depth + 1}>
                         <span className="tree-leading">
                           <span className="tree-twisty tree-twisty-blank" aria-hidden="true" />
-                          <FolderGlyph open={false} />
+                          <FolderGlyph />
                         </span>
                         <NameField initial="New Folder" onDone={commitEdit} />
                       </div>
@@ -471,7 +512,7 @@ export function FileTree({
                 title={change ? `${entry.name}, ${GIT_WORDS[change]}` : entry.name}
                 aria-current={isActive ? 'true' : undefined}
                 {...dragProps(entry.path)}
-                onClick={() => onOpenFile(entry.path)}
+                onClick={(event) => { if (!revealPinned(event.currentTarget)) onOpenFile(entry.path); }}
                 onContextMenu={(event) => { event.preventDefault(); onRowMenu(entry.path, 'file'); }}
               >
                 <span className="tree-leading">
@@ -549,7 +590,7 @@ export function FileTree({
               line starts. */}
           <div className={`tree-row tree-directory tree-vault-row${dropClass(root)}`} data-testid="tree-vault"
             data-depth={0} title={root} {...dropProps(root)}>
-            <FolderGlyph open />
+            <FolderGlyph />
             <span className="tree-name">{vaultName}</span>
             {vaultMenu}
           </div>
@@ -562,18 +603,15 @@ export function FileTree({
 
 /*
  * The glyphs that make a row of names read as files rather than as an
- * outline. Drawn inline in the title bar's stroke style, so they inherit the
- * row's colour and need no asset; a folder shows a lifted flap when it is
- * open, which repeats what the twisty says in a second place so the eye can
- * take either.
+ * outline. Drawn inline, so they inherit the row's colour and need no asset.
+ * A folder is the same solid shape open or shut, as Typora's is: the twisty
+ * says which. A lifted flap drawn in the panel colour came out at 15px as a
+ * pale stripe across the lower half, a two-tone smudge beside the name.
  */
-function FolderGlyph({ open }: { open: boolean }) {
+function FolderGlyph() {
   return (
     <svg className="tree-glyph tree-glyph-folder" viewBox="0 0 16 16" aria-hidden="true">
-      {/* Filled, as the theme's icon font draws it. The open state shows as
-          the flap lifted, not as a rule across the middle. */}
       <path d="M1.5 4.25a1 1 0 0 1 1-1h3.2l1.4 1.5h6.4a1 1 0 0 1 1 1v6.5a1 1 0 0 1-1 1h-11a1 1 0 0 1-1-1z" />
-      {open && <path className="tree-glyph-flap" d="M1.5 7h13v5.25a1 1 0 0 1-1 1h-11a1 1 0 0 1-1-1z" />}
     </svg>
   );
 }

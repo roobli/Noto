@@ -1,3 +1,4 @@
+import { InstalledPluginControls, PluginSources } from './PluginSources';
 import { useEffect, useRef, useState, type ReactNode } from 'react';
 import type { NotoDesktopApi, NotoPluginsApi, Result, ServiceRequest } from '../../shared/ipc/contracts';
 import { IPC_VERSION } from '../../shared/ipc/contracts';
@@ -6,6 +7,7 @@ import {
   filesystemProofManifest,
   markdownPaddingManifest,
   rendererProofManifest,
+  sidenotesManifest,
   titleShiftManifest,
 } from '../../shared/plugins/proof-manifests';
 import {
@@ -22,12 +24,6 @@ import {
   type RendererPrimaryAction,
 } from './plugin-center-state';
 
-/** Display names for the trusted plugins, which lifecycle snapshots omit. */
-const trustedNames = new Map<string, string>([
-  [titleShiftManifest.id, titleShiftManifest.name],
-  [markdownPaddingManifest.id, markdownPaddingManifest.name],
-]);
-
 /**
  * What each plugin does, in the reader's terms.
  *
@@ -39,16 +35,10 @@ const trustedNames = new Map<string, string>([
  */
 const pluginDescriptions = new Map<string, string>([
   [titleShiftManifest.id, 'Promote and demote every heading in the document by one level.'],
+  [sidenotesManifest.id, 'Draw <span class="sidenote"> as numbered notes in the margin, as the Typora plugin does. Off, the tags stay as source.'],
   [markdownPaddingManifest.id, 'Insert the conventional spacing between CJK text and Latin text or numbers.'],
   [rendererProofManifest.id, 'Dim every block except the one the caret is in.'],
   [filesystemProofManifest.id, 'Read files from one folder you choose, and prove it is refused everywhere else.'],
-]);
-
-/** The commands a plugin adds to the palette, so the reader knows where it shows up. */
-const pluginCommands = new Map<string, readonly string[]>([
-  [titleShiftManifest.id, titleShiftManifest.commands?.map((command) => command.title) ?? []],
-  [markdownPaddingManifest.id, markdownPaddingManifest.commands?.map((command) => command.title) ?? []],
-  [rendererProofManifest.id, rendererProofManifest.commands?.map((command) => command.title) ?? []],
 ]);
 
 type PluginMethods = Pick<NotoPluginsApi,
@@ -89,7 +79,7 @@ interface Entry {
   readonly id: string;
   readonly name: string;
   readonly group: 'installed' | 'examples';
-  readonly kind: 'Editor plugin' | 'Service plugin';
+  readonly kind: 'Editor plugin' | 'Service plugin' | 'Installed, sandboxed' | 'Installed, trusted';
   readonly section: PluginActionSection;
   readonly presentation: PluginPresentation<string>;
   readonly lifecycle: PluginLifecycleSnapshot['lifecycle'] | 'absent';
@@ -121,6 +111,13 @@ export function PluginCenter({ api, snapshots, availability, open, detailId = nu
   const renderer = snapshots.find((snapshot) => snapshot.id === rendererProofManifest.id);
   const filesystem = snapshots.find((snapshot) => snapshot.id === filesystemProofManifest.id);
   const rendererPresentation = presentRendererPlugin(renderer, availability);
+  /** What a plugin says it does: its own words if it has them, else this file's. */
+  const describe = (id: string, fallback: string): string =>
+    snapshots.find((snapshot) => snapshot.id === id)?.presentation.description
+    || pluginDescriptions.get(id) || fallback;
+  /** The commands a plugin adds to the palette, so the reader knows where it shows up. */
+  const commandTitles = (id: string): readonly string[] =>
+    snapshots.find((snapshot) => snapshot.id === id)?.presentation.commands.map((command) => command.title) ?? [];
   const filesystemPresentation = presentFilesystemPlugin(filesystem, availability);
 
   /**
@@ -133,7 +130,7 @@ export function PluginCenter({ api, snapshots, availability, open, detailId = nu
     .filter((snapshot) => snapshot.id !== rendererProofManifest.id
       && snapshot.id !== filesystemProofManifest.id)
     .map((snapshot) => ({
-      snapshot: { ...snapshot, name: trustedNames.get(snapshot.id) ?? snapshot.id },
+      snapshot: { ...snapshot, name: snapshot.presentation.name },
       presentation: presentRendererPlugin(snapshot, availability),
     }));
 
@@ -288,7 +285,9 @@ export function PluginCenter({ api, snapshots, availability, open, detailId = nu
       id: snapshot.id,
       name: snapshot.name,
       group: 'installed',
-      kind: 'Editor plugin',
+      kind: snapshot.presentation.install
+        ? (snapshot.presentation.install.trust === 'full' ? 'Installed, trusted' : 'Installed, sandboxed')
+        : 'Editor plugin',
       section: 'renderer',
       presentation,
       lifecycle: snapshot.lifecycle,
@@ -349,7 +348,7 @@ export function PluginCenter({ api, snapshots, availability, open, detailId = nu
         } aria-hidden="true" />
         <span className="plugin-row-text">
           <strong>{entry.name}</strong>
-          <span className="plugin-row-scope">{pluginDescriptions.get(entry.id) ?? entry.presentation.scope}</span>
+          <span className="plugin-row-scope">{describe(entry.id, entry.presentation.scope)}</span>
         </span>
         <span className="plugin-row-status">{entry.presentation.status}</span>
       </button>
@@ -373,7 +372,7 @@ export function PluginCenter({ api, snapshots, availability, open, detailId = nu
               <strong>{entry.name}</strong>
               <span className="plugin-kind">{entry.kind}</span>
             </div>
-            <p className="plugin-scope">{pluginDescriptions.get(entry.id) ?? entry.presentation.scope}</p>
+            <p className="plugin-scope">{describe(entry.id, entry.presentation.scope)}</p>
             {entry.group === 'examples' && (
               <p className="plugin-scope plugin-example-note">
                 A bundled example, one of each kind, to read before writing your own. Not a product feature.
@@ -394,12 +393,17 @@ export function PluginCenter({ api, snapshots, availability, open, detailId = nu
             </button>
           </div>
 
-          {(pluginCommands.get(entry.id)?.length ?? 0) > 0 && (
+          {commandTitles(entry.id).length > 0 && (
             <p className="plugin-commands">
-              <span className="plugin-commands-label">In the palette (⌘K)</span>
-              {pluginCommands.get(entry.id)?.join(' · ')}
+              <span className="plugin-commands-label">In the palette (⇧⌘P)</span>
+              {commandTitles(entry.id).join(' · ')}
             </p>
           )}
+
+          {(() => {
+            const install = snapshots.find((snapshot) => snapshot.id === entry.id)?.presentation.install;
+            return install ? <InstalledPluginControls pluginId={entry.id} install={install} /> : null;
+          })()}
 
           {entry.id === rendererProofManifest.id && (
             <label className="setting-row">
@@ -519,6 +523,7 @@ export function PluginCenter({ api, snapshots, availability, open, detailId = nu
 
   return (
     <div className="plugin-center" id="plugin-drawer" data-plugin-view="list">
+      <PluginSources />
       {renderGroup('installed', 'Installed', 'list')}
       {renderGroup('examples', 'Examples', 'list')}
     </div>

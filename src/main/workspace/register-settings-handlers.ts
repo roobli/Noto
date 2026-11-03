@@ -16,6 +16,8 @@ import {
   type SettingsWriteRequestV1,
   type ThemeCssReplyV1,
   type SystemFontsReplyV1,
+  type ShortcutsReplyV1,
+  type MenuShortcutV1,
   type RemoteStatusReplyV1,
 } from '../../shared/settings/v1/contracts';
 import {
@@ -33,6 +35,8 @@ export function registerSettingsHandlers(deps: {
   logger: StructuredLogger;
   /** Called after a successful write, so main can react to a changed setting. */
   onChanged: (settings: SettingsReplyV1) => void;
+  /** Every accelerator the application menu holds, as it was last built. */
+  menuShortcuts?: () => readonly MenuShortcutV1[];
   /** What the remote control is doing, and how to give it a new token. */
   remote?: {
     status: () => Promise<RemoteStatusReplyV1>;
@@ -129,6 +133,12 @@ export function registerSettingsHandlers(deps: {
       version: NOTO_SETTINGS_VERSION,
       families: await listSystemFontFamilies(),
     }),
+  );
+
+  register<{ requestId: string }, ShortcutsReplyV1>(
+    SETTINGS_CHANNELS.listShortcuts,
+    isSettingsRequestV1,
+    async () => ({ version: NOTO_SETTINGS_VERSION, menu: deps.menuShortcuts?.() ?? [] }),
   );
 
   const remoteReply = async (kind: 'status' | 'regenerate'): Promise<RemoteStatusReplyV1> => {
