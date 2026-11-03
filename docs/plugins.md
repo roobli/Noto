@@ -99,6 +99,8 @@ interface TrustedPluginContext {
   registerHotkey(keys: string, execute: () => void | Promise<void>): Disposer;
   registerDisposer(disposer: Disposer): void;
   notice(message: string): void;
+  registerEditorExtension(extension: EditorExtension): Disposer;
+  runEditorCommand(name: string): boolean;
 }
 ```
 
@@ -123,6 +125,38 @@ replacement did not touch. A transform that works on the whole text and hands
 it back is the intended shape; Title Shift and Markdown Padding both do
 exactly this, and their pure transforms in
 `src/renderer/plugins/bundled/transforms.ts` are unit-tested on their own.
+
+### Adding to the editor
+
+A plugin that changes how notes are drawn needs more than markdown in and
+out. A trusted plugin may register an **editor extension**
+(`src/renderer/editor/noto/editor-extensions.ts`): ProseMirror plugins that
+every open editor runs, and editor commands they answer to by name.
+
+```ts
+interface EditorExtension {
+  readonly id: string;                                   // listed in the manifest's editorExtensions
+  readonly plugins: () => readonly Plugin[];             // made fresh for each editor
+  readonly commands?: Readonly<Record<string, Command>>;
+}
+```
+
+The id must appear in the manifest's `editorExtensions`, and the manifest
+must ask for `editor.decorate`. Every open editor reconfigures when an
+extension arrives or leaves, keeping the core plugins' state, and a note
+opened later starts with it, so switching the plugin off in Plugin Center
+takes its drawing out of every note at once. A plugin that adds to the editor
+also starts as soon as it is switched on with a note open, rather than
+waiting for the next note. `runEditorCommand(name)` runs one of the
+extension's commands, or one of the editor's own, on the note in front, and
+needs `editor.transform`.
+
+This is a trusted surface. A sandboxed plugin's worker has no page to hand a
+ProseMirror plugin from, and its manifest must leave `editorExtensions`
+empty. The bundled Sidenotes plugin
+(`src/renderer/plugins/bundled/sidenotes/`) is the worked example: its
+extension draws `<span class="sidenote">` as margin notes and owns the
+"wrap the selection" command behind `Cmd+Alt+S`.
 
 Commands appear in the command palette (`Shift+Cmd+P`) while the plugin is active,
 under the title the manifest gives them. Hotkeys are dispatched by the shell

@@ -10,6 +10,13 @@ How releases are made, and what each channel receives, is in
 ## [Unreleased]
 
 ### Added
+
+- File > Refresh Folder (Cmd-Alt-R) reads the open folder again: the tree,
+  Quick Open and the git marks. The folder was already followed on disk; this
+  is the same work on request.
+- Plugins can add to the editor. A trusted plugin registers an editor
+  extension (ProseMirror plugins and named commands) that every open note
+  picks up at once and drops when the plugin is switched off.
 - **See a note's unsaved changes before saving them.** While a note has
   unsaved changes, its name in the title bar opens them, as does Show Unsaved
   Changes in the command palette. Three layouts: side by side, stacked with
@@ -62,6 +69,15 @@ How releases are made, and what each channel receives, is in
   a key held by two things is flagged.
 
 ### Changed
+
+- Sidenotes are a bundled plugin, Sidenotes, switched on by default and
+  turned off in Plugin Center rather than in Settings > Markdown. Its key,
+  Cmd-Alt-S, wraps the selection in a note as before; the Format menu no
+  longer lists it.
+- File > New Note makes the note beside the note in front instead of at the
+  root of the open folder.
+- A press on a pinned row at the top of the tree brings that row back to its
+  place instead of collapsing the folder under the pointer.
 - **Settings use the window.** The panes' list is wider, grouped under General
   and Advanced, and marks the open pane with a filled pill. Each pane opens
   with its name and a line saying what it is for, and its settings sit in
@@ -81,6 +97,13 @@ How releases are made, and what each channel receives, is in
   with words beside it stays in their run.
 
 ### Fixed
+
+- Sidenotes stay drawn in the margin wherever the caret is, and from the
+  moment a note opens; they used to show only while the caret was in or next
+  to their paragraph.
+- Quick Open lists a folder's notes before anything is typed, instead of an
+  empty panel for a folder nobody had opened a note from, and Backspace steps
+  out of a nested folder one level at a time.
 - **A plugin's saved state survives a plugin going away.** A saved state
   that named a plugin no longer installed was taken for damage, and every
   plugin failed at the next launch. The entry is now kept, so a plugin that
