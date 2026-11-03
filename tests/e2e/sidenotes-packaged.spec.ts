@@ -75,20 +75,29 @@ test.describe('sidenotes', () => {
   test('wrap the selection in a note with the plugin\u2019s key', async () => {
     const { app, page } = await launch(['# Notes', '', 'Plain words here.', ''].join('\n'), 'wrap');
     try {
+      // The plugin's key reaches it once it is running; on a loaded machine the
+      // press could otherwise land before the plugin snapshots do.
+      await expect.poll(() => page.evaluate(async () => {
+        const result = await window.notoDesktop.plugins.getSnapshots({ version: 1, requestId: `snapshots-${Date.now()}` });
+        return result.ok ? result.value.snapshots.find((plugin) => plugin.id === 'dev.lr00rl.noto.sidenotes')?.lifecycle : null;
+      }), { timeout: 15_000 }).toBe('active');
+      // Select "words" the way a reader does, with a double click on it, and
+      // wait until the editor holds that selection: a range set straight on
+      // the DOM could still be unread when the key arrived, and the note went
+      // in empty at the top of the document.
       const paragraph = page.locator('.ProseMirror p').first();
-      await paragraph.click();
-      // Select "words" by its offsets in the text node.
-      await page.evaluate(() => {
-        const p = document.querySelector('.ProseMirror p')!;
+      const word = await paragraph.evaluate((p) => {
         const text = p.firstChild!;
         const at = text.textContent!.indexOf('words');
         const range = document.createRange();
         range.setStart(text, at);
         range.setEnd(text, at + 'words'.length);
-        const selection = window.getSelection()!;
-        selection.removeAllRanges();
-        selection.addRange(range);
+        const box = range.getBoundingClientRect();
+        return { x: box.left + box.width / 2, y: box.top + box.height / 2 };
       });
+      await page.mouse.dblclick(word.x, word.y);
+      await expect(paragraph).toHaveClass(/noto-active-block/);
+      await expect.poll(() => page.evaluate(() => window.getSelection()?.toString())).toBe('words');
       await page.keyboard.press(process.platform === 'darwin' ? 'Meta+Alt+KeyS' : 'Control+Alt+KeyS');
       await expect(page.locator('.ProseMirror .noto-sidenote')).toHaveText('words');
     } finally {
