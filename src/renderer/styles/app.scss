@@ -2746,32 +2746,65 @@ button:disabled { color: var(--muted); opacity: 0.7; }
 /* File tags: chips for the note in front, and the browse panel
    ========================================================================== */
 
+/*
+ * The tags as the page's own metadata, set at the head of the column rather
+ * than floated over it as buttons.
+ *
+ * The strip is the page's width, `--measure` resolved against the same canvas
+ * the editor host sits in, and it starts where the text does, past the
+ * document's 14px marker gutter. It used to be a centred 860px box keyed to a
+ * variable nothing defined, so in the wide and full widths it hung off to the
+ * right of the text, and filled pills in the interface face read as a web form
+ * stuck above a serif page. Now each tag is a word in the muted ink, marked
+ * with a faint `#`, with no fill or border until the pointer is on it.
+ *
+ * It takes the page's top gutter, and the page below gives most of its own
+ * back, so the tags sit at the head of the page with the same air above them
+ * as a note without tags has above its first line.
+ */
 .tag-strip {
+  --tag-pad: 5px;
   display: flex;
   flex-wrap: wrap;
-  gap: 6px;
-  padding: 0 28px 10px;
-  /* Sit under the title / above the page, inside the document column. */
-  max-width: var(--noto-column, 860px);
+  gap: 2px 4px;
+  width: var(--measure);
+  max-width: 100%;
   margin: 0 auto;
+  /* The chip's own padding is taken off, so each line's first word, not its
+     hover wash, lines up with the text. */
+  padding: 26px 0 0 calc(14px - var(--tag-pad));
+  font-family: tokens.$ui;
 }
 
-.tag-chip {
+.tag-strip + .noto-editor-host { padding-top: 14px; }
+
+/* Doubled, and scoped to the strip, so it outweighs the generic button and
+   its `:hover:not(:disabled)`, which painted every chip the raised grey. */
+.tag-strip .tag-chip {
   appearance: none;
-  border: 1px solid var(--rule);
-  background: var(--raised);
+  min-height: 0;
+  border: 0;
+  border-radius: 4px;
+  background: none;
   color: var(--muted);
-  border-radius: 999px;
-  padding: 2px 10px;
-  font: inherit;
-  font-size: 12px;
-  line-height: 1.4;
+  padding: 1px var(--tag-pad);
+  font-size: 12.5px;
+  line-height: 20px;
   cursor: pointer;
-}
 
-.tag-chip:hover {
-  color: var(--ink);
-  border-color: var(--accent, var(--ink));
+  &::before {
+    /* Generated, so the chip's text is still the tag itself. */
+    content: '#';
+    margin-right: 1px;
+    opacity: 0.5;
+  }
+
+  &:hover {
+    /* The rail's own hover: the accent at a wash, with the word up to ink. */
+    color: var(--ink);
+    background: color-mix(in srgb, var(--accent) 8%, transparent);
+  }
+  &:active { background: color-mix(in srgb, var(--accent) 14%, transparent); }
 }
 
 .tag-browser-scrim {
