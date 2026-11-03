@@ -275,6 +275,26 @@ export class WorkspaceSession {
       return existing.opened;
     }
 
+    // A second open of the same note while the first is still reading it (a
+    // double click on a slow disk, a row and Quick Open together) waits for
+    // the first. Each used to make its own store; the later one replaced the
+    // earlier in the map, which was never closed and kept watching the file,
+    // so the next save looked like another program's change.
+    const inFlight = this.opening.get(resolved);
+    if (inFlight) return inFlight;
+    const loading = this.loadMarkdownPath(resolved);
+    this.opening.set(resolved, loading);
+    try {
+      return await loading;
+    } finally {
+      this.opening.delete(resolved);
+    }
+  }
+
+  /** Opens of a note that have not finished, by resolved path. */
+  private readonly opening = new Map<string, Promise<FileTruthOpenReplyV1>>();
+
+  private async loadMarkdownPath(resolved: string): Promise<FileTruthOpenReplyV1> {
     if (this.documents.size >= MAX_TABS) {
       throw new Error('Too many documents are open. Close one before opening another.');
     }
