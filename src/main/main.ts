@@ -30,6 +30,9 @@ import {
 import { RendererLeaseBridge } from './plugins/renderer-lease-bridge';
 import { ServiceHost } from './plugins/service-host';
 import { ExperimentalPluginRuntimeHost } from './plugins/experimental-plugin-runtime-host';
+import { PluginInstaller } from './plugins/plugin-installer';
+import { discoverUserPlugins, FRESH_MARKER, joinCatalog, readUserPluginCode, userPluginCodeUrl, type SetAsidePlugin, type UserPlugin } from './plugins/user-plugins';
+import { describeSource } from '../shared/plugins/install-record';
 import { installNotoProtocol, isAllowedRendererUrl, registerNotoScheme } from './protocol/register-app-protocol';
 import { IPC_CHANNELS } from '../shared/ipc/contracts';
 import type { PluginCatalog } from '../shared/plugins/catalog';
@@ -51,6 +54,17 @@ import { AppUpdater } from './updates/app-updater';
 import { registerUpdateHandlers } from './updates/register-update-handlers';
 import { useSha256 } from '../shared/sha256';
 import { nativeSha256 } from './native-sha256';
+
+/** An `http://127.0.0.1:<port>` origin, and nothing that only starts like one. */
+function isLoopbackOrigin(value: string | undefined): value is string {
+  if (!value) return false;
+  try {
+    const url = new URL(value);
+    return url.protocol === 'http:' && url.hostname === '127.0.0.1' && url.port !== '' && value === url.origin;
+  } catch {
+    return false;
+  }
+}
 
 // The shared Markdown layer hashes in plain JavaScript so that it runs in any
 // host. This process has Node's native hash, which gives the same digests three
@@ -207,7 +221,16 @@ async function run(): Promise<void> {
   await app.whenReady();
   app.setAppUserModelId('dev.lr00rl.noto');
   const rendererRoot = path.join(__dirname, '..', 'renderer', 'main_window');
-  await installNotoProtocol(rendererRoot, logger, { roots: () => session?.imageRoots() ?? [] });
+  // Plugins the reader installed, found below once the bundled ones are; the
+  // protocol asks this map for a plugin's code, so it is declared first.
+  let userPlugins = new Map<string, UserPlugin>();
+  let userPluginsSetAside: SetAsidePlugin[] = [];
+  await installNotoProtocol(rendererRoot, logger, { roots: () => session?.imageRoots() ?? [] }, async (id, digest, trust) => {
+    // Served only at the address for the trust it has: a sandboxed plugin's
+    // code never at the page's own origin.
+    const plugin = userPlugins.get(id);
+    return plugin && plugin.trust === trust ? readUserPluginCode(plugin, digest) : null;
+  });
 
   const serviceModulePath = app.isPackaged
     ? path.join(process.resourcesPath, 'app.asar.unpacked', '.vite', 'build', 'fs-service.js')
@@ -239,6 +262,40 @@ async function run(): Promise<void> {
     pluginDiscoveryFailure = error instanceof Error ? error.message.split(':', 1)[0] : 'PLUGIN_DISCOVERY_UNAVAILABLE';
     logger.log('plugin_manifest_discovery_failed_visible', { code: pluginDiscoveryFailure });
   }
+  const userPluginRoot = path.join(app.getPath('userData'), 'plugins', 'user');
+  try {
+    const found = await discoverUserPlugins(userPluginRoot);
+    const joined = joinCatalog(pluginCatalog, found.plugins);
+    pluginCatalog = joined.catalog;
+    userPlugins = new Map(joined.joined.map((plugin) => [plugin.manifest.id, plugin]));
+    userPluginsSetAside = [...found.setAside, ...joined.setAside];
+    if (userPluginsSetAside.length > 0) {
+      logger.log('user_plugins_set_aside', { plugins: userPluginsSetAside.map((item) => `${item.folder}: ${item.reason}`.slice(0, 200)) });
+    }
+  } catch (error) {
+    logger.log('user_plugins_unreadable', { error: error instanceof Error ? error.message.slice(0, 200) : 'unknown' });
+  }
+  const pluginInstaller = new PluginInstaller({
+    root: userPluginRoot,
+    getWindow: () => editorWindow,
+    logger,
+    installed: () => userPlugins,
+    setAside: () => userPluginsSetAside,
+    bundled: () => {
+      const bundledManifests = pluginCatalog.plugins.filter((manifest) => !userPlugins.has(manifest.id));
+      return {
+        ids: new Set(bundledManifests.map((manifest) => manifest.id)),
+        hotkeys: new Map(bundledManifests.flatMap((manifest) => manifest.hotkeys.map((hotkey) => [hotkey.keys, manifest.name] as const))),
+      };
+    },
+    marketplace: () => settings.current().pluginMarketplace,
+    // A test serves plugin files from this machine instead of GitHub; only
+    // the end-to-end build reads the variable.
+    ...(__NTO_PACKAGE_VARIANT__ === 'e2e' && isLoopbackOrigin(process.env.NOTO_PLUGIN_RAW_ORIGIN)
+      ? { rawOrigin: process.env.NOTO_PLUGIN_RAW_ORIGIN }
+      : {}),
+  });
+  pluginInstaller.register();
   const pluginStateStore = new LocalPluginStateStore(
     path.join(app.getPath('userData'), 'plugins', 'local-state.json'),
     pluginCatalog,
@@ -259,6 +316,15 @@ async function run(): Promise<void> {
   let pluginRegistry!: PluginRegistry;
   pluginRegistry = new PluginRegistry({
     catalog: pluginCatalog,
+    install: (pluginId) => {
+      const plugin = userPlugins.get(pluginId);
+      return plugin ? {
+        source: describeSource(plugin.record?.source ?? null),
+        trust: plugin.trust,
+        codeUrl: userPluginCodeUrl(plugin),
+        manifest: plugin.manifest,
+      } : null;
+    },
     initialDiscoveryFailure: pluginDiscoveryFailure,
     stateStore: pluginStateStore,
     rendererHost: rendererLeaseBridge,
@@ -279,6 +345,13 @@ async function run(): Promise<void> {
   });
   try {
     await pluginRegistry.hydrate();
+    // Installed or replaced since the last start: switched off, whatever the
+    // id's switch said before.
+    for (const plugin of userPlugins.values()) {
+      if (!plugin.fresh) continue;
+      await pluginRegistry.disable(plugin.manifest.id).catch(() => undefined);
+      await rm(path.join(plugin.directory, '.noto', FRESH_MARKER), { force: true }).catch(() => undefined);
+    }
   } catch (error) {
     logger.log('plugin_state_hydration_failed_visible', {
       code: error instanceof Error ? error.message.split(':', 1)[0] : 'PLUGIN_FAILED',

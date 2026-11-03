@@ -1,3 +1,4 @@
+import type { PluginManifest } from './manifest';
 export type PluginLifecycleState =
   | 'discovered'
   | 'disabled'
@@ -67,6 +68,36 @@ export interface RendererLeaseRelease {
   registrations: 0;
 }
 
+/**
+ * What the shell shows of a plugin: its name, what it adds, where it came
+ * from. Carried on every snapshot so the palette, the hotkeys, Plugin Center
+ * and the Shortcuts pane read a plugin from the catalog main holds, rather
+ * than from lists of the bundled manifests compiled into the renderer, which
+ * a plugin installed by the reader would never be in.
+ */
+export interface PluginPresentationSnapshot {
+  name: string;
+  /** Empty for a bundled plugin, which Plugin Center describes itself. */
+  description: string;
+  origin: 'bundled' | 'user';
+  commands: readonly { id: string; title: string }[];
+  hotkeys: readonly { command: string; keys: string }[];
+  /**
+   * For a plugin the reader installed: where it came from, how far it is
+   * trusted, where its code is served (pinned to the code's digest), and its
+   * manifest, which the renderer needs to gate what the plugin may call.
+   * Null for a bundled plugin, whose code is part of the app.
+   */
+  install: PluginInstallPresentation | null;
+}
+
+export interface PluginInstallPresentation {
+  source: string;
+  trust: 'sandboxed' | 'full';
+  codeUrl: string;
+  manifest: PluginManifest;
+}
+
 export interface PluginLifecycleSnapshot {
   id: string;
   manifestVersion: string;
@@ -80,6 +111,7 @@ export interface PluginLifecycleSnapshot {
   persistenceHealth: PluginPersistenceHealth;
   lastFailure: string | null;
   capability: PluginCapabilitySnapshot;
+  presentation: PluginPresentationSnapshot;
 }
 
 export const PLUGIN_LIFECYCLE_VERSION = 1 as const;

@@ -4,6 +4,7 @@ import type { NotoWorkspaceApiV1 } from '../shared/workspace/v1/contracts';
 import type { NotoSettingsApiV1 } from '../shared/settings/v1/contracts';
 import type { NotoAssetsApiV1 } from '../shared/assets/v1/contracts';
 import type { NotoUpdatesApiV1 } from '../shared/updates/v1/contracts';
+import type { NotoPluginInstallApi } from '../shared/plugins/install-ipc';
 
 declare global {
   interface Window {
@@ -13,6 +14,7 @@ declare global {
     notoSettings: NotoSettingsApiV1;
     notoAssets: NotoAssetsApiV1;
     notoUpdates: NotoUpdatesApiV1;
+    notoPluginInstall: NotoPluginInstallApi;
     notoPlatform: { readonly home: string };
   }
 }

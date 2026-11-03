@@ -36,6 +36,12 @@ import {
   UPDATE_CHANNEL_SETTINGS,
   type UpdateChannelSettingV1,
 } from './contracts';
+/** `owner/repo` on GitHub, or empty for no marketplace. */
+function isMarketplaceRepo(value: unknown): value is string {
+  return typeof value === 'string'
+    && (value === '' || /^[A-Za-z0-9][A-Za-z0-9._-]{0,99}\/[A-Za-z0-9][A-Za-z0-9._-]{0,99}$/.test(value));
+}
+
 
 const requestId = /^[A-Za-z0-9._:-]{1,96}$/;
 const themes: readonly NotoTheme[] = ['light', 'dark', 'system'];
@@ -134,6 +140,7 @@ export function coerceSettings(value: unknown): NotoSettingsV1 {
     spellCheck: typeof value.spellCheck === 'boolean' ? value.spellCheck : DEFAULT_SETTINGS.spellCheck,
     remoteImages: typeof value.remoteImages === 'boolean' ? value.remoteImages : DEFAULT_SETTINGS.remoteImages,
     webEmbeds: typeof value.webEmbeds === 'boolean' ? value.webEmbeds : DEFAULT_SETTINGS.webEmbeds,
+    pluginMarketplace: isMarketplaceRepo(value.pluginMarketplace) ? value.pluginMarketplace : DEFAULT_SETTINGS.pluginMarketplace,
     codeLineNumbers: typeof value.codeLineNumbers === 'boolean'
       ? value.codeLineNumbers
       : DEFAULT_SETTINGS.codeLineNumbers,
@@ -219,6 +226,7 @@ export function isSettingsWriteRequestV1(value: unknown): value is SettingsWrite
     if (key === 'theme') return themes.includes(patch.theme as NotoTheme);
     if (key === 'widthMode') return isWidthMode(patch.widthMode);
     if (key === 'diffLayout') return isDiffLayout(patch.diffLayout);
+    if (key === 'pluginMarketplace') return isMarketplaceRepo(patch.pluginMarketplace);
     if (key === 'proseFace') return PROSE_FACES.includes(patch.proseFace as ProseFaceV1);
     if (key === 'proseFontFamily') return isProseFontFamily(patch.proseFontFamily);
     if (key === 'treeSort') return TREE_SORTS.includes(patch.treeSort as TreeSortV1);
@@ -280,6 +288,7 @@ export function isSettingsReplyV1(value: unknown): value is SettingsReplyV1 {
     && typeof settings.spellCheck === 'boolean'
     && typeof settings.remoteImages === 'boolean'
     && typeof settings.webEmbeds === 'boolean'
+    && isMarketplaceRepo(settings.pluginMarketplace)
     && typeof settings.codeLineNumbers === 'boolean'
     && typeof settings.codeIndentGuides === 'boolean'
     && typeof settings.codeTabMarkers === 'boolean'

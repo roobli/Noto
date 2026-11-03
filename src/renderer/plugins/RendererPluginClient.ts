@@ -35,14 +35,28 @@ export class RendererPluginClient {
   constructor(
     private readonly hosts: ReadonlyMap<string, RendererPluginHost>,
     private readonly api: NotoPluginsApi,
+    /**
+     * A host for a plugin the reader installed, made the first time main
+     * asks for it: such a plugin is not compiled in, so its host cannot be
+     * in the fixed map. Each still gets a host of its own.
+     */
+    private readonly installed?: (pluginId: string) => RendererPluginHost | undefined,
   ) {}
+
+  private readonly created = new Map<string, RendererPluginHost>();
+  private adapter: NotoEditorPort | null = null;
+
+  private allHosts(): RendererPluginHost[] {
+    return [...this.hosts.values(), ...this.created.values()];
+  }
 
   /** Refuse a request for a plugin this renderer does not host. */
   private hostFor(pluginId: string): RendererPluginHost {
-    const host = this.hosts.get(pluginId);
+    const host = this.hosts.get(pluginId) ?? this.created.get(pluginId) ?? this.createInstalled(pluginId);
     if (!host) throw new Error('PLUGIN_UNKNOWN');
     return host;
   }
+
 
   start(): void {
     if (this.disposed || this.unsubscribe) return;
@@ -56,13 +70,23 @@ export class RendererPluginClient {
 
   attachAdapter(adapter: NotoEditorPort): void {
     if (this.disposed) return;
-    for (const host of this.hosts.values()) host.attachAdapter(adapter);
+    this.adapter = adapter;
+    for (const host of this.allHosts()) host.attachAdapter(adapter);
+  }
+
+  private createInstalled(pluginId: string): RendererPluginHost | undefined {
+    if (this.disposed) return undefined;
+    const host = this.installed?.(pluginId);
+    if (!host) return undefined;
+    this.created.set(pluginId, host);
+    if (this.adapter) host.attachAdapter(this.adapter);
+    return host;
   }
 
   async detachAdapter(): Promise<void> {
     if (this.disposed) return;
     await this.releaseAndReportAll();
-    for (const host of this.hosts.values()) await host.disposeRenderer();
+    for (const host of this.allHosts()) await host.disposeRenderer();
   }
 
   async dispose(): Promise<void> {
@@ -70,7 +94,7 @@ export class RendererPluginClient {
     this.disposed = true;
     try {
       await this.releaseAndReportAll();
-      for (const host of this.hosts.values()) await host.disposeRenderer();
+      for (const host of this.allHosts()) await host.disposeRenderer();
     } finally {
       this.unsubscribe?.();
       this.unsubscribe = null;

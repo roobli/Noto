@@ -32,6 +32,7 @@ const snapshot = (overrides: Partial<PluginLifecycleSnapshot> = {}): PluginLifec
   persistenceHealth: 'healthy',
   lastFailure: null,
   capability: { grant: null, request: null, restartRequired: false },
+      presentation: { name: 'Test', description: '', origin: 'bundled', commands: [], hotkeys: [], install: null },
   ...overrides,
 });
 

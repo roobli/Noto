@@ -1,6 +1,13 @@
 import { hasExactKeys, isRecord } from '../ipc/validate';
 
-export type PluginRuntime = 'trusted-renderer' | 'isolated-service';
+/**
+ * Where a plugin's code runs. `trusted-renderer` and `isolated-service` are
+ * the bundled kinds. `sandboxed` is a plugin the reader installed: its code
+ * runs in a worker with no page, no app API and no network, and reaches the
+ * note only through the capabilities it declares, unless the reader trusts
+ * it fully, when it runs as a bundled renderer plugin does.
+ */
+export type PluginRuntime = 'trusted-renderer' | 'isolated-service' | 'sandboxed';
 
 export interface PluginActivation {
   startup: boolean;
@@ -22,7 +29,14 @@ export interface PluginManifest {
   hotkeys: Array<{ command: string; keys: string }>;
   editorExtensions: string[];
   uiExtensions: string[];
+  /** What the plugin does, in a line, shown before it is installed. Sandboxed plugins only. */
+  description?: string;
 }
+
+const MANIFEST_KEYS = [
+  'schemaVersion', 'id', 'name', 'version', 'runtime', 'activation', 'capabilities', 'lifecycle',
+  'commands', 'settings', 'hotkeys', 'editorExtensions', 'uiExtensions',
+] as const;
 
 const idPattern = /^[a-z0-9]+(?:[.-][a-z0-9]+)+$/;
 const localIdPattern = /^[a-z][a-zA-Z0-9.-]{0,79}$/;
@@ -132,23 +146,29 @@ function isBoundedSemVer(value: string): boolean {
 }
 
 export function validatePluginManifest(value: unknown): value is PluginManifest {
+  // The bundled kinds keep their exact key set; a sandboxed plugin may add a
+  // description, which is the one field older builds have never seen.
+  const sandboxed = isRecord(value) && value.runtime === 'sandboxed';
   if (!isRecord(value)
-    || !hasExactKeys(value, [
-      'schemaVersion', 'id', 'name', 'version', 'runtime', 'activation', 'capabilities', 'lifecycle',
-      'commands', 'settings', 'hotkeys', 'editorExtensions', 'uiExtensions',
-    ])
+    || !(sandboxed
+      ? MANIFEST_KEYS.every((key) => Object.hasOwn(value, key))
+        && Object.keys(value).every((key) => (MANIFEST_KEYS as readonly string[]).includes(key) || key === 'description')
+        && (value.description === undefined
+          || (typeof value.description === 'string' && value.description.length > 0 && value.description.length <= 200))
+      : hasExactKeys(value, [...MANIFEST_KEYS]))
     || value.schemaVersion !== 2
     || typeof value.id !== 'string' || !idPattern.test(value.id)
     || typeof value.name !== 'string' || value.name.length === 0 || value.name.length > 80
     || typeof value.version !== 'string' || !isBoundedSemVer(value.version)
     || !isActivation(value.activation)
-    || !['trusted-renderer', 'isolated-service'].includes(String(value.runtime))) return false;
+    || !['trusted-renderer', 'isolated-service', 'sandboxed'].includes(String(value.runtime))) return false;
 
   const runtime = value.runtime as PluginRuntime;
-  const allowedCapabilities = runtime === 'trusted-renderer'
+  const inEditor = runtime !== 'isolated-service';
+  const allowedCapabilities = inEditor
     ? ['editor.read', 'editor.decorate', 'editor.transform']
     : ['filesystem.read'];
-  const expectedLifecycle = runtime === 'trusted-renderer' ? ['activate', 'deactivate'] : ['start', 'stop'];
+  const expectedLifecycle = inEditor ? ['activate', 'deactivate'] : ['start', 'stop'];
   if (!uniqueStrings(value.capabilities, allowedCapabilities)
     || !uniqueStrings(value.lifecycle)
     || !uniqueStrings(value.editorExtensions)
@@ -169,7 +189,9 @@ export function validatePluginManifest(value: unknown): value is PluginManifest 
     && new Set(hotkeys.map((item) => item.keys)).size === hotkeys.length
     && hotkeys.every((hotkey) => commands.some((command) => command.id === hotkey.command))
     && activation.hotkeys.every((keys) => hotkeys.some((hotkey) => hotkey.keys === keys))
-    && (runtime === 'trusted-renderer' || (value.editorExtensions as string[]).length === 0);
+    && (runtime === 'trusted-renderer' || (value.editorExtensions as string[]).length === 0)
+    // Nothing reads UI extensions yet, and a sandboxed plugin has no page to extend.
+    && (runtime !== 'sandboxed' || (value.uiExtensions as string[]).length === 0);
 }
 
 export function parsePluginManifest(value: unknown): PluginManifest {

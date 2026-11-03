@@ -1,3 +1,7 @@
+import {
+  isPluginInstallReply, isPluginInstallRequest, PLUGIN_INSTALL_CHANNEL,
+  type NotoPluginInstallApi, type PluginInstallReplyV1, type PluginInstallRequest,
+} from '../shared/plugins/install-ipc';
 import { contextBridge, ipcRenderer, webUtils } from 'electron';
 import {
   ASSET_CHANNELS,
@@ -311,7 +315,20 @@ const api: NotoDesktopApi = Object.freeze({
   plugins: pluginsApi,
 });
 
+/**
+ * Installing, trusting and removing plugins. Main shows any folder dialog and
+ * fetches anything remote itself; the page only names ids and addresses.
+ */
+const pluginInstallApi: NotoPluginInstallApi = Object.freeze({
+  request: async (request: PluginInstallRequest): Promise<PluginInstallReplyV1> => {
+    if (!isPluginInstallRequest(request)) return { kind: 'refused', message: 'That request was not accepted.' };
+    const value: unknown = await ipcRenderer.invoke(PLUGIN_INSTALL_CHANNEL, request);
+    return isPluginInstallReply(value) ? value : { kind: 'refused', message: 'Main returned a reply the page does not accept.' };
+  },
+});
+
 contextBridge.exposeInMainWorld('notoDesktop', api);
+contextBridge.exposeInMainWorld('notoPluginInstall', pluginInstallApi);
 
 function rejectedFileTruth<T>(requestId: string, message: string): FileTruthResultV1<T> {
   return { ok: false, requestId, error: { code: 'BAD_REQUEST', message } };

@@ -241,6 +241,13 @@ export interface NotoSettingsV1 {
    */
   readonly webEmbeds: boolean;
   /**
+   * The GitHub repository whose `index.json` lists the plugins Plugin
+   * Center's marketplace offers, as `owner/repo`, or empty to turn the
+   * marketplace off. Only the repository is a setting; the host is fixed, so
+   * a settings file cannot point the app at another site.
+   */
+  readonly pluginMarketplace: string;
+  /**
    * Number the lines of every code block.
    *
    * On by default, as the author's own Typora is set. The gutter is as wide
@@ -414,6 +421,7 @@ export const DEFAULT_SETTINGS: NotoSettingsV1 = Object.freeze({
   spellCheck: true,
   remoteImages: true,
   webEmbeds: false,
+  pluginMarketplace: 'roobli/noto-plugins',
   codeLineNumbers: true,
   codeIndentGuides: true,
   codeTabMarkers: true,

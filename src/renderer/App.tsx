@@ -77,6 +77,7 @@ import {
   type FileTruthUiState,
 } from './file-truth-state';
 import { RendererPluginHost } from './plugins/RendererPluginHost';
+import { sandboxedPlugin, trustedModulePlugin } from './plugins/sandbox/installed-plugin';
 import { createRendererPluginHosts } from './plugins/bundled/hosts';
 import { RendererPluginClient } from './plugins/RendererPluginClient';
 import { PluginCenter } from './plugins/PluginCenter';
@@ -786,7 +787,16 @@ function NotoWorkspace({ platform }: { platform: NotoPlatform }) {
   }, []);
 
   useEffect(() => {
-    const client = new RendererPluginClient(pluginHostRef.current!, window.notoDesktop.plugins);
+    const client = new RendererPluginClient(pluginHostRef.current!, window.notoDesktop.plugins, (pluginId) => {
+      // A plugin the reader installed: sandboxed in a worker unless it is
+      // trusted fully, and either way gated by its own manifest.
+      const install = pluginSnapshotsRef.current.find((snapshot) => snapshot.id === pluginId)?.presentation.install;
+      if (!install) return undefined;
+      const plugin = install.trust === 'full'
+        ? trustedModulePlugin(install.codeUrl, install.manifest.name)
+        : sandboxedPlugin(install.codeUrl, install.manifest.name);
+      return new RendererPluginHost(() => undefined, { manifest: install.manifest, plugin });
+    });
     pluginClientRef.current = client;
     // The snapshots may be the second of the two to arrive, so every update
     // asks again whether there is now an editor for a waiting plugin.
@@ -2319,15 +2329,14 @@ function NotoWorkspace({ platform }: { platform: NotoPlatform }) {
     const plugins = pluginSnapshots
       .filter((snapshot) => snapshot.lifecycle === 'active')
       .flatMap((snapshot) => {
-        const manifest = bundledManifests.get(snapshot.id);
-        return (manifest?.commands ?? []).map((command) => ({
+        return snapshot.presentation.commands.map((command) => ({
           key: `${snapshot.id}:${command.id}`,
           testId: undefined,
           kind: 'plugin' as const,
           pluginId: snapshot.id,
           commandId: command.id,
           title: command.title,
-          source: manifest?.name ?? snapshot.id,
+          source: snapshot.presentation.name,
         }));
       });
     // The keyboard's way to the git gutter's popover, offered only while the
