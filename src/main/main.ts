@@ -105,10 +105,10 @@ const isDirectory = (candidate: string): boolean => {
  * by a relative path. In development the first argument is the app itself,
  * which is a directory, so the scan starts after it there.
  */
-const folderArgument = (argv: readonly string[]): string | null => {
+const folderArgument = (argv: readonly string[], cwd: string = process.cwd()): string | null => {
   for (const value of argv) {
     if (value.startsWith('-')) continue;
-    const candidate = path.resolve(value);
+    const candidate = path.resolve(cwd, value);
     if (isDirectory(candidate)) return candidate;
   }
   return null;
@@ -158,16 +158,20 @@ app.on('open-file', (event, filePath) => {
 if (!app.requestSingleInstanceLock()) {
   app.quit();
 } else {
-  app.on('second-instance', (_event, argv) => {
-    const folder = folderArgument(argv.slice(1));
+  app.on('second-instance', (_event, argv, workingDirectory) => {
+    // Relative to where the second launch was run, not to this process: a
+    // shell's `noto notes.md` means the notes.md beside that shell.
+    const folder = folderArgument(argv.slice(1), workingDirectory);
     if (folder && session) {
       void session.openFolderPath(folder).catch(() => logger.log('workspace_open_folder_failed', {}));
     }
-    const candidate = markdownArgument(argv);
+    const named = markdownArgument(argv);
+    const candidate = named ? path.resolve(workingDirectory, named) : null;
     if (candidate && session) {
-      void session.openPath(candidate).catch((error) => logger.log('workspace_open_file_failed', {
-        code: error instanceof Error ? error.message.split(':', 1)[0] : 'OPEN_FAILED',
-      }));
+      void session.openPath(candidate).catch((error) => {
+        const message = error instanceof Error ? error.message : '';
+        logger.log('workspace_open_file_failed', { code: message.split(':', 1)[0] || 'OPEN_FAILED', error: message.slice(0, 300) });
+      });
     }
     if (editorWindow && !headless()) {
       if (editorWindow.isMinimized()) editorWindow.restore();
