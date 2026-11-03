@@ -2056,10 +2056,15 @@
   contain-intrinsic-size: auto 1.6em;
 }
 
+/* Painted in full, but the intrinsic size keeps its `auto`. A block without
+   `auto` there loses its last remembered size, so the blocks around the caret
+   forgot how tall they were, and once the reader scrolled on and clicked
+   elsewhere they went back to being skipped off screen at the one-line guess.
+   A table or a fence above the reader shrank to a line, everything below rose
+   with it, and the caret just placed was carried off the top of the window. */
 .ProseMirror > .noto-active-block,
 .ProseMirror > .noto-layout-live {
   content-visibility: visible;
-  contain-intrinsic-size: unset;
 }
 
 /* Height placeholders for top-level blocks the stubbing scroller has dropped
