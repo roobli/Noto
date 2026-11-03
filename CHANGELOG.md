@@ -9,6 +9,135 @@ How releases are made, and what each channel receives, is in
 
 ## [Unreleased]
 
+### Added
+- **See a note's unsaved changes before saving them.** While a note has
+  unsaved changes, its name in the title bar opens them, as does Show Unsaved
+  Changes in the command palette. Three layouts: side by side, stacked with
+  the saved file above the note, and inline with what went struck through and
+  what came marked where it happened. Each changed block is marked, and inside
+  an edited block the words that changed are marked too (Chinese a character at
+  a time). Pointing at a change lights it in both panes, the arrows (or N and
+  P) step through the changes, long unchanged stretches fold away, and the view
+  opens in the layout last chosen. Escape closes it.
+- **Typora's `flow` and `sequence` diagrams draw.** The flowchart.js and
+  js-sequence-diagrams fences Typora notes use are drawn as diagrams in the
+  theme's colours, alongside mermaid. A line that is not their syntax is named
+  in the message under the fence.
+- **Web pages a note embeds with `<iframe>` show.** Typora notes embed pages
+  with `<iframe>`, often scaled down inside a clipping `<div>` so a wide page
+  fits, and both forms now draw. Pages do not load by themselves: each shows
+  a card naming the site with a button that loads that one, until Load web
+  pages embedded in notes is switched on under Images. A page loads in a
+  sandboxed frame that cannot reach the app, open windows, download files or
+  take the window anywhere; only `https:` pages qualify, and not ones on this
+  machine or the local network (an address, `localhost`, `.local` and the
+  like). While a block is being edited its pages wait until the caret leaves,
+  so a half-typed address is never fetched.
+
+- **Plugins you install yourself: from a folder, from GitHub, or from a
+  marketplace.** Plugin Center can add a plugin from a folder you pick, from a
+  GitHub repository (or a folder in one), or from a marketplace, a GitHub
+  repository whose `index.json` lists plugins (set under Settings as
+  `pluginMarketplace`, `roobli/noto-plugins` by default). Each shows what the
+  plugin may do before anything is written, installs switched off, and loads
+  at the next start; a marketplace entry can pin the code's digest, and the
+  install is refused unless it matches. Installed plugins run sandboxed, in a
+  worker with no page, no app API and no network, reach the note only
+  through the capabilities their manifest declares, and cannot add a web
+  address to a note, where the page would fetch it. A plugin installed or
+  updated starts switched off. A plugin can be trusted
+  fully, after a warning, to run inside the editor as a bundled one does;
+  trust ends by itself when its code changes. Plugins can also be dropped
+  into the plugins folder by hand, and one that cannot load is listed with
+  the reason. `docs/plugins.md` says how to write and publish one.
+- **A board of every shortcut, each with a switch.** Settings has a
+  Shortcuts pane listing every key the app answers to, grouped by the menu it
+  sits in, with where each comes from (the menu, the editor, the window or a
+  plugin) and the key written as the menu bar writes it. A search finds one by
+  name, key or source. Switching one off frees the key everywhere it was
+  bound: the menu stops claiming it and the editor and plugins ignore it, and
+  Turn all back on undoes every change. Keys the app cannot do without, and
+  the system's own (Copy, Quit), are listed as always on. The list is read
+  from the menu and the keymap themselves, so it cannot drift from them, and
+  a key held by two things is flagged.
+
+### Changed
+- **Settings use the window.** The panes' list is wider, grouped under General
+  and Advanced, and marks the open pane with a filled pill. Each pane opens
+  with its name and a line saying what it is for, and its settings sit in
+  grouped cards on a wider column centred in the pane, where they were a
+  narrow strip of rows.
+- **Quick open is taller.** It lists up to thirty notes and grows to most of
+  the window's height, where it showed twelve in a strip high on the page.
+- **The log says why, and the remote control can debug.** A failed operation
+  is logged with its reason, and opening and closing a note log how many are
+  open; the log moves aside past 4 MB. The remote control has three read-only
+  debug routes: the state of what is open with the last failures, the log's
+  last events, and the window's recent console lines, held in memory only.
+  `NOTO_REMOTE_PORT` gives a second copy of the app a port of its own.
+- **Diagrams and pictures on a line of their own are centred.** A diagram is
+  centred in the column, and so is a picture that stands alone on its line,
+  whether written as markdown or as the `<img>` tag Typora pastes. A picture
+  with words beside it stays in their run.
+
+### Fixed
+- **A plugin's saved state survives a plugin going away.** A saved state
+  that named a plugin no longer installed was taken for damage, and every
+  plugin failed at the next launch. The entry is now kept, so a plugin that
+  comes back finds its switch where it was left.
+- **Browse Tags has a key that works: Option-Shift-Command-T.** It shared
+  Shift-Command-T with Reopen Closed File, which on macOS took the key, so
+  tags could not be reached from the keyboard. The check for doubled keys
+  compared the two spellings as text and missed it; it compares keys now.
+- **Shift-Command-Up and Down select to the top and bottom again.** Title
+  Shift's chords were caught even while the plugin was off, so the system's
+  selection keys did nothing. A plugin's keys are now caught only while it is
+  on.
+- **A note opened after a settings change follows it.** Auto-pairing,
+  typewriter mode and the check date reached only the notes already open
+  when they changed; a note opened later started from the defaults.
+- **The help panel's keys for Back and Forward are right.** It listed the
+  bracket keys, which indent a list item; they are Option-Command and the
+  arrows.
+- **Notes open however many have been opened before.** Every note opened
+  stayed loaded, and with no tab bar to close one, the 25th was refused, and
+  the refusal was shown nowhere, so the tree simply stopped opening files. The
+  window now keeps the twelve notes most recently in front and lets the older
+  ones go, never one with unsaved changes. Opening another note no longer asks
+  about losing the unsaved one, since nothing is lost, and a note that cannot
+  be opened says why in the status line.
+- **Enter with a Chinese input method types the letters.** Confirming what was
+  typed with a Chinese, Japanese or Korean input method opened the first
+  result in quick open, named a new note half-typed, and acted early in the
+  command palette, find bar, rail search, tag browser, settings fields, a code
+  block's language and the link editor. Each now leaves that Enter to the
+  input method.
+- **A click no longer makes the page jump.** The blocks around the caret
+  forgot how tall they were, so after scrolling on and clicking elsewhere a
+  table, a code block or the frontmatter above would shrink to one line, and
+  the page and the caret jumped by that much; the first click below the top of
+  a note did this almost every time. Blocks keep their size now, and the page
+  stays where it was.
+- **The tree lets go of the old branch when another note opens.** Folders on
+  the path to the previous note kept their held band and lit elbow after a
+  note in another folder was opened.
+- **The tree's guide lines run through the folders held at the top of the
+  sidebar.** A held folder row covered the whole width of the sidebar, so the
+  vertical lines of every level above it disappeared and each held row was
+  left with a short arm in empty space. The held row now starts at its own
+  indent, as in Typora, and each one hangs off its line the way it does when
+  it is not held.
+- **Folder icons are solid again.** A leftover rule drew every folder at about
+  a quarter of its colour, so the tree's folders read as pale smudges. Folder
+  and note icons are now drawn in the same muted ink as the names, as Typora
+  draws them, and an open folder keeps the same shape as a closed one; the
+  arrow beside it says which.
+- **A note's tags line up with its text.** The tags above a note were a
+  centred strip of grey pills that hung off to the right of the page in the
+  wide and full widths. They are now a quiet line of `#tag` words at the head
+  of the page, starting where the text starts at every width, with no fill
+  until the pointer is on one. A click still opens the notes that share it.
+
 ## [0.0.4-alpha.2] - 2026-10-27
 
 Typing no longer changes what a note saves, the sidebar runs the full height

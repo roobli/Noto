@@ -124,7 +124,7 @@ it back is the intended shape; Title Shift and Markdown Padding both do
 exactly this, and their pure transforms in
 `src/renderer/plugins/bundled/transforms.ts` are unit-tested on their own.
 
-Commands appear in the command palette (`Cmd+K`) while the plugin is active,
+Commands appear in the command palette (`Shift+Cmd+P`) while the plugin is active,
 under the title the manifest gives them. Hotkeys are dispatched by the shell
 and reach the plugin through the registry, so they work wherever focus is.
 
@@ -141,10 +141,112 @@ Settings shows this as one index of plugins and one detail at a time. The
 dot beside a name is the state: filled when running, a ring when enabled and
 waiting, faint when off, red when failed.
 
+## Writing a plugin someone can install
+
+A plugin that does not ship with Noto is a folder with two files, named for
+the plugin's id: `manifest.json` and `main.js`. The reader installs it from
+that folder, from a GitHub repository that holds it, or from the marketplace,
+and it lands in `<userData>/plugins/user/<id>/` (on macOS,
+`~/Library/Application Support/Noto/plugins/user/`). A folder copied there by
+hand works too. Plugins are read when Noto starts, so an install, an update,
+a removal or a change of trust takes effect at the next start, which Plugin
+Center offers with a Restart button.
+
+The manifest is the one above with `"runtime": "sandboxed"`, the editor's
+three capabilities to choose from, and one more optional field,
+`description`, a line of at most 200 characters shown before installing. An
+id under `dev.lr00rl.noto.` is refused, and so is a hotkey another plugin
+already holds; such a folder is listed under Not loaded with the reason.
+
+`main.js` is one self-contained ES module, at most 1 MiB, that exports
+`activate(context)`:
+
+```js
+export async function activate(ctx) {
+  ctx.registerCommand('shout.upper', async () => {
+    const markdown = await ctx.port.getMarkdown();
+    await ctx.port.replaceMarkdown(markdown.toUpperCase());
+    ctx.notice('Shouted.');
+  });
+  return () => { /* undo anything activate set up */ };
+}
+```
+
+The context is the `TrustedPluginContext` above, with one difference: by
+default the plugin runs **sandboxed**, in a Web Worker of its own, and the
+port's methods return promises, because each call is a message to the editor.
+Write `await ctx.port.getMarkdown()` and the same code runs in both modes. In
+the sandbox the plugin has no page, no app API and no network: the worker's
+script is served with the page's policy, `connect-src 'none'` included, set
+on the response itself, since a worker takes its policy from its own script
+and the session's header hook does not reach one served from this scheme. A
+port method its manifest did not declare is refused with
+`PLUGIN_CAPABILITY_DENIED`. The note is a way out of its own, since an image
+or an embedded page in it is fetched when it is drawn, so `replaceMarkdown`
+from a sandboxed plugin is refused with `PLUGIN_NETWORK_DENIED` if the new
+text holds a web address the old one did not, however it is written
+(character references, backslashes and line breaks inside the address
+included). There is no process boundary between the worker and the editor:
+it is the model VS Code's web extension host uses, a capability sandbox
+rather than a separate process. A command has ten seconds to finish and
+activation has ten seconds; a worker that misses either, or sends more than
+two hundred messages in a second, is ended. More than forty port calls a
+second, or five replacements, are refused.
+
+The reader can **trust a plugin fully** from its page in Plugin Center,
+after a warning that names its source and code digest. A fully trusted
+plugin is imported into the editor's own page and gets the same context a
+bundled plugin gets, with everything the app can do: every note in any open
+folder, the settings, and the network. Trust is granted to one sha256 of
+`main.js`; change the code, by an update or by hand, and the plugin runs
+sandboxed again until it is trusted anew. The code is served only while the
+file on disk still has the digest in its address, and from an address that
+depends on the trust: a fully trusted plugin's from
+`noto://bundle/plugins/<id>/<sha256>/main.js`, the page's own origin, and a
+sandboxed plugin's from `noto://plugin-code/<id>/<sha256>/main.js`, which only
+the sandbox worker's policy may import from, so a sandboxed plugin's code can
+never run in the page itself. A plugin installed or replaced since the last
+start is switched off at that start, whatever its id's switch said before.
+
+To publish, push the folder to GitHub. The reader pastes
+`https://github.com/owner/repo` (the plugin at the top of the repository) or
+`https://github.com/owner/repo/tree/<ref>/<folder>` into Plugin Center, which
+fetches the two files from `raw.githubusercontent.com` and shows what the
+plugin may do before anything is written.
+
+A **marketplace** is a GitHub repository whose root holds `index.json`.
+Plugin Center reads the one named under Settings (`pluginMarketplace`,
+`owner/repo`, by default `roobli/noto-plugins`; empty turns it off):
+
+```json
+{
+  "schemaVersion": 1,
+  "plugins": [
+    {
+      "id": "local.example.shout",
+      "name": "Shout",
+      "description": "Upper-cases the note.",
+      "version": "1.0.0",
+      "repo": "owner/repo",
+      "ref": "main",
+      "path": "plugins/shout",
+      "sha256": "<shasum -a 256 main.js>"
+    }
+  ]
+}
+```
+
+`ref` and `path` are optional. With `sha256`, the install is refused unless
+the fetched `main.js` has exactly that digest, and the preview says the code
+is the code the marketplace vouched for. `manifestSha256` pins
+`manifest.json` the same way, which holds the capabilities as well as the
+code. `docs/plugin-marketplace/` has a
+starting point for such a repository.
+
 ## Adding a bundled plugin today
 
-Plugins ship inside the application. There is no plugins folder to drop a
-file into yet; see the last section. To add one to the build:
+Bundled plugins are compiled into the application and run trusted. To add
+one to the build:
 
 1. Put a `manifest.json` in `resources/plugins/<id>/`. Main discovers it at
    launch from that folder, and refuses a manifest that is not a regular file,
@@ -172,14 +274,13 @@ in `src/shared/plugins/protocol.ts` and an entry for the utility process; read
 Be clear-eyed about what is not yet there, because it changes what you should
 build:
 
-- **No third-party loading.** Plugin code is compiled into the application
-  and discovered only from the bundled resources folder. A sandboxed runtime
-  for untrusted code exists, with its own origin, session, preload and content
-  security policy under `src/main/protocol/register-experimental-plugin-protocol.ts`
-  and `src/main/plugins/experimental-plugin-runtime-host.ts`, but the
-  application never launches it. Opening it, with a user plugins folder, a
-  package digest, and an install flow, is the next step on this road; until
-  then a plugin is a pull request.
+- **Installs take effect at the next start.** The catalog is read once at
+  launch, so Plugin Center restarts Noto rather than loading a plugin live.
+  The sandbox is a worker in the editor's process, not a process of its own;
+  the separate-process runtime under
+  `src/main/plugins/experimental-plugin-runtime-host.ts` is still never
+  launched. A plugin is one `main.js`: no archives, no extra files, no
+  signing, and no automatic updates.
 - **Activation is on `editor.ready` only.** When a document's editor comes up
   and an enabled plugin is waiting, the shell raises `editor.ready` and the
   plugin activates, so a plugin enabled yesterday is running when a note

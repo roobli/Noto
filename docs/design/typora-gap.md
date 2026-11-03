@@ -1474,3 +1474,80 @@ a habit slice), and the open-path distance to Typora after the dual-parse remova
 PROFILE shows no clear first cut yet. Hub-note graph data is closed on both
 sides: Noto's rail (#14 + MOC graph-rail) and the index tool's lightweight hub
 rows (#34); rebuild the local `graph.json` to pick up.
+
+## 71. The held rows lost the tree's lines, and the folders were pale. Closed.
+
+Against the author's window on the same branch of the vault, two things in
+the rail read as unfinished.
+
+The held rows of the path to the open note each drew a lone arm and no line.
+Every level's stem was there, under the held rows as it should be, but each
+held row painted its band out to the rail's edge (`left: -600px`), so the band
+covered the gutter where the stems above it stand. The theme pins the indented
+row itself, so its band starts at the row's indent and the gutter stays open.
+That is the rule now. Nothing that scrolls under the stack can show in that
+gutter: whatever lies under the row held at depth d is inside that folder, one
+level deeper at least, and starts to the right of where the band begins. A
+held row in the middle of its folder also draws the lit stretch from its top
+to its arm, the square elbow it has at rest, where before it drew only the
+arm. `tests/e2e/guides-and-help-packaged.spec.ts` checks both: the stems that
+go on past a held row span it and stand left of its band, and a held row's
+elbow is square in the middle of a folder and rounded at its end.
+
+The folders were drawn at about a quarter of their colour, which sampled at
+`#cfccc8` against Typora's `#6f6b66`. A rule left from when the folder was an
+outline, `.tree-directory .tree-glyph`, filled it at 32% and outweighed the
+folder's own fill, and the glyphs were faded a further 15% on top. Both are
+gone, so the folder and the page are the muted ink, as the names are and as
+Typora draws them. The lifted flap on an open folder went too: at 15px it came
+out as a pale stripe across the lower half, and Typora draws an open folder
+the same as a closed one and lets the twisty say which.
+
+## 72. Typora's older diagrams showed as code, and drawings sat against the left edge. Closed.
+
+Typora draws three kinds of diagram fence: mermaid, `flow` with flowchart.js
+and `sequence` with js-sequence-diagrams. Noto drew only mermaid, so the other
+two showed as their source; the author's own Markdown reference note has two of
+each. Rather than carry both libraries and their Raphael dependency into the
+diagram frame, `src/renderer/diagram/legacy-diagrams.ts` rewrites each fence as
+the mermaid diagram that says the same thing: a flowchart.js symbol becomes the
+mermaid shape that reads the same, a condition's `yes` and `no` label the edges
+they leave by, and js-sequence-diagrams' four arrows become mermaid's filled and
+open heads. Side hints such as `(right)` are dropped, since mermaid lays the
+graph out itself. A line that is neither syntax is named under the fence, as a
+mermaid parse error is. The drawing is mermaid's, in the theme's palette, so it
+does not look like Typora's flowchart.js drawing, but it says the same thing.
+
+Typora centres a diagram; Noto set it against the left of the column, where a
+narrow one read as a block that had failed to fill the line. It is centred now,
+and so is a picture on a line of its own, whether a markdown image or the
+`<img>` tag Typora pastes. A picture with words beside it stays in their run.
+CSS cannot tell the two apart, because ProseMirror keeps a paragraph's text as
+bare text nodes that `:only-child` does not count, so `image-line.ts` marks the
+paragraphs that hold nothing but pictures, at the top of a note and inside a
+quote but not in a list or a table, where a picture belongs to its bullet or
+its cell.
+
+## 73. Pages a note embeds with `<iframe>` showed nothing. Closed.
+
+Thirteen of the author's notes embed a web page with `<iframe>`, most of them
+WeChat developer docs, and the Markdown reference note also uses the CSDN
+trick of scaling a wide page down inside a clipping `<div>`. Typora draws
+them as a browser would; Noto's HTML cleaning dropped the tag, so each showed
+as nothing. The cleaning now turns an `<iframe>` into a placeholder of the
+size and place the note asked for, keeping `position`, offsets, `transform`
+(scale and translate only) and `overflow`, so the scaled form draws as it does
+in Typora. A placeholder that is not placed absolutely is held to the column,
+since most embed codes ask for a fixed width wider than the page.
+
+Typora loads every page a note names as soon as the note opens. Noto does not,
+because a note can come from anywhere and a page is a request to a stranger's
+server: each embed is a card naming the site, with a button that loads that
+page, until Load web pages embedded in notes is switched on under Images. A
+loaded page runs in a frame sandboxed to scripts, forms and its own origin,
+and only that frame, named by the editor, may follow links on the web; the
+main process refuses it the app's own pages, including through a server
+redirect. Pages on this machine or the local network are refused outright,
+and while a block's source is being edited its pages wait for the caret to
+leave, so a half-typed address is never fetched. Zhihu answers with its own
+error page inside a frame, which is the site's choice.

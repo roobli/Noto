@@ -33,6 +33,10 @@ BASE=http://127.0.0.1:$PORT
 Both files are readable by your account alone, and both go when it stops, so
 a stale one never points at a port with nothing on it.
 
+It listens on port 37610. A second copy of the app, a development build
+beside the one in daily use, can set `NOTO_REMOTE_PORT` to another port from
+1024 up, or it finds that port taken and does not listen at all.
+
 ## The requests
 
 Every reply is JSON. The token goes in the `Authorization` header. A refusal
@@ -51,6 +55,9 @@ English: `unauthorized`, `browser`, `host`, `no-route`, `bad-body`,
 | `/v1/insert` | POST | `{"text": "...", "at": "caret"}` | Puts the text in. `caret` is where you are; `end` adds it as blocks after the last one |
 | `/v1/command` | POST | `{"command": "save"}` | Runs one of the commands below |
 | `/v1/search` | POST | `{"query": "...", "caseSensitive": false, "wholeWord": false, "regex": false}` | Searches the vault, as the rail's search does |
+| `/v1/debug/state` | GET | | The notes open and which is in front, the ceiling on open notes, the renderer's error and warning counts, the last failed operations with their reasons, and where the log is |
+| `/v1/debug/log` | GET | `?lines=100&event=workspace_` | The log's last events, newest last, optionally only those whose name starts with `event`. `lines` is 1 to 1000 |
+| `/v1/debug/console` | GET | `?lines=100` | The window's last console lines, text and all, held in memory and gone when the app quits. `lines` is 1 to 300 |
 
 The commands are `save`, `save-as`, `find`, `search-content`, `quick-open`,
 `source-code-mode`, `toggle-sidebar`, `toggle-outline`, `toggle-read-only`,
@@ -61,6 +68,23 @@ unsaved changes are included, and `source` says `editor`. The text is what the
 file would hold if it were saved at that moment, the same line endings and the
 same last line, so comparing it against the file is meaningful. When no window
 answers in time it falls back to the file and says `disk`.
+
+## Debugging with it
+
+The log on disk, `evidence/main.ndjson` beside the settings, records what
+happened without the words of a note: a console line is kept there only as its
+size and a hash. When something misbehaves, the debug routes say the rest
+without anyone opening a file. A note that will not open, for instance:
+
+```sh
+curl -s -H "Authorization: Bearer $TOKEN" "$BASE/v1/debug/state" | jq '.documents, .recentFailures'
+curl -s -H "Authorization: Bearer $TOKEN" "$BASE/v1/debug/log?event=workspace_&lines=40" | jq -c '.entries[]'
+curl -s -H "Authorization: Bearer $TOKEN" "$BASE/v1/debug/console?lines=50" | jq -r '.entries[] | "\(.level) \(.source):\(.line) \(.message)"'
+```
+
+A failed operation is logged with its reason, opening and closing a note log
+how many are open, and the log moves to `main.1.ndjson` past 4 MB, so the
+newest events and the stretch before them are always there.
 
 ## An example
 
