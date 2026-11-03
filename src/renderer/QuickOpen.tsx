@@ -212,7 +212,7 @@ export function QuickOpen({
     if (trimmed.length === 0) {
       // No query, so nothing is being matched: order by history alone and take
       // the same number the ranked list would have shown.
-      return [...candidates]
+      const recent = [...candidates]
         .map((candidate) => ({
           candidate,
           score: searchBoost(frecency, candidate.entry.path, now),
@@ -220,8 +220,18 @@ export function QuickOpen({
         .filter((scored) => scored.score > 0)
         .sort((a, b) => b.score - a.score
           || a.candidate.pathKey.localeCompare(b.candidate.pathKey))
-        .slice(0, LIMIT)
         .map((scored) => scored.candidate);
+      if (effectiveScope.length === 0) return recent.slice(0, LIMIT);
+      // Inside a folder the folder is what was asked for: its notes, the ones
+      // opened lately first and then the rest, nearest the folder first. The
+      // history alone left a folder nobody had opened a note from looking
+      // empty while its placeholder counted the notes in it.
+      const seen = new Set(recent.map((candidate) => candidate.entry.path));
+      const depth = (candidate: Candidate) => candidate.pathKey.split('/').length;
+      const rest = candidates
+        .filter((candidate) => !seen.has(candidate.entry.path))
+        .sort((a, b) => depth(a) - depth(b) || a.pathKey.localeCompare(b.pathKey));
+      return [...recent, ...rest].slice(0, LIMIT);
     }
     const pathQuery = isPathQuery(trimmed);
     return rankCandidates(
@@ -233,7 +243,7 @@ export function QuickOpen({
       }),
       LIMIT,
     );
-  }, [candidates, frecency, terms]);
+  }, [candidates, frecency, terms, effectiveScope]);
 
   useEffect(() => { setSelected(0); }, [query]);
 
@@ -327,7 +337,7 @@ export function QuickOpen({
     // way out of a scope that does not need a control of its own.
     if ((event.key === 'Backspace' || event.key === 'ArrowLeft') && query.length === 0 && scope.length > 0) {
       event.preventDefault();
-      setScope((current) => current.split('/').slice(0, -1).join(''));
+      setScope((current) => current.split('/').slice(0, -1).join('/'));
       return;
     }
     if (event.key === 'ArrowDown' || (event.ctrlKey && event.key === 'n')) {
@@ -533,7 +543,7 @@ export function QuickOpen({
                 {entries.length === 0
                   ? 'No folder is open, so there is nothing to search yet.'
                   : terms.trim().length === 0
-                    ? 'Nothing opened yet. Type to search.'
+                    ? effectiveScope.length > 0 ? 'No notes in this folder.' : 'Nothing opened yet. Type to search.'
                     : 'No note matches that.'}
               </p>
             )
