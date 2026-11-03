@@ -19,7 +19,7 @@ async function invokeMenu(app: ElectronApplication, id: string): Promise<void> {
   }, id);
 }
 
-async function launch(name: string): Promise<{ app: ElectronApplication; page: Page }> {
+async function launch(name: string, options: { siblings?: boolean } = {}): Promise<{ app: ElectronApplication; page: Page }> {
   const workspace = path.join(process.cwd(), 'test-results', 'guides-help', name);
   await rm(workspace, { recursive: true, force: true });
   await mkdir(path.join(workspace, 'user-data'), { recursive: true });
@@ -35,6 +35,13 @@ async function launch(name: string): Promise<{ app: ElectronApplication; page: P
   await mkdir(aside, { recursive: true });
   for (let index = 1; index <= 12; index += 1) {
     await writeFile(path.join(aside, `other_${String(index).padStart(2, '0')}.md`), `# a${index}\n`, 'utf8');
+  }
+  // A note after `works` and after `jobs`, so neither is the last of its level
+  // and their stems have to carry on through the rows held below them, while
+  // `data` stays the last of its own and turns the corner.
+  if (options.siblings) {
+    await writeFile(path.join(vault, 'readme.md'), '# Readme\n', 'utf8');
+    await writeFile(path.join(vault, 'works', 'zeta.md'), '# Zeta\n', 'utf8');
   }
   const app = await electron.launch({
     executablePath: packagedExecutable(),
@@ -102,6 +109,76 @@ test.describe('the guide lines under a held row', () => {
     }
   });
 
+  test('carry the stems of the levels above a held row on through it', async () => {
+    const { app, page } = await launch('through', { siblings: true });
+    try {
+      for (const name of ['works', 'jobs', 'data']) {
+        await page.getByTestId('tree-directory').filter({ hasText: name }).first().click();
+      }
+      await page.getByTestId('tree-file').filter({ hasText: 'note_28' }).click();
+      await expect(page.locator('.tree-directory[data-stuck]').first()).toBeVisible();
+
+      // For every held row, the stems that go on past it: each level above it
+      // whose child on the way down has a later sibling. A held row's band
+      // used to reach out to the rail's edge, so it covered every one of them
+      // and each row in the stack was left a lone arm.
+      const held = await page.evaluate(() => Array.from(
+        document.querySelectorAll<HTMLElement>('.tree-directory[data-stuck], .tree-node-active[data-stuck]'),
+      ).map((row) => {
+        const box = row.getBoundingClientRect();
+        const bandLeft = box.left + Number.parseFloat(getComputedStyle(row, '::before').left);
+        const stems: { x: number; top: number; bottom: number }[] = [];
+        let node: HTMLElement | null = row.classList.contains('tree-node') ? row : row.parentElement;
+        while (node) {
+          const level = node.parentElement;
+          if (!level?.classList.contains('tree-level') || level.classList.contains('is-root')) break;
+          if (node.nextElementSibling) {
+            const stem = getComputedStyle(level, '::before');
+            const top = level.getBoundingClientRect().top + Number.parseFloat(stem.top);
+            stems.push({ x: level.getBoundingClientRect().left, top, bottom: top + Number.parseFloat(stem.height) });
+          }
+          node = level.parentElement;
+        }
+        return { top: box.top, bottom: box.bottom, bandLeft, stems };
+      }));
+
+      expect(held.some((row) => row.stems.length > 0)).toBe(true);
+      for (const row of held) {
+        for (const stem of row.stems) {
+          // In the gutter the band leaves open, and the whole height of the row.
+          expect(stem.x).toBeLessThan(row.bandLeft);
+          expect(stem.top).toBeLessThanOrEqual(row.top + 1);
+          expect(stem.bottom).toBeGreaterThanOrEqual(row.bottom - 1);
+        }
+      }
+    } finally {
+      await app.close();
+    }
+  });
+
+  test('let go of the rows the branch has left when another note opens', async () => {
+    const { app, page } = await launch('released', { siblings: true });
+    try {
+      for (const name of ['works', 'jobs', 'aside', 'data']) {
+        await page.getByTestId('tree-directory').filter({ hasText: name }).first().click();
+      }
+      await page.getByTestId('tree-file').filter({ hasText: 'note_28' }).click();
+      const data = page.getByTestId('tree-directory').filter({ hasText: 'data' }).first();
+      await expect(data).toHaveAttribute('data-stuck');
+
+      // A note at the top of the vault: every row of the old branch is off the
+      // path now, and each kept its held band and lit elbow, the previous
+      // note's own row included, until the mark was cleared.
+      await page.getByTestId('tree-file').filter({ hasText: 'readme' }).click();
+      await expect(data).not.toHaveClass(/tree-on-path/);
+      await expect(data).not.toHaveAttribute('data-stuck');
+      await expect(page.locator('.tree-directory[data-stuck]:not(.tree-on-path)')).toHaveCount(0);
+      await expect(page.locator('.tree-node[data-stuck]:not(.tree-node-active)')).toHaveCount(0);
+    } finally {
+      await app.close();
+    }
+  });
+
   test('light the branch only as far as the corner that finishes it', async () => {
     const { app, page } = await launch('lit');
     try {
@@ -133,7 +210,7 @@ test.describe('the guide lines under a held row', () => {
 });
 
 test('a held row keeps the shape it has standing still', async () => {
-  const { app, page } = await launch('corner');
+  const { app, page } = await launch('corner', { siblings: true });
   try {
     for (const name of ['works', 'jobs', 'data']) {
       await page.getByTestId('tree-directory').filter({ hasText: name }).first().click();
@@ -141,8 +218,10 @@ test('a held row keeps the shape it has standing still', async () => {
     await page.getByTestId('tree-file').filter({ hasText: 'note_28' }).click();
     await expect(page.locator('.tree-directory[data-stuck]').first()).toBeVisible();
 
-    // `data` is the last row of its level and turns a corner; `jobs` is not
-    // and meets its stem at a right angle. Held, each keeps its own shape.
+    // `data` is the last row of its level and turns a corner; `works` and
+    // `jobs` are not and meet their stems at a right angle. Held, each keeps
+    // its own shape: the lit stroke runs down from the row's top to its arm
+    // either way, square in the middle of a folder and rounded at its end.
     const shapes = await page.evaluate(() => Array.from(
       document.querySelectorAll<HTMLElement>('.tree-directory[data-stuck]'),
     ).map((row) => ({
@@ -151,15 +230,12 @@ test('a held row keeps the shape it has standing still', async () => {
       radius: getComputedStyle(row, '::after').borderBottomLeftRadius,
       left: getComputedStyle(row, '::after').borderLeftWidth,
     })));
-    expect(shapes.length).toBeGreaterThan(1);
+    expect(shapes.some((shape) => shape.last)).toBe(true);
+    expect(shapes.some((shape) => !shape.last)).toBe(true);
     for (const shape of shapes) {
-      if (shape.last) {
-        expect(shape.radius).not.toBe('0px');
-        expect(shape.left).toBe('1px');
-      } else {
-        expect(shape.radius).toBe('0px');
-        expect(shape.left).toBe('0px');
-      }
+      expect(shape.left).toBe('1px');
+      if (shape.last) expect(shape.radius).not.toBe('0px');
+      else expect(shape.radius).toBe('0px');
     }
   } finally {
     await app.close();

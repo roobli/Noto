@@ -307,6 +307,15 @@ export function FileTree({
     let frame = 0;
     const mark = () => {
       frame = 0;
+      // The mark is set by hand, so React never takes it off. A row that has
+      // left the path, because another note was opened or its folder closed,
+      // kept it and went on drawing a held row's band and lit elbow where the
+      // branch no longer runs.
+      for (const stale of body.querySelectorAll<HTMLElement>('[data-stuck]')) {
+        if (!stale.matches('.tree-directory.tree-on-path[aria-expanded="true"], .tree-node-active')) {
+          stale.removeAttribute('data-stuck');
+        }
+      }
       // An ancestor's row is stuck when it sits below the top of its own node.
       for (const row of body.querySelectorAll<HTMLElement>('.tree-directory.tree-on-path[aria-expanded="true"]')) {
         const node = row.parentElement;
@@ -434,7 +443,7 @@ export function FileTree({
                 >
                   <span className="tree-leading">
                     <span className={isOpen ? 'tree-twisty tree-twisty-open' : 'tree-twisty'} aria-hidden="true" />
-                    <FolderGlyph open={isOpen} />
+                    <FolderGlyph />
                   </span>
                   {editing && editing.intent !== 'new-folder' && editing.path === entry.path
                     ? <NameField initial={entry.name} onDone={commitEdit} />
@@ -447,7 +456,7 @@ export function FileTree({
                       <div className="tree-row tree-directory" data-depth={depth + 1}>
                         <span className="tree-leading">
                           <span className="tree-twisty tree-twisty-blank" aria-hidden="true" />
-                          <FolderGlyph open={false} />
+                          <FolderGlyph />
                         </span>
                         <NameField initial="New Folder" onDone={commitEdit} />
                       </div>
@@ -549,7 +558,7 @@ export function FileTree({
               line starts. */}
           <div className={`tree-row tree-directory tree-vault-row${dropClass(root)}`} data-testid="tree-vault"
             data-depth={0} title={root} {...dropProps(root)}>
-            <FolderGlyph open />
+            <FolderGlyph />
             <span className="tree-name">{vaultName}</span>
             {vaultMenu}
           </div>
@@ -562,18 +571,15 @@ export function FileTree({
 
 /*
  * The glyphs that make a row of names read as files rather than as an
- * outline. Drawn inline in the title bar's stroke style, so they inherit the
- * row's colour and need no asset; a folder shows a lifted flap when it is
- * open, which repeats what the twisty says in a second place so the eye can
- * take either.
+ * outline. Drawn inline, so they inherit the row's colour and need no asset.
+ * A folder is the same solid shape open or shut, as Typora's is: the twisty
+ * says which. A lifted flap drawn in the panel colour came out at 15px as a
+ * pale stripe across the lower half, a two-tone smudge beside the name.
  */
-function FolderGlyph({ open }: { open: boolean }) {
+function FolderGlyph() {
   return (
     <svg className="tree-glyph tree-glyph-folder" viewBox="0 0 16 16" aria-hidden="true">
-      {/* Filled, as the theme's icon font draws it. The open state shows as
-          the flap lifted, not as a rule across the middle. */}
       <path d="M1.5 4.25a1 1 0 0 1 1-1h3.2l1.4 1.5h6.4a1 1 0 0 1 1 1v6.5a1 1 0 0 1-1 1h-11a1 1 0 0 1-1-1z" />
-      {open && <path className="tree-glyph-flap" d="M1.5 7h13v5.25a1 1 0 0 1-1 1h-11a1 1 0 0 1-1-1z" />}
     </svg>
   );
 }

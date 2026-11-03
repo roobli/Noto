@@ -1436,10 +1436,16 @@
   background: var(--surface-active);
 }
 
-/* A stuck row spans the whole rail, flush. The row is an indented box, so a
-   ::before reaches past the left gutter (stems/arms) where the scrollport
-   clips it, and adds the hairline + faint shadow the theme shows when pinned.
-   The sticky element's own opaque fill stays — clearing it to transparent and
+/* A stuck row's band starts at the row's own indent, as the theme's does: it
+   pins the indented row itself, hairline and faint shadow included. The gutter
+   to its left stays open, so the stem of every level above it runs on through
+   the held stack and each held row hangs off its line exactly as it does at
+   rest. Nothing scrolled underneath can show in that gutter: whatever lies
+   under the row held at depth d belongs to that folder, so it is at least one
+   level deeper and starts to the right of where the band begins.
+   A band reaching out to the rail's edge covered every vertical in the stack
+   and left each held row a lone arm floating in the panel.
+   The sticky element's own opaque fill stays: clearing it to transparent and
    relying only on a z-index:-1 band let deeper sticky siblings and guides
    paint through as overlapping glyphs. */
 .tree-directory[data-stuck],
@@ -1453,7 +1459,7 @@
   position: absolute;
   top: 0;
   bottom: 0;
-  left: -600px;
+  left: 0;
   right: 0;
   z-index: -1;
   width: auto;
@@ -1477,11 +1483,14 @@
    the node's own corner to the pixel: it used to sit a pixel up and left with
    a smaller radius, and where the two overlapped they drew as one thick hook. */
 /*
- * The arm alone, or the corner, exactly as the row would draw it standing
- * still. A row that is not the last of its level meets its stem at a right
- * angle; only the last one turns. Held rows all drew the corner, so a row in
- * the middle of a folder grew a curve on the way up and lost it on the way
- * down, which is the tree changing shape under the reader.
+ * The lit branch into the row, exactly as the row would draw it standing
+ * still. A held row sits straight under its parent's, at the top of its own
+ * level, so the lit stem that reaches it is the stretch from the row's top
+ * down to its arm: a square elbow for a row in the middle of a folder, and the
+ * rounded corner for the last one. Held rows all drew the corner once, so a
+ * row in the middle of a folder grew a curve on the way up and lost it on the
+ * way down, which is the tree changing shape under the reader. The quiet stem
+ * carries on below the elbow from the level itself, through the open gutter.
  */
 .tree-directory[data-stuck]::after,
 .tree-node-active[data-stuck]::after {
@@ -1493,10 +1502,18 @@
   width: var(--tree-indent);
   height: var(--tree-arm);
   background: none;
-  border-left: 0;
+  border-left: 1px solid var(--tree-lit);
   border-bottom: 1px solid var(--tree-lit);
   border-bottom-left-radius: 0;
   pointer-events: none;
+}
+
+/* Once its row is held, the elbow above is the level's lit stem. The level's
+   own lit stem still reaches the row's resting arm for the first 14px of
+   scroll, and two translucent strokes over one stretch drew it darker. */
+.tree-level:has(> .tree-node > .tree-directory[data-stuck])::after,
+.tree-level:has(> .tree-node-active[data-stuck])::after {
+  height: 0;
 }
 
 /* The last row of its level keeps the corner it has when it is standing
@@ -1627,7 +1644,10 @@
 
 /* The file and folder glyphs, in the muted tier so they read as furniture
    and the names stay the text; the current file's glyph comes up to ink with
-   its name. Above the connector, like the name, so an arm never crosses it. */
+   its name. Above the connector, like the name, so an arm never crosses it.
+   At full strength: sampled from the author's window, Typora draws both in
+   the muted ink itself, the same value as the names, and a glyph faded below
+   its name read as a smudge beside it. */
 .tree-glyph {
   position: relative;
   flex: 0 0 auto;
@@ -1639,23 +1659,16 @@
   stroke-linejoin: round;
   stroke-linecap: round;
   color: var(--muted);
-  opacity: 0.85;
 }
 
 /* A folder is a solid shape, as the theme's icon font draws it; a file is a
-   page drawn in line. The open folder's flap is the same colour a shade
-   lighter, which is how a lifted flap reads without a second colour. */
+   page drawn in line. */
 .tree-glyph-folder {
   fill: currentcolor;
   stroke: none;
 }
 
-.tree-glyph-flap {
-  fill: var(--panel);
-  opacity: 0.45;
-}
-
-.tree-file-active .tree-glyph { color: var(--ink); opacity: 1; }
+.tree-file-active .tree-glyph { color: var(--ink); }
 
 /* The name sits above the stem and paints the rail's own background behind
    itself, so a connector never runs through a letter. It is also its own
@@ -2328,11 +2341,6 @@
 :root[data-timelines='off'] .ProseMirror pre .noto-timeline-frame {
   display: none;
 }
-
-/* Typora's folder is a solid shape and its file an outline; a tree of thin
-   outlines read as wire. The fill is the glyph's own colour at a wash so the
-   open folder's flap still shows as a line through it. */
-.tree-directory .tree-glyph { fill: color-mix(in srgb, currentColor 32%, transparent); }
 
 /* The theme outlines a picture with a hairline drawn inside its edge, so a
    white image on the page still has a boundary. */
