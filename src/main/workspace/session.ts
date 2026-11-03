@@ -17,7 +17,7 @@ import type { SearchFlags } from '../../shared/search/pattern';
 import path from 'node:path';
 import { access, cp, lstat, mkdir, readFile, readdir, realpath, rename, rm, stat, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
-import { randomUUID } from 'node:crypto';
+import { createHash, randomUUID } from 'node:crypto';
 import { BrowserWindow, Menu, clipboard, dialog, shell, type MenuItemConstructorOptions } from 'electron';
 import { FILE_TRUTH_CHANNELS, type FileTruthOpenReplyV1 } from '../../shared/file-truth/v1/contracts';
 import { openableExternalUrl } from '../../shared/workspace/v1/validate';
@@ -254,7 +254,7 @@ export class WorkspaceSession {
       if (this.folderRoot === null) await this.adoptFolder(path.dirname(resolved), false);
       await this.recent.remember(resolved);
       this.applyWindowTitle(resolved);
-      this.logger.log('workspace_code_view_opened', { openCount: this.documents.size });
+      this.logger.log('workspace_code_view_opened', { pathTag: pathTag(resolved), openCount: this.documents.size });
       return { version: NOTO_WORKSPACE_VERSION, codeView };
     }
     throw new Error(
@@ -267,6 +267,9 @@ export class WorkspaceSession {
     const existing = this.documents.get(resolved);
     if (existing) {
       this.activate(resolved);
+      // Logged too, so every press on a row leaves a line saying which note
+      // it brought forward, not only the presses that loaded one.
+      this.logger.log('workspace_document_shown', { pathTag: pathTag(resolved), openCount: this.documents.size });
       return existing.opened;
     }
 
@@ -300,6 +303,7 @@ export class WorkspaceSession {
     if (this.folderRoot === null) await this.adoptFolder(path.dirname(resolved), false);
     await this.recent.remember(opened.path);
     this.logger.log('workspace_document_opened', {
+      pathTag: pathTag(resolved),
       hasRecovery: opened.recovery !== null,
       openCount: this.documents.size,
     });
@@ -1119,7 +1123,7 @@ export class WorkspaceSession {
           version: NOTO_WORKSPACE_VERSION, path: target, intent: 'new-note',
         });
       }
-      this.logger.log('workspace_note_created', {});
+      this.logger.log('workspace_note_created', { pathTag: pathTag(target) });
       return { version: NOTO_WORKSPACE_VERSION, created: true, path: target };
     }
     throw new Error('A hundred notes here are already called Untitled.');
@@ -1565,4 +1569,13 @@ export class WorkspaceSession {
     window.setTitle('Noto');
     window.setRepresentedFilename('');
   }
+}
+
+/**
+ * A short tag for a path in the log: the same note always gets the same tag,
+ * so a run of opens can be matched to the rows pressed, and the log never
+ * holds the vault's names. `shasum -a 256` of the path gives the same prefix.
+ */
+function pathTag(filePath: string): string {
+  return createHash('sha256').update(filePath).digest('hex').slice(0, 12);
 }
