@@ -103,6 +103,20 @@ How releases are made, and what each channel receives, is in
 
 ### Fixed
 
+- A click on a note opens that note when another open note has the same
+  bytes. Every new note starts empty, and so does an untouched copy of a
+  template, so a working folder often holds several identical files. A
+  note's identity was the hash of its bytes, so a click on the second empty
+  note showed the first, the tree marked the first as the one in front, and
+  a save could be routed to the wrong file. Each open note now has an
+  identity of its own.
+- Off macOS, Inline Math and Toggle Task Status no longer share Control-M
+  and Control-X with Minimize and Cut, and Close Window no longer shares
+  Control-W with Close Tab. They move to Alt+Shift+M, Alt+Shift+X and
+  Control+Shift+W; macOS keeps Typora's keys.
+- Quitting cannot hang on a step that never finishes. Each step of the
+  shutdown (plugins, the plugin runtime, the service, settings) has a
+  deadline and is logged when it runs past it.
 - Unsaved edits are asked about before they are lost. Close Tab on an
   unsaved note asks Save, Don't Save or Cancel; quitting or closing the
   window with unsaved notes asks Review Changes or Discard and Quit; Trash

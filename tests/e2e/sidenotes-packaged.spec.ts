@@ -81,23 +81,21 @@ test.describe('sidenotes', () => {
         const result = await window.notoDesktop.plugins.getSnapshots({ version: 1, requestId: `snapshots-${Date.now()}` });
         return result.ok ? result.value.snapshots.find((plugin) => plugin.id === 'dev.lr00rl.noto.sidenotes')?.lifecycle : null;
       }), { timeout: 15_000 }).toBe('active');
-      // Select "words" the way a reader does, with a double click on it, and
-      // wait until the editor holds that selection: a range set straight on
-      // the DOM could still be unread when the key arrived, and the note went
-      // in empty at the top of the document.
+      // Select "words" from the keyboard, and wait until the editor holds that
+      // selection: a range set straight on the DOM could still be unread when
+      // the key arrived, and the note went in empty at the top of the
+      // document. A double click is no better, since Windows takes the space
+      // after the word with it.
       const paragraph = page.locator('.ProseMirror p').first();
-      const word = await paragraph.evaluate((p) => {
-        const text = p.firstChild!;
-        const at = text.textContent!.indexOf('words');
-        const range = document.createRange();
-        range.setStart(text, at);
-        range.setEnd(text, at + 'words'.length);
-        const box = range.getBoundingClientRect();
-        return { x: box.left + box.width / 2, y: box.top + box.height / 2 };
-      });
-      await page.mouse.dblclick(word.x, word.y);
+      await paragraph.click();
       await expect(paragraph).toHaveClass(/noto-active-block/);
+      await page.keyboard.press(process.platform === 'darwin' ? 'Meta+ArrowLeft' : 'Home');
+      for (let step = 0; step < 'Plain '.length; step += 1) await page.keyboard.press('ArrowRight');
+      for (let step = 0; step < 'words'.length; step += 1) await page.keyboard.press('Shift+ArrowRight');
       await expect.poll(() => page.evaluate(() => window.getSelection()?.toString())).toBe('words');
+      // The editor reads the selection on the browser's selectionchange, which
+      // is queued after the selection moves; two frames let the last one land.
+      await page.evaluate(() => new Promise((resolve) => requestAnimationFrame(() => requestAnimationFrame(resolve))));
       await page.keyboard.press(process.platform === 'darwin' ? 'Meta+Alt+KeyS' : 'Control+Alt+KeyS');
       await expect(page.locator('.ProseMirror .noto-sidenote')).toHaveText('words');
     } finally {

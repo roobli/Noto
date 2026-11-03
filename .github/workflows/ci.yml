@@ -1,9 +1,14 @@
 name: CI
 
+# A change to prose alone (the changelog, the docs, a README) cannot break the
+# build or the app, and the packaged suite takes half an hour on three systems,
+# so it does not start one.
 on:
   push:
     branches: [main]
+    paths-ignore: ['**/*.md', 'docs/**', 'LICENSE']
   pull_request:
+    paths-ignore: ['**/*.md', 'docs/**', 'LICENSE']
   workflow_dispatch:
 
 # A newer push supersedes an in-flight run on the same ref.
@@ -42,6 +47,9 @@ jobs:
     name: Packaged e2e (${{ matrix.os }})
     needs: check
     runs-on: ${{ matrix.os }}
+    # A full run takes about thirty minutes on the slowest system; a hung app
+    # should fail the job, not hold a runner for six hours.
+    timeout-minutes: 60
     strategy:
       fail-fast: false
       matrix:

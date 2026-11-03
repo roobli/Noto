@@ -21,6 +21,11 @@ export default defineConfig({
   expect: { timeout: 10_000 },
   fullyParallel: false,
   workers: 1,
+  // On CI a failed test runs once more. A real regression fails both times
+  // and fails the job; one that passes the second time is listed as flaky in
+  // the report instead of failing a change that did not cause it. Locally a
+  // failure is reported at once.
+  retries: process.env.CI ? 1 : 0,
   reporter: [['list']],
   outputDir: 'test-results/playwright',
   use: { trace: 'retain-on-failure' },
