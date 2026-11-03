@@ -546,6 +546,9 @@
   }
 }
 .ProseMirror .noto-html-block.noto-html-editing > .noto-html-preview { display: none; }
+/* A block drawn as a picture is one `<img>` and nothing else, so it is always
+   a picture on a line of its own, centred as a markdown one is. */
+.ProseMirror .noto-html-block[data-preview='image'] > .noto-html-preview { text-align: center; }
 
 .ProseMirror .noto-inline-html[data-preview='image'] {
   background: none;
@@ -2164,7 +2167,7 @@
 
 /* Diagrams ---------------------------------------------------------------
  *
- * A mermaid fence is drawn as its diagram. While the caret is elsewhere the
+ * A diagram fence is drawn as its diagram. While the caret is elsewhere the
  * drawing is all there is, on the page and not in a box, as Typora has it;
  * while the caret is in the fence the source sits above the drawing in the
  * fence's own box. The source is never removed from the page, only kept out
@@ -2202,7 +2205,10 @@
 }
 .ProseMirror pre .noto-diagram:not([data-state='failed']) .noto-diagram-status { display: none; }
 
-.ProseMirror pre.noto-fence[data-lang='mermaid']:not(.noto-active-block):not(.noto-active-block *) {
+/* Every language the frame draws, Typora's flow and sequence among them, and
+   in any case: the frame reads `Mermaid` as a diagram, so the source must hide
+   for it too. */
+.ProseMirror pre.noto-fence:is([data-lang='mermaid' i], [data-lang='flow' i], [data-lang='sequence' i]):not(.noto-active-block):not(.noto-active-block *) {
   border-color: transparent;
   background: transparent;
 
@@ -2355,6 +2361,10 @@
 /* Typora's corner for resizing a picture: shown while the picture is
    hovered or selected, and dragged to write a zoom into the tag. */
 .ProseMirror .noto-image-frame { position: relative; display: inline-block; max-width: 100%; }
+
+/* A picture on a line of its own is centred, as a diagram is; one with words
+   beside it stays in their run. `image-line.ts` decides which is which. */
+.ProseMirror p.noto-image-line { text-align: center; }
 .ProseMirror .noto-image-handle {
   position: absolute;
   right: -1px;

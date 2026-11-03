@@ -1,4 +1,6 @@
 /* The frame is sized by the page that holds it; the drawing fills it. */
 html, body { margin: 0; padding: 0; background: transparent; overflow: hidden; }
 #diagram { display: block; }
-#diagram > svg { display: block; max-width: 100%; height: auto; }
+/* Centred, as Typora sets a diagram: a drawing narrower than the column sat
+   against its left edge and read as a block that had failed to fill the line. */
+#diagram > svg { display: block; max-width: 100%; height: auto; margin: 0 auto; }

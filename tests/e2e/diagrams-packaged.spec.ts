@@ -36,6 +36,44 @@ async function launch(name: string, markdown: string): Promise<{ app: ElectronAp
 }
 
 test.describe('diagrams', () => {
+  test('draws Typora\'s flow and sequence fences, with their source out of sight', async () => {
+    const { app, page } = await launch('typora-dialects', [
+      '# Typora diagrams',
+      '',
+      '```flow',
+      'st=>start: Start',
+      'cond=>condition: Ready?',
+      'e=>end: Done',
+      'st->cond',
+      'cond(yes)->e',
+      'cond(no)->st',
+      '```',
+      '',
+      '```sequence',
+      'Title: Asking',
+      'Alice->Bob: How are you?',
+      'Note right of Bob: thinks',
+      'Bob-->>Alice: Fine',
+      '```',
+      '',
+    ].join('\n'));
+    try {
+      for (const lang of ['flow', 'sequence']) {
+        const fence = page.locator(`pre.noto-fence[data-lang="${lang}"]`);
+        await expect(fence.locator('.noto-diagram')).toHaveAttribute('data-state', 'rendered', { timeout: 20_000 });
+        await expect.poll(async () => fence.locator('iframe').evaluate((element) => element.getBoundingClientRect().height))
+          .toBeGreaterThan(80);
+        const hidden = await fence.locator('.noto-fence-code').evaluate((element) => {
+          const rect = element.getBoundingClientRect();
+          return rect.width <= 1 && rect.height <= 1;
+        });
+        expect(hidden, lang).toBe(true);
+      }
+    } finally {
+      await app.close();
+    }
+  });
+
   test('draws a mermaid fence, keeps the source out of sight, and gives it back to a press', async () => {
     const { app, page, file } = await launch('draw', SOURCE);
     try {

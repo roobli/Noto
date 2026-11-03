@@ -76,6 +76,7 @@ import { indexBlockPlugin } from './index-block';
 import { imageFromTransfer } from './image-drop';
 import { documentDomToHtml, sliceToHtml, sliceToPlainText } from './clipboard';
 import { alertPlugin } from './alert-plugin';
+import { imageLinePlugin } from './image-line';
 import { RESCAN, typoraMarksKey, typoraMarksPlugin } from './typora-marks-plugin';
 import { SIDENOTE_RESCAN, sidenoteKey, sidenotePlugin } from './sidenote-plugin';
 import { ALL_MARK_KINDS, type TyporaMarkKinds } from './typora-marks';
@@ -377,6 +378,7 @@ export class NotoEditor implements NotoEditorPort {
       dropCursor({ color: 'var(--accent)' }),
       gapCursor(),
       alertPlugin(),
+      imageLinePlugin(),
       typoraMarksPlugin(() => this.markKinds),
       sidenotePlugin(() => this.sidenotes),
       typewriterPlugin(() => this.typewriter),

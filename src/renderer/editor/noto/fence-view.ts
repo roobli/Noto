@@ -251,14 +251,15 @@ export class FenceView implements NodeView {
     else this.dom.removeAttribute('data-lang');
     this.syncLanguageField();
 
-    // A mermaid fence is drawn as its diagram, beside the source; a press on
-    // the drawing puts the caret at the top of the source.
+    // A diagram fence (mermaid, or Typora's flow and sequence) is drawn as
+    // its diagram, beside the source; a press on the drawing puts the caret at
+    // the top of the source.
     if (isDiagramLanguage(lang)) {
       if (this.diagram === null) {
         this.diagram = new DiagramFrame(() => this.caretToLine(0));
         this.dom.append(this.diagram.dom);
       }
-      this.diagram.render(this.node.textContent);
+      this.diagram.render(this.node.textContent, lang);
     } else if (this.diagram !== null) {
       this.diagram.destroy();
       this.diagram = null;
