@@ -98,6 +98,28 @@ How releases are made, and what each channel receives, is in
 
 ### Fixed
 
+- Unsaved edits are asked about before they are lost. Close Tab on an
+  unsaved note asks Save, Don't Save or Cancel; quitting or closing the
+  window with unsaved notes asks Review Changes or Discard and Quit; Trash
+  says when it would close notes with unsaved edits. Nothing asked before,
+  and autosave is off by default.
+- A save lands on the note it was taken from. Moving to another note while a
+  save was in flight marked that other note saved with this one's baseline.
+  With autosave on, a note left with a save pending is saved.
+- Reload from Disk discards unsaved edits when the file has not changed, as
+  its confirm says, instead of keeping them.
+- Quick Open finds a note Noto just made, duplicated or imported.
+- Renaming a note to a name with a dot in it (`Meeting 3.5`) keeps its
+  extension instead of making it vanish from the tree; a name starting with
+  a dot is refused.
+- Two opens of the same note at once share one, instead of leaving a stray
+  copy that raised a false "Changed on disk".
+- Reopen Closed File offers only notes the reader closed, and keeps one whose
+  reopen failed.
+- `noto notes.md` with Noto already running opens the notes.md beside the
+  shell it was run from.
+- A folder past the tree's 2000-entry cap lists the same rows every time.
+
 - Sidenotes stay drawn in the margin wherever the caret is, and from the
   moment a note opens; they used to show only while the caret was in or next
   to their paragraph.
