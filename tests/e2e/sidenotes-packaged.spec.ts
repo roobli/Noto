@@ -12,19 +12,23 @@ const NOTE = [
   '',
 ].join('\n');
 
-async function launch(): Promise<{ app: ElectronApplication; page: Page }> {
-  const workspace = path.join(resultRoot, 'note');
+async function launch(
+  note = NOTE,
+  name = 'note',
+  size = { width: 1200, height: 700 },
+): Promise<{ app: ElectronApplication; page: Page }> {
+  const workspace = path.join(resultRoot, name);
   await rm(workspace, { recursive: true, force: true });
   await mkdir(path.join(workspace, 'user-data'), { recursive: true });
   const file = path.join(workspace, 'note.md');
-  await writeFile(file, NOTE, 'utf8');
+  await writeFile(file, note, 'utf8');
   const app = await electron.launch({
     executablePath: packagedExecutable(),
     args: [`--user-data-dir=${path.join(workspace, 'user-data')}`, `--open=${file}`],
   });
   const page = await app.firstWindow();
   await page.waitForSelector('[data-testid="noto-editor"]', { state: 'visible', timeout: 30_000 });
-  await page.setViewportSize({ width: 1200, height: 700 });
+  await page.setViewportSize(size);
   return { app, page };
 }
 
@@ -57,6 +61,38 @@ test.describe('sidenotes', () => {
       await expect(page.locator('.ProseMirror')).toContainText('<span class="sidenote">', {
         useInnerText: true,
       });
+    } finally {
+      await app.close();
+    }
+  });
+
+  test('draw a note in the margin wherever the caret is, from the moment the note opens', async () => {
+    // The note sits several blocks from the caret, so its block is not one the
+    // viewport keeps live around the selection.
+    const filler = Array.from({ length: 8 }, (_, index) => `Paragraph ${index + 1} of plain text.`);
+    const note = ['# Margin', '', ...filler.flatMap((line) => [line, '']),
+      'A claim<span class="sidenote">Out in the margin.</span> and the text goes on.', '',
+      ...filler.flatMap((line) => [line, ''])].join('\n');
+    const { app, page } = await launch(note, 'margin', { width: 1440, height: 1000 });
+    try {
+      const margin = page.locator('.ProseMirror .noto-sidenote');
+      const visibleInMargin = () => margin.evaluate((element) => {
+        const box = element.getBoundingClientRect();
+        const block = element.closest('.ProseMirror > *')!.getBoundingClientRect();
+        const hit = document.elementFromPoint(box.left + box.width / 2, box.top + box.height / 2);
+        return {
+          floated: getComputedStyle(element).float === 'right',
+          pastText: box.left >= block.right - 1,
+          painted: hit === element || element.contains(hit),
+        };
+      });
+      // Before anything is pressed: it was inline until the first transaction.
+      await expect.poll(visibleInMargin).toEqual({ floated: true, pastText: true, painted: true });
+
+      // The caret in the first paragraph, far from the note: it stays drawn.
+      await page.locator('.ProseMirror p').first().click();
+      await page.waitForTimeout(300);
+      await expect.poll(visibleInMargin).toEqual({ floated: true, pastText: true, painted: true });
     } finally {
       await app.close();
     }

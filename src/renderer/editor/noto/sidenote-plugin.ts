@@ -77,6 +77,7 @@ function decorationsFor(
 ): Decoration[] {
   const decorations: Decoration[] = [];
   const editingBlocks = new Set<number>();
+  const holdingBlocks = new Set<number>();
 
   for (const range of ranges) {
     const $open = state.doc.resolve(range.openFrom);
@@ -84,6 +85,8 @@ function decorationsFor(
     const block = $open.node($open.depth);
     const editing = touches(state, blockPos, blockPos + block.nodeSize);
     if (editing) editingBlocks.add(blockPos);
+    // The top-level block, which is the one the viewport deferral styles.
+    holdingBlocks.add($open.depth > 1 ? $open.before(1) : blockPos);
 
     decorations.push(Decoration.node(range.openFrom, range.openTo, {
       class: 'noto-inline-tag noto-sidenote-tag',
@@ -103,6 +106,20 @@ function decorationsFor(
       decorations.push(Decoration.inline(range.contentFrom, range.contentTo, {
         class: SIDENOTE_CLASS,
         'data-sidenote-index': String(range.index),
+      }));
+    }
+  }
+
+  // A margin note is a float pushed out past the block's right edge. Every
+  // top-level block skips painting off screen with `content-visibility: auto`,
+  // which also clips what it draws outside its own box, so the note was only
+  // there while the caret kept its block live. The block holding one is
+  // painted whole instead; a note holds a handful of these at most.
+  for (const position of holdingBlocks) {
+    const block = state.doc.nodeAt(position);
+    if (block) {
+      decorations.push(Decoration.node(position, position + block.nodeSize, {
+        class: 'noto-sidenote-block',
       }));
     }
   }
@@ -186,19 +203,25 @@ export function sidenotePlugin(enabled: () => boolean = () => true): Plugin<Deco
         return this.getState(state) ?? DecorationSet.empty;
       },
     },
-    view() {
+    view(editorView) {
       let known: boolean | null = null;
+      const sync = (view: EditorView) => {
+        const host = view.dom.closest('.noto-editor-host') ?? view.dom;
+        // Derive from the decoration set already computed for this state:
+        // do not walk the document again on every keystroke.
+        const set = sidenoteKey.getState(view.state);
+        const has = enabled() && !!set && set.find().length > 0;
+        if (has === known) return;
+        known = has;
+        host.classList.toggle('noto-has-sidenotes', has);
+      };
+      // Once now as well: `update` first runs on the first transaction, so a
+      // note just opened set its notes inline until something was pressed.
+      // The view is in the host by the time a plugin view is made, except
+      // when it is built detached; then the first update finds it.
+      sync(editorView);
       return {
-        update(view: EditorView) {
-          const host = view.dom.closest('.noto-editor-host') ?? view.dom;
-          // Derive from the decoration set already computed for this state —
-          // do not walk the document again on every keystroke.
-          const set = sidenoteKey.getState(view.state);
-          const has = enabled() && !!set && set.find().length > 0;
-          if (has === known) return;
-          known = has;
-          host.classList.toggle('noto-has-sidenotes', has);
-        },
+        update: sync,
         destroy() {
           /* the host is torn down with the editor */
         },

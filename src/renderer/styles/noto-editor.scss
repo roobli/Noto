@@ -2067,6 +2067,16 @@
   content-visibility: visible;
 }
 
+/* A block holding a margin note draws the note outside its own box, past the
+   right edge into the gutter. Paint containment (which `content-visibility`
+   implies) would clip it, and layout containment would keep one note's float
+   from stacking under the last one's, so such a block is contained by
+   neither. `sidenote-plugin.ts` marks it. */
+.ProseMirror > .noto-sidenote-block {
+  contain: none;
+  content-visibility: visible;
+}
+
 /* Height placeholders for top-level blocks the stubbing scroller has dropped
    from the real DOM. Inline height preserves scroll position; pointer-events
    none so a click lands on the scroller rather than a hollow shell. See
