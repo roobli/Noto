@@ -337,6 +337,52 @@ test.describe('git gutter', () => {
     }
   });
 
+  test('draws no git mark at all with Show Git Changes off, and the current ones once it is back on', async () => {
+    const { repo } = repository('toggle');
+    const { app, page } = await launch(repo);
+    try {
+      await open(page, 'note.md');
+      await expect(lines(page)).toHaveCount(2, { timeout: 15_000 });
+      await expect(fileRow(page, 'note.md').getByTestId('tree-git-mark')).toBeVisible();
+      const flip = () => app.evaluate(({ Menu }) => {
+        const find = (items: Electron.MenuItem[]): Electron.MenuItem | null => {
+          for (const item of items) {
+            if (item.id === 'toggle-git-marks') return item;
+            const nested = item.submenu ? find(item.submenu.items) : null;
+            if (nested) return nested;
+          }
+          return null;
+        };
+        find(Menu.getApplicationMenu()!.items)!.click();
+      });
+      const ticked = () => app.evaluate(({ Menu }) => {
+        const find = (items: Electron.MenuItem[]): Electron.MenuItem | null => {
+          for (const item of items) {
+            if (item.id === 'toggle-git-marks') return item;
+            const nested = item.submenu ? find(item.submenu.items) : null;
+            if (nested) return nested;
+          }
+          return null;
+        };
+        return find(Menu.getApplicationMenu()!.items)!.checked;
+      });
+
+      // Off from the View menu: a clean page and a clean tree, for a screenshot.
+      await flip();
+      await expect(page.locator('.noto-git-gutter').first()).toBeHidden();
+      await expect(fileRow(page, 'note.md').getByTestId('tree-git-mark')).toBeHidden();
+      await expect.poll(ticked).toBe(false);
+
+      // On again: the same changes, at once.
+      await flip();
+      await expect(lines(page).first()).toBeVisible();
+      await expect(fileRow(page, 'note.md').getByTestId('tree-git-mark')).toBeVisible();
+      await expect.poll(ticked).toBe(true);
+    } finally {
+      await app.close();
+    }
+  });
+
   test('draws nothing for an untracked note', async () => {
     const { repo } = repository('untracked');
     const { app, page } = await launch(repo);

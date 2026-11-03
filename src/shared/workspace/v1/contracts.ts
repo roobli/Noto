@@ -341,6 +341,7 @@ export const WORKSPACE_MENU_COMMANDS = [
   'block-alert-warning',
   'block-alert-caution',
   'toggle-focus-mode',
+  'toggle-git-marks',
   'toggle-typewriter',
   'toggle-outline',
   'command-palette',

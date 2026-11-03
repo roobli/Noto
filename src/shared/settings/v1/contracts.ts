@@ -318,6 +318,13 @@ export interface NotoSettingsV1 {
    */
   readonly focusMode: boolean;
   /**
+   * Draw what git says changed: the bars beside changed blocks in the margin
+   * and the marks on changed notes in the tree. On by default; off leaves the
+   * page and the tree clean, for a screenshot or for reading. Only the
+   * drawing stops, so turning it back on shows the current changes at once.
+   */
+  readonly gitMarks: boolean;
+  /**
    * Keep the line being typed at the middle of the window.
    *
    * Typora calls this typewriter mode. Off by default for the same reason,
@@ -440,6 +447,7 @@ export const DEFAULT_SETTINGS: NotoSettingsV1 = Object.freeze({
   autoPair: true,
   todoCheckTime: true,
   focusMode: false,
+  gitMarks: true,
   typewriterMode: false,
   sidebarOnLaunch: false,
   railWidth: 272,

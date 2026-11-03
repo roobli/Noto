@@ -176,6 +176,7 @@ export function coerceSettings(value: unknown): NotoSettingsV1 {
       ? value.todoCheckTime
       : DEFAULT_SETTINGS.todoCheckTime,
     focusMode: typeof value.focusMode === 'boolean' ? value.focusMode : DEFAULT_SETTINGS.focusMode,
+    gitMarks: typeof value.gitMarks === 'boolean' ? value.gitMarks : DEFAULT_SETTINGS.gitMarks,
     typewriterMode: typeof value.typewriterMode === 'boolean'
       ? value.typewriterMode
       : DEFAULT_SETTINGS.typewriterMode,
@@ -320,6 +321,7 @@ export function isSettingsReplyV1(value: unknown): value is SettingsReplyV1 {
     && typeof settings.autoPair === 'boolean'
     && typeof settings.todoCheckTime === 'boolean'
     && typeof settings.focusMode === 'boolean'
+    && typeof settings.gitMarks === 'boolean'
     && typeof settings.typewriterMode === 'boolean'
     && typeof settings.sidebarOnLaunch === 'boolean'
     && typeof settings.autoSave === 'boolean'

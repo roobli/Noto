@@ -505,6 +505,7 @@ async function run(): Promise<void> {
   const menuState = {
     readOnly: false,
     alwaysOnTop: windowAlwaysOnTop,
+    gitMarks: settings.current().gitMarks,
     treeSort: settings.current().treeSort,
     themes,
     themePath: settings.current().customCssPath,
@@ -928,6 +929,10 @@ async function run(): Promise<void> {
         menuState.alwaysOnTop = reply.settings.alwaysOnTop;
         windowAlwaysOnTop = reply.settings.alwaysOnTop;
         editorWindow?.setAlwaysOnTop(reply.settings.alwaysOnTop);
+        refreshMenu();
+      }
+      if (reply.settings.gitMarks !== menuState.gitMarks) {
+        menuState.gitMarks = reply.settings.gitMarks;
         refreshMenu();
       }
       // The tree's order shows as a tick in the View menu, and the tree

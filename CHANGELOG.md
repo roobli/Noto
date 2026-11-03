@@ -11,6 +11,11 @@ How releases are made, and what each channel receives, is in
 
 ### Added
 
+- View > Show Git Changes, and a Git changes switch in Settings > Editor,
+  hide the bars beside changed blocks and the marks on changed notes in the
+  tree, for a clean screenshot. Turned back on, the current changes show at
+  once.
+
 - File > Refresh Folder (Cmd-Alt-R) reads the open folder again: the tree,
   Quick Open and the git marks. The folder was already followed on disk; this
   is the same work on request.

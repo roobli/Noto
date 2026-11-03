@@ -978,6 +978,13 @@ export function Settings({
                   onChange={(value) => onChange({ fileTags: value })}
                   testId="setting-file-tags"
                 />
+                <Switch
+                  label="Git changes"
+                  hint="Bars beside changed blocks and marks on changed notes in the tree, in a folder under git. Off for a clean screenshot; View > Show Git Changes flips it too."
+                  checked={settings.gitMarks}
+                  onChange={(value) => onChange({ gitMarks: value })}
+                  testId="setting-git-marks"
+                />
                 <p className="pref-group">Code blocks</p>
                 <Switch
                   label="Line numbers"

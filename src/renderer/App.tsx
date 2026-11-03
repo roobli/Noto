@@ -716,9 +716,10 @@ function NotoWorkspace({ platform }: { platform: NotoPlatform }) {
     root.dataset.codeTabMarkers = settings.codeTabMarkers ? 'on' : 'off';
     root.dataset.timelines = settings.timelines ? 'on' : 'off';
     root.dataset.focusMode = settings.focusMode ? 'on' : 'off';
+    root.dataset.gitMarks = settings.gitMarks ? 'on' : 'off';
   }, [settings.fontSize, settings.lineHeight, settings.widthMode, settings.proseFace, settings.proseFontFamily,
     settings.codeLineNumbers, settings.codeIndentGuides, settings.codeTabMarkers,
-    settings.timelines, settings.focusMode]);
+    settings.timelines, settings.focusMode, settings.gitMarks]);
 
   /**
    * The user's own stylesheet, layered over the theme.
@@ -2307,6 +2308,9 @@ function NotoWorkspace({ platform }: { platform: NotoPlatform }) {
         break;
       case 'toggle-focus-mode':
         changeSettings({ focusMode: !settings.focusMode });
+        break;
+      case 'toggle-git-marks':
+        changeSettings({ gitMarks: !settings.gitMarks });
         break;
       case 'toggle-typewriter':
         changeSettings({ typewriterMode: !settings.typewriterMode });

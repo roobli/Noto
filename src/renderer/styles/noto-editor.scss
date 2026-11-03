@@ -2927,6 +2927,11 @@
 
 /* Focus mode dims what is not being written; the gutter dims with it. */
 :root[data-focus-mode='on'] .noto-git-gutter { opacity: 0.32; }
+/* Show Git Changes off: neither the margin's bars nor the tree's marks are
+   drawn, for a clean screenshot. The data stays current underneath, so
+   turning it back on shows the changes as they are now. */
+:root[data-git-marks='off'] .noto-git-gutter,
+:root[data-git-marks='off'] .tree-git { display: none; }
 
 @media (forced-colors: active) {
   .noto-git-mark { forced-color-adjust: none; --git-line: CanvasText; }
