@@ -1051,25 +1051,40 @@ async function run(): Promise<void> {
   });
 
   let shutdownStarted = false;
+  /*
+   * Each step of the shutdown gets a deadline. A step that never settles (a
+   * plugin whose task queue is stuck behind an activation, a service that does
+   * not answer) used to hold the quit for good: the window was gone and the
+   * process stayed. Past its deadline a step is logged and the quit goes on.
+   */
+  const step = (name: string, deadlineMs: number, work: () => Promise<unknown>): Promise<void> => {
+    const started = Date.now();
+    let timer: ReturnType<typeof setTimeout> | undefined;
+    const deadline = new Promise<'late'>((resolve) => { timer = setTimeout(() => resolve('late'), deadlineMs); });
+    const done = work().then(
+      () => 'done' as const,
+      (error: unknown) => {
+        logger.log('shutdown_step_failed', { step: name, code: error instanceof Error ? error.message.split(':', 1)[0] : 'FAILED' });
+        return 'done' as const;
+      },
+    );
+    return Promise.race([done, deadline]).then((outcome) => {
+      clearTimeout(timer);
+      const ms = Date.now() - started;
+      if (outcome === 'late') logger.log('shutdown_step_timed_out', { step: name, ms });
+      else if (ms > 1000) logger.log('shutdown_step_slow', { step: name, ms });
+    });
+  };
   app.on('before-quit', (event) => {
     if (shutdownStarted || quitHeldForUnsaved()) return;
     shutdownStarted = true;
     event.preventDefault();
-    void pluginRegistry.shutdown()
-      .catch((error) => logger.log('plugin_shutdown_failed', {
-        code: error instanceof Error ? error.message.split(':', 1)[0] : 'PLUGIN_FAILED',
-      }))
-      .then(() => experimentalRuntimeHost.shutdown().catch((error) => logger.log('experimental_runtime_shutdown_failed', {
-        code: error instanceof Error ? error.message.split(':', 1)[0] : 'EXPERIMENTAL_RUNTIME_FAILED',
-      })))
-      .then(() => serviceHost.stop().catch((error) => logger.log('service_stop_failed', {
-        code: error instanceof Error ? error.message.split(':', 1)[0] : 'SERVICE_FAILED',
-      })))
+    void step('plugins', 4000, () => pluginRegistry.shutdown())
+      .then(() => step('experimental-runtime', 3000, () => experimentalRuntimeHost.shutdown()))
+      .then(() => step('service', 3000, () => serviceHost.stop()))
       // Drain settings so a preference written moments before close (quick-open
       // width, rail width, …) lands on disk before the process exits.
-      .then(() => settings.drain().catch((error) => logger.log('settings_drain_failed', {
-        code: error instanceof Error ? error.message.split(':', 1)[0] : 'SETTINGS_FAILED',
-      })))
+      .then(() => step('settings', 5000, () => settings.drain()))
       .finally(() => {
         rendererLeaseBridge.rendererDisposed();
         app.quit();
