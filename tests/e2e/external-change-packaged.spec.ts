@@ -114,6 +114,36 @@ test.describe('following the file when it changes underneath', () => {
     }
   });
 
+  test('discards unsaved edits when asked to reload a file that has not changed', async () => {
+    const { app, page, file } = await launch('reload-discard-unchanged');
+    try {
+      await placeCaret(page, page.locator('.ProseMirror > p').first());
+      await page.keyboard.type(' Mine, not saved.');
+      await expect(page.locator('.ProseMirror')).toContainText('Mine, not saved.');
+
+      // Reload from Disk with nothing changed on disk: the confirm still asks,
+      // and choosing to reload is a discard. It used to keep the edits and only
+      // relabel the note as opened.
+      await app.evaluate(({ Menu }) => {
+        const find = (items: Electron.MenuItem[]): Electron.MenuItem | null => {
+          for (const item of items) {
+            if (item.id === 'reload-from-disk') return item;
+            const nested = item.submenu ? find(item.submenu.items) : null;
+            if (nested) return nested;
+          }
+          return null;
+        };
+        find(Menu.getApplicationMenu()!.items)!.click();
+      });
+      await page.getByTestId('reload-confirm-reload').click();
+      await expect(page.locator('.ProseMirror')).not.toContainText('Mine, not saved.');
+      await expect(page.locator('.ProseMirror')).toContainText('The body as it was.');
+      expect(await readFile(file, 'utf8')).toBe(NOTE);
+    } finally {
+      await app.close();
+    }
+  });
+
   test('reloads a clean note from disk without asking', async () => {
     const { app, page, file } = await launch('reload-clean-manual');
     try {

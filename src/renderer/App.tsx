@@ -1858,7 +1858,16 @@ function NotoWorkspace({ platform }: { platform: NotoPlatform }) {
     }
     const outcome = result.value;
     if (outcome.status === 'unchanged') {
-      patchDoc(documentId, { state: cleanStateRef.current, outcome: null });
+      // The file is as it was last accepted, but a reload the reader asked
+      // for over unsaved edits is a discard. Keeping them while the status
+      // said "Opened" was the one answer that was wrong either way.
+      const editor = editorsRef.current.get(documentId);
+      if (editor?.isDirty) {
+        const accepted = editor.acceptedDocument;
+        editor.replaceMarkdown(accepted.text);
+        editor.commit(accepted);
+      }
+      patchDoc(documentId, { state: cleanStateRef.current, outcome: null, dirty: false });
       setLocalMessage(null);
       return;
     }
