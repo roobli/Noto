@@ -27,6 +27,7 @@ export interface NotoCanvasProps {
   /** Where the document lives, so its relative images know where to start. */
   readonly documentPath: string | null;
   readonly remoteImages?: boolean;
+  readonly webEmbeds?: boolean;
   /** Keep the line being written at the middle of the window. */
   readonly typewriterMode?: boolean;
   /** Close a bracket or a quote as it is opened. */
@@ -65,6 +66,7 @@ export function NotoCanvas({
   spellCheck,
   documentPath,
   remoteImages,
+  webEmbeds,
   typewriterMode,
   autoPair,
   todoCheckTime,
@@ -127,7 +129,7 @@ export function NotoCanvas({
           smartDashes,
           smartEllipsis,
           spellCheck,
-          images: { documentDir: documentDirOf(documentPath), remote: remoteImages ?? true },
+          images: { documentDir: documentDirOf(documentPath), remote: remoteImages ?? true, embeds: webEmbeds ?? false },
           onActiveBlockChanged,
           onDirtyChange,
           onDocumentChanged,

@@ -235,6 +235,12 @@ export interface NotoSettingsV1 {
    */
   readonly remoteImages: boolean;
   /**
+   * Whether a web page a note embeds with `<iframe>` loads by itself. Off by
+   * default, as web images are: opening a note should not visit other sites.
+   * Off, each embed is a card naming the page, with a button that loads it.
+   */
+  readonly webEmbeds: boolean;
+  /**
    * Number the lines of every code block.
    *
    * On by default, as the author's own Typora is set. The gutter is as wide
@@ -407,6 +413,7 @@ export const DEFAULT_SETTINGS: NotoSettingsV1 = Object.freeze({
   smartEllipsis: false,
   spellCheck: true,
   remoteImages: true,
+  webEmbeds: false,
   codeLineNumbers: true,
   codeIndentGuides: true,
   codeTabMarkers: true,

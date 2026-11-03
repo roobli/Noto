@@ -181,7 +181,7 @@ function activeDecorations(state: EditorState): DecorationSet {
       if (marked.has(start)) continue;
       if (node.type.name === 'html_block') {
         marked.add(start);
-        decorations.push(Decoration.node(start, $pos.after(depth), { class: 'noto-html-editing' }));
+        decorations.push(Decoration.node(start, $pos.after(depth), { class: 'noto-html-editing' }, { htmlEditing: true }));
       } else if (node.isTextblock) {
         marked.add(start);
         const classes = holdsInlineHtml(node)

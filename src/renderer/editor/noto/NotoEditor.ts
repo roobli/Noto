@@ -981,6 +981,7 @@ export class NotoEditor implements NotoEditorPort {
     smartDashes?: boolean;
     smartEllipsis?: boolean;
     remoteImages?: boolean;
+    webEmbeds?: boolean;
     typewriterMode?: boolean;
     autoPair?: boolean;
     todoCheckTime?: boolean;
@@ -1021,6 +1022,10 @@ export class NotoEditor implements NotoEditorPort {
     }
     if (settings.remoteImages !== undefined && settings.remoteImages !== this.imageContext.remote) {
       this.imageContext = { ...this.imageContext, remote: settings.remoteImages };
+      this.refreshImages();
+    }
+    if (settings.webEmbeds !== undefined && settings.webEmbeds !== (this.imageContext.embeds ?? false)) {
+      this.imageContext = { ...this.imageContext, embeds: settings.webEmbeds };
       this.refreshImages();
     }
     if (settings.spellCheck === undefined || settings.spellCheck === this.spellCheck) return;

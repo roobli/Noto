@@ -35,7 +35,10 @@ describe('the style a note may set', () => {
     expect(safeStyle('background: url(https://example.com/a.png)')).toBe('');
     expect(safeStyle('width: expression(alert(1))')).toBe('');
     expect(safeStyle('background: -moz-binding: url(x)')).toBe('');
-    expect(safeStyle('position: fixed; top: 0')).toBe('');
+    // Pinned to the window rather than placed in its block: dropped, and an
+    // offset left without it places nothing.
+    expect(safeStyle('position: fixed; top: 0')).toBe('top: 0');
+    expect(safeStyle('position: sticky')).toBe('');
     expect(safeStyle('font-family: "a\\"; position: fixed')).toBe('');
   });
 
@@ -46,9 +49,21 @@ describe('the style a note may set', () => {
   });
 
   it('keeps what it knows out of a declaration that also holds what it does not', () => {
-    expect(safeStyle('color: green; position: absolute; font-size: 14px'))
+    expect(safeStyle('color: green; z-index: 9; font-size: 14px'))
       .toBe('color: green; font-size: 14px');
     // A value longer than any real one is a paste, not a style.
     expect(safeStyle(`color: ${'a'.repeat(200)}`)).toBe('');
+  });
+});
+
+describe('placing and scaling, which a note uses to show a wide page smaller', () => {
+  it('keeps a position relative to the block, and scaling or moving, and nothing else', () => {
+    expect(safeStyle('position: relative; overflow: hidden')).toBe('position: relative; overflow: hidden');
+    expect(safeStyle('position: absolute; left: -480px; top: -310px')).toBe('position: absolute; left: -480px; top: -310px');
+    expect(safeStyle('transform: scale(0.4)')).toBe('transform: scale(0.4)');
+    expect(safeStyle('transform: translate(-10px, 4%) scale(0.5)')).toBe('transform: translate(-10px, 4%) scale(0.5)');
+    expect(safeStyle('transform: rotate(45deg)')).toBe('');
+    expect(safeStyle('transform: matrix(1, 0, 0, 1, 0, 0)')).toBe('');
+    expect(safeStyle('overflow: overlay')).toBe('');
   });
 });

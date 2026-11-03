@@ -2,7 +2,6 @@ import path from 'node:path';
 import { BrowserWindow } from 'electron';
 import type { NotoTheme } from '../../shared/settings/v1/contracts';
 import { summarizeUntrustedText, type StructuredLogger } from '../logger';
-import { isAllowedRendererUrl } from '../protocol/register-app-protocol';
 import { classifyRendererConsoleMessage } from './classify-renderer-console-message';
 import {
   EDITOR_CHROME_COLORS,
@@ -10,6 +9,8 @@ import {
   resolveEditorChromeTone,
 } from './editor-window-chrome';
 import { installEditorContextMenu } from './editor-context-menu';
+import { frameNavigationAllowed } from './frame-navigation';
+
 export interface RendererConsoleEntry {
   readonly timestamp: string;
   readonly level: number;
@@ -81,12 +82,17 @@ export function createEditorWindow(
   });
   window.webContents.setWindowOpenHandler(() => ({ action: 'deny' }));
   installEditorContextMenu(window);
-  window.webContents.on('will-frame-navigate', (event) => {
-    if (!isAllowedRendererUrl(event.url)) {
+  // A server's redirect is a navigation of its own and goes through the same
+  // check: an embedded page could otherwise answer with a redirect to the
+  // app's own pages.
+  const guard = (via: string) =>
+    (event: Electron.Event<{ url: string; isMainFrame: boolean; frame: Electron.WebFrameMain | null }>) => {
+      if (frameNavigationAllowed(event.url, event.isMainFrame, event.frame)) return;
       event.preventDefault();
-      logger.log('navigation_denied', { url: event.url.slice(0, 512) });
-    }
-  });
+      logger.log('navigation_denied', { url: event.url.slice(0, 512), via, mainFrame: event.isMainFrame });
+    };
+  window.webContents.on('will-frame-navigate', guard('navigate'));
+  window.webContents.on('will-redirect', guard('redirect'));
   window.webContents.on('console-message', (_event, level, message, lineNumber, sourceId) => {
     const noise = classifyRendererConsoleMessage(level, message, sourceId) === 'runtime-noise';
     consoleState.recent.push({

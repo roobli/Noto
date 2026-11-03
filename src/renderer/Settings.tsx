@@ -83,7 +83,7 @@ const SECTIONS: readonly { value: SettingsSection; label: string; keywords: stri
   { value: 'appearance', label: 'Appearance', keywords: 'theme dark light text size line height width rail stylesheet css font serif sans mono system family always on top float window links graph moc related backlinks' },
   { value: 'editor', label: 'Editor', keywords: 'spell check images brackets pairs focus typewriter save autosave line numbers guides reload external disk sync watch file tags frontmatter' },
   { value: 'markdown', label: 'Markdown', keywords: 'smart quotes dashes ellipsis punctuation typography syntax' },
-  { value: 'images', label: 'Images', keywords: 'image picture paste drop screenshot assets folder copy relative path escape url upload picgo bucket' },
+  { value: 'images', label: 'Images', keywords: 'image picture paste drop screenshot assets folder copy relative path escape url upload picgo bucket web remote iframe embed page video' },
   { value: 'updates', label: 'Updates', keywords: 'update upgrade release version github alpha stable testing channel download auto check launch' },
   { value: 'remote', label: 'Remote', keywords: 'remote control api token port script agent automation', buried: true },
   { value: 'plugins', label: 'Plugins', keywords: 'plugin extension enable disable palette', buried: true },
@@ -1077,10 +1077,17 @@ export function Settings({
                 />
                 <Switch
                   label="Load images from the web"
-                  hint="Off shows a placeholder for a `https://` picture and leaves the note untouched."
+                  hint="Off shows a placeholder for a picture on the web and leaves the note untouched."
                   checked={settings.remoteImages}
                   onChange={(value) => onChange({ remoteImages: value })}
                   testId="setting-remote-images-image-pane"
+                />
+                <Switch
+                  label="Load web pages embedded in notes"
+                  hint="A page a note embeds with <iframe>, in a sandboxed frame. Off shows a card naming the page, with a button that loads that one."
+                  checked={settings.webEmbeds}
+                  onChange={(value) => onChange({ webEmbeds: value })}
+                  testId="setting-web-embeds"
                 />
               </>
             )}

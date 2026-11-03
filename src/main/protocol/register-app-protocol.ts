@@ -26,7 +26,10 @@ const productionCsp = [
   "style-src 'self'",
   "img-src 'self' noto://asset data: blob: https:",
   "font-src 'self'",
-  "frame-src 'self'",
+  // Web pages a note embeds, which the editor draws only in a sandboxed
+  // frame and only once the reader has allowed it (`webEmbeds`, or a press on
+  // the page's card). The page itself stays locked to the app.
+  "frame-src 'self' https:",
   "connect-src 'none'",
   "worker-src 'self'",
   "object-src 'none'",
@@ -113,6 +116,13 @@ export async function installNotoProtocol(
   const appSession = session.defaultSession;
   appSession.setPermissionCheckHandler(() => false);
   appSession.setPermissionRequestHandler((_webContents, _permission, callback) => callback(false));
+  // Nothing the window shows saves a file by downloading it: the app writes
+  // files itself. A page embedded in a note is sandboxed without downloads
+  // already; this holds for anything else in the window too.
+  appSession.on('will-download', (event, item) => {
+    event.preventDefault();
+    logger.log('download_denied', { url: item.getURL().slice(0, 512) });
+  });
   appSession.webRequest.onHeadersReceived({ urls: ['noto://bundle/*'] }, (details, callback) => {
     const policy = new URL(details.url).pathname === '/diagram.html' ? diagramCsp : productionCsp;
     const headers: Record<string, string[]> = {

@@ -2682,6 +2682,7 @@ function NotoWorkspace({ platform }: { platform: NotoPlatform }) {
                 spellCheck={settings.spellCheck}
                 documentPath={doc.opened.path}
                 remoteImages={settings.remoteImages}
+                webEmbeds={settings.webEmbeds}
                 typewriterMode={settings.typewriterMode}
                 autoPair={settings.autoPair}
                 todoCheckTime={settings.todoCheckTime}

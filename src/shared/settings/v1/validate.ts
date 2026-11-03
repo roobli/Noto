@@ -133,6 +133,7 @@ export function coerceSettings(value: unknown): NotoSettingsV1 {
     smartEllipsis: substitution(value, 'smartEllipsis'),
     spellCheck: typeof value.spellCheck === 'boolean' ? value.spellCheck : DEFAULT_SETTINGS.spellCheck,
     remoteImages: typeof value.remoteImages === 'boolean' ? value.remoteImages : DEFAULT_SETTINGS.remoteImages,
+    webEmbeds: typeof value.webEmbeds === 'boolean' ? value.webEmbeds : DEFAULT_SETTINGS.webEmbeds,
     codeLineNumbers: typeof value.codeLineNumbers === 'boolean'
       ? value.codeLineNumbers
       : DEFAULT_SETTINGS.codeLineNumbers,
@@ -278,6 +279,7 @@ export function isSettingsReplyV1(value: unknown): value is SettingsReplyV1 {
     && typeof settings.smartEllipsis === 'boolean'
     && typeof settings.spellCheck === 'boolean'
     && typeof settings.remoteImages === 'boolean'
+    && typeof settings.webEmbeds === 'boolean'
     && typeof settings.codeLineNumbers === 'boolean'
     && typeof settings.codeIndentGuides === 'boolean'
     && typeof settings.codeTabMarkers === 'boolean'
