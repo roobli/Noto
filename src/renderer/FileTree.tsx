@@ -226,9 +226,14 @@ export function FileTree({
     return () => narrow.removeEventListener('change', reset);
   }, []);
 
+  /** The latest listing asked for per folder, so an older answer arriving late is dropped. */
+  const loadSeqRef = useRef(new Map<string, number>());
   const load = useCallback(async (directory: string) => {
+    const seq = (loadSeqRef.current.get(directory) ?? 0) + 1;
+    loadSeqRef.current.set(directory, seq);
     try {
       const entries = await list(directory);
+      if (loadSeqRef.current.get(directory) !== seq) return;
       setChildren((current) => new Map(current).set(directory, entries));
       setFailed(null);
     } catch {
