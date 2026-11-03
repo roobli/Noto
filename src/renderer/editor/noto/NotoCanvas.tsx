@@ -93,6 +93,17 @@ export function NotoCanvas({
 }: NotoCanvasProps) {
   const hostRef = useRef<HTMLDivElement>(null);
   const editorRef = useRef<NotoEditor | null>(null);
+  // The settings as of this render. An editor finishes building after an
+  // await, by which time a setting may have changed again; it reads this
+  // rather than what the building effect captured when it began.
+  const settingsNow = useRef({
+    smartQuotes, smartDashes, smartEllipsis, spellCheck, remoteImages, webEmbeds, typewriterMode, autoPair,
+    todoCheckTime, disabledShortcuts, markHighlight, markSuperscript, markSubscript, sidenotes,
+  });
+  settingsNow.current = {
+    smartQuotes, smartDashes, smartEllipsis, spellCheck, remoteImages, webEmbeds, typewriterMode, autoPair,
+    todoCheckTime, disabledShortcuts, markHighlight, markSuperscript, markSubscript, sidenotes,
+  };
 
   useLayoutEffect(() => {
     const host = hostRef.current;
@@ -158,6 +169,10 @@ export function NotoCanvas({
       }
 
       editorRef.current = editor;
+      // The settings effect below ran before this editor existed, so the
+      // editor starts from the settings as they are now rather than from its
+      // own defaults: a note opened with auto-pairing off pairs nothing.
+      editor.applySettings(settingsNow.current);
       onReady(editor);
 
       if (deferredRemainderFrom !== null) {
