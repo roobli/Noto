@@ -420,7 +420,14 @@ export class WorkspaceSession {
       } catch {
         continue;
       }
-      const opened = await this.openPath(candidate);
+      let opened: WorkspaceSessionOpenV1;
+      try {
+        opened = await this.openPath(candidate);
+      } catch (cause) {
+        // Still closed, so still offered the next time.
+        this.closed.push(candidate);
+        throw cause;
+      }
       return 'codeView' in opened ? null : opened.opened;
     }
     return null;
@@ -433,7 +440,7 @@ export class WorkspaceSession {
    * does and what the eye expects. Closing the last tab leaves the empty state
    * rather than quitting, so an accidental close is not destructive.
    */
-  close(filePath: string): void {
+  close(filePath: string, options: { readonly remember?: boolean } = {}): void {
     const resolved = path.resolve(filePath);
     const document = this.documents.get(resolved);
     if (!document) return;
@@ -442,8 +449,11 @@ export class WorkspaceSession {
     const index = order.indexOf(resolved);
     document.store.close();
     this.documents.delete(resolved);
-    // Remembered for Reopen Closed File, most recent last, each path once.
-    this.closed = [...this.closed.filter((known) => known !== resolved), resolved].slice(-20);
+    // Remembered for Reopen Closed File, most recent last, each path once;
+    // not a note the renderer let go of by itself.
+    if (options.remember !== false) {
+      this.closed = [...this.closed.filter((known) => known !== resolved), resolved].slice(-20);
+    }
 
     // Only a close that changes what is in front says so. Closing a note
     // behind it, which the window now does on its own to keep a working set,

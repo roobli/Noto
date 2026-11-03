@@ -163,7 +163,7 @@ export function registerWorkspaceHandlers(deps: {
 
   register(WORKSPACE_CHANNELS.closeTab, isWorkspaceTabRequestV1,
     (request: WorkspaceTabRequestV1) => {
-      deps.session.close(request.path);
+      deps.session.close(request.path, { remember: request.release !== true });
       deps.onMenuStale();
       return { version: NOTO_WORKSPACE_VERSION, tabs: deps.session.tabs() } as const;
     });

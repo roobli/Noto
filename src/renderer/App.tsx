@@ -1101,7 +1101,7 @@ function NotoWorkspace({ platform }: { platform: NotoPlatform }) {
           .slice(0, excess);
         for (const tab of idle) {
           releasingRef.current.add(tab.path);
-          void window.notoWorkspace.closeTab({ version: 1, requestId: rid('tab-release'), path: tab.path });
+          void window.notoWorkspace.closeTab({ version: 1, requestId: rid('tab-release'), path: tab.path, release: true });
         }
       }
     });

@@ -101,7 +101,9 @@ export function isWorkspaceOpenPathRequestV1(value: unknown): value is Workspace
 
 /** Activate and close share a shape, so they share a validator. */
 export function isWorkspaceTabRequestV1(value: unknown): value is WorkspaceTabRequestV1 {
-  return record(value) && exact(value, ['version', 'requestId', 'path'])
+  return record(value)
+    && (exact(value, ['version', 'requestId', 'path'])
+      || (exact(value, ['version', 'requestId', 'path', 'release']) && typeof value.release === 'boolean'))
     && value.version === 1 && typeof value.requestId === 'string' && requestId.test(value.requestId)
     && typeof value.path === 'string' && value.path.length > 0 && value.path.length <= 4096;
 }

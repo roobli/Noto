@@ -153,6 +153,11 @@ export interface WorkspaceOpenPathRequestV1 extends WorkspaceRequestV1 {
 /** Activating or closing a tab, both identified by path. */
 export interface WorkspaceTabRequestV1 extends WorkspaceRequestV1 {
   readonly path: string;
+  /**
+   * A note the renderer let go to stay under its loaded limit, not one the
+   * reader closed, so Reopen Closed File does not offer it.
+   */
+  readonly release?: boolean;
 }
 
 export interface RecentFileV1 {
