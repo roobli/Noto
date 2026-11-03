@@ -120,6 +120,11 @@ How releases are made, and what each channel receives, is in
   caret entered it, so the words after each stepped right by its width.
   They now reveal one span at a time, as bold, emphasis, code and links
   already did.
+- A note with a tab, a no-break space or a full-width space before `>` no
+  longer freezes when it opens. The Markdown engine's quote test and quote
+  strip disagreed on such a line and its loop never ended; fixed in
+  `@roobli/md` 0.1.24, which also reads a space or a tab wherever CommonMark
+  means one, so a line of full-width spaces no longer splits a paragraph.
 - Quitting cannot hang on a step that never finishes. Each step of the
   shutdown (plugins, the plugin runtime, the service, settings) has a
   deadline and is logged when it runs past it.
