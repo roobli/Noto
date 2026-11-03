@@ -78,11 +78,6 @@ export function createEditorWindow(
       allowRunningInsecureContent: false,
       webviewTag: false,
       devTools: false,
-      // A window the test suite never shows still has to draw frames, or on
-      // Windows and Linux the page skips the rendering steps a reader's window
-      // runs: no animation frames, and no remembered height for a block that
-      // scrolls off, so the layout under test was not the one people get.
-      ...(headless() ? { backgroundThrottling: false } : {}),
     },
   });
   window.webContents.setWindowOpenHandler(() => ({ action: 'deny' }));
