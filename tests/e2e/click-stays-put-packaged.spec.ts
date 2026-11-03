@@ -53,6 +53,15 @@ test.describe('a click in the document', () => {
   test('leaves the page where it was when the caret first leaves the top of the note', async () => {
     const { app, page } = await launch('first-click');
     try {
+      // A reader's window has the focus, and this one, never shown, does not
+      // until something is clicked. Unfocused, Chromium on Windows and Linux
+      // draws every block off screen at its placeholder; the first click lays
+      // the whole note out, and every block grew by its real height under the
+      // click being measured. A click on the title focuses the window and
+      // leaves the caret among the opening blocks, as a reader starts.
+      await page.locator('.canvas-slot:not([hidden]) .ProseMirror > h1').click();
+      await page.waitForTimeout(300);
+
       // Far down the note, with the blocks the caret opened among off screen.
       const target = await centre(page, 'Paragraph 40.');
       const before = await page.evaluate(() => {
@@ -60,6 +69,10 @@ test.describe('a click in the document', () => {
         const prose = document.querySelector<HTMLElement>('.canvas-slot:not([hidden]) .ProseMirror')!;
         return { scroll: pane.scrollTop, height: prose.scrollHeight };
       });
+      // Every block's height, so a failure names the blocks that moved.
+      const heights = () => page.evaluate(() => [...document.querySelectorAll<HTMLElement>('.canvas-slot:not([hidden]) .ProseMirror > *')]
+        .map((block) => `${Math.round(block.getBoundingClientRect().height)} ${block.tagName.toLowerCase()} ${block.className.replace(/noto-/g, '')}`));
+      const heightsBefore = await heights();
 
       await page.mouse.click(target.x, target.y);
       await page.waitForTimeout(400);
@@ -74,6 +87,10 @@ test.describe('a click in the document', () => {
         const paragraph = [...prose.querySelectorAll<HTMLElement>(':scope > p')].find((element) => element.textContent?.startsWith(text))!;
         return { scroll: pane.scrollTop, height: prose.scrollHeight, top: paragraph.getBoundingClientRect().top };
       }, 'Paragraph 40.');
+      const heightsAfter = await heights();
+      const moved = heightsBefore.flatMap((was, index) => (Math.abs(Number.parseInt(was, 10) - Number.parseInt(heightsAfter[index]!, 10)) <= 1
+        ? [] : [`#${index}: ${was} -> ${heightsAfter[index]}`]));
+      expect(moved, 'blocks whose height changed').toEqual([]);
       expect(after.scroll).toBe(before.scroll);
       expect(Math.abs(after.height - before.height)).toBeLessThan(2);
       expect(Math.abs(after.top + 8 - target.y)).toBeLessThan(2);
