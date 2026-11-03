@@ -1,4 +1,4 @@
-import { createHash, randomUUID } from 'node:crypto';
+import { createHash, randomBytes, randomUUID } from 'node:crypto';
 import path from 'node:path';
 import { DocumentWatcher } from './document-watcher';
 import type { StructuredLogger } from '../../logger';
@@ -108,6 +108,12 @@ function classifySaveFailure(error: unknown, stage: FileTruthStageV1): FileTruth
 
 export class FileTruthStoreV1 {
   private document: NotoDocument | null = null;
+  /**
+   * The identity of the document this store holds. A store is one open file,
+   * and the window asks it to open again on startup, so the identity is minted
+   * once here rather than on each open: a second open is the same document.
+   */
+  private readonly documentId = openDocumentId();
   private acceptedPath: string | null = null;
   private acceptedFingerprint: FileFingerprintV1 | null = null;
   /** True after the watcher saw the file disappear; a save may recreate it. */
@@ -216,7 +222,13 @@ export class FileTruthStoreV1 {
     const captured = await this.platform.capture(filePath);
     const parsed = parseDocument(captured.bytes);
     if (parsed.status !== 'parsed') throw new Error(`FILE_TRUTH_PARSE_FAILED:${parsed.code}`);
-    this.document = parsed.document;
+    // The parse names the document after its bytes, and two files with the
+    // same bytes (two empty notes, two untouched copies of a template) were
+    // then one document to the window and to save routing: a click on one
+    // showed the other, and a save could land in it. The store's own identity
+    // replaces it.
+    const documentId = this.documentId;
+    this.document = { ...parsed.document, documentId };
     this.acceptedPath = captured.identity.canonicalPath;
     this.acceptedFingerprint = captured.identity.fingerprint;
     this.acceptedMissing = false;
@@ -250,7 +262,7 @@ export class FileTruthStoreV1 {
         }
         const candidate = parseDocument(candidateBytes);
         if (candidate.status !== 'parsed') throw new Error(`RECOVERY_PARSE_FAILED:${candidate.code}`);
-        this.document = candidate.document;
+        this.document = { ...candidate.document, documentId };
       } catch (error) {
         this.recoveryBlocked = true;
         const evidence = await this.residueEvidence([
@@ -521,7 +533,7 @@ export class FileTruthStoreV1 {
           'Durable candidate bytes cannot be parsed as a Noto document. The original was not replaced.',
           journal, evidence.paths);
       }
-      const recoveredDocument = parsedCandidate.document;
+      const recoveredDocument = { ...parsedCandidate.document, documentId: this.documentId };
       if (journal.stage === 'replacement-complete' || journal.stage === 'replacement-verified' || journal.stage === 'journal-complete') {
         return await this.completeRecoveredReplacement(attemptId, journal, bytes, recoveredDocument,
           'Recovery verified the completed replacement and reconciled the accepted document.');
@@ -943,4 +955,13 @@ export class FileTruthStoreV1 {
       this.transactionActive = false;
     }
   }
+}
+
+/**
+ * A fresh identity for one store, in the shape the wire expects: the prefix
+ * and 64 hex digits. Random rather than read off the bytes, so it names this
+ * open file and nothing else; saves and reloads carry it forward.
+ */
+function openDocumentId(): NotoDocument['documentId'] {
+  return `noto-doc-v3:${randomBytes(32).toString('hex')}` as NotoDocument['documentId'];
 }
