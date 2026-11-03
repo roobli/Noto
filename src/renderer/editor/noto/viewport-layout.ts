@@ -131,24 +131,37 @@ export function viewportLayoutPlugin(): Plugin<DecorationSet> {
     if (painted.size > PAINTED_LIMIT) painted.delete(painted.keys().next().value as ProseNode);
   };
   /*
-   * Measured while painted: a block as it joins the set, and the block being
-   * typed in after each change. One or two blocks per update, and only those,
-   * since reading a height makes the browser lay out what changed.
+   * Measured while painted, and only the blocks that need it: one that has
+   * just joined the set, and one whose node is new (typed into, or redrawn
+   * when the note's richer rendering filled it in after the first paint). A
+   * handful at most per update, since reading a height makes the browser lay
+   * out what changed. A size observer catches what grows later on its own, a
+   * diagram or a picture drawing in.
    */
-  const measure = (view: EditorView, indices: readonly number[]) => {
-    for (const index of indices) {
-      if (index >= view.state.doc.childCount) continue;
-      let position = 0;
-      for (let before = 0; before < index; before += 1) position += view.state.doc.child(before).nodeSize;
+  const measureElement = (dom: HTMLElement, node: ProseNode) => {
+    // The intrinsic size is the content box's, so padding and border come off.
+    const style = getComputedStyle(dom);
+    const frame = ['paddingTop', 'paddingBottom', 'borderTopWidth', 'borderBottomWidth']
+      .reduce((sum, key) => sum + (Number.parseFloat(style[key as 'paddingTop']) || 0), 0);
+    const height = dom.getBoundingClientRect().height - frame;
+    if (height > 0) remember(node, Math.round(height * 100) / 100);
+  };
+  /** The painted blocks, located from the selection's own block rather than by walking the note. */
+  const liveBlocks = (view: EditorView): { node: ProseNode; dom: HTMLElement }[] => {
+    const { doc, selection } = view.state;
+    const indices = liveTopLevelIndices(doc, selection);
+    if (indices.length === 0) return [];
+    const $from = selection.$from;
+    let index = $from.index(0);
+    let position = $from.depth >= 1 ? $from.before(1) : $from.pos;
+    const blocks: { node: ProseNode; dom: HTMLElement }[] = [];
+    for (const wanted of indices) {
+      while (index > wanted) { index -= 1; position -= doc.child(index).nodeSize; }
+      while (index < wanted) { position += doc.child(index).nodeSize; index += 1; }
       const dom = view.nodeDOM(position);
-      if (!(dom instanceof HTMLElement)) continue;
-      // The intrinsic size is the content box's, so padding and border come off.
-      const style = getComputedStyle(dom);
-      const frame = ['paddingTop', 'paddingBottom', 'borderTopWidth', 'borderBottomWidth']
-        .reduce((sum, key) => sum + (Number.parseFloat(style[key as 'paddingTop']) || 0), 0);
-      const height = dom.getBoundingClientRect().height - frame;
-      if (height > 0) remember(view.state.doc.child(index), Math.round(height * 100) / 100);
+      if (dom instanceof HTMLElement) blocks.push({ node: doc.child(index), dom });
     }
+    return blocks;
   };
   return new Plugin<DecorationSet>({
     key: viewportLayoutKey,
@@ -161,21 +174,32 @@ export function viewportLayoutPlugin(): Plugin<DecorationSet> {
       decorations: (state) => viewportLayoutKey.getState(state),
     },
     view: (view) => {
-      let measured = new Set(liveTopLevelIndices(view.state.doc, view.state.selection));
-      measure(view, [...measured]);
+      const observed = new Map<HTMLElement, ProseNode>();
+      const observer = typeof ResizeObserver === 'undefined' ? null : new ResizeObserver((entries) => {
+        for (const entry of entries) {
+          const node = entry.target instanceof HTMLElement ? observed.get(entry.target) : undefined;
+          if (node) measureElement(entry.target as HTMLElement, node);
+        }
+      });
+      const sync = (current: EditorView) => {
+        const blocks = liveBlocks(current);
+        for (const { node, dom } of blocks) if (!painted.has(node)) measureElement(dom, node);
+        const keep = new Set(blocks.map((block) => block.dom));
+        for (const dom of [...observed.keys()]) {
+          if (!keep.has(dom)) { observer?.unobserve(dom); observed.delete(dom); }
+        }
+        for (const { node, dom } of blocks) {
+          if (!observed.has(dom)) observer?.observe(dom);
+          observed.set(dom, node);
+        }
+      };
+      sync(view);
       return {
         update: (current, previous) => {
           if (current.state.doc === previous.doc && current.state.selection.eq(previous.selection)) return;
-          const live = liveTopLevelIndices(current.state.doc, current.state.selection);
-          const due = new Set(live.filter((index) => !measured.has(index)));
-          // After an edit, the block typed in has a new height too.
-          if (current.state.doc !== previous.doc) {
-            due.add(current.state.selection.$from.index(0));
-            due.add(current.state.selection.$to.index(0));
-          }
-          if (due.size > 0) measure(current, [...due]);
-          measured = new Set(live);
+          sync(current);
         },
+        destroy: () => observer?.disconnect(),
       };
     },
   });
