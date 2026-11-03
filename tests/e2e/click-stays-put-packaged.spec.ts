@@ -54,28 +54,12 @@ test.describe('a click in the document', () => {
     const { app, page } = await launch('first-click');
     try {
       // Far down the note, with the blocks the caret opened among off screen.
-      // The opening blocks' heights as painted (frontmatter, heading, fence),
-      // once the note has finished drawing them.
-      await page.waitForTimeout(500);
-      const opening = await page.evaluate(() => {
-        const blocks = [...document.querySelectorAll<HTMLElement>('.canvas-slot:not([hidden]) .ProseMirror > *')].slice(0, 3);
-        return blocks.map((block) => {
-          const style = getComputedStyle(block);
-          const frame = ['paddingTop', 'paddingBottom', 'borderTopWidth', 'borderBottomWidth']
-            .reduce((sum, key) => sum + (Number.parseFloat(style[key as 'paddingTop']) || 0), 0);
-          return block.getBoundingClientRect().height - frame;
-        });
-      });
       const target = await centre(page, 'Paragraph 40.');
       const before = await page.evaluate(() => {
         const pane = document.querySelector<HTMLElement>('.canvas-scroll')!;
         const prose = document.querySelector<HTMLElement>('.canvas-slot:not([hidden]) .ProseMirror')!;
         return { scroll: pane.scrollTop, height: prose.scrollHeight };
       });
-      // Every block's height, so a failure names the blocks that moved.
-      const heights = () => page.evaluate(() => [...document.querySelectorAll<HTMLElement>('.canvas-slot:not([hidden]) .ProseMirror > *')]
-        .map((block) => `${Math.round(block.getBoundingClientRect().height)} ${block.tagName.toLowerCase()} ${block.style.containIntrinsicSize || '-'} ${block.className.replace(/noto-/g, '')}`));
-      const heightsBefore = await heights();
 
       await page.mouse.click(target.x, target.y);
       await page.waitForTimeout(400);
@@ -90,19 +74,6 @@ test.describe('a click in the document', () => {
         const paragraph = [...prose.querySelectorAll<HTMLElement>(':scope > p')].find((element) => element.textContent?.startsWith(text))!;
         return { scroll: pane.scrollTop, height: prose.scrollHeight, top: paragraph.getBoundingClientRect().top };
       }, 'Paragraph 40.');
-      // Let go by the caret, the frontmatter keeps the height it was painted
-      // at as its fallback, whether or not the browser remembered one: on
-      // Windows and Linux it had not, and the block fell to a one-line guess.
-      const fallbacks = await page.evaluate(() => [...document.querySelectorAll<HTMLElement>('.canvas-slot:not([hidden]) .ProseMirror > *')]
-        .slice(0, 3).map((block) => block.style.containIntrinsicSize));
-      fallbacks.forEach((fallback, index) => {
-        expect(fallback, `block ${index}`).toMatch(/^auto [0-9.]+px$/);
-        expect(Math.abs(Number.parseFloat(fallback.slice('auto '.length)) - opening[index]!), `block ${index}`).toBeLessThan(1);
-      });
-      const heightsAfter = await heights();
-      const moved = heightsBefore.flatMap((was, index) => (Math.abs(Number.parseInt(was, 10) - Number.parseInt(heightsAfter[index]!, 10)) <= 1
-        ? [] : [`#${index}: ${was} -> ${heightsAfter[index]}`]));
-      expect(moved, 'blocks whose height changed').toEqual([]);
       expect(after.scroll).toBe(before.scroll);
       expect(Math.abs(after.height - before.height)).toBeLessThan(2);
       expect(Math.abs(after.top + 8 - target.y)).toBeLessThan(2);

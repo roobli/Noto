@@ -114,11 +114,6 @@ How releases are made, and what each channel receives, is in
   and Control-X with Minimize and Cut, and Close Window no longer shares
   Control-W with Close Tab. They move to Alt+Shift+M, Alt+Shift+X and
   Control+Shift+W; macOS keeps Typora's keys.
-- On Windows and Linux, a click far down a long note no longer scrolls the
-  page. The blocks painted since the note opened (frontmatter, an opening
-  fence) fell back to a one-line placeholder when the caret left them,
-  because the browser there had not remembered their height. Each block now
-  keeps the height it was painted at as its fallback.
 - A click in a paragraph shows the source of the span it lands in and moves
   nothing else. Highlight, superscript, subscript and inline tags such as
   `<u>` and `<kbd>` showed every delimiter in the paragraph as soon as the
