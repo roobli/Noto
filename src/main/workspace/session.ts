@@ -696,12 +696,17 @@ export class WorkspaceSession {
 
   private async renameEntry(real: string, typed: string | null): Promise<WorkspaceEntryReplyV1> {
     if (!isEntryName(typed)) return this.refuse('bad-name');
+    // A leading dot hides an entry from the tree, so a rename to `.draft`
+    // would make the note vanish exactly as a lost one does.
+    if (typed.startsWith('.')) return this.refuse('bad-name');
     const parent = path.dirname(real);
     const current = path.basename(real);
     const isDirectory = (await stat(real)).isDirectory();
-    // A note renamed to something with no extension would vanish from a tree
-    // that lists only what it can open, so it keeps the one it had.
-    const name = isDirectory ? typed : renamedFileName(typed, current);
+    // A note renamed to something without an extension it can be opened by
+    // would vanish from a tree that lists only those, so it keeps the one it had.
+    const showCode = this.codeViewer();
+    const name = isDirectory ? typed : renamedFileName(typed, current, (extension) =>
+      isEditableFile(`x${extension}`) || (showCode && isViewableCodeFile(`x${extension}`)));
     if (name === current) return this.done(real);
 
     const destination = path.join(parent, name);

@@ -205,6 +205,21 @@ test.describe('making a new note', () => {
     }
   });
 
+  test('keeps the note\u2019s extension when the name has a dot in it', async () => {
+    const { app, page, vault } = await launch('dotted');
+    try {
+      await invokeMenu(app, 'new-file');
+      await expect(page.getByTestId('tree-name-field')).toBeFocused();
+      await page.keyboard.type('Meeting 3.5');
+      await page.keyboard.press('Enter');
+      // Not a file ending in `.5`, which the tree would not list.
+      await expect.poll(async () => (await readdir(vault)).sort()).toContain('Meeting 3.5.md');
+      await expect(page.getByTestId('tree-file').filter({ hasText: 'Meeting 3.5.md' })).toBeVisible();
+    } finally {
+      await app.close();
+    }
+  });
+
   test('says where a note would go when no folder is open', async () => {
     const workspace = path.join(resultRoot, 'nowhere');
     await rm(workspace, { recursive: true, force: true });

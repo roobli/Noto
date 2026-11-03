@@ -83,13 +83,16 @@ export function duplicateName(name: string, taken: ReadonlySet<string>): string 
 /**
  * The name a rename should actually use.
  *
- * A note renamed to something with no extension keeps the one it had. The tree
- * lists only the extensions it can open and `openPath` refuses the rest, so a
- * note renamed to `ideas` would vanish from the tree and could not be opened
- * again: the reader would have lost it without deleting anything.
+ * A note renamed to something without an extension Noto opens keeps the one
+ * it had. The tree lists only the extensions it can open and `openPath`
+ * refuses the rest, so a note renamed to `ideas`, or to `Meeting 3.5` (whose
+ * "extension" is `.5`), would vanish from the tree and could not be opened
+ * again: the reader would have lost it without deleting anything. `opens`
+ * says whether an extension, with its dot and lower-cased, is one Noto opens.
  */
-export function renamedFileName(typed: string, current: string): string {
-  if (extensionOf(typed) !== '') return typed;
+export function renamedFileName(typed: string, current: string, opens: (extension: string) => boolean): string {
+  const typedExtension = extensionOf(typed).toLowerCase();
   const extension = extensionOf(current);
+  if (typedExtension !== '' && (opens(typedExtension) || typedExtension === extension.toLowerCase())) return typed;
   return extension === '' ? typed : `${typed}${extension}`;
 }
