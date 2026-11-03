@@ -13,6 +13,7 @@ function template(platform: NodeJS.Platform, recent: readonly RecentFileV1[] = [
     recent,
     actions: {
       openFolder: noop,
+      refreshFolder: noop,
       closeTab: noop,
       openDialog: noop,
       openPath: noop,
@@ -122,7 +123,7 @@ describe('the menu and the renderer agree on commands', () => {
     // Import belongs here too: the dialog, the conversion and the file are all
     // main's, so nothing about it has to cross the boundary and come back.
     const mainOnly = new Set([
-      'open-dialog', 'open-folder', 'close-tab', 'import-document', 'print', 'paste-plain',
+      'open-dialog', 'open-folder', 'refresh-folder', 'close-tab', 'import-document', 'print', 'paste-plain',
       'reopen-closed', 'theme-none',
       // A second chord for a command the menu already names once.
       'quick-open-period',
@@ -197,7 +198,7 @@ describe('the Themes menu', () => {
     appName: 'Noto',
     recent: [],
     actions: {
-      openFolder: noop, closeTab: noop, openDialog: noop, openPath: noop, importDocument: noop,
+      openFolder: noop, refreshFolder: noop, closeTab: noop, openDialog: noop, openPath: noop, importDocument: noop,
       print: noop, pastePlain: noop, reopenClosed: noop, chooseTheme: noop, openThemeFolder: noop,
       clearRecent: noop,
       checkUpdates: noop,

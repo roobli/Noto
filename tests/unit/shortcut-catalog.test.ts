@@ -11,7 +11,7 @@ const template = (mac: boolean) => buildMenuTemplate({
   appName: 'Noto',
   recent: [],
   actions: {
-    openFolder: () => {}, closeTab: () => {}, openDialog: () => {}, openPath: () => {}, importDocument: () => {},
+    openFolder: () => {}, refreshFolder: () => {}, closeTab: () => {}, openDialog: () => {}, openPath: () => {}, importDocument: () => {},
     clearRecent: () => {}, print: () => {}, pastePlain: () => {}, reopenClosed: () => {}, chooseTheme: () => {},
     openThemeFolder: () => {}, checkUpdates: () => {},
   },

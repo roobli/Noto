@@ -25,6 +25,8 @@ const PANDOC_EXPORTS = EXPORT_TARGETS.filter(needsPandoc);
 export interface MenuActions {
   /** Choose the folder shown in the sidebar. */
   openFolder: () => void;
+  /** Read the open folder again: the tree, quick open and the git marks. */
+  refreshFolder: () => void;
   /** Close whichever document is in front. */
   closeTab: () => void;
   /** Open again the document closed most recently. */
@@ -127,6 +129,9 @@ export function buildMenuTemplate(options: MenuTemplateOptions): MenuItemConstru
       // and a menu accelerator wins over the editor's own keys. Opening a
       // folder happens once a session; making a list happens all day.
       { id: 'open-folder', label: 'Open Folder…', accelerator: 'CmdOrCtrl+Alt+Shift+O', click: () => actions.openFolder() },
+      // The folder is followed on disk by itself; this is for the change the
+      // watcher could not see, and for the reader who wants to be sure.
+      { id: 'refresh-folder', label: 'Refresh Folder', accelerator: 'CmdOrCtrl+Alt+R', click: () => actions.refreshFolder() },
       // The fastest way into a vault of a few thousand notes, so it sits with
       // the other ways of opening one rather than under a search menu.
       command('Quick Open…', 'CmdOrCtrl+P', 'quick-open'),

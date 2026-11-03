@@ -1192,6 +1192,20 @@ export class WorkspaceSession {
    * relative to it; a note from elsewhere is simply not known.
    */
   /** Tell the renderer its listing is stale, without saying what changed. */
+  /**
+   * Read the folder again from scratch: every listing, the quick open index
+   * and the git marks. The watcher does this by itself when the folder
+   * changes; this is the same work on request, for a change it could not see
+   * (a network drive, a folder mounted after it opened).
+   */
+  refreshFolder(): void {
+    if (!this.folderRoot) return;
+    this.indexCache = null;
+    this.listed.clear();
+    this.logger.log('workspace_folder_refreshed', {});
+    this.announceTreeChanged();
+  }
+
   announceTreeChanged(): void {
     // A rename or new note can change which tags exist; drop the scan so the
     // next Browse Tags sees the vault as it is now.

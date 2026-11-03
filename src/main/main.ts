@@ -445,6 +445,7 @@ async function run(): Promise<void> {
     openDialog: () => { void session?.openWithDialog().then(refreshMenu).catch(reportOpenFailure); },
     openPath: (filePath) => { void session?.openPath(filePath).then(refreshMenu).catch(reportOpenFailure); },
     openFolder: () => { void session?.openFolderWithDialog().catch(reportOpenFailure); },
+    refreshFolder: () => { session?.refreshFolder(); },
     pastePlain: () => sendPasteText(editorWindow),
     print: () => {
       editorWindow?.webContents.print({ printBackground: true }, (ok, reason) => {

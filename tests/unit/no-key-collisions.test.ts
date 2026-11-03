@@ -63,7 +63,7 @@ describe('no key is claimed twice', () => {
     appName: 'Noto',
     recent: [],
     actions: {
-      openFolder: () => {}, closeTab: () => {}, openDialog: () => {},
+      openFolder: () => {}, refreshFolder: () => {}, closeTab: () => {}, openDialog: () => {},
       openPath: () => {},
     importDocument: () => {}, clearRecent: () => {}, print: () => {}, pastePlain: () => {}, reopenClosed: () => {}, chooseTheme: () => {}, openThemeFolder: () => {},
       checkUpdates: () => {},
