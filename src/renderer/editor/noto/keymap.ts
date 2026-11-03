@@ -676,10 +676,12 @@ export function notoBindings({ mac, onWidthStep, taskStamp }: KeymapOptions): Re
     [`${mod}-Alt-t`]: insertTable(2, 3),
     // Typora's own bindings for the marks markdown has no key for, so a hand
     // that learned them there does not have to learn them again. Its inline
-    // code, strike and maths are on Control rather than Command.
+    // code, strike and maths are on Control rather than Command. Off macOS
+    // Control is the command key and Control-M is Minimize, so maths moves to
+    // Alt with Shift, where the menu puts it too.
     'Ctrl-`': toggleMark(marks.inline_code),
     'Ctrl-Shift-`': toggleMark(marks.strikethrough),
-    'Ctrl-m': wrapInMath,
+    [mac ? 'Ctrl-m' : 'Alt-Shift-m']: wrapInMath,
     [`${mod}-u`]: surroundTag('u'),
     [`${mod}-Shift-h`]: surround('==', '=='),
     // Typora names these Command+plus and Command+minus. The plus, Command
@@ -714,8 +716,8 @@ export function notoBindings({ mac, onWidthStep, taskStamp }: KeymapOptions): Re
     'Alt-Shift-ArrowLeft': moveColumn(true),
     'Alt-Shift-ArrowRight': moveColumn(false),
 
-    // Typora's own chord for it.
-    'Ctrl-x': toggleTaskStatus(undefined, taskStamp),
+    // Typora's own chord for it on macOS. Off macOS Control-X is Cut.
+    [mac ? 'Ctrl-x' : 'Alt-Shift-x']: toggleTaskStatus(undefined, taskStamp),
     [`${mod}-]`]: chainCommands(sinkListItem(nodes.list_item), stepWidth(1)),
     [`${mod}-[`]: chainCommands(liftListItem(nodes.list_item), stepWidth(-1)),
   };

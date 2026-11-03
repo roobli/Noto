@@ -101,7 +101,7 @@ describe('the menu follows each platform', () => {
   it('offers Front only on macOS, and Close in the window menu elsewhere', () => {
     expect(labels(menu(template('darwin'), '&Window'))).toContain('front');
     expect(labels(menu(template('win32'), '&Window'))).not.toContain('front');
-    expect(labels(menu(template('win32'), '&Window'))).toContain('close');
+    expect(labels(menu(template('win32'), '&Window'))).toContain('Close Window');
   });
 });
 

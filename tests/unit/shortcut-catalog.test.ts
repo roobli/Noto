@@ -4,7 +4,7 @@ import { buildMenuTemplate, menuShortcuts, withoutShortcuts } from '../../src/ma
 import { guardedBindings, notoBindings } from '../../src/renderer/editor/noto/keymap';
 import { buildShortcutRows, conflictsOf } from '../../src/renderer/shortcuts/catalog';
 import { normalizeChord } from '../../src/shared/shortcuts/chord';
-import { markdownPaddingManifest, rendererProofManifest, titleShiftManifest } from '../../src/shared/plugins/proof-manifests';
+import { markdownPaddingManifest, rendererProofManifest, sidenotesManifest, titleShiftManifest } from '../../src/shared/plugins/proof-manifests';
 
 const template = (mac: boolean) => buildMenuTemplate({
   platform: mac ? 'darwin' : 'win32',
@@ -19,7 +19,7 @@ const template = (mac: boolean) => buildMenuTemplate({
   openExternal: () => {},
 });
 
-const plugins = [rendererProofManifest, titleShiftManifest, markdownPaddingManifest];
+const plugins = [rendererProofManifest, titleShiftManifest, markdownPaddingManifest, sidenotesManifest];
 
 describe('the Shortcuts pane’s list', () => {
   const rows = buildShortcutRows({ menu: menuShortcuts(template(true), true), plugins, mac: true });
@@ -35,6 +35,11 @@ describe('the Shortcuts pane’s list', () => {
 
   it('has no key held by two things on macOS', () => {
     expect([...conflictsOf(rows)]).toEqual([]);
+  });
+
+  it('has no key held by two things on Windows and Linux, where Mod is Control', () => {
+    const offMac = buildShortcutRows({ menu: menuShortcuts(template(false), false), plugins, mac: false });
+    expect([...conflictsOf(offMac)]).toEqual([]);
   });
 
   it('gives Browse Tags a key of its own, apart from Reopen Closed File', () => {
@@ -83,7 +88,7 @@ describe('a switched-off chord', () => {
     expect(menuShortcuts(stripped, true).find((item) => item.id === 'role:copy')?.chord).toBe('Mod+C');
   });
 
-  it('stops a role sharing it from claiming it, as Close shares Close Tab\u2019s key off macOS', () => {
+  it('stops a role from claiming it, as Minimize gives up Control-M off macOS', () => {
     const find = (items: readonly MenuItemConstructorOptions[], role: string): MenuItemConstructorOptions | null => {
       for (const item of items) {
         if (item.role === role && item.id === undefined) return item;
@@ -94,9 +99,9 @@ describe('a switched-off chord', () => {
       }
       return null;
     };
-    const stripped = withoutShortcuts(template(false), new Set(['Mod+W']), false);
-    expect(accelerator(stripped, 'close-tab')).toBeUndefined();
-    expect(find(stripped, 'close')?.registerAccelerator).toBe(false);
+    const stripped = withoutShortcuts(template(false), new Set(['Mod+M']), false);
+    expect(find(stripped, 'minimize')?.registerAccelerator).toBe(false);
+    expect(find(stripped, 'close')?.registerAccelerator).toBeUndefined();
   });
 
   it('passes the key on in the editor, read at the moment of the press', () => {

@@ -328,7 +328,10 @@ export function buildMenuTemplate(options: MenuTemplateOptions): MenuItemConstru
       {
         label: 'Task Status',
         submenu: [
-          command('Toggle Task Status', 'Control+X', 'task-toggle'),
+          // Typora's Control-X on macOS; off it Control is the command key and
+          // Control-X is Cut, so the toggle moves to Alt with Shift, as Typora
+          // moves Strike there.
+          command('Toggle Task Status', mac ? 'Control+X' : 'Alt+Shift+X', 'task-toggle'),
           command('Mark as Complete', undefined, 'task-complete'),
           command('Mark as Incomplete', undefined, 'task-incomplete'),
           { type: 'separator' },
@@ -376,7 +379,8 @@ export function buildMenuTemplate(options: MenuTemplateOptions): MenuItemConstru
       command('Code', 'Control+`', 'mark-code'),
       command('Strike', 'CmdOrCtrl+Shift+X', 'mark-strike'),
       command('Highlight', 'CmdOrCtrl+Shift+H', 'mark-highlight'),
-      command('Inline Math', 'Control+M', 'mark-math'),
+      // Control-M off macOS is Minimize, so Inline Math moves as the task toggle does.
+      command('Inline Math', mac ? 'Control+M' : 'Alt+Shift+M', 'mark-math'),
       { type: 'separator' },
       command('Hyperlink…', 'CmdOrCtrl+K', 'insert-link'),
       command('Image…', 'CmdOrCtrl+Shift+I', 'insert-image'),
@@ -524,7 +528,8 @@ export function buildMenuTemplate(options: MenuTemplateOptions): MenuItemConstru
     label: '&Window',
     submenu: mac
       ? [{ role: 'minimize' }, { role: 'zoom' }, { type: 'separator' }, { role: 'front' }]
-      : [{ role: 'minimize' }, { role: 'zoom' }, { role: 'close' }],
+      // Control-W is Close Tab's; the window takes Shift with it, as on macOS.
+      : [{ role: 'minimize' }, { role: 'zoom' }, { role: 'close', label: 'Close Window', accelerator: 'CmdOrCtrl+Shift+W' }],
   };
 
   const helpMenu: MenuItemConstructorOptions = {
@@ -682,11 +687,10 @@ export function withoutShortcuts(
         return { ...rest, ...(submenu === undefined ? {} : { submenu }) };
       }
     }
-    // A role with no id is the system's and has no switch of its own, but it
-    // may share a chord that does: off Windows' Window menu, Close holds the
-    // Control-W that Close Tab holds. Switched off there, the role keeps its
-    // label and stops claiming the key, or the chord would still close the
-    // window.
+    // A role with no id is the system's and has no switch of its own here, but
+    // the pane lists its key and can switch that off: Minimize's Control-M off
+    // macOS, say. Switched off, the role keeps its label and stops claiming the
+    // key, or the chord would still minimize the window.
     if (item.id === undefined && typeof item.role === 'string') {
       const accelerator = typeof item.accelerator === 'string' ? item.accelerator : roleChord(item.role, mac);
       const chord = accelerator ? normalizeChord(accelerator, 'accelerator', mac) : null;
