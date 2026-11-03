@@ -77,6 +77,30 @@ test.describe('making a new note', () => {
     }
   });
 
+  test('takes a name typed with an input method, and an Enter that commits its letters is not the name', async () => {
+    const { app, page, vault } = await launch('ime-name');
+    try {
+      await invokeMenu(app, 'new-file');
+      const field = page.getByTestId('tree-name-field');
+      await expect(field).toBeFocused();
+      await page.keyboard.insertText('计划');
+      // The Enter that confirms the input method's letters reaches the page as
+      // a composing keydown. It used to take the half-typed name as final.
+      await field.evaluate((element) => {
+        element.dispatchEvent(new KeyboardEvent('keydown', { key: 'Enter', isComposing: true, bubbles: true, cancelable: true }));
+      });
+      await page.waitForTimeout(300);
+      await expect(field).toBeFocused();
+      expect((await readdir(vault)).sort()).toEqual(['Untitled.md', 'existing.md']);
+
+      // An Enter outside a composition names the note.
+      await page.keyboard.press('Enter');
+      await expect.poll(async () => (await readdir(vault)).sort()).toEqual(['existing.md', '计划.md']);
+    } finally {
+      await app.close();
+    }
+  });
+
   test('asks for its name on its own row, then hands the keys to the note', async () => {
     const { app, page, vault } = await launch('named');
     try {

@@ -82,6 +82,31 @@ test.describe('quick open, as the author built it', () => {
     }
   });
 
+  test('leaves an Enter that commits an input method\u2019s letters to the input method', async () => {
+    const { app, page } = await launch('ime');
+    try {
+      await invokeMenu(app, 'quick-open');
+      const input = page.getByTestId('quick-open').locator('input').first();
+      await input.fill('plan');
+      // The press that confirms letters typed with a Chinese input method
+      // reaches the page as a composing keydown. It used to open the first
+      // result before the letters were even in the box.
+      await input.evaluate((element) => {
+        element.dispatchEvent(new KeyboardEvent('keydown', { key: 'Enter', isComposing: true, bubbles: true, cancelable: true }));
+      });
+      await page.waitForTimeout(300);
+      await expect(page.getByTestId('quick-open')).toBeVisible();
+      await expect(page.getByTestId('document-identity')).not.toContainText('plan.md');
+
+      // An Enter outside a composition still opens it.
+      await input.press('Enter');
+      await expect(page.getByTestId('quick-open')).toHaveCount(0);
+      await expect(page.getByTestId('document-identity')).toContainText('plan.md');
+    } finally {
+      await app.close();
+    }
+  });
+
   test('opens on the chord the author uses, and remembers how wide it was made', async () => {
     const { app, page, userData } = await launch('width');
     try {

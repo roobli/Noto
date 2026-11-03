@@ -1887,13 +1887,16 @@ button:disabled { color: var(--muted); opacity: 0.7; }
 .quick-open {
   animation: noto-arrive var(--motion-default) var(--ease-out);
   position: absolute;
-  top: 12vh;
+  top: 10vh;
   left: 50%;
   translate: -50% 0;
   display: flex;
   flex-direction: column;
   width: min(740px, calc(100vw - 48px));
-  max-height: 62vh;
+  /* About as tall as it is wide on a desktop window, where it was a strip
+     twelve rows high: a long list is what a search is read from, and the
+     panel stops short of the page's foot so it still reads as a panel. */
+  max-height: min(68vh, 760px);
   /* No transition on the width: it changes on ⌘[ and ⌘], from the keyboard,
      and a width that eases reflows every row on every frame of it. */
   overflow: hidden;

@@ -29,6 +29,7 @@ import { supportedLanguages } from './highlight';
 import { DiagramFrame, isDiagramLanguage } from './diagram-frame';
 import { TimelineFrame, isTimelineLanguage } from './timeline';
 import { copyThroughSelection } from './clipboard';
+import { isComposing } from '../../ime';
 
 /** How long "Copied" stays before the button says "Copy" again. */
 const COPIED_MS = 1400;
@@ -140,6 +141,8 @@ export class FenceView implements NodeView {
     this.language.addEventListener('focus', this.bindLanguageList);
     this.language.addEventListener('change', () => this.commitLanguage());
     this.language.addEventListener('keydown', (event) => {
+      // A press the input method is composing with is the input method's.
+      if (isComposing(event)) return;
       if (event.key === 'Enter') {
         event.preventDefault();
         this.commitLanguage();

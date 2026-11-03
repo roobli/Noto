@@ -13,6 +13,7 @@
 import { useCallback, useEffect, useRef, useState, type ReactNode } from 'react';
 import type { WorkspaceEntryV1, WorkspaceGitChangeV1 } from '../shared/workspace/v1/contracts';
 import { branchToCurrentFile, sizeTreeGuides, startTreeGuides } from './tree-guides';
+import { isComposing } from './ime';
 
 export interface FileTreeProps {
   readonly root: string | null;
@@ -145,6 +146,9 @@ function NameField({ initial, onDone }: {
       onBlur={(event) => finish(event.currentTarget.value.trim() || null)}
       onKeyDown={(event) => {
         event.stopPropagation();
+        // A press the input method is composing with is the input method's:
+        // Enter there commits the letters, not the name.
+        if (isComposing(event)) return;
         if (event.key === 'Enter') {
           event.preventDefault();
           finish(event.currentTarget.value.trim() || null);

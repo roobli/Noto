@@ -28,9 +28,14 @@ import { searchBoost, type FrecencyStoreV1 } from '../shared/search/v1/frecency'
 import { pathContext } from './quick-open-path';
 import { foldersOf, withinScope } from './quick-open-folders';
 import { completeQuery, parseQuery, removeToken, type Completion } from './quick-open-query';
+import { isComposing } from './ime';
 
-/** How many results are drawn. Beyond this nobody is reading, they are retyping. */
-const LIMIT = 12;
+/**
+ * How many results are drawn: enough to fill the panel on a tall window, so it
+ * is as tall as the window allows rather than a strip of twelve rows high on
+ * the page. Beyond this nobody is reading, they are retyping.
+ */
+const LIMIT = 30;
 
 interface Candidate extends ScoreKeys {
   readonly entry: WorkspaceIndexEntryV1;
@@ -288,6 +293,9 @@ export function QuickOpen({
   }, [onMode]);
 
   const onKeyDown = (event: React.KeyboardEvent) => {
+    // A press the input method is composing with is the input method's: Enter
+    // there commits the letters typed, and must not open the first result.
+    if (isComposing(event)) return;
     if (event.key === 'Escape') { event.preventDefault(); onClose(); return; }
     // Tab switches what is being searched without leaving the box, which is
     // where the thought "it is in a note, I just cannot remember which" turns

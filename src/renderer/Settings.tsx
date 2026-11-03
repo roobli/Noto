@@ -27,6 +27,7 @@ import {
   type UpdateChannelSettingV1,
 } from '../shared/settings/v1/contracts';
 import type { UpdateStatusV1 } from '../shared/updates/v1/contracts';
+import { isComposing } from './ime';
 
 export type SettingsSection = 'appearance' | 'editor' | 'markdown' | 'images' | 'updates' | 'remote' | 'plugins';
 
@@ -291,7 +292,7 @@ function ThemeFile({ settings, onChange, problem, onReload }: {
           aria-label="Custom stylesheet path"
           onChange={(event) => setDraft(event.target.value)}
           onBlur={commit}
-          onKeyDown={(event) => { if (event.key === 'Enter') { event.preventDefault(); commit(); } }}
+          onKeyDown={(event) => { if (!isComposing(event) && event.key === 'Enter') { event.preventDefault(); commit(); } }}
         />
         <button type="button" className="pref-inline-action" data-testid="reload-custom-css"
           disabled={!settings.customCssPath} onClick={onReload}>Reload</button>
@@ -424,7 +425,7 @@ function ImageFolder({ settings, onChange }: {
           aria-label="Image folder"
           onChange={(event) => setDraft(event.target.value)}
           onBlur={commit}
-          onKeyDown={(event) => { if (event.key === 'Enter') { event.preventDefault(); commit(); } }}
+          onKeyDown={(event) => { if (!isComposing(event) && event.key === 'Enter') { event.preventDefault(); commit(); } }}
         />
       </span>
     </div>
@@ -746,6 +747,7 @@ export function Settings({
   useEffect(() => {
     if (!open) return;
     const onKeyDown = (event: KeyboardEvent) => {
+      if (isComposing(event)) return;
       if (event.key === 'Escape') {
         event.preventDefault();
         onClose();

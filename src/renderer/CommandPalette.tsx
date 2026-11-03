@@ -13,6 +13,7 @@
 
 import { useEffect, useMemo, useRef, useState, type KeyboardEvent as ReactKeyboardEvent } from 'react';
 import { filterPaletteCommands } from './command-palette-filter';
+import { isComposing } from './ime';
 
 export interface PaletteCommand {
   /** Stable across renders and unique in the list. */
@@ -67,6 +68,8 @@ export function CommandPalette({ commands, onRun, onClose }: CommandPaletteProps
   const run = (command: PaletteCommand | undefined) => { if (command) onRun(command); };
 
   const onFieldKey = (event: ReactKeyboardEvent<HTMLInputElement>) => {
+    // A press the input method is composing with is the input method's.
+    if (isComposing(event)) return;
     if (event.key === 'ArrowDown' || event.key === 'ArrowUp') {
       event.preventDefault();
       if (matches.length === 0) return;

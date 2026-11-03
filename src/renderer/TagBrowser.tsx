@@ -11,6 +11,7 @@ import type {
   WorkspaceTagNoteV1,
   WorkspaceTagSummaryV1,
 } from '../shared/workspace/v1/contracts';
+import { isComposing } from './ime';
 
 export type TagBrowserView =
   | { readonly kind: 'tags' }
@@ -99,6 +100,8 @@ export function TagBrowser({
             placeholder={view.kind === 'tags' ? 'Filter tags…' : `Filter notes tagged ${view.tag}…`}
             onChange={(event) => setQuery(event.target.value)}
             onKeyDown={(event) => {
+              // A press the input method is composing with is the input method's.
+              if (isComposing(event)) return;
               if (event.key === 'Escape') {
                 event.preventDefault();
                 if (view.kind === 'notes' && query.length === 0) onBack();

@@ -17,6 +17,7 @@ import { Plugin, PluginKey, TextSelection, type Command, type EditorState } from
 import type { Mark } from 'prosemirror-model';
 import type { EditorView } from 'prosemirror-view';
 import { notoSchema } from '../../../shared/markdown/v3/pm/schema';
+import { isComposing } from '../../ime';
 
 export interface LinkTarget {
   readonly from: number;
@@ -209,6 +210,9 @@ class LinkPanel {
   }
 
   private readonly onKeyDown = (event: KeyboardEvent): void => {
+    // A press the input method is composing with is the input method's: Enter
+    // there commits a link title typed in Chinese, not the link.
+    if (isComposing(event)) return;
     if (event.key === 'Enter') {
       event.preventDefault();
       const target = this.target;

@@ -9,6 +9,7 @@
 
 import { useEffect, useRef, useState } from 'react';
 import type { SearchOptions } from './editor/noto/search';
+import { isComposing } from './ime';
 
 export interface FindBarProps {
   readonly open: boolean;
@@ -68,6 +69,8 @@ export function FindBar({ open, showReplace, initialQuery, onSearch, onGo, onRep
   const go = (direction: 'forward' | 'backward') => setResults(onGo(direction));
 
   const onKeyDown = (event: React.KeyboardEvent) => {
+    // A press the input method is composing with is the input method's.
+    if (isComposing(event)) return;
     if (event.key === 'Escape') {
       event.preventDefault();
       onClose();
