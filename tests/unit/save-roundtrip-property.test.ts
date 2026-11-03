@@ -26,7 +26,7 @@ import { viewportStubKey } from '../../src/renderer/editor/noto/viewport-stub';
 import type { NotoDocument } from '../../src/shared/markdown/v3/contracts';
 import { gitDeletedBefore, gitEntryAt, type GitRevertTarget } from '../../src/renderer/editor/noto/git-gutter';
 import { diffBlocks } from '../../src/shared/git/block-diff';
-import { blocksOf } from '../../src/main/workspace/git-blocks';
+import { blocksOf } from '../../src/shared/markdown/v3/note-blocks';
 import { NOTO_WORKSPACE_VERSION, type WorkspaceGitBlocksV1 } from '../../src/shared/workspace/v1/contracts';
 
 const encoder = new TextEncoder();

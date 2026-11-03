@@ -136,6 +136,15 @@ export const PROSE_FONT_FAMILY_MAX = 80;
 /** How the file tree is ordered. Typora's sidebar offers the same choice. */
 export const TREE_SORTS = ['name', 'name-desc', 'modified', 'modified-old'] as const;
 
+/**
+ * How a note's unsaved changes are laid out: the saved file and the note as
+ * it is now in two columns, in two panes one above the other, or as one text
+ * with what went struck through and what came marked in place.
+ */
+export const DIFF_LAYOUTS = ['side', 'stacked', 'inline'] as const;
+
+export type DiffLayoutV1 = (typeof DIFF_LAYOUTS)[number];
+
 export type TreeSortV1 = (typeof TREE_SORTS)[number];
 
 /**
@@ -172,6 +181,11 @@ export interface NotoSettingsV1 {
    * time, as they do for the document's own column.
    */
   readonly quickOpenWidth: 'default' | 'wide';
+  /**
+   * The layout the unsaved changes open in, which is the one last chosen
+   * there: a reader who compares side by side does so every time.
+   */
+  readonly diffLayout: DiffLayoutV1;
   readonly remoteControl: boolean;
   readonly markHighlight: boolean;
   readonly markSuperscript: boolean;
@@ -376,6 +390,7 @@ export const DEFAULT_SETTINGS: NotoSettingsV1 = Object.freeze({
   proseFontFamily: '',
   treeSort: 'name',
   quickOpenWidth: 'default',
+  diffLayout: 'side',
   remoteControl: false,
   markHighlight: true,
   markSuperscript: true,

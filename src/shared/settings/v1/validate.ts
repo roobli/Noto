@@ -13,6 +13,7 @@ import {
   NOTO_SETTINGS_VERSION,
   SETTING_RANGES,
   WIDTH_MODES,
+  DIFF_LAYOUTS,
   type NotoNumericSetting,
   type NotoSettingsV1,
   type NotoTheme,
@@ -22,6 +23,7 @@ import {
   type SettingsWriteRequestV1,
   type ThemeCssReplyV1,
   type WidthModeV1,
+  type DiffLayoutV1,
   IMAGE_DESTINATIONS,
   type ImageDestinationV1,
   PROSE_FACES,
@@ -37,6 +39,8 @@ import {
 
 const requestId = /^[A-Za-z0-9._:-]{1,96}$/;
 const themes: readonly NotoTheme[] = ['light', 'dark', 'system'];
+const isDiffLayout = (value: unknown): value is DiffLayoutV1 =>
+  (DIFF_LAYOUTS as readonly unknown[]).includes(value);
 const isWidthMode = (value: unknown): value is WidthModeV1 =>
   (WIDTH_MODES as readonly unknown[]).includes(value);
 const numericKeys = Object.keys(SETTING_RANGES) as NotoNumericSetting[];
@@ -120,6 +124,7 @@ export function coerceSettings(value: unknown): NotoSettingsV1 {
     fontSize: numeric(value, 'fontSize'),
     lineHeight: numeric(value, 'lineHeight'),
     widthMode: isWidthMode(value.widthMode) ? value.widthMode : DEFAULT_SETTINGS.widthMode,
+    diffLayout: isDiffLayout(value.diffLayout) ? value.diffLayout : DEFAULT_SETTINGS.diffLayout,
     /* The three were one switch called `smartTypography`. A file written by
        the older build carries only that, and its answer stands for all three
        rather than being thrown away. */
@@ -212,6 +217,7 @@ export function isSettingsWriteRequestV1(value: unknown): value is SettingsWrite
     if (!SETTING_KEYS.includes(key as keyof NotoSettingsV1)) return false;
     if (key === 'theme') return themes.includes(patch.theme as NotoTheme);
     if (key === 'widthMode') return isWidthMode(patch.widthMode);
+    if (key === 'diffLayout') return isDiffLayout(patch.diffLayout);
     if (key === 'proseFace') return PROSE_FACES.includes(patch.proseFace as ProseFaceV1);
     if (key === 'proseFontFamily') return isProseFontFamily(patch.proseFontFamily);
     if (key === 'treeSort') return TREE_SORTS.includes(patch.treeSort as TreeSortV1);
@@ -265,6 +271,7 @@ export function isSettingsReplyV1(value: unknown): value is SettingsReplyV1 {
   const settings = value.settings;
   return themes.includes(settings.theme as NotoTheme)
     && isWidthMode(settings.widthMode)
+    && isDiffLayout(settings.diffLayout)
     && numericKeys.every((key) => typeof settings[key] === 'number' && Number.isFinite(settings[key]))
     && typeof settings.smartQuotes === 'boolean'
     && typeof settings.smartDashes === 'boolean'

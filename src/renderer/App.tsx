@@ -45,6 +45,7 @@ import type { DocumentCount } from './editor/noto/word-count';
 import { FindBar } from './FindBar';
 import { RecentStrip } from './RecentStrip';
 import { TagStrip } from './TagStrip';
+import { UnsavedDiff } from './UnsavedDiff';
 import { TagBrowser, type TagBrowserView } from './TagBrowser';
 import { parseTagsFromMarkdown } from '../shared/tags/parse';
 import { WorkspaceRail, type RailView } from './WorkspaceRail';
@@ -464,6 +465,53 @@ function NotoWorkspace({ platform }: { platform: NotoPlatform }) {
   const countRef = useRef<(documentId: string, next: DocumentCount) => void>(() => {});
 
   const editorsRef = useRef<Map<string, NotoEditor>>(new Map());
+  /**
+   * The unsaved changes on view: the note's text as saved and as it stood
+   * when the view opened. Read once: while the view is up the page under it
+   * is inert, and a save, which would make the reading stale, closes it.
+   *
+   * The current text is the note as Source Mode shows it, which is what a
+   * save writes: a spacing edit Source Mode holds and the file's last line are
+   * in it, where the blocks alone would say nothing had changed.
+   */
+  const [unsavedDiffView, setUnsavedDiffView] = useState<{ serial: number; documentId: string; saved: string; current: string } | null>(null);
+  const unsavedDiffSerial = useRef(0);
+  const openUnsavedDiff = useCallback(() => {
+    const id = activeIdRef.current;
+    const entry = id ? docsRef.current.get(id) : undefined;
+    const editor = id ? editorsRef.current.get(id) : undefined;
+    if (!id || !entry || !editor) return;
+    unsavedDiffSerial.current += 1;
+    setUnsavedDiffView({
+      serial: unsavedDiffSerial.current,
+      documentId: id,
+      saved: entry.document.text,
+      current: sourceModeText({
+        dirty: editor.isDirty,
+        fileText: entry.document.text,
+        reconstructed: editor.getMarkdown(),
+        hasFinalNewline: editor.envelope.hasFinalNewline,
+        pendingSource: editor.pendingSourceMarkdown,
+      }),
+    });
+  }, []);
+  // A view of one note's changes does not outlive a switch to another note.
+  useEffect(() => {
+    setUnsavedDiffView((view) => (view && view.documentId !== activeId ? null : view));
+  }, [activeId]);
+  // Saved while on view, by Save or by autosave: nothing is unsaved any more,
+  // and what the view shows is stale.
+  useEffect(() => {
+    if (!editorDirty) setUnsavedDiffView(null);
+  }, [editorDirty]);
+  // The page under the view takes no focus and no input while it is up, so
+  // Tab cannot walk into the note and change it behind the reading.
+  useEffect(() => {
+    const canvas = globalThis.document.getElementById('document-canvas');
+    if (!canvas) return undefined;
+    canvas.inert = unsavedDiffView !== null;
+    return () => { canvas.inert = false; };
+  }, [unsavedDiffView]);
   /** The last git gutter per document, for an editor that mounts after it arrived. */
   const gitBlocksRef = useRef<Map<string, WorkspaceGitBlocksV1>>(new Map());
   /** Bumped when a gutter arrives, so the palette offers its command only where there is one. */
@@ -2264,8 +2312,12 @@ function NotoWorkspace({ platform }: { platform: NotoPlatform }) {
         source: 'Git',
       }]
       : [];
-    return [...builtin, ...git, ...plugins];
-  }, [pluginSnapshots, activeId, gitBlocksVersion]);
+    // Offered while the note in front has unsaved changes, as its name is.
+    const unsaved = editorDirty
+      ? [{ key: 'diff:unsaved', testId: 'palette-unsaved-diff', kind: 'diff' as const, title: 'Show Unsaved Changes', source: 'File' }]
+      : [];
+    return [...builtin, ...unsaved, ...git, ...plugins];
+  }, [pluginSnapshots, activeId, gitBlocksVersion, editorDirty]);
   const paletteCommandByKey = useMemo(
     () => new Map(paletteCommands.map((command) => [command.key, command])),
     [paletteCommands],
@@ -2415,12 +2467,21 @@ function NotoWorkspace({ platform }: { platform: NotoPlatform }) {
           {crumbs.map((crumb, index) => (
             <span key={`${index}-${crumb}`} className="crumb">{crumb}</span>
           ))}
-          <strong title={opened?.path} aria-label={opened ? `${filename}. ${opened.path}` : filename}>{filename}</strong>
           {/* Whether there is work to lose is the one thing worth seeing
               without reading. It is also the whole save affordance when the
-              document is clean, since the Save icon is not drawn then. */}
-          {opened && editorDirty && (
-            <span className="unsaved-dot" data-testid="unsaved-dot" role="img" aria-label="Unsaved changes" />
+              document is clean, since the Save icon is not drawn then. While
+              there is work to lose, the name and its dot are one button that
+              shows what that work is. */}
+          {opened && editorDirty ? (
+            <button type="button" className="document-name" data-testid="document-name"
+              title={`Show the unsaved changes to ${filename}`}
+              aria-label={`${filename}, unsaved. Show the changes`}
+              onClick={openUnsavedDiff}>
+              <strong>{filename}</strong>
+              <span className="unsaved-dot" data-testid="unsaved-dot" aria-hidden="true" />
+            </button>
+          ) : (
+            <strong title={opened?.path} aria-label={opened ? `${filename}. ${opened.path}` : filename}>{filename}</strong>
           )}
         </div>
 
@@ -2680,6 +2741,20 @@ function NotoWorkspace({ platform }: { platform: NotoPlatform }) {
                   )}
                 </section>}
         </main>
+        {unsavedDiffView && (
+          <UnsavedDiff
+            key={unsavedDiffView.serial}
+            fileName={filename}
+            saved={unsavedDiffView.saved}
+            current={unsavedDiffView.current}
+            layout={settings.diffLayout}
+            onLayout={(diffLayout) => changeSettings({ diffLayout })}
+            onClose={() => {
+              setUnsavedDiffView(null);
+              editorRef.current?.focus();
+            }}
+          />
+        )}
       </div>
 
       <TagBrowser
@@ -2728,6 +2803,7 @@ function NotoWorkspace({ platform }: { platform: NotoPlatform }) {
             setPaletteOpen(false);
             if (!chosen) return;
             if (chosen.kind === 'export') exportNote(chosen.target);
+            else if (chosen.kind === 'diff') openUnsavedDiff();
             else if (chosen.kind === 'git') {
               const done = chosen.key === 'git:revert'
                 ? editorRef.current?.revertGitAtSelection()

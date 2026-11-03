@@ -325,6 +325,30 @@ button:disabled { color: var(--muted); opacity: 0.7; }
   background: var(--accent);
 }
 
+/* While the note has unsaved changes its name and dot are one button, which
+   shows what the changes are. Drawn as the name is, with the title bar's own
+   hover behind it, so the bar looks the same until the pointer finds it. It
+   takes the pointer the identity otherwise lets pass to the drag region. */
+.document-identity .document-name {
+  display: flex;
+  flex: 0 1 auto;
+  align-items: center;
+  gap: 6px;
+  max-width: 100%;
+  min-width: 0;
+  min-height: 0;
+  margin: -2px -6px;
+  padding: 2px 6px;
+  border: 0;
+  border-radius: 5px;
+  background: none;
+  cursor: pointer;
+  pointer-events: auto;
+  -webkit-app-region: no-drag;
+
+  &:hover > strong { color: var(--ink); }
+}
+
 /* Announced, never drawn. The dot carries this for sighted readers and the
    alert carries the exceptional states. */
 .file-state {
@@ -3077,4 +3101,286 @@ button:disabled { color: var(--muted); opacity: 0.7; }
   min-height: min(70vh, 720px);
   border: 0;
   background: #fff;
+}
+
+
+/* Unsaved changes: the note against the file as saved
+   ==========================================================================
+
+   Laid over the page, under the title bar, in the interface face; the blocks
+   themselves in the note's code face, as their source. What went is washed in
+   the danger tone and what came in the success tone, each also marked with a
+   sign in the gutter so neither rests on telling red from green. The words
+   that changed inside an edited block carry a stronger wash of the same. */
+
+.unsaved-diff {
+  position: absolute;
+  inset: 0;
+  z-index: 30;
+  display: flex;
+  flex-direction: column;
+  min-height: 0;
+  background: var(--paper);
+  color: var(--ink);
+  font-family: tokens.$ui;
+  outline: none;
+}
+
+.diff-bar {
+  display: flex;
+  flex: 0 0 auto;
+  align-items: center;
+  gap: 12px;
+  min-height: 44px;
+  padding: 6px 10px 6px 20px;
+  border-bottom: 1px solid var(--hairline);
+}
+
+.diff-title {
+  display: flex;
+  align-items: baseline;
+  gap: 10px;
+  min-width: 0;
+  margin-right: auto;
+
+  strong { flex: 0 0 auto; font-size: 13px; font-weight: 600; }
+}
+
+.diff-summary {
+  overflow: hidden;
+  color: var(--muted);
+  font-size: 12px;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.diff-nav { display: flex; align-items: center; gap: 2px; }
+
+.diff-count {
+  min-width: 52px;
+  color: var(--muted);
+  font-size: 12px;
+  font-variant-numeric: tabular-nums;
+  text-align: center;
+}
+
+/* One control with three positions, the chosen one lifted onto the paper. */
+.diff-layouts {
+  display: flex;
+  gap: 2px;
+  padding: 2px;
+  border-radius: 6px;
+  background: var(--raised);
+}
+
+.diff-layouts .diff-layout {
+  min-height: 24px;
+  padding: 2px 10px;
+  border: 0;
+  border-radius: 4px;
+  background: none;
+  color: var(--muted);
+  font-size: 12px;
+  cursor: pointer;
+
+  &:hover { background: none; color: var(--ink); }
+  &[aria-pressed='true'] {
+    background: var(--paper);
+    color: var(--ink);
+    box-shadow: 0 0 0 1px var(--hairline), 0 1px 2px color-mix(in srgb, var(--shadow) 8%, transparent);
+  }
+}
+
+.diff-scroll {
+  flex: 1 1 auto;
+  min-height: 0;
+  overflow: auto;
+  padding: 8px 0 48px;
+}
+
+.diff-block {
+  display: grid;
+  grid-template-columns: 22px minmax(0, 1fr);
+  border-left: 2px solid transparent;
+  font: 12.5px/1.6 tokens.$mono;
+}
+
+.diff-sign {
+  padding-top: 5px;
+  color: var(--muted);
+  text-align: center;
+  user-select: none;
+}
+
+.diff-text {
+  min-width: 0;
+  padding: 5px 16px 5px 2px;
+  overflow-wrap: anywhere;
+  white-space: pre-wrap;
+}
+
+.diff-block.is-removed {
+  border-left-color: color-mix(in srgb, var(--danger) 60%, transparent);
+  background: color-mix(in srgb, var(--danger) 7%, var(--paper));
+
+  > .diff-sign { color: var(--danger); }
+}
+
+.diff-block.is-added {
+  border-left-color: color-mix(in srgb, var(--success) 60%, transparent);
+  background: color-mix(in srgb, var(--success) 8%, var(--paper));
+
+  > .diff-sign { color: var(--success); }
+}
+
+/* Inline, an edited block holds both, so it takes neither tone. */
+.diff-block.is-modified {
+  border-left-color: color-mix(in srgb, var(--warning) 65%, transparent);
+  background: color-mix(in srgb, var(--warning) 6%, var(--paper));
+}
+
+.diff-word-removed {
+  border-radius: 2px;
+  background: color-mix(in srgb, var(--danger) 22%, transparent);
+  color: inherit;
+  text-decoration: none;
+}
+
+.diff-word-added {
+  border-radius: 2px;
+  background: color-mix(in srgb, var(--success) 26%, transparent);
+  color: inherit;
+  text-decoration: none;
+}
+
+/* Where what went and what came share a line, what went is struck too. */
+.diff-inline .diff-word-removed,
+.diff-block.is-removed del {
+  text-decoration: line-through;
+  text-decoration-color: color-mix(in srgb, var(--danger) 70%, transparent);
+}
+
+/* A change pointed at lights wherever it is drawn; the one stepped to is
+   ringed in the keyboard's colour in every pane. */
+.diff-block.is-linked,
+.diff-gap.is-linked {
+  outline: 1px solid color-mix(in srgb, var(--ink) 20%, transparent);
+  outline-offset: -1px;
+}
+
+.diff-block.is-active,
+.diff-gap.is-active {
+  box-shadow: inset 0 0 0 1.5px color-mix(in srgb, var(--focus) 75%, transparent);
+}
+
+/* Side by side: one scroll, so a block and its counterpart stay level. */
+.diff-side .diff-pair {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
+
+  > :first-child { border-right: 1px solid var(--hairline); }
+}
+
+.diff-heads {
+  position: sticky;
+  top: -8px;
+  z-index: 1;
+  margin-top: -8px;
+  border-bottom: 1px solid var(--hairline);
+  background: var(--paper);
+  color: var(--muted);
+  font-size: 11px;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+
+  > span { padding: 7px 0 6px 24px; }
+}
+
+/* The side that has nothing in a row says so with a quiet hatch, rather than
+   a blank that reads as a block of empty lines. */
+.diff-filler {
+  background: repeating-linear-gradient(
+    135deg,
+    transparent 0 6px,
+    color-mix(in srgb, var(--hairline) 70%, transparent) 6px 7px
+  );
+}
+
+/* Stacked: the saved file above, the note below, each scrolling alone. */
+.diff-stack {
+  display: grid;
+  flex: 1 1 auto;
+  grid-template-rows: minmax(0, 1fr) minmax(0, 1fr);
+  min-height: 0;
+}
+
+.diff-pane {
+  display: flex;
+  flex-direction: column;
+  min-height: 0;
+
+  & + & { border-top: 1px solid var(--hairline); }
+}
+
+.diff-pane-head {
+  flex: 0 0 auto;
+  padding: 7px 24px 6px;
+  border-bottom: 1px solid color-mix(in srgb, var(--hairline) 60%, transparent);
+  color: var(--muted);
+  font-size: 11px;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+}
+
+/* Where the other pane has a block this one does not. */
+.diff-gap {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  min-height: 20px;
+  padding-left: 24px;
+  font-size: 11px;
+
+  &::before {
+    content: '';
+    flex: 0 0 auto;
+    width: 12px;
+    border-top: 2px solid currentcolor;
+  }
+
+  &.is-added { color: var(--success); }
+  &.is-removed { color: var(--danger); }
+}
+
+.unsaved-diff .diff-fold {
+  display: block;
+  width: 100%;
+  min-height: 0;
+  margin: 4px 0;
+  padding: 4px 24px;
+  border: 0;
+  border-radius: 0;
+  background: color-mix(in srgb, var(--raised) 70%, transparent);
+  color: var(--muted);
+  font-size: 11.5px;
+  text-align: left;
+  cursor: pointer;
+
+  &:hover { background: var(--raised); color: var(--ink); }
+}
+
+.diff-empty {
+  margin: 48px auto;
+  color: var(--muted);
+  font-size: 13px;
+  text-align: center;
+}
+
+.diff-hidden {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  overflow: hidden;
+  clip-path: inset(50%);
+  white-space: nowrap;
 }
