@@ -12,7 +12,8 @@
  * and inspected outside a running app.
  */
 
-import type { TreeSortV1 } from '../../shared/settings/v1/contracts';
+import type { MenuShortcutV1, TreeSortV1 } from '../../shared/settings/v1/contracts';
+import { normalizeChord } from '../../shared/shortcuts/chord';
 import type { BrowserWindow, MenuItemConstructorOptions } from 'electron';
 import type { RecentFileV1, WorkspaceMenuCommandV1 } from '../../shared/workspace/v1/contracts';
 import { EXPORT_TARGETS, exportShape, needsPandoc } from './export-document';
@@ -71,6 +72,8 @@ export interface MenuTemplateOptions {
     /** The stylesheets on offer, and the one in use, for the Themes menu. */
     readonly themes?: readonly { readonly path: string; readonly label: string }[];
     readonly themePath?: string;
+    /** Chords switched off in the Shortcuts pane, taken off the menu's items. */
+    readonly disabledShortcuts?: readonly string[];
   };
 }
 
@@ -497,7 +500,9 @@ export function buildMenuTemplate(options: MenuTemplateOptions): MenuItemConstru
       command('Back', 'CmdOrCtrl+Alt+Left', 'navigate-back'),
       command('Forward', 'CmdOrCtrl+Alt+Right', 'navigate-forward'),
       { type: 'separator' },
-      command('Browse Tags…', 'CmdOrCtrl+Shift+T', 'browse-tags'),
+      // Not Shift-Command-T, which Reopen Closed File holds: on macOS the
+      // first item with a chord takes it, so tags had no key at all.
+      command('Browse Tags…', 'CmdOrCtrl+Alt+Shift+T', 'browse-tags'),
     ],
   };
 
@@ -574,3 +579,106 @@ export function menuCommandIds(template: readonly MenuItemConstructorOptions[]):
 }
 
 export type { BrowserWindow };
+
+/*
+ * The chords Electron gives a role when the item names none. Listed so the
+ * Shortcuts pane can show them; they are the operating system's to honour,
+ * and the pane shows them without a switch.
+ */
+function roleChord(role: string, mac: boolean): string | undefined {
+  switch (role) {
+    case 'undo': return 'CmdOrCtrl+Z';
+    case 'redo': return mac ? 'Shift+CmdOrCtrl+Z' : 'CmdOrCtrl+Y';
+    case 'cut': return 'CmdOrCtrl+X';
+    case 'copy': return 'CmdOrCtrl+C';
+    case 'paste': return 'CmdOrCtrl+V';
+    case 'selectAll': return 'CmdOrCtrl+A';
+    case 'minimize': return 'CmdOrCtrl+M';
+    case 'close': return 'CmdOrCtrl+W';
+    case 'quit': return mac ? 'CmdOrCtrl+Q' : undefined;
+    case 'hide': return mac ? 'CmdOrCtrl+H' : undefined;
+    case 'hideOthers': return mac ? 'CmdOrCtrl+Alt+H' : undefined;
+    case 'togglefullscreen': return mac ? 'Ctrl+CmdOrCtrl+F' : 'F11';
+    default: return undefined;
+  }
+}
+
+const ROLE_LABELS: Readonly<Record<string, string>> = {
+  undo: 'Undo', redo: 'Redo', cut: 'Cut', copy: 'Copy', paste: 'Paste', selectAll: 'Select All',
+  minimize: 'Minimize', close: 'Close Window', quit: 'Quit', hide: 'Hide', hideOthers: 'Hide Others',
+  togglefullscreen: 'Enter Full Screen', resetZoom: 'Actual Size', zoomIn: 'Zoom In', zoomOut: 'Zoom Out',
+};
+
+function menuName(label: string | undefined): string {
+  return (label ?? '').replace(/&/g, '');
+}
+
+/**
+ * Every chord the menu holds, with the menu it sits in, read from the
+ * template main is about to install. The Shortcuts pane lists these rather
+ * than a copy kept beside them, so the pane cannot say a key does something
+ * the menu does not.
+ */
+export function menuShortcuts(template: readonly MenuItemConstructorOptions[], mac: boolean): MenuShortcutV1[] {
+  const found: MenuShortcutV1[] = [];
+  const walk = (items: readonly MenuItemConstructorOptions[], menu: string) => {
+    for (const item of items) {
+      if (Array.isArray(item.submenu)) walk(item.submenu, menu);
+      const role = typeof item.role === 'string' ? item.role : undefined;
+      const accelerator = typeof item.accelerator === 'string' ? item.accelerator : role ? roleChord(role, mac) : undefined;
+      if (!accelerator) continue;
+      const chord = normalizeChord(accelerator, 'accelerator', mac);
+      if (!chord) continue;
+      found.push({
+        id: item.id ?? `role:${role ?? 'unknown'}`,
+        label: (item.label ?? (role ? ROLE_LABELS[role] ?? role : '')).replace(/…$/, ''),
+        menu,
+        chord,
+        locked: item.id === undefined,
+        hidden: item.visible === false,
+      });
+    }
+  };
+  for (const top of template) {
+    // The Help and Window menus are named by their role rather than a label.
+    const named = menuName(top.label)
+      || (typeof top.role === 'string' ? top.role.charAt(0).toUpperCase() + top.role.slice(1).replace(/menu$/i, '') : 'App');
+    if (Array.isArray(top.submenu)) walk(top.submenu, named);
+  }
+  return found;
+}
+
+/**
+ * The template with the switched-off chords taken off its items, so the menu
+ * neither shows them nor claims the key. A role keeps its chord: it is the
+ * operating system's.
+ */
+export function withoutShortcuts(
+  template: readonly MenuItemConstructorOptions[],
+  disabled: ReadonlySet<string>,
+  mac: boolean,
+): MenuItemConstructorOptions[] {
+  if (disabled.size === 0) return [...template];
+  const strip = (item: MenuItemConstructorOptions): MenuItemConstructorOptions => {
+    const submenu = Array.isArray(item.submenu) ? item.submenu.map(strip) : item.submenu;
+    if (item.id !== undefined && typeof item.accelerator === 'string') {
+      const chord = normalizeChord(item.accelerator, 'accelerator', mac);
+      if (chord && disabled.has(chord)) {
+        const { accelerator: _dropped, registerAccelerator: _also, ...rest } = item;
+        return { ...rest, ...(submenu === undefined ? {} : { submenu }) };
+      }
+    }
+    // A role with no id is the system's and has no switch of its own, but it
+    // may share a chord that does: off Windows' Window menu, Close holds the
+    // Control-W that Close Tab holds. Switched off there, the role keeps its
+    // label and stops claiming the key, or the chord would still close the
+    // window.
+    if (item.id === undefined && typeof item.role === 'string') {
+      const accelerator = typeof item.accelerator === 'string' ? item.accelerator : roleChord(item.role, mac);
+      const chord = accelerator ? normalizeChord(accelerator, 'accelerator', mac) : null;
+      if (chord && disabled.has(chord)) return { ...item, registerAccelerator: false };
+    }
+    return submenu === item.submenu ? item : { ...item, submenu };
+  };
+  return template.map(strip);
+}

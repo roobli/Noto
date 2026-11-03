@@ -33,12 +33,7 @@ import { materializeSaveReply } from './file-truth-save';
 import { outlineFromDocument } from './outline';
 import { PLUGIN_LIFECYCLE_VERSION, type PluginLifecycleSnapshot } from '../shared/plugins/lifecycle';
 import { rendererProofManifest } from '../shared/plugins/proof-manifests';
-import {
-  filesystemProofManifest,
-  markdownPaddingManifest,
-  titleShiftManifest,
-} from '../shared/plugins/proof-manifests';
-import { declaredHotkeys, matchHotkey } from './plugins/hotkeys';
+import { chordOfEvent, normalizeChord } from '../shared/shortcuts/chord';
 import { NotoCanvas } from './editor/noto/NotoCanvas';
 import { CodeViewer } from './CodeViewer';
 import type { DocumentCount } from './editor/noto/word-count';
@@ -138,21 +133,25 @@ function imageRefusalMessage(reason: AssetRefusalV1): string {
 let customThemeSheet: CSSStyleSheet | null = null;
 const themeSheet = (): CSSStyleSheet => (customThemeSheet ??= new CSSStyleSheet());
 
-const bundledManifestList = [
-  rendererProofManifest,
-  titleShiftManifest,
-  markdownPaddingManifest,
-  filesystemProofManifest,
-];
-
-const bundledManifests = new Map<string, { name: string; commands: readonly { id: string; title: string }[] }>(
-  bundledManifestList.map((manifest) => [manifest.id, manifest]),
-);
-
-const declaredPluginHotkeys = declaredHotkeys(bundledManifestList);
-
-const manifestHotkeyFor = (event: KeyboardEvent): string | null =>
-  matchHotkey(event, declaredPluginHotkeys);
+/**
+ * The plugin a chord belongs to, and the keys as its manifest writes them,
+ * among the plugins switched on. Read from the snapshots, which carry every
+ * plugin main knows, so one the reader installed answers to its keys too; a
+ * plugin that is off leaves its chord to the editor and the system.
+ */
+function enabledPluginHotkey(
+  snapshots: readonly PluginLifecycleSnapshot[],
+  chord: string,
+  mac: boolean,
+): { pluginId: string; keys: string } | null {
+  for (const snapshot of snapshots) {
+    if (!snapshot.desiredEnabled) continue;
+    for (const hotkey of snapshot.presentation.hotkeys) {
+      if (normalizeChord(hotkey.keys, 'accelerator', mac) === chord) return { pluginId: snapshot.id, keys: hotkey.keys };
+    }
+  }
+  return null;
+}
 
 type UiState = 'Opening' | 'No document' | FileTruthUiState;
 
@@ -303,6 +302,13 @@ function NotoWorkspace({ platform }: { platform: NotoPlatform }) {
   /** Bumped when an editor is ready, so a source view can be given its editor. */
   const [editorsReady, setEditorsReady] = useState(0);
   const [pluginSnapshots, setPluginSnapshots] = useState<PluginLifecycleSnapshot[]>([]);
+  /** Every plugin's keys, for the Shortcuts pane; rebuilt only when a snapshot changes. */
+  const pluginHotkeys = useMemo(() => pluginSnapshots.map((snapshot) => ({
+    id: snapshot.id,
+    name: snapshot.presentation.name,
+    commands: snapshot.presentation.commands,
+    hotkeys: snapshot.presentation.hotkeys,
+  })), [pluginSnapshots]);
   const pluginSnapshotsRef = useRef(pluginSnapshots);
   pluginSnapshotsRef.current = pluginSnapshots;
   /**
@@ -841,9 +847,17 @@ function NotoWorkspace({ platform }: { platform: NotoPlatform }) {
    * renderer never invokes plugin code directly.
    */
   useEffect(() => {
+    const mac = platform === 'darwin';
     const onKeyDown = (event: KeyboardEvent) => {
-      const mod = event.metaKey || event.ctrlKey;
-      if (mod && !event.shiftKey && !event.altKey && event.code === 'KeyK') {
+      const chord = chordOfEvent(event, mac);
+      if (!chord) return;
+      // Switched off in the Shortcuts pane: the press is not this app's.
+      if (settingsRef.current.disabledShortcuts.includes(chord)) return;
+      // The palette's own chord, which the View menu holds too. On macOS the
+      // menu answers first and this never runs; elsewhere, and for a press
+      // a test synthesises, this is the way in. It was Command-K, which the
+      // Format menu's Hyperlink has held since the palette moved.
+      if (chord === 'Mod+Shift+P') {
         event.preventDefault();
         // Same reason as the menu path: preferences is modal, and its scrim
         // would sit over the palette and swallow every click on a command.
@@ -851,18 +865,21 @@ function NotoWorkspace({ platform }: { platform: NotoPlatform }) {
         setPaletteOpen((current) => !current);
         return;
       }
-      const keys = manifestHotkeyFor(event);
-      if (!keys) return;
+      // A plugin that is off leaves its chord to the editor and the system:
+      // Title Shift's Shift-Command-Up is also how macOS selects to the top,
+      // and that went dead for everyone, plugin on or not.
+      const owner = enabledPluginHotkey(pluginSnapshotsRef.current, chord, mac);
+      if (!owner) return;
       event.preventDefault();
       void window.notoDesktop.plugins.triggerHotkey({
         version: PLUGIN_LIFECYCLE_VERSION,
         requestId: rid('plugin-hotkey'),
-        keys,
+        keys: owner.keys,
       });
     };
     window.addEventListener('keydown', onKeyDown);
     return () => window.removeEventListener('keydown', onKeyDown);
-  }, []);
+  }, [platform]);
 
   /*
    * The palette owns the keyboard while it is open (`CommandPalette`); closing
@@ -2566,6 +2583,8 @@ function NotoWorkspace({ platform }: { platform: NotoPlatform }) {
       </header>
 
       <Settings
+        mac={platform === 'darwin'}
+        pluginHotkeys={pluginHotkeys}
         open={prefs.open}
         section={prefs.section}
         onSection={(section) => setPrefs({ open: true, section, pluginDetailId: null, pluginDetailName: null })}
@@ -2692,6 +2711,7 @@ function NotoWorkspace({ platform }: { platform: NotoPlatform }) {
                 documentPath={doc.opened.path}
                 remoteImages={settings.remoteImages}
                 webEmbeds={settings.webEmbeds}
+                disabledShortcuts={settings.disabledShortcuts}
                 typewriterMode={settings.typewriterMode}
                 autoPair={settings.autoPair}
                 todoCheckTime={settings.todoCheckTime}
@@ -2825,6 +2845,7 @@ function NotoWorkspace({ platform }: { platform: NotoPlatform }) {
 
       <QuickOpen
         open={quickOpen.open}
+        disabledShortcuts={settings.disabledShortcuts}
         mode={quickOpen.mode}
         onMode={(mode) => setQuickOpen({ open: true, mode })}
         onSearchContent={(query, scope) => searchContent(query, PLAIN_FLAGS, scope)}

@@ -23,6 +23,8 @@ export const SETTINGS_CHANNELS = {
   /** What the remote control is doing, and a way to ask for a new token. */
   remoteStatus: 'noto:v1:settings:remote-status',
   remoteRegenerate: 'noto:v1:settings:remote-regenerate',
+  /** Every accelerator the application menu holds, for the Shortcuts pane. */
+  listShortcuts: 'noto:v1:settings:list-shortcuts',
 } as const;
 
 /** `system` follows the operating system, which is the honest default. */
@@ -241,6 +243,14 @@ export interface NotoSettingsV1 {
    */
   readonly webEmbeds: boolean;
   /**
+   * Key chords switched off in the Shortcuts pane, in the canonical form of
+   * `src/shared/shortcuts/chord.ts` (`Mod+Shift+T`). A chord, not an action:
+   * turned off, the press does nothing wherever it was bound, the menu, the
+   * editor and a plugin alike, so the key is free for the system or another
+   * app. Empty by default.
+   */
+  readonly disabledShortcuts: readonly string[];
+  /**
    * The GitHub repository whose `index.json` lists the plugins Plugin
    * Center's marketplace offers, as `owner/repo`, or empty to turn the
    * marketplace off. Only the repository is a setting; the host is fixed, so
@@ -421,6 +431,7 @@ export const DEFAULT_SETTINGS: NotoSettingsV1 = Object.freeze({
   spellCheck: true,
   remoteImages: true,
   webEmbeds: false,
+  disabledShortcuts: [],
   pluginMarketplace: 'roobli/noto-plugins',
   codeLineNumbers: true,
   codeIndentGuides: true,
@@ -530,6 +541,25 @@ export interface RemoteStatusReplyV1 {
   readonly problem: string;
 }
 
+/**
+ * One accelerator the application menu holds, as main built it, with its
+ * chord in canonical form. `locked` marks a role's chord (Copy, Quit), which
+ * Electron owns and the pane shows without a switch.
+ */
+export interface MenuShortcutV1 {
+  readonly id: string;
+  readonly label: string;
+  readonly menu: string;
+  readonly chord: string;
+  readonly locked: boolean;
+  readonly hidden: boolean;
+}
+
+export interface ShortcutsReplyV1 {
+  readonly version: typeof NOTO_SETTINGS_VERSION;
+  readonly menu: readonly MenuShortcutV1[];
+}
+
 export interface SystemFontsReplyV1 {
   readonly version: typeof NOTO_SETTINGS_VERSION;
   readonly families: readonly string[];
@@ -540,6 +570,7 @@ export interface NotoSettingsApiV1 {
   write(request: SettingsWriteRequestV1): Promise<SettingsResultV1<SettingsReplyV1>>;
   readThemeCss(request: SettingsRequestV1): Promise<SettingsResultV1<ThemeCssReplyV1>>;
   listFonts(request: SettingsRequestV1): Promise<SettingsResultV1<SystemFontsReplyV1>>;
+  listShortcuts(request: SettingsRequestV1): Promise<SettingsResultV1<ShortcutsReplyV1>>;
   remoteStatus(request: SettingsRequestV1): Promise<SettingsResultV1<RemoteStatusReplyV1>>;
   regenerateRemoteToken(request: SettingsRequestV1): Promise<SettingsResultV1<RemoteStatusReplyV1>>;
   onChanged(listener: (event: SettingsReplyV1) => void): () => void;

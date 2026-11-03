@@ -63,6 +63,8 @@ export type QuickWidth = 'default' | 'wide';
 
 export interface QuickOpenProps {
   readonly open: boolean;
+  /** Chords switched off in the Shortcuts pane; its width keys are two of them. */
+  readonly disabledShortcuts?: readonly string[];
   readonly mode: QuickOpenMode;
   readonly onMode: (mode: QuickOpenMode) => void;
   /** Runs a content search. Replies for superseded queries are dropped by the
@@ -110,7 +112,7 @@ function Highlighted({ text, query }: { text: string; query: string }) {
 }
 
 export function QuickOpen({
-  open, mode, onMode, onSearchContent, onOpenMatch,
+  open, disabledShortcuts = [], mode, onMode, onSearchContent, onOpenMatch,
   entries, frecency, truncated, canInsertLink, linking = false, onOpenFile, onInsertLink, onClose,
   width, onWidth,
 }: QuickOpenProps) {
@@ -315,7 +317,8 @@ export function QuickOpen({
     }
     // The width, on the same keys the author's own palette uses, and the same
     // keys the document's own column uses one level out.
-    if ((event.metaKey || event.ctrlKey) && (event.key === '[' || event.key === ']')) {
+    if ((event.metaKey || event.ctrlKey) && (event.key === '[' || event.key === ']')
+      && !disabledShortcuts.includes(event.key === ']' ? 'Mod+]' : 'Mod+[')) {
       event.preventDefault();
       onWidth(event.key === ']' ? 'wide' : 'default');
       return;

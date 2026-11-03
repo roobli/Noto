@@ -17,7 +17,8 @@ import {
   type RecentFileV1,
   type WorkspaceMenuCommandV1,
 } from '../../shared/workspace/v1/contracts';
-import { buildMenuTemplate, type MenuActions, type MenuTemplateOptions } from './menu-template';
+import type { MenuShortcutV1 } from '../../shared/settings/v1/contracts';
+import { buildMenuTemplate, menuShortcuts, withoutShortcuts, type MenuActions, type MenuTemplateOptions } from './menu-template';
 
 export type { MenuActions };
 
@@ -55,7 +56,18 @@ export function buildApplicationMenu(
   /** Told about every command sent, so a tick in this menu can follow one. */
   onCommand?: (command: WorkspaceMenuCommandV1) => void,
 ): Menu {
-  return Menu.buildFromTemplate(buildMenuTemplate({
+  return buildMenuWithShortcuts(getWindow, recent, actions, state, onCommand).menu;
+}
+
+function buildMenuWithShortcuts(
+  getWindow: () => BrowserWindow | null,
+  recent: readonly RecentFileV1[],
+  actions: MenuActions,
+  state?: MenuTemplateOptions['state'],
+  onCommand?: (command: WorkspaceMenuCommandV1) => void,
+): { menu: Menu; shortcuts: MenuShortcutV1[] } {
+  const mac = process.platform === 'darwin';
+  const template = buildMenuTemplate({
     platform: process.platform,
     appName: app.name,
     recent,
@@ -66,7 +78,12 @@ export function buildApplicationMenu(
     },
     openExternal: (url) => { void shell.openExternal(url); },
     state,
-  }));
+  });
+  // Listed before any chord is taken off, so the pane shows a switched-off
+  // shortcut as off rather than not at all.
+  const shortcuts = menuShortcuts(template, mac);
+  const disabled = new Set(state?.disabledShortcuts ?? []);
+  return { menu: Menu.buildFromTemplate(withoutShortcuts(template, disabled, mac)), shortcuts };
 }
 
 export function installApplicationMenu(
@@ -75,6 +92,8 @@ export function installApplicationMenu(
   actions: MenuActions,
   state?: MenuTemplateOptions['state'],
   onCommand?: (command: WorkspaceMenuCommandV1) => void,
-): void {
-  Menu.setApplicationMenu(buildApplicationMenu(getWindow, recent, actions, state, onCommand));
+): MenuShortcutV1[] {
+  const built = buildMenuWithShortcuts(getWindow, recent, actions, state, onCommand);
+  Menu.setApplicationMenu(built.menu);
+  return built.shortcuts;
 }

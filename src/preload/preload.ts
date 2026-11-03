@@ -43,6 +43,7 @@ import {
   isSettingsResultV1,
   isThemeCssResultV1,
   isSystemFontsResultV1,
+  isShortcutsResultV1,
   isSettingsWriteRequestV1,
   isRemoteStatusResultV1,
 } from '../shared/settings/v1/validate';
@@ -571,6 +572,17 @@ const settingsApi: NotoSettingsApiV1 = Object.freeze({
       ? value
       : { ok: false as const, requestId: request.requestId,
         error: { code: 'BAD_REQUEST', message: 'Main returned an invalid font list response' } };
+  },
+  listShortcuts: async (request: SettingsRequestV1) => {
+    if (!isSettingsRequestV1(request)) {
+      return { ok: false as const, requestId: 'invalid',
+        error: { code: 'BAD_REQUEST', message: 'Invalid shortcut list request' } };
+    }
+    const value: unknown = await ipcRenderer.invoke(SETTINGS_CHANNELS.listShortcuts, request);
+    return isShortcutsResultV1(value, request.requestId)
+      ? value
+      : { ok: false as const, requestId: request.requestId,
+        error: { code: 'BAD_REQUEST', message: 'Main returned an invalid shortcut list response' } };
   },
   remoteStatus: (request: SettingsRequestV1) => askRemote(SETTINGS_CHANNELS.remoteStatus, request),
   regenerateRemoteToken: (request: SettingsRequestV1) => askRemote(SETTINGS_CHANNELS.remoteRegenerate, request),

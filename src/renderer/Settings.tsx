@@ -28,15 +28,22 @@ import {
 } from '../shared/settings/v1/contracts';
 import type { UpdateStatusV1 } from '../shared/updates/v1/contracts';
 import { isComposing } from './ime';
+import { ShortcutsBoard } from './ShortcutsBoard';
+import type { PluginHotkeySource } from './shortcuts/catalog';
 
-export type SettingsSection = 'appearance' | 'editor' | 'markdown' | 'images' | 'updates' | 'remote' | 'plugins';
+export type SettingsSection = 'appearance' | 'editor' | 'markdown' | 'images' | 'updates' | 'shortcuts' | 'remote' | 'plugins';
 
 export interface SettingsProps {
   readonly open: boolean;
+  /** Keys are written with macOS's glyphs there, with words elsewhere. */
+  readonly mac?: boolean;
+  /** Every plugin main knows, with the keys it declares, for the Shortcuts pane. */
+  readonly pluginHotkeys?: readonly PluginHotkeySource[];
   readonly section: SettingsSection;
   readonly onSection: (section: SettingsSection) => void;
   readonly settings: NotoSettingsV1;
-  readonly onChange: (patch: Partial<NotoSettingsV1>) => void;
+  /** A patch, or a function of the settings as they are when it is applied. */
+  readonly onChange: (patch: Partial<NotoSettingsV1> | ((current: NotoSettingsV1) => Partial<NotoSettingsV1>)) => void;
   readonly onClose: () => void;
   /** The plugin section's contents, supplied by the shell so this file stays
    *  free of plugin lifecycle concerns. */
@@ -70,6 +77,7 @@ function SectionGlyph({ name }: { name: SettingsSection }) {
     updates: 'M8 2.5v6.2 M5.2 6.5 8 9.3l2.8-2.8 M3 11.5h10v2H3z',
     remote: 'M2.5 4.5h11v7h-11z M5.5 13.5h5 M8 11.5v2',
     plugins: 'M6 2.5v2.2a1.3 1.3 0 1 1-2.6 0V2.5 M2.5 6h11v7.5h-11z M2.5 6V3.4h1',
+    shortcuts: 'M2 4.5h12v7H2z M4.3 6.8h.01 M6.4 6.8h.01 M8.5 6.8h.01 M10.6 6.8h.01 M5 9.3h6',
   };
   return (
     <svg className="pref-glyph" viewBox="0 0 16 16" width="15" height="15" aria-hidden="true"
@@ -85,6 +93,7 @@ const SECTIONS: readonly { value: SettingsSection; label: string; keywords: stri
   { value: 'markdown', label: 'Markdown', keywords: 'smart quotes dashes ellipsis punctuation typography syntax' },
   { value: 'images', label: 'Images', keywords: 'image picture paste drop screenshot assets folder copy relative path escape url upload picgo bucket web remote iframe embed page video' },
   { value: 'updates', label: 'Updates', keywords: 'update upgrade release version github alpha stable testing channel download auto check launch' },
+  { value: 'shortcuts', label: 'Shortcuts', keywords: 'shortcut shortcuts keyboard key keys hotkey chord accelerator binding command menu disable conflict', buried: true },
   { value: 'remote', label: 'Remote', keywords: 'remote control api token port script agent automation', buried: true },
   { value: 'plugins', label: 'Plugins', keywords: 'plugin extension enable disable palette', buried: true },
 ];
@@ -96,6 +105,7 @@ const LEADS: Readonly<Partial<Record<SettingsSection, string>>> = {
   markdown: 'How the punctuation you type is set.',
   images: 'Where pasted pictures go, and what loads from the web.',
   updates: 'Which builds this copy follows, and when it looks for them.',
+  shortcuts: 'Every key the app answers to, where it comes from, and a switch to turn it off.',
   remote: 'Let a script on this machine drive the editor.',
   plugins: 'What extends the editor, and where it comes from.',
 };
@@ -726,7 +736,7 @@ function Switch({ label, hint, checked, onChange, testId }: {
 }
 
 export function Settings({
-  open, section, onSection, settings, onChange, onClose, plugins,
+  open, mac = false, pluginHotkeys = [], section, onSection, settings, onChange, onClose, plugins,
   pluginDetailId, onPluginDetailClear, pluginDetailName,
   themeProblem, onReloadCss,
 }: SettingsProps) {
@@ -1120,6 +1130,11 @@ export function Settings({
 
             {section === 'updates' && (
               <UpdatesPane settings={settings} onChange={onChange} />
+            )}
+
+            {section === 'shortcuts' && (
+              <ShortcutsBoard mac={mac} disabled={settings.disabledShortcuts} plugins={pluginHotkeys}
+                onChange={(change) => onChange((current) => ({ disabledShortcuts: change(current.disabledShortcuts) }))} />
             )}
 
             {section === 'remote' && (

@@ -9,7 +9,7 @@ import { startRemoteServer, type RunningRemote } from './remote/server';
 import { TokenStore } from './remote/token-store';
 import { confineRemoteOpenPath } from './remote/resolve-open-path';
 import {
-  NOTO_SETTINGS_VERSION, SETTINGS_CHANNELS, type NotoSettingsV1, type NotoTheme, type RemoteStatusReplyV1,
+  NOTO_SETTINGS_VERSION, SETTINGS_CHANNELS, type MenuShortcutV1, type NotoSettingsV1, type NotoTheme, type RemoteStatusReplyV1,
 } from '../shared/settings/v1/contracts';
 import { ensureThemeFolder, listThemes } from './workspace/themes';
 import path from 'node:path';
@@ -436,9 +436,12 @@ async function run(): Promise<void> {
     treeSort: settings.current().treeSort,
     themes,
     themePath: settings.current().customCssPath,
+    disabledShortcuts: settings.current().disabledShortcuts,
   };
+  // What the menu held when it was last built, for the Shortcuts pane.
+  let menuShortcutList: readonly MenuShortcutV1[] = [];
   if (windowAlwaysOnTop) editorWindow?.setAlwaysOnTop(true);
-  const refreshMenu = () => installApplicationMenu(() => editorWindow, recent.list(), {
+  const refreshMenu = () => { menuShortcutList = installApplicationMenu(() => editorWindow, recent.list(), {
     openDialog: () => { void session?.openWithDialog().then(refreshMenu).catch(reportOpenFailure); },
     openPath: (filePath) => { void session?.openPath(filePath).then(refreshMenu).catch(reportOpenFailure); },
     openFolder: () => { void session?.openFolderWithDialog().catch(reportOpenFailure); },
@@ -503,7 +506,7 @@ async function run(): Promise<void> {
     if (command !== 'toggle-read-only') return;
     menuState.readOnly = !menuState.readOnly;
     refreshMenu();
-  });
+  }); };
   /*
    * Say why an import did nothing, in a box rather than in the log.
    *
@@ -799,6 +802,7 @@ async function run(): Promise<void> {
     settings,
     getWindow: () => editorWindow,
     logger,
+    menuShortcuts: () => menuShortcutList,
     remote: {
       status: remoteStatus,
       regenerate: async () => {
@@ -823,6 +827,12 @@ async function run(): Promise<void> {
       // The tree's order shows as a tick in the View menu, and the tree
       // itself is listed again when it changes.
       if (reply.settings.remoteControl !== (remote !== null)) void applyRemote(reply.settings.remoteControl);
+      // A chord switched off or on in the Shortcuts pane is taken off the
+      // menu, or put back, at once: the menu claims a key before the page.
+      if (reply.settings.disabledShortcuts.join('\n') !== menuState.disabledShortcuts.join('\n')) {
+        menuState.disabledShortcuts = reply.settings.disabledShortcuts;
+        refreshMenu();
+      }
       if (reply.settings.customCssPath !== menuState.themePath) {
         menuState.themePath = reply.settings.customCssPath;
         refreshMenu();

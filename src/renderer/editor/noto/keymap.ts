@@ -49,6 +49,7 @@ import {
 
 import { TextSelection, type Command, type EditorState, type Plugin, type Transaction } from 'prosemirror-state';
 import { notoSchema } from '../../../shared/markdown/v3/pm/schema';
+import { normalizeChord } from '../../../shared/shortcuts/chord';
 import { TIMELINE_LANGUAGE, TIMELINE_TEMPLATE } from './timeline';
 import {
   insertFootnote,
@@ -647,6 +648,13 @@ export interface KeymapOptions {
    * keymap, the same way smart typography is read.
    */
   readonly taskStamp?: TaskStampOptions;
+  /**
+   * Whether a chord, in canonical form, is switched off in the Shortcuts pane.
+   * A getter, read on every press, so a chord turned off takes effect without
+   * the keymap being rebuilt. A binding whose chord is off passes the key on
+   * as though it were not bound.
+   */
+  readonly isDisabled?: (chord: string) => boolean;
 }
 
 export function notoBindings({ mac, onWidthStep, taskStamp }: KeymapOptions): Record<string, Command> {
@@ -669,7 +677,9 @@ export function notoBindings({ mac, onWidthStep, taskStamp }: KeymapOptions): Re
     [`${mod}-b`]: toggleMark(marks.strong),
     [`${mod}-i`]: toggleMark(marks.emphasis),
     [`${mod}-Shift-x`]: toggleMark(marks.strikethrough),
-    [`${mod}-e`]: toggleMark(marks.inline_code),
+    // No Command-E for inline code: the Edit menu's Select Styled Scope holds
+    // that chord, and the menu answers first, so it never reached here.
+    // Inline code is on Control and the backtick, as in Typora.
 
     [`${mod}-0`]: setBlockType(nodes.paragraph),
     ...Object.fromEntries([1, 2, 3, 4, 5, 6].map((level) => [
@@ -697,10 +707,10 @@ export function notoBindings({ mac, onWidthStep, taskStamp }: KeymapOptions): Re
     'Ctrl-m': wrapInMath,
     [`${mod}-u`]: surroundTag('u'),
     [`${mod}-Shift-h`]: surround('==', '=='),
-    // Typora names these Command+plus and Command+minus. A keyboard gives the
-    // plus only with Shift on most layouts, so both spellings are taken.
+    // Typora names these Command+plus and Command+minus. The plus, Command
+    // with Shift and the equals key, is Zoom In in the View menu, which
+    // answers first; the equals key alone is the heading's.
     [`${mod}-=`]: shiftHeading(true),
-    [`${mod}-+`]: shiftHeading(true),
     [`${mod}--`]: shiftHeading(false),
     [`${mod}-Shift-q`]: wrapIn(nodes.blockquote),
     [`${mod}-k`]: openLinkEditor,
@@ -736,6 +746,28 @@ export function notoBindings({ mac, onWidthStep, taskStamp }: KeymapOptions): Re
   };
 }
 
+/*
+ * Chords the browser itself acts on inside an editable page: bold, italic,
+ * underline, undo and redo. Passed on, a switched-off Command-B would bold
+ * the text through the browser, behind the editor's back, and the next press
+ * would find it bold. Switched off, these are swallowed; every other chord is
+ * passed on, so Option and an arrow moves the caret again once Move Block is
+ * off.
+ */
+const BROWSER_EDITS = new Set(['Mod+B', 'Mod+I', 'Mod+U', 'Mod+Z', 'Mod+Shift+Z', 'Mod+Y']);
+
+/** The bindings with each one checked against the switched-off chords first. */
+export function guardedBindings(options: KeymapOptions): Record<string, Command> {
+  const bindings = notoBindings(options);
+  const isDisabled = options.isDisabled;
+  if (!isDisabled) return bindings;
+  return Object.fromEntries(Object.entries(bindings).map(([key, command]): [string, Command] => {
+    const chord = normalizeChord(key, 'prosemirror', options.mac);
+    if (!chord) return [key, command];
+    return [key, (state, dispatch, view) => (isDisabled(chord) ? BROWSER_EDITS.has(chord) : command(state, dispatch, view))];
+  }));
+}
+
 export function notoKeymap(options: KeymapOptions): Plugin[] {
-  return [keymap(notoBindings(options)), keymap(baseKeymap)];
+  return [keymap(guardedBindings(options)), keymap(baseKeymap)];
 }

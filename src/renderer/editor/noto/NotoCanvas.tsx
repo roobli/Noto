@@ -28,6 +28,8 @@ export interface NotoCanvasProps {
   readonly documentPath: string | null;
   readonly remoteImages?: boolean;
   readonly webEmbeds?: boolean;
+  /** Chords switched off in the Shortcuts pane, which the editor's keys ignore. */
+  readonly disabledShortcuts?: readonly string[];
   /** Keep the line being written at the middle of the window. */
   readonly typewriterMode?: boolean;
   /** Close a bracket or a quote as it is opened. */
@@ -67,6 +69,7 @@ export function NotoCanvas({
   documentPath,
   remoteImages,
   webEmbeds,
+  disabledShortcuts,
   typewriterMode,
   autoPair,
   todoCheckTime,
@@ -191,11 +194,11 @@ export function NotoCanvas({
   // preference never costs the user their undo history or cursor.
   useEffect(() => {
     editorRef.current?.applySettings({
-      smartQuotes, smartDashes, smartEllipsis, spellCheck, remoteImages, typewriterMode, autoPair,
-      todoCheckTime,
+      smartQuotes, smartDashes, smartEllipsis, spellCheck, remoteImages, webEmbeds, typewriterMode, autoPair,
+      todoCheckTime, disabledShortcuts,
       markHighlight, markSuperscript, markSubscript, sidenotes,
     });
-  }, [smartQuotes, smartDashes, smartEllipsis, spellCheck, remoteImages, typewriterMode, autoPair, todoCheckTime, markHighlight, markSuperscript, markSubscript, sidenotes]);
+  }, [smartQuotes, smartDashes, smartEllipsis, spellCheck, remoteImages, webEmbeds, typewriterMode, autoPair, todoCheckTime, disabledShortcuts, markHighlight, markSuperscript, markSubscript, sidenotes]);
 
   return <div ref={hostRef} className="noto-editor-host" data-testid="noto-editor" />;
 }

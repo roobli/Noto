@@ -2448,6 +2448,73 @@ section.plugin-group > .plugin-market-row.is-set-aside {
   dd { margin: 0; color: var(--ink); text-align: right; font-variant-numeric: tabular-nums; }
 }
 
+/* The Shortcuts pane: a finding field over the groups, each row its action,
+   where it comes from, its keys and a switch. The keys sit in one chip in the
+   platform's own spelling, so a row reads the way the menu bar writes it. */
+.shortcut-tools {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  margin: 0 0 4px;
+}
+
+.shortcut-search {
+  flex: 1 1 auto;
+  min-width: 0;
+  min-height: 32px;
+  border: 1px solid var(--hairline);
+  border-radius: 8px;
+  background: var(--paper);
+  padding: 6px 12px;
+  color: var(--ink);
+  font: inherit;
+  font-size: 13px;
+
+  &:focus-visible { outline: 2px solid var(--focus); outline-offset: 1px; }
+  &::-webkit-search-cancel-button { appearance: none; }
+}
+
+.shortcut-count {
+  flex: 0 0 auto;
+  color: var(--muted);
+  font-size: 12px;
+  font-variant-numeric: tabular-nums;
+}
+
+/* Denser than a setting's row: a hundred keys are scanned, not read. */
+:is(.pref-content, .updates-pane, .remote-pane) > .shortcut-row { min-height: 0; padding-block: 7px; }
+.shortcut-row { gap: 14px; }
+.shortcut-row .pref-label { flex: 1 1 auto; }
+
+.shortcut-keys {
+  flex: 0 0 auto;
+  min-width: 44px;
+  border: 1px solid var(--hairline);
+  border-bottom-width: 2px;
+  border-radius: 6px;
+  background: var(--paper);
+  padding: 2px 8px;
+  color: var(--ink);
+  font-family: tokens.$ui;
+  font-size: 12.5px;
+  letter-spacing: 0.04em;
+  line-height: 1.5;
+  text-align: center;
+  white-space: nowrap;
+
+  /* Switched off: the chip stays so the key can still be found, struck
+     through and set back. */
+  &[data-off='true'] {
+    color: var(--muted);
+    text-decoration: line-through;
+    text-decoration-color: color-mix(in srgb, var(--muted) 70%, transparent);
+  }
+}
+
+.shortcut-row.is-off .shortcut-name { color: var(--muted); }
+.shortcut-row.is-locked .shortcut-keys { margin-right: 46px; }
+.shortcut-clash { color: var(--danger); }
+
 /* A heading inside a pane, so a pane of eight switches reads as two groups of
    four rather than as a list somebody stopped writing. */
 .pref-group {

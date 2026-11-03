@@ -292,7 +292,7 @@ test.describe('git gutter', () => {
 
       // The keyboard: the palette's command for the block holding the caret.
       await placeCaretAtEnd(page, changed);
-      await page.keyboard.press(`${MOD}+KeyK`);
+      await page.keyboard.press(`${MOD}+Shift+KeyP`);
       await page.getByTestId('palette-input').fill('show block as committed');
       await page.keyboard.press('Enter');
       await expect(popover).toBeVisible();

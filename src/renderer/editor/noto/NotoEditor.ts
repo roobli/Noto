@@ -181,6 +181,8 @@ export class NotoEditor implements NotoEditorPort {
   private spellCheck = true;
   /** Append ` ✅ YYYY-MM-DD` when a task is checked. */
   private todoCheckTime = true;
+  /** Chords switched off in the Shortcuts pane; the keymap reads it per press. */
+  private disabledShortcuts: ReadonlySet<string> = new Set();
 
   /** Which of Typora's inline marks are read; a preference, read at each scan. */
   private markKinds: TyporaMarkKinds = ALL_MARK_KINDS;
@@ -373,6 +375,7 @@ export class NotoEditor implements NotoEditorPort {
         mac: this.options.mac,
         onWidthStep: (d) => this.options.onWidthStep?.(d),
         taskStamp: this.taskStampOptions(),
+        isDisabled: (chord) => this.disabledShortcuts.has(chord),
       }),
       history(),
       dropCursor({ color: 'var(--accent)' }),
@@ -985,7 +988,11 @@ export class NotoEditor implements NotoEditorPort {
     typewriterMode?: boolean;
     autoPair?: boolean;
     todoCheckTime?: boolean;
+    disabledShortcuts?: readonly string[];
   }): void {
+    if (settings.disabledShortcuts !== undefined) {
+      this.disabledShortcuts = new Set(settings.disabledShortcuts);
+    }
     if (settings.autoPair !== undefined) {
       this.autoPair = settings.autoPair;
     }
