@@ -22,7 +22,6 @@ import {
 } from './sidenote';
 
 export const sidenoteKey = new PluginKey<DecorationSet>('noto-sidenote');
-export const SIDENOTE_RESCAN = 'rescan';
 
 interface TagChild {
   readonly type: string;
@@ -182,21 +181,15 @@ function apply(
 }
 
 /**
- * `enabled` is read at each scan rather than captured, so the preference
- * switch takes effect without rebuilding the editor.
+ * One per editor, put there by the Sidenotes plugin while it is switched on.
+ * Off, the plugin is not in the editor at all and the tags stay as source.
  */
-export function sidenotePlugin(enabled: () => boolean = () => true): Plugin<DecorationSet> {
+export function sidenotePlugin(): Plugin<DecorationSet> {
   return new Plugin<DecorationSet>({
     key: sidenoteKey,
     state: {
-      init: (_config, state) => (enabled() ? fullScan(state) : DecorationSet.empty),
-      apply: (tr, set, oldState, state) => {
-        if (tr.getMeta(sidenoteKey) === SIDENOTE_RESCAN) {
-          return enabled() ? fullScan(state) : DecorationSet.empty;
-        }
-        if (!enabled()) return DecorationSet.empty;
-        return apply(tr, set, oldState, state);
-      },
+      init: (_config, state) => fullScan(state),
+      apply: (tr, set, oldState, state) => apply(tr, set, oldState, state),
     },
     props: {
       decorations(state) {
@@ -210,7 +203,7 @@ export function sidenotePlugin(enabled: () => boolean = () => true): Plugin<Deco
         // Derive from the decoration set already computed for this state:
         // do not walk the document again on every keystroke.
         const set = sidenoteKey.getState(view.state);
-        const has = enabled() && !!set && set.find().length > 0;
+        const has = !!set && set.find().length > 0;
         if (has === known) return;
         known = has;
         host.classList.toggle('noto-has-sidenotes', has);
@@ -222,8 +215,10 @@ export function sidenotePlugin(enabled: () => boolean = () => true): Plugin<Deco
       sync(editorView);
       return {
         update: sync,
+        // Switched off, the plugin leaves the editor: the gutter it reserved
+        // goes with it.
         destroy() {
-          /* the host is torn down with the editor */
+          (editorView.dom.closest('.noto-editor-host') ?? editorView.dom).classList.remove('noto-has-sidenotes');
         },
       };
     },

@@ -7,6 +7,7 @@ import {
   filesystemProofManifest,
   markdownPaddingManifest,
   rendererProofManifest,
+  sidenotesManifest,
   titleShiftManifest,
 } from '../../shared/plugins/proof-manifests';
 import {
@@ -34,6 +35,7 @@ import {
  */
 const pluginDescriptions = new Map<string, string>([
   [titleShiftManifest.id, 'Promote and demote every heading in the document by one level.'],
+  [sidenotesManifest.id, 'Draw <span class="sidenote"> as numbered notes in the margin, as the Typora plugin does. Off, the tags stay as source.'],
   [markdownPaddingManifest.id, 'Insert the conventional spacing between CJK text and Latin text or numbers.'],
   [rendererProofManifest.id, 'Dim every block except the one the caret is in.'],
   [filesystemProofManifest.id, 'Read files from one folder you choose, and prove it is refused everywhere else.'],

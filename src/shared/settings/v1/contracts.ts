@@ -193,10 +193,9 @@ export interface NotoSettingsV1 {
   readonly markSuperscript: boolean;
   readonly markSubscript: boolean;
   /**
-   * Draw `<span class="sidenote">` as a numbered margin note.
-   *
-   * On by default, as the author's Typora `sidenote` plugin is. Off leaves
-   * the tags as ordinary inline HTML source.
+   * Deprecated: sidenotes are the bundled Sidenotes plugin now, switched on
+   * and off in Plugin Center, and nothing reads this. Kept so a settings file
+   * that holds it still validates; it can go in a later version.
    */
   readonly sidenotes: boolean;
   /** Which face the document is set in. See `PROSE_FACES`. Serif recommended. */

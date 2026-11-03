@@ -39,8 +39,6 @@ export interface NotoCanvasProps {
   readonly markHighlight?: boolean;
   readonly markSuperscript?: boolean;
   readonly markSubscript?: boolean;
-  /** Draw `<span class="sidenote">` as numbered margin notes. */
-  readonly sidenotes?: boolean;
   /** The top level block the caret is in, when it changes. */
   readonly onActiveBlockChanged?: (index: number) => void;
   readonly onDirtyChange: (dirty: boolean) => void;
@@ -76,7 +74,6 @@ export function NotoCanvas({
   markHighlight,
   markSuperscript,
   markSubscript,
-  sidenotes,
   onActiveBlockChanged,
   onDirtyChange,
   onDocumentChanged,
@@ -98,11 +95,11 @@ export function NotoCanvas({
   // rather than what the building effect captured when it began.
   const settingsNow = useRef({
     smartQuotes, smartDashes, smartEllipsis, spellCheck, remoteImages, webEmbeds, typewriterMode, autoPair,
-    todoCheckTime, disabledShortcuts, markHighlight, markSuperscript, markSubscript, sidenotes,
+    todoCheckTime, disabledShortcuts, markHighlight, markSuperscript, markSubscript,
   });
   settingsNow.current = {
     smartQuotes, smartDashes, smartEllipsis, spellCheck, remoteImages, webEmbeds, typewriterMode, autoPair,
-    todoCheckTime, disabledShortcuts, markHighlight, markSuperscript, markSubscript, sidenotes,
+    todoCheckTime, disabledShortcuts, markHighlight, markSuperscript, markSubscript,
   };
 
   useLayoutEffect(() => {
@@ -211,9 +208,9 @@ export function NotoCanvas({
     editorRef.current?.applySettings({
       smartQuotes, smartDashes, smartEllipsis, spellCheck, remoteImages, webEmbeds, typewriterMode, autoPair,
       todoCheckTime, disabledShortcuts,
-      markHighlight, markSuperscript, markSubscript, sidenotes,
+      markHighlight, markSuperscript, markSubscript,
     });
-  }, [smartQuotes, smartDashes, smartEllipsis, spellCheck, remoteImages, webEmbeds, typewriterMode, autoPair, todoCheckTime, disabledShortcuts, markHighlight, markSuperscript, markSubscript, sidenotes]);
+  }, [smartQuotes, smartDashes, smartEllipsis, spellCheck, remoteImages, webEmbeds, typewriterMode, autoPair, todoCheckTime, disabledShortcuts, markHighlight, markSuperscript, markSubscript]);
 
   return <div ref={hostRef} className="noto-editor-host" data-testid="noto-editor" />;
 }

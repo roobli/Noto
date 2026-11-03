@@ -78,7 +78,7 @@ import { documentDomToHtml, sliceToHtml, sliceToPlainText } from './clipboard';
 import { alertPlugin } from './alert-plugin';
 import { imageLinePlugin } from './image-line';
 import { RESCAN, typoraMarksKey, typoraMarksPlugin } from './typora-marks-plugin';
-import { SIDENOTE_RESCAN, sidenoteKey, sidenotePlugin } from './sidenote-plugin';
+import { editorExtensions } from './editor-extensions';
 import { ALL_MARK_KINDS, type TyporaMarkKinds } from './typora-marks';
 import { typewriterPlugin } from './typewriter-plugin';
 import { autoPairPlugin } from './auto-pair';
@@ -186,7 +186,9 @@ export class NotoEditor implements NotoEditorPort {
 
   /** Which of Typora's inline marks are read; a preference, read at each scan. */
   private markKinds: TyporaMarkKinds = ALL_MARK_KINDS;
-  private sidenotes = true;
+  /** The plugins the registered editor extensions put in this editor's state. */
+  private extensionPlugins: readonly Plugin[] = [];
+  private readonly unsubscribeExtensions: () => void;
   private activeBlock = -1;
   /* Bumped by every change, so a picture that arrives after the document moved
      under it is put where the caret is now rather than at a stale offset. */
@@ -334,6 +336,8 @@ export class NotoEditor implements NotoEditorPort {
       },
       nodeViews: this.nodeViews(doc.childCount),
     });
+    // A plugin switched on or off while this note is open reaches it at once.
+    this.unsubscribeExtensions = editorExtensions.subscribe(() => this.reconfigureExtensions());
     // Where the caret starts, said once, so the marker is there before any
     // key is pressed. Without it the attribute exists only after something
     // has moved, and "the caret has not moved yet" reads as "there is no
@@ -361,6 +365,25 @@ export class NotoEditor implements NotoEditorPort {
   }
 
   private plugins(document: NotoDocumentWire): Plugin[] {
+    this.extensionPlugins = editorExtensions.list().flatMap((extension) => extension.plugins());
+    return [...this.corePlugins(document), ...this.extensionPlugins];
+  }
+
+  /**
+   * A plugin was switched on or off: put the extensions in this editor's state
+   * as they are now. The core plugins keep their instances, and so their
+   * state; only the extensions' are made fresh.
+   */
+  private reconfigureExtensions(): void {
+    const view = this.view;
+    if (!view) return;
+    const previous = new Set(this.extensionPlugins);
+    const core = view.state.plugins.filter((plugin) => !previous.has(plugin));
+    this.extensionPlugins = editorExtensions.list().flatMap((extension) => extension.plugins());
+    view.updateState(view.state.reconfigure({ plugins: [...core, ...this.extensionPlugins] }));
+  }
+
+  private corePlugins(document: NotoDocumentWire): Plugin[] {
     return [
       createOriginPlugin(document.origins),
       // A getter, not a value: the setting can change while the editor is open
@@ -383,7 +406,6 @@ export class NotoEditor implements NotoEditorPort {
       alertPlugin(),
       imageLinePlugin(),
       typoraMarksPlugin(() => this.markKinds),
-      sidenotePlugin(() => this.sidenotes),
       typewriterPlugin(() => this.typewriter),
       autoPairPlugin(() => this.autoPair),
       columnResizing(),
@@ -852,7 +874,7 @@ export class NotoEditor implements NotoEditorPort {
       : name === 'task-complete' ? toggleTaskStatus(true, stamp)
       : name === 'task-incomplete' ? toggleTaskStatus(false, stamp)
       : name === 'sort-tasks' ? sortTasks
-      : EDITOR_COMMANDS[name];
+      : EDITOR_COMMANDS[name] ?? editorExtensions.command(name);
     if (!command) return false;
     const ran = command(view.state, view.dispatch, view);
     if (ran) view.focus();
@@ -979,7 +1001,6 @@ export class NotoEditor implements NotoEditorPort {
     markHighlight?: boolean;
     markSuperscript?: boolean;
     markSubscript?: boolean;
-    sidenotes?: boolean;
     smartQuotes?: boolean;
     smartDashes?: boolean;
     smartEllipsis?: boolean;
@@ -1011,8 +1032,6 @@ export class NotoEditor implements NotoEditorPort {
       || marks.superscript !== this.markKinds.superscript
       || marks.subscript !== this.markKinds.subscript;
     this.markKinds = marks;
-    const sidenotesChanged = settings.sidenotes !== undefined && settings.sidenotes !== this.sidenotes;
-    if (settings.sidenotes !== undefined) this.sidenotes = settings.sidenotes;
     if (settings.smartQuotes !== undefined) this.substitutions.quotes = settings.smartQuotes;
     if (settings.smartDashes !== undefined) this.substitutions.dashes = settings.smartDashes;
     if (settings.smartEllipsis !== undefined) this.substitutions.ellipsis = settings.smartEllipsis;
@@ -1023,9 +1042,6 @@ export class NotoEditor implements NotoEditorPort {
       // marks plugin needs: read the document again. It costs the document
       // nothing and stays out of the undo history.
       view.dispatch(view.state.tr.setMeta(typoraMarksKey, RESCAN).setMeta('addToHistory', false));
-    }
-    if (sidenotesChanged) {
-      view.dispatch(view.state.tr.setMeta(sidenoteKey, SIDENOTE_RESCAN).setMeta('addToHistory', false));
     }
     if (settings.remoteImages !== undefined && settings.remoteImages !== this.imageContext.remote) {
       this.imageContext = { ...this.imageContext, remote: settings.remoteImages };
@@ -1753,6 +1769,7 @@ export class NotoEditor implements NotoEditorPort {
   }
 
   destroy(): void {
+    this.unsubscribeExtensions();
     closeGitPopover();
     this.deferredEnrich?.destroy();
     this.deferredEnrich = null;

@@ -12,6 +12,7 @@
  * Typora's code, private API or DOM is involved.
  */
 
+import type { EditorExtension } from '../../editor/noto/editor-extensions';
 import type { NotoEditorPort } from '../../editor/noto/NotoEditorPort';
 import { padCjkSpacing, shiftHeadings } from './transforms';
 
@@ -34,6 +35,19 @@ export interface TrustedPluginContext {
   registerDisposer(disposer: Disposer): void;
   /** Surface a short message to the user. */
   notice(message: string): void;
+  /**
+   * Add ProseMirror plugins, and commands by name, to every editor while this
+   * plugin is switched on. Trusted plugins only: the id must be one the
+   * manifest lists under `editorExtensions`, and the manifest must ask for
+   * `editor.decorate`. Released with the plugin's lease.
+   */
+  registerEditorExtension(extension: EditorExtension): Disposer;
+  /**
+   * Run an editor command by name on the note in front: one this plugin's
+   * extension registered, or one of the editor's own. False when there is no
+   * note, it is read-only, or the command does not apply where the caret is.
+   */
+  runEditorCommand(name: string): boolean;
 }
 
 export interface TrustedPlugin {

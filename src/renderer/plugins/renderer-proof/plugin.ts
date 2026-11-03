@@ -21,6 +21,8 @@ export interface ProofPluginActivationContext {
   registerSetting(key: string, initial: boolean, update: (value: boolean) => void): Disposer;
   registerHotkey(keys: string, execute: (signal: AbortSignal) => void | Promise<void>): Disposer;
   registerEditorExtension(id: string): Disposer;
+  /** An editor command by name on the note in front; gated by `editor.transform`. */
+  runEditorCommand(name: string): boolean;
   registerUiExtension(id: string): Disposer;
   registerDisposer(disposer: Disposer): void;
   onCommand(): void;

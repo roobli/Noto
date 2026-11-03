@@ -136,28 +136,6 @@ export function surroundTag(tag: string): Command {
   };
 }
 
-/**
- * Wrap the selection in a sidenote, as the author's Typora plugin does.
- *
- * The open tag carries `class="sidenote"`, which a bare `surroundTag('span')`
- * cannot write. An empty selection still inserts the pair so the caret can
- * fill the note; a fence or maths block refuses, as the other wraps do.
- */
-export const surroundSidenote: Command = (state, dispatch) => {
-  const { $from, from, to, empty } = state.selection;
-  if (!$from.parent.isTextblock || $from.parent.type.spec.code) return false;
-  if (!dispatch) return true;
-  const open = nodes.inline_html.create({ value: '<span class="sidenote">' });
-  const close = nodes.inline_html.create({ value: '</span>' });
-  const tr = state.tr;
-  tr.insert(to, close);
-  tr.insert(from, open);
-  tr.setSelection(empty
-    ? TextSelection.create(tr.doc, from + open.nodeSize)
-    : TextSelection.create(tr.doc, from + open.nodeSize, to + open.nodeSize));
-  dispatch(tr.scrollIntoView());
-  return true;
-};
 
 /**
  * Turn the selection into inline maths, as Typora's Inline Math does.
@@ -586,7 +564,6 @@ export const EDITOR_COMMANDS: Readonly<Record<string, Command>> = {
   'mark-code': toggleMark(marks.inline_code),
   'mark-strike': toggleMark(marks.strikethrough),
   'mark-underline': surroundTag('u'),
-  'insert-sidenote': surroundSidenote,
   'mark-highlight': surround('==', '=='),
   'mark-math': wrapInMath,
   'table-insert': insertTable(2, 3),
@@ -697,8 +674,6 @@ export function notoBindings({ mac, onWidthStep, taskStamp }: KeymapOptions): Re
     [`${mod}-Alt-x`]: toggleTaskList,
     [`${mod}-Alt--`]: insertRule,
     [`${mod}-Alt-t`]: insertTable(2, 3),
-    // The author's sidenote plugin: wrap the selection as a margin note.
-    [`${mod}-Alt-s`]: surroundSidenote,
     // Typora's own bindings for the marks markdown has no key for, so a hand
     // that learned them there does not have to learn them again. Its inline
     // code, strike and maths are on Control rather than Command.

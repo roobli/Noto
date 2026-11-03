@@ -375,7 +375,6 @@ export function buildMenuTemplate(options: MenuTemplateOptions): MenuItemConstru
       command('Strike', 'CmdOrCtrl+Shift+X', 'mark-strike'),
       command('Highlight', 'CmdOrCtrl+Shift+H', 'mark-highlight'),
       command('Inline Math', 'Control+M', 'mark-math'),
-      command('Sidenote', 'CmdOrCtrl+Alt+S', 'insert-sidenote'),
       { type: 'separator' },
       command('Hyperlink…', 'CmdOrCtrl+K', 'insert-link'),
       command('Image…', 'CmdOrCtrl+Shift+I', 'insert-image'),

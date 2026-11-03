@@ -19,6 +19,7 @@ import {
   rendererProofManifest,
   titleShiftManifest,
   markdownPaddingManifest,
+  sidenotesManifest,
 } from '../../shared/plugins/proof-manifests';
 import {
   cloneLocalPluginState,
@@ -140,6 +141,7 @@ const MAX_DIAGNOSTICS = 8;
 export const bundledPluginCatalog = createPluginCatalog([
   rendererProofManifest,
   titleShiftManifest,
+  sidenotesManifest,
   markdownPaddingManifest,
   filesystemProofManifest,
 ]);

@@ -1,5 +1,6 @@
 import { hasExactKeys, isRecord } from '../ipc/validate';
 import type { PluginCatalog } from './catalog';
+import { BUNDLED_ON_BY_DEFAULT } from './proof-manifests';
 
 export const LOCAL_PLUGIN_STATE_SCHEMA_VERSION = 1 as const;
 
@@ -19,7 +20,7 @@ export function createDefaultLocalPluginState(catalog: PluginCatalog): LocalPlug
     plugins: Object.fromEntries(catalog.plugins.map((manifest) => [
       manifest.id,
       {
-        desiredEnabled: false,
+        desiredEnabled: BUNDLED_ON_BY_DEFAULT.has(manifest.id),
         settings: Object.fromEntries(manifest.settings.map((setting) => [setting.key, setting.default])),
       },
     ])),

@@ -1,0 +1,42 @@
+{
+  "schemaVersion": 2,
+  "id": "dev.lr00rl.noto.sidenotes",
+  "name": "Sidenotes",
+  "version": "1.0.0",
+  "runtime": "trusted-renderer",
+  "activation": {
+    "startup": false,
+    "events": [
+      "editor.ready"
+    ],
+    "hotkeys": [
+      "Mod+Alt+S"
+    ]
+  },
+  "capabilities": [
+    "editor.read",
+    "editor.transform",
+    "editor.decorate"
+  ],
+  "lifecycle": [
+    "activate",
+    "deactivate"
+  ],
+  "commands": [
+    {
+      "id": "sidenotes.insert",
+      "title": "Sidenote: make the selection a margin note"
+    }
+  ],
+  "settings": [],
+  "hotkeys": [
+    {
+      "command": "sidenotes.insert",
+      "keys": "Mod+Alt+S"
+    }
+  ],
+  "editorExtensions": [
+    "sidenotes"
+  ],
+  "uiExtensions": []
+}

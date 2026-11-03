@@ -250,7 +250,6 @@ export const WORKSPACE_MENU_COMMANDS = [
   'tree-collapse-all',
   'shortcuts',
   'insert-comment',
-  'insert-sidenote',
   'indent-more',
   'indent-less',
   'block-paragraph',

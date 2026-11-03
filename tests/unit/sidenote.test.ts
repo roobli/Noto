@@ -8,8 +8,8 @@ import {
   isSidenoteClose,
   isSidenoteOpen,
   sidenoteRangesInBlock,
-} from '../../src/renderer/editor/noto/sidenote';
-import { surroundSidenote } from '../../src/renderer/editor/noto/keymap';
+} from '../../src/renderer/plugins/bundled/sidenotes/sidenote';
+import { surroundSidenote } from '../../src/renderer/plugins/bundled/sidenotes';
 import { EditorState, TextSelection } from 'prosemirror-state';
 import { splitBlocks } from '../../src/shared/markdown/v3/blocks';
 import { docFromSpans } from '../../src/shared/markdown/v3/pm/from-mdast';

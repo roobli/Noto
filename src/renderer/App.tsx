@@ -32,7 +32,7 @@ import type { NotoDocumentWire } from '../shared/markdown/v3/contracts';
 import { materializeSaveReply } from './file-truth-save';
 import { outlineFromDocument } from './outline';
 import { PLUGIN_LIFECYCLE_VERSION, type PluginLifecycleSnapshot } from '../shared/plugins/lifecycle';
-import { rendererProofManifest } from '../shared/plugins/proof-manifests';
+import { rendererProofManifest, sidenotesManifest } from '../shared/plugins/proof-manifests';
 import { chordOfEvent, normalizeChord } from '../shared/shortcuts/chord';
 import { NotoCanvas } from './editor/noto/NotoCanvas';
 import { CodeViewer } from './CodeViewer';
@@ -132,6 +132,11 @@ function imageRefusalMessage(reason: AssetRefusalV1): string {
  */
 let customThemeSheet: CSSStyleSheet | null = null;
 const themeSheet = (): CSSStyleSheet => (customThemeSheet ??= new CSSStyleSheet());
+
+/** Bundled plugins that add to the editor, and so start the moment they are switched on. */
+const DRAWING_PLUGINS: ReadonlySet<string> = new Set(
+  [sidenotesManifest].filter((manifest) => manifest.editorExtensions.length > 0).map((manifest) => manifest.id),
+);
 
 /**
  * The plugin a chord belongs to, and the keys as its manifest writes them,
@@ -612,6 +617,19 @@ function NotoWorkspace({ platform }: { platform: NotoPlatform }) {
     announceEditorRef.current();
   }, [pluginSnapshots]);
 
+  /*
+   * A plugin that changes how notes are drawn starts as soon as it is switched
+   * on while a note is open. Left idle like a plugin of commands, Sidenotes
+   * turned back on would draw nothing until the next note opened, which reads
+   * as the switch not working.
+   */
+  useEffect(() => {
+    if (!editorRef.current) return;
+    const drawingWaits = pluginSnapshots.some((snapshot) => snapshot.desiredEnabled
+      && snapshot.lifecycle === 'enabled-idle' && DRAWING_PLUGINS.has(snapshot.id));
+    if (drawingWaits) announceEditorRef.current();
+  }, [pluginSnapshots]);
+
   const pluginSnapshot = pluginSnapshots.find((snapshot) => snapshot.id === rendererProofManifest.id);
   const filename = useMemo(() => opened?.path.split(/[\\/]/).at(-1) ?? 'No document', [opened]);
   // The containing folder, shortened to a leading tilde inside the home
@@ -696,11 +714,10 @@ function NotoWorkspace({ platform }: { platform: NotoPlatform }) {
     root.dataset.codeLineNumbers = settings.codeLineNumbers ? 'on' : 'off';
     root.dataset.codeIndentGuides = settings.codeIndentGuides ? 'on' : 'off';
     root.dataset.codeTabMarkers = settings.codeTabMarkers ? 'on' : 'off';
-    root.dataset.sidenotes = settings.sidenotes ? 'on' : 'off';
     root.dataset.timelines = settings.timelines ? 'on' : 'off';
     root.dataset.focusMode = settings.focusMode ? 'on' : 'off';
   }, [settings.fontSize, settings.lineHeight, settings.widthMode, settings.proseFace, settings.proseFontFamily,
-    settings.codeLineNumbers, settings.codeIndentGuides, settings.codeTabMarkers, settings.sidenotes,
+    settings.codeLineNumbers, settings.codeIndentGuides, settings.codeTabMarkers,
     settings.timelines, settings.focusMode]);
 
   /**
@@ -2134,7 +2151,6 @@ function NotoWorkspace({ platform }: { platform: NotoPlatform }) {
       case 'block-code': case 'block-math': case 'block-quote':
       case 'block-ordered-list': case 'block-bullet-list': case 'block-task-list':
       case 'block-rule': case 'mark-underline': case 'mark-highlight': case 'mark-math':
-      case 'insert-sidenote':
       case 'select-scope': case 'insert-comment': case 'indent-more': case 'indent-less':
       case 'table-row-above': case 'table-row-below':
       case 'table-column-before': case 'table-column-after':
@@ -2718,7 +2734,6 @@ function NotoWorkspace({ platform }: { platform: NotoPlatform }) {
                 markHighlight={settings.markHighlight}
                 markSuperscript={settings.markSuperscript}
                 markSubscript={settings.markSubscript}
-                sidenotes={settings.sidenotes}
                 onActiveBlockChanged={setActiveBlock}
                 onDirtyChange={(dirty) => onDocumentDirtyChange(doc.document.documentId, dirty)}
                 onDocumentChanged={() => {

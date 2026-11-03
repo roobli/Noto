@@ -2071,7 +2071,7 @@
    right edge into the gutter. Paint containment (which `content-visibility`
    implies) would clip it, and layout containment would keep one note's float
    from stacking under the last one's, so such a block is contained by
-   neither. `sidenote-plugin.ts` marks it. */
+   neither. The Sidenotes plugin marks it. */
 .ProseMirror > .noto-sidenote-block {
   contain: none;
   content-visibility: visible;
@@ -2780,7 +2780,10 @@
 }
 
 
-/* Sidenotes: the author's Typora plugin as a native drawing.
+/* Sidenotes: drawn by the bundled Sidenotes plugin
+   (`src/renderer/plugins/bundled/sidenotes/`), the author's Typora plugin.
+   Nothing below applies while it is switched off, since only it adds these
+   classes.
    Tags hide while the caret is elsewhere; a superscript number and the note
    itself take their place. Wide enough windows float the note into a reserved
    right gutter; narrower ones keep it as an inline chip. */
@@ -2861,12 +2864,6 @@
     border-radius: 4px;
     margin: 0 2px;
   }
-}
-
-:root[data-sidenotes='off'] .ProseMirror .noto-sidenote-num,
-:root[data-sidenotes='off'] .ProseMirror .noto-sidenote {
-  /* The plugin stops decorating when the switch is off; this is a belt. */
-  display: none;
 }
 
 /* Git gutter ---------------------------------------------------------------- */

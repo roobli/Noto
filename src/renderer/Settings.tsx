@@ -1083,13 +1083,6 @@ export function Settings({
                   onChange={(value) => onChange({ markSubscript: value })}
                   testId="setting-mark-subscript"
                 />
-                <Switch
-                  label="Sidenotes"
-                  hint="Draws a span.sidenote as a numbered margin note. Off leaves the tags as source."
-                  checked={settings.sidenotes}
-                  onChange={(value) => onChange({ sidenotes: value })}
-                  testId="setting-sidenotes"
-                />
               </>
             )}
 

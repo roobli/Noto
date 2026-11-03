@@ -52,15 +52,45 @@ test.describe('sidenotes', () => {
       });
       await expect(page.locator('.ProseMirror .noto-sidenote-tag').first()).toBeHidden();
 
-      // Off: the decorations go and the tags return as source.
-      await page.evaluate(() => window.notoSettings.write({
-        version: 1, requestId: 'sidenotes-off', patch: { sidenotes: false },
-      }));
-      await expect(page.locator('html')).toHaveAttribute('data-sidenotes', 'off');
+      // Off in Plugin Center: the plugin's editor extension leaves the open
+      // note, the decorations go and the tags return as source.
+      const plugin = (action: 'enable' | 'disable') => page.evaluate((a) => window.notoDesktop.plugins[a]({
+        version: 1, requestId: `sidenotes-${a}-${Date.now()}`, pluginId: 'dev.lr00rl.noto.sidenotes',
+      }), action);
+      await plugin('disable');
       await expect(page.locator('.ProseMirror .noto-sidenote-num')).toHaveCount(0);
+      await expect(page.locator('.noto-editor-host.noto-has-sidenotes')).toHaveCount(0);
       await expect(page.locator('.ProseMirror')).toContainText('<span class="sidenote">', {
         useInnerText: true,
       });
+
+      // On again: drawn again, in the note that stayed open.
+      await plugin('enable');
+      await expect(page.locator('.ProseMirror .noto-sidenote-num')).toHaveCount(2);
+    } finally {
+      await app.close();
+    }
+  });
+
+  test('wrap the selection in a note with the plugin\u2019s key', async () => {
+    const { app, page } = await launch(['# Notes', '', 'Plain words here.', ''].join('\n'), 'wrap');
+    try {
+      const paragraph = page.locator('.ProseMirror p').first();
+      await paragraph.click();
+      // Select "words" by its offsets in the text node.
+      await page.evaluate(() => {
+        const p = document.querySelector('.ProseMirror p')!;
+        const text = p.firstChild!;
+        const at = text.textContent!.indexOf('words');
+        const range = document.createRange();
+        range.setStart(text, at);
+        range.setEnd(text, at + 'words'.length);
+        const selection = window.getSelection()!;
+        selection.removeAllRanges();
+        selection.addRange(range);
+      });
+      await page.keyboard.press(process.platform === 'darwin' ? 'Meta+Alt+KeyS' : 'Control+Alt+KeyS');
+      await expect(page.locator('.ProseMirror .noto-sidenote')).toHaveText('words');
     } finally {
       await app.close();
     }
