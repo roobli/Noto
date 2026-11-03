@@ -1090,7 +1090,13 @@ export class WorkspaceSession {
    * file manager asks for one, and giving none keeps it.
    */
   async newFile(inside?: string): Promise<WorkspaceNewFileReplyV1> {
-    const directory = inside ?? this.folderRoot ?? (this.activePath ? path.dirname(this.activePath) : null);
+    // Beside the note in front when there is one inside the folder: that is
+    // where the reader is working, and a note made at the root of a deep
+    // vault was dragged down to it by hand. The root otherwise.
+    const beside = this.activePath !== null && (this.folderRoot === null || isInside(this.folderRoot, this.activePath))
+      ? path.dirname(this.activePath)
+      : null;
+    const directory = inside ?? beside ?? this.folderRoot;
     if (directory === null) return { version: NOTO_WORKSPACE_VERSION, created: false, path: null };
 
     for (let attempt = 0; attempt < 100; attempt += 1) {

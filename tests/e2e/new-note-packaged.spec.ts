@@ -168,6 +168,28 @@ test.describe('making a new note', () => {
     }
   });
 
+  test('goes beside the note in front, not to the top of the folder', async () => {
+    const { app, page, vault } = await launch('beside');
+    try {
+      await mkdir(path.join(vault, 'deep', 'down'), { recursive: true });
+      await writeFile(path.join(vault, 'deep', 'down', 'here.md'), '# Here\n', 'utf8');
+      await invokeMenu(app, 'refresh-folder');
+      await page.getByTestId('tree-directory').filter({ hasText: 'deep' }).first().click();
+      await page.getByTestId('tree-directory').filter({ hasText: 'down' }).first().click();
+      await page.getByTestId('tree-file').filter({ hasText: 'here.md' }).click();
+      await expect(page.locator('.titlebar')).toContainText('here.md');
+
+      await invokeMenu(app, 'new-file');
+      await expect(page.getByTestId('tree-name-field')).toBeFocused();
+      await page.keyboard.type('next');
+      await page.keyboard.press('Enter');
+      await expect.poll(async () => (await readdir(path.join(vault, 'deep', 'down'))).sort()).toEqual(['here.md', 'next.md']);
+      expect((await readdir(vault)).filter((name) => name.endsWith('.md'))).not.toContain('next.md');
+    } finally {
+      await app.close();
+    }
+  });
+
   test('says where a note would go when no folder is open', async () => {
     const workspace = path.join(resultRoot, 'nowhere');
     await rm(workspace, { recursive: true, force: true });

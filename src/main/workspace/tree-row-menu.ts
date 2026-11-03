@@ -53,8 +53,8 @@ export function buildTreeRowMenu(
   if (kind === 'file') {
     items.push({ id: 'tree-open', label: 'Open', click: () => actions.open(target) });
   } else {
-    // Where the reader pressed, not the folder's root, which is where the File
-    // menu's New Note goes and is rarely the folder they are looking at.
+    // Where the reader pressed. The File menu's New Note goes beside the note
+    // in front, which is not always the folder they are pointing at.
     items.push({ id: 'tree-new-note', label: 'New Note Here', click: () => actions.newNote(target) });
   }
   if (kind === 'directory') {
