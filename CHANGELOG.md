@@ -114,6 +114,12 @@ How releases are made, and what each channel receives, is in
   and Control-X with Minimize and Cut, and Close Window no longer shares
   Control-W with Close Tab. They move to Alt+Shift+M, Alt+Shift+X and
   Control+Shift+W; macOS keeps Typora's keys.
+- A click in a paragraph shows the source of the span it lands in and moves
+  nothing else. Highlight, superscript, subscript and inline tags such as
+  `<u>` and `<kbd>` showed every delimiter in the paragraph as soon as the
+  caret entered it, so the words after each stepped right by its width.
+  They now reveal one span at a time, as bold, emphasis, code and links
+  already did.
 - Quitting cannot hang on a step that never finishes. Each step of the
   shutdown (plugins, the plugin runtime, the service, settings) has a
   deadline and is logged when it runs past it.

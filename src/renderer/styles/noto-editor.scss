@@ -2147,10 +2147,11 @@
 
 .ProseMirror .noto-typora-delim,
 .ProseMirror .noto-inline-html.noto-inline-tag { display: none; }
-.noto-editor-host:focus-within .ProseMirror .noto-marks-editing .noto-typora-delim,
-.noto-editor-host:focus-within .ProseMirror .noto-marks-editing .noto-inline-html.noto-inline-tag,
-.noto-editor-host[data-semantic-focus='true'] .ProseMirror .noto-marks-editing .noto-typora-delim,
-.noto-editor-host[data-semantic-focus='true'] .ProseMirror .noto-marks-editing .noto-inline-html.noto-inline-tag {
+/* Only the span the caret is in shows its source (`typora-marks-plugin.ts`). */
+.noto-editor-host:focus-within .ProseMirror .noto-typora-delim.noto-source-live,
+.noto-editor-host:focus-within .ProseMirror .noto-inline-html.noto-inline-tag.noto-source-live:not(.noto-inline-break),
+.noto-editor-host[data-semantic-focus='true'] .ProseMirror .noto-typora-delim.noto-source-live,
+.noto-editor-host[data-semantic-focus='true'] .ProseMirror .noto-inline-html.noto-inline-tag.noto-source-live:not(.noto-inline-break) {
   display: inline;
   color: var(--muted);
   font-family: tokens.$mono;
@@ -2172,7 +2173,7 @@
   > .noto-inline-html-source { display: none; }
   &::after { content: '\A'; white-space: pre; }
 }
-.ProseMirror .noto-marks-editing .noto-inline-html.noto-inline-break > .noto-inline-html-source {
+.ProseMirror .noto-inline-html.noto-inline-break.noto-source-live > .noto-inline-html-source {
   display: inline;
   color: var(--muted);
   font-family: tokens.$mono;
