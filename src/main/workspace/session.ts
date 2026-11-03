@@ -138,6 +138,8 @@ export class WorkspaceSession {
    */
   private folderChosen = false;
   private indexCache: { root: string; reply: WorkspaceIndexReplyV1 } | null = null;
+  /** Rises at every invalidation, so a walk that began before one does not write its stale answer back. */
+  private indexGeneration = 0;
   /**
    * Which notes differ from the last commit, when the folder is in a git
    * repository. Read-only, and absent rather than an error everywhere else.
@@ -673,7 +675,20 @@ export class WorkspaceSession {
     return { version: NOTO_WORKSPACE_VERSION, done: false, reason };
   }
 
+  /**
+   * Something in the folder was made, moved or removed by Noto itself. The
+   * tree re-lists at once, which marks the new path as listed, and the watcher
+   * then judged the same change not structural; Quick Open and wiki links kept
+   * answering without a new note or a duplicate until something else moved.
+   */
+  private invalidateFolderCaches(): void {
+    this.indexCache = null;
+    this.tagIndexCache = null;
+    this.indexGeneration += 1;
+  }
+
   private done(target: string): WorkspaceEntryReplyV1 {
+    this.invalidateFolderCaches();
     this.send(WORKSPACE_CHANNELS.treeChanged, { version: NOTO_WORKSPACE_VERSION });
     this.git.refresh();
     return { version: NOTO_WORKSPACE_VERSION, done: true, path: target };
@@ -1085,6 +1100,7 @@ export class WorkspaceSession {
     if (outcome.imported) {
       this.logger.log('document_imported', {});
       await this.openPath(outcome.path);
+      this.invalidateFolderCaches();
       this.send(WORKSPACE_CHANNELS.treeChanged, { version: NOTO_WORKSPACE_VERSION });
       this.git.refresh();
     } else {
@@ -1127,6 +1143,7 @@ export class WorkspaceSession {
         throw cause;
       }
       await this.openPath(target);
+      this.invalidateFolderCaches();
       this.git.refresh();
       this.send(WORKSPACE_CHANNELS.treeChanged, { version: NOTO_WORKSPACE_VERSION });
       // Only when the tree will draw a row at this spelling of the path. One
@@ -1224,7 +1241,7 @@ export class WorkspaceSession {
    */
   refreshFolder(): void {
     if (!this.folderRoot) return;
-    this.indexCache = null;
+    this.invalidateFolderCaches();
     this.listed.clear();
     this.logger.log('workspace_folder_refreshed', {});
     this.announceTreeChanged();
@@ -1367,11 +1384,13 @@ export class WorkspaceSession {
       return { version: NOTO_WORKSPACE_VERSION, root: null, entries: [], truncated: false };
     }
     if (this.indexCache?.root === this.folderRoot) return this.indexCache.reply;
-    const { entries, truncated } = await buildFileIndex(this.folderRoot);
+    const root = this.folderRoot;
+    const generation = this.indexGeneration;
+    const { entries, truncated } = await buildFileIndex(root);
     const reply: WorkspaceIndexReplyV1 = {
-      version: NOTO_WORKSPACE_VERSION, root: this.folderRoot, entries, truncated,
+      version: NOTO_WORKSPACE_VERSION, root, entries, truncated,
     };
-    this.indexCache = { root: this.folderRoot, reply };
+    if (generation === this.indexGeneration && root === this.folderRoot) this.indexCache = { root, reply };
     return reply;
   }
 
@@ -1423,7 +1442,7 @@ export class WorkspaceSession {
     if (root !== this.folderRoot) return;
     if (change.structural) {
       this.logger.log('workspace_disk_changed', { touched: touched === null ? 'unknown' : touched.length });
-      this.indexCache = null;
+      this.invalidateFolderCaches();
       this.listed.clear();
       this.announceTreeChanged();
     } else if (change.notes) {

@@ -190,6 +190,21 @@ test.describe('making a new note', () => {
     }
   });
 
+  test('is found by Quick Open as soon as it is made, under the name it was given', async () => {
+    const { app, page } = await launch('found');
+    try {
+      await invokeMenu(app, 'new-file');
+      await expect(page.getByTestId('tree-name-field')).toBeFocused();
+      // Escape keeps the placeholder name: the case the index used to miss.
+      await page.keyboard.press('Escape');
+      await invokeMenu(app, 'quick-open');
+      await page.getByTestId('quick-input').fill('Untitled');
+      await expect(page.getByTestId('quick-result')).toContainText(['Untitled.md']);
+    } finally {
+      await app.close();
+    }
+  });
+
   test('says where a note would go when no folder is open', async () => {
     const workspace = path.join(resultRoot, 'nowhere');
     await rm(workspace, { recursive: true, force: true });
