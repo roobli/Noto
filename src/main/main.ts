@@ -43,7 +43,7 @@ import {
 import { RecentFiles } from './workspace/recent-files';
 import { SettingsStore } from './workspace/settings-store';
 import { registerSettingsHandlers } from './workspace/register-settings-handlers';
-import { WorkspaceSession } from './workspace/session';
+import { WorkspaceSession, MAX_TABS } from './workspace/session';
 import { installApplicationMenu, sendPasteText } from './workspace/menu';
 import { registerWorkspaceHandlers } from './workspace/register-workspace-handlers';
 import { registerAssetHandlers } from './workspace/register-asset-handlers';
@@ -123,7 +123,7 @@ const evidenceDirectory = path.resolve(
   process.env.NTO_EVIDENCE_DIR ?? path.join(app.getPath('userData'), 'evidence'),
 );
 const logger = createLogger(evidenceDirectory);
-const rendererConsole: RendererConsoleState = { errors: 0, warnings: 0 };
+const rendererConsole: RendererConsoleState = { errors: 0, warnings: 0, recent: [] };
 let editorWindow: BrowserWindow | null = null;
 let session: WorkspaceSession | null = null;
 
@@ -583,7 +583,13 @@ async function run(): Promise<void> {
       // Load once so peek() is set before the first request; the socket then
       // reads through getToken so it stays aligned with whatever the pane shows.
       await tokens.current();
+      // A second instance, a build under development beside the one in daily
+      // use, needs a port of its own or it can never listen; the default is
+      // taken. Loopback only either way, and anything not a user port is ignored.
+      const asked = Number.parseInt(process.env.NOTO_REMOTE_PORT ?? '', 10);
+      const port = Number.isInteger(asked) && asked >= 1024 && asked <= 65535 ? asked : undefined;
       remote = await startRemoteServer({
+        ...(port !== undefined ? { port } : {}),
         deps: {
           getToken: () => tokens.peek() ?? '',
           status: () => ({
@@ -633,9 +639,14 @@ async function run(): Promise<void> {
                 code: code === 'ENOENT' ? 'no-such-note'
                   : code.includes('OUTSIDE') ? 'outside-folder'
                     : 'open-failed',
+                // The app's own reason, where it has one: "That note could
+                // not be opened" alone left a caller as blind as the window
+                // was when the 25th note would not open.
                 reason: code === 'ENOENT'
                   ? 'There is no note at that path.'
-                  : 'That note could not be opened.',
+                  : error instanceof Error && error.message.length > 0
+                    ? `That note could not be opened: ${error.message.slice(0, 300)}`
+                    : 'That note could not be opened.',
               };
             }
           },
@@ -646,6 +657,25 @@ async function run(): Promise<void> {
               version: NOTO_WORKSPACE_VERSION, text, at,
             });
             return { inserted: true };
+          },
+          debug: {
+            state: () => ({
+              version: app.getVersion(),
+              platform: process.platform,
+              uptimeSeconds: Math.round(process.uptime()),
+              folder: session?.folder ?? null,
+              note: session?.currentPath ?? null,
+              dirty: documentDirty,
+              documents: {
+                open: (session?.tabs() ?? []).map((tab) => ({ name: tab.name, path: tab.path, active: tab.active, activatedAt: tab.activatedAt })),
+                max: MAX_TABS,
+              },
+              renderer: { errors: rendererConsole.errors, warnings: rendererConsole.warnings },
+              recentFailures: logger.tail(20, 'workspace_operation_failed'),
+              logFile: logger.filePath,
+            }),
+            log: (lines, event) => logger.tail(lines, event),
+            console: (lines) => rendererConsole.recent.slice(-lines),
           },
           search: async (query, flags) => {
             const found = await session?.searchContent(query, flags, '');

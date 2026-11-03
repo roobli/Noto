@@ -10,11 +10,32 @@ import {
   resolveEditorChromeTone,
 } from './editor-window-chrome';
 import { installEditorContextMenu } from './editor-context-menu';
+export interface RendererConsoleEntry {
+  readonly timestamp: string;
+  readonly level: number;
+  readonly message: string;
+  readonly line: number;
+  /** The script's file name, not its path. */
+  readonly source: string;
+  readonly noise: boolean;
+}
 
 export interface RendererConsoleState {
   errors: number;
   warnings: number;
+  /**
+   * The renderer's last console lines, text and all, held in memory only.
+   *
+   * The log on disk keeps each line as a size and a hash, because a console
+   * line can quote a note. That leaves nothing to debug with, so the recent
+   * lines are kept here as well, for the remote control's debug route, which
+   * only the owner's token can read, and they go when the app quits.
+   */
+  recent: RendererConsoleEntry[];
 }
+
+/** How many console lines are kept in memory. */
+export const RENDERER_CONSOLE_KEPT = 300;
 
 export interface CreateEditorWindowOptions {
   readonly theme?: NotoTheme;
@@ -67,7 +88,17 @@ export function createEditorWindow(
     }
   });
   window.webContents.on('console-message', (_event, level, message, lineNumber, sourceId) => {
-    if (classifyRendererConsoleMessage(level, message, sourceId) === 'runtime-noise') {
+    const noise = classifyRendererConsoleMessage(level, message, sourceId) === 'runtime-noise';
+    consoleState.recent.push({
+      timestamp: new Date().toISOString(),
+      level,
+      message: String(message).slice(0, 2000),
+      line: lineNumber,
+      source: path.basename(String(sourceId ?? '')),
+      noise,
+    });
+    if (consoleState.recent.length > RENDERER_CONSOLE_KEPT) consoleState.recent.splice(0, consoleState.recent.length - RENDERER_CONSOLE_KEPT);
+    if (noise) {
       logger.log('renderer_console_runtime_noise', {
         level,
         lineNumber,

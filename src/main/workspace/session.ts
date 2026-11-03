@@ -93,8 +93,12 @@ interface OpenDocument {
   activatedAt: number;
 }
 
-/** How many documents may be open at once, so a stray loop cannot exhaust handles. */
-const MAX_TABS = 24;
+/**
+ * How many documents may be open at once, so a stray loop cannot exhaust
+ * handles. The window keeps a working set well under this (`KEEP_LOADED` in the
+ * renderer), so only notes with unsaved changes can bring it this close.
+ */
+export const MAX_TABS = 24;
 
 /**
  * What an open produced, inside main.
@@ -415,19 +419,24 @@ export class WorkspaceSession {
     // Remembered for Reopen Closed File, most recent last, each path once.
     this.closed = [...this.closed.filter((known) => known !== resolved), resolved].slice(-20);
 
+    // Only a close that changes what is in front says so. Closing a note
+    // behind it, which the window now does on its own to keep a working set,
+    // used to publish the note in front again as if it had just opened: the
+    // window took back its original open reply and could raise a recovery
+    // prompt that had long been answered.
     if (this.activePath === resolved) {
       const neighbour = order[index - 1] ?? order[index + 1] ?? null;
       this.activePath = neighbour && this.documents.has(neighbour) ? neighbour : null;
+      const next = this.activePath ? this.documents.get(this.activePath) : null;
+      if (next) {
+        this.publish(next.opened);
+        this.applyWindowTitle(next.opened.path);
+      } else {
+        this.publishClosed();
+        this.applyEmptyTitle();
+      }
     }
-
-    const next = this.activePath ? this.documents.get(this.activePath) : null;
-    if (next) {
-      this.publish(next.opened);
-      this.applyWindowTitle(next.opened.path);
-    } else {
-      this.publishClosed();
-      this.applyEmptyTitle();
-    }
+    this.logger.log('workspace_document_closed', { openCount: this.documents.size });
     this.publishTabs();
   }
 

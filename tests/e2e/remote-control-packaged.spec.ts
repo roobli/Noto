@@ -69,6 +69,9 @@ async function launch(name: string): Promise<{ app: ElectronApplication; page: P
   const app = await electron.launch({
     executablePath: packagedExecutable(),
     args: [`--user-data-dir=${userData}`, vault],
+    // A port of its own, so the suite runs while a Noto in daily use holds the
+    // default one; it failed with "already listening" whenever one was open.
+    env: { ...process.env, NOTO_REMOTE_PORT: '38916' },
   });
   const page = await app.firstWindow();
   await page.setViewportSize({ width: 1280, height: 900 });

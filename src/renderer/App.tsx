@@ -203,10 +203,24 @@ interface OpenDocumentState {
   readonly cleanState: 'Opened' | 'Saved';
 }
 
+/**
+ * How many notes stay loaded behind the one in front.
+ *
+ * Every note opened keeps its editor, so going back to it finds its undo
+ * history, selection and scroll where they were. With the tab bar gone there
+ * was no way to close one, so they piled up until main's ceiling of 24 refused
+ * the next open, and from the reader's side the tree simply stopped opening
+ * files. The least recently used are let go past this many, never the one in
+ * front and never one with unsaved changes.
+ */
+const KEEP_LOADED = 12;
+
 function NotoWorkspace({ platform }: { platform: NotoPlatform }) {
   const [docs, setDocs] = useState<ReadonlyMap<string, OpenDocumentState>>(new Map());
   const [activeId, setActiveId] = useState<string | null>(null);
   const [tabs, setTabs] = useState<readonly WorkspaceTabV1[]>([]);
+  /** Notes being let go for `KEEP_LOADED`, so a second tabs event does not close one twice. */
+  const releasingRef = useRef(new Set<string>());
   /** A non-Markdown file shown read-only; null while editing a note. */
   const [codeView, setCodeView] = useState<WorkspaceCodeViewV1 | null>(null);
   /** Status shown when no document is open, so it has nowhere per-document to live. */
@@ -1027,6 +1041,25 @@ function NotoWorkspace({ platform }: { platform: NotoPlatform }) {
       const activeTab = event.tabs.find((tab) => tab.active) ?? null;
       setActiveId(activeTab?.documentId ?? null);
       activeIdRef.current = activeTab?.documentId ?? null;
+
+      // Past `KEEP_LOADED`, let go of the notes least recently in front that
+      // hold nothing unsaved. Done here, on every change to what is open, so
+      // a note opened by main (a recent file, the command line, Finder) is
+      // counted as surely as one opened from the tree.
+      const listed = new Set(event.tabs.map((tab) => tab.path));
+      for (const path of releasingRef.current) if (!listed.has(path)) releasingRef.current.delete(path);
+      const excess = event.tabs.length - releasingRef.current.size - KEEP_LOADED;
+      if (excess > 0) {
+        const idle = event.tabs
+          .filter((tab) => !tab.active && !releasingRef.current.has(tab.path)
+            && !(docsRef.current.get(tab.documentId)?.dirty ?? false))
+          .sort((a, b) => a.activatedAt - b.activatedAt)
+          .slice(0, excess);
+        for (const tab of idle) {
+          releasingRef.current.add(tab.path);
+          void window.notoWorkspace.closeTab({ version: 1, requestId: rid('tab-release'), path: tab.path });
+        }
+      }
     });
     const adoptFolder = (event: { root: string | null; name: string | null; chosen?: boolean }) => {
       setFolder({ root: event.root, name: event.name });
@@ -1408,15 +1441,15 @@ function NotoWorkspace({ platform }: { platform: NotoPlatform }) {
     }
   };
 
-  /**
-   * Opening replaces the document, so an unsaved one is confirmed first rather
-   * than silently discarded.
+  /*
+   * Opening a note does not ask about the unsaved one in front. It used to,
+   * from when opening replaced the document, with a prompt that said the
+   * changes would be lost. Each note keeps its own editor now, and one with
+   * unsaved changes is never let go (see `KEEP_LOADED`), so nothing is lost
+   * and the prompt only stood between the reader and the next note.
    */
-  const confirmDiscard = useCallback(() => !editorDirtyRef.current
-    || window.confirm('This document has unsaved changes. Open a different file and lose them?'), []);
 
   const openWithDialog = useCallback(async () => {
-    if (!confirmDiscard()) return;
     setOpenError(null);
     try {
       const result = await window.notoWorkspace.openDialog({ version: 1, requestId: rid('open-dialog') });
@@ -1425,10 +1458,9 @@ function NotoWorkspace({ platform }: { platform: NotoPlatform }) {
     } catch (error) {
       setOpenError(actionableFileTruthMessage(error, 'That file could not be opened.'));
     }
-  }, [confirmDiscard]);
+  }, []);
 
   const openPath = useCallback(async (filePath: string) => {
-    if (!confirmDiscard()) return;
     setOpenError(null);
     try {
       const result = await window.notoWorkspace.openPath({ version: 1, requestId: rid('open-path'), path: filePath });
@@ -1437,7 +1469,12 @@ function NotoWorkspace({ platform }: { platform: NotoPlatform }) {
         // not somewhere the trail should offer again.
         replayingRef.current = false;
         setTrail((current) => forgetTrail(current, filePath));
-        setOpenError(actionableFileTruthMessage(result.error.message, 'That file could not be opened.'));
+        const message = actionableFileTruthMessage(result.error.message, 'That file could not be opened.');
+        setOpenError(message);
+        // The error above is drawn only on the empty page. With a note open
+        // it said nothing, and a file that would not open looked like a
+        // click that had not landed; the status line says it instead.
+        window.dispatchEvent(new CustomEvent('noto:notice', { detail: message }));
         return;
       }
       if ('codeView' in result.value) {
@@ -1461,7 +1498,7 @@ function NotoWorkspace({ platform }: { platform: NotoPlatform }) {
       replayingRef.current = false;
       setOpenError(actionableFileTruthMessage(error, 'That file could not be opened.'));
     }
-  }, [confirmDiscard]);
+  }, []);
   openPathRef.current = openPath;
 
   /** One step along the trail, replayed as an open so nothing records it. */

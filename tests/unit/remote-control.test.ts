@@ -15,6 +15,7 @@ const deps = (patch: Partial<RemoteDeps> = {}): RemoteDeps => ({
   insert: () => ({ inserted: true }),
   run: () => ({ ran: true }),
   search: async () => ({ matches: [], truncated: false, timedOut: false, invalidPattern: false }),
+  debug: { state: () => ({}), log: () => [], console: () => [] },
   ...patch,
 });
 
@@ -214,3 +215,22 @@ describe('what it will do', () => {
     expect((await handleRemote(request({ path: '/v1/status/' }), deps())).status).toBe(200);
   });
 });
+
+describe('the debug routes', () => {
+  it('answer the state, the log and the console, read-only and behind the token', async () => {
+    const seen: { lines: number; event: string | null }[] = [];
+    const debug = {
+      state: () => ({ documents: { open: [], max: 24 } }),
+      log: (lines: number, event: string | null) => { seen.push({ lines, event }); return [{ event: 'x' }]; },
+      console: (lines: number) => Array.from({ length: lines }, (_, index) => ({ index })),
+    };
+    expect((await handleRemote(request({ path: '/v1/debug/state' }), deps({ debug }))).body).toEqual({ documents: { open: [], max: 24 } });
+    await handleRemote(request({ path: '/v1/debug/log?lines=5&event=workspace_' }), deps({ debug }));
+    await handleRemote(request({ path: '/v1/debug/log?lines=999999' }), deps({ debug }));
+    expect(seen).toEqual([{ lines: 5, event: 'workspace_' }, { lines: 1000, event: null }]);
+    expect(((await handleRemote(request({ path: '/v1/debug/console?lines=2' }), deps({ debug }))).body as { entries: unknown[] }).entries).toHaveLength(2);
+    expect((await handleRemote(request({ path: '/v1/debug/nothing' }), deps({ debug }))).status).toBe(404);
+    expect((await handleRemote(request({ path: '/v1/debug/state', headers: { host: '127.0.0.1:37610' } }), deps({ debug }))).status).toBe(401);
+  });
+});
+
