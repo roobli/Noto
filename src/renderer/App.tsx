@@ -1241,11 +1241,18 @@ function NotoWorkspace({ platform }: { platform: NotoPlatform }) {
     if (id) patchDoc(id, { outcome: value });
   };
 
-  const present = (value: FileTruthSaveOutcomeV1, captureId?: number) => {
-    // The document this save belongs to, not whichever tab is in front now. A
-    // save that finishes after the user switched tabs must land on its own
-    // document rather than overwrite the state of the one they moved to.
-    const id = activeIdRef.current;
+  const present = (
+    value: FileTruthSaveOutcomeV1,
+    captureId?: number,
+    target?: { readonly id: string | null; readonly editor: NotoEditor | null },
+  ) => {
+    // The document this save belongs to, not whichever note is in front now. A
+    // save that finishes after the reader moved to another note must land on
+    // its own document: reading the active id here gave the other note this
+    // one's token and clean baseline, so its real edits looked saved.
+    const id = target ? target.id : activeIdRef.current;
+    const inFront = id === activeIdRef.current;
+    const editor = target ? target.editor : editorRef.current;
     const barrier = outcomeHasRecoveryEvidence(value);
     if (id) {
       patchDoc(id, {
@@ -1255,16 +1262,18 @@ function NotoWorkspace({ platform }: { platform: NotoPlatform }) {
           : !barrier && value.status === 'saved' ? { recovery: null } : {}),
       });
     }
-    updateRecoveryBarrier(barrier);
-    setLocalMessage(null);
     setPending(false);
-
-    if (barrier && value.status === 'copy-saved') {
-      const current = state;
-      setState(current === 'Recovery failed' || current === 'Cleanup failed' ? current : 'Recovery needed');
-    } else {
-      setState(presentFileTruthOutcome(value).state);
+    // The shell shows the note in front; a note behind it keeps its result in
+    // its own record and shows it when it comes forward.
+    if (inFront) {
+      updateRecoveryBarrier(barrier);
+      setLocalMessage(null);
     }
+    const shown = barrier && value.status === 'copy-saved'
+      ? (state === 'Recovery failed' || state === 'Cleanup failed' ? state : 'Recovery needed')
+      : presentFileTruthOutcome(value).state;
+    if (id) patchDoc(id, { state: shown });
+    else setState(shown);
 
     const accepted = acceptedSaveOutcome(value);
     if (accepted && id) {
@@ -1272,10 +1281,10 @@ function NotoWorkspace({ platform }: { platform: NotoPlatform }) {
       // Record the new clean state before committing. `commit` reports the
       // editor clean, and that callback reads `cleanStateRef`; setting it
       // afterwards would relabel a successful save as merely "Opened".
-      cleanStateRef.current = 'Saved';
+      if (inFront) cleanStateRef.current = 'Saved';
       // Adopt the saved document as the clean baseline without disturbing the
-      // caret or the undo history.
-      editorRef.current?.commit(accepted.document, captureId);
+      // caret or the undo history, in the editor the save was taken from.
+      editor?.commit(accepted.document, captureId);
     }
   };
 
@@ -1348,6 +1357,9 @@ function NotoWorkspace({ platform }: { platform: NotoPlatform }) {
 
   const save = async () => {
     const editor = editorRef.current;
+    // Captured with the editor: the reply may come back after the reader has
+    // moved to another note, and must land on this one.
+    const documentId = activeIdRef.current;
     // Text still settling in the source view goes into the document first,
     // so a save a moment after typing there writes what is on screen.
     sourceFlushRef.current?.();
@@ -1387,25 +1399,28 @@ function NotoWorkspace({ platform }: { platform: NotoPlatform }) {
         });
         return whole.ok ? whole.value : null;
       });
-      if (!result.ok) {
+      const failed = (message: string) => {
         editor.abandonSave(capture.captureId);
         setPending(false);
-        setOutcome(null);
-        setLocalMessage(actionableFileTruthMessage(result.error.message, 'The save transport failed. Your edits are still here.'));
-        setState('Save failed');
+        if (documentId) patchDoc(documentId, { outcome: null, state: 'Save failed' });
+        if (documentId === activeIdRef.current) setLocalMessage(message);
+      };
+      if (!result.ok) {
+        failed(actionableFileTruthMessage(result.error.message, 'The save transport failed. Your edits are still here.'));
         return;
       }
       // A refusal (a conflict, another transaction) never commits, and this
       // capture is done with either way.
       if (!acceptedSaveOutcome(result.value)) editor.abandonSave(capture.captureId);
-      present(result.value, capture.captureId);
+      present(result.value, capture.captureId, { id: documentId, editor });
     } catch (error) {
       editor.abandonSave(capture.captureId);
       setPending(false);
-      setOutcome(null);
-      updateRecoveryBarrier(true);
-      setLocalMessage(actionableFileTruthMessage(error, 'The save transport failed. Your edits are still here.'));
-      setState('Save failed');
+      if (documentId) patchDoc(documentId, { outcome: null, state: 'Save failed' });
+      if (documentId === activeIdRef.current) {
+        updateRecoveryBarrier(true);
+        setLocalMessage(actionableFileTruthMessage(error, 'The save transport failed. Your edits are still here.'));
+      }
     } finally {
       fileTruthBusyRef.current = false;
     }
@@ -1506,6 +1521,13 @@ function NotoWorkspace({ platform }: { platform: NotoPlatform }) {
 
   const openPath = useCallback(async (filePath: string) => {
     setOpenError(null);
+    // An automatic save waiting on the note being left goes now. Its timer was
+    // cleared when the note left the front, so a note left within the delay
+    // stayed unsaved; the save captures its own note and lands there.
+    if (autoSaveTimerRef.current !== null) {
+      clearAutoSaveTimer();
+      void saveRef.current();
+    }
     try {
       const result = await window.notoWorkspace.openPath({ version: 1, requestId: rid('open-path'), path: filePath });
       if (!result.ok) {
