@@ -89,6 +89,17 @@ const SECTIONS: readonly { value: SettingsSection; label: string; keywords: stri
   { value: 'plugins', label: 'Plugins', keywords: 'plugin extension enable disable palette', buried: true },
 ];
 
+/** One line under each pane's name, saying what the pane is for. */
+const LEADS: Readonly<Partial<Record<SettingsSection, string>>> = {
+  appearance: 'Theme, type and the window around the page.',
+  editor: 'How writing, code blocks and files behave.',
+  markdown: 'How the punctuation you type is set.',
+  images: 'Where pasted pictures go, and what loads from the web.',
+  updates: 'Which builds this copy follows, and when it looks for them.',
+  remote: 'Let a script on this machine drive the editor.',
+  plugins: 'What extends the editor, and where it comes from.',
+};
+
 const THEMES: readonly { value: NotoTheme; label: string }[] = [
   { value: 'system', label: 'System' },
   { value: 'light', label: 'Light' },
@@ -794,12 +805,17 @@ export function Settings({
               onChange={(event) => setQuery(event.target.value)}
             />
           </label>
+          {/* Two groups, named rather than ruled apart: what most people come
+              here for, and what extends or drives the app. Unnamed while a
+              search narrows the list, where a heading over one row says
+              nothing. */}
+          {query.length === 0 && <span className="pref-nav-label" aria-hidden="true">General</span>}
           {matching.map((entry, index) => {
             const prev = matching[index - 1];
             const showSep = entry.buried === true && prev?.buried !== true;
             return (
               <span key={entry.value} className={showSep ? 'pref-nav-block' : undefined}>
-                {showSep && <span className="pref-nav-sep" aria-hidden="true" />}
+                {showSep && query.length === 0 && <span className="pref-nav-sep pref-nav-label" aria-hidden="true">Advanced</span>}
                 <button
                   type="button"
                   aria-current={section === entry.value ? 'true' : undefined}
@@ -833,16 +849,6 @@ export function Settings({
             away, and with it the only place the window could be dragged. */}
         <header className="pref-titlebar">
           <div className="pref-heading">
-            <h2 className="settings-title">
-              {section === 'plugins' && pluginDetailId ? (
-                <>
-                  <button type="button" className="settings-crumb" data-testid="plugins-crumb"
-                    onClick={onPluginDetailClear}>Plugins</button>
-                  <span className="settings-crumb-sep" aria-hidden="true">›</span>
-                  <span>{pluginDetailName ?? 'Detail'}</span>
-                </>
-              ) : title}
-            </h2>
             <button type="button" className="pref-close"
               data-testid="settings-close" aria-label="Close settings"
               onClick={onClose}>Done</button>
@@ -851,6 +857,26 @@ export function Settings({
 
         <div className="pref-body">
           <div className="pref-content">
+            {/* The pane's name at the head of the pane, in the document's own
+                face: the one place the settings borrow the page's type, so
+                they read as the same app rather than as a form beside it. It
+                was a caption on the title bar's line, which left the pane a
+                column of rows with nothing saying what they were. */}
+            <header className="pref-pane-head">
+              <h2 className="settings-title">
+                {section === 'plugins' && pluginDetailId ? (
+                  <>
+                    <button type="button" className="settings-crumb" data-testid="plugins-crumb"
+                      onClick={onPluginDetailClear}>Plugins</button>
+                    <span className="settings-crumb-sep" aria-hidden="true">›</span>
+                    <span>{pluginDetailName ?? 'Detail'}</span>
+                  </>
+                ) : title}
+              </h2>
+              {!(section === 'plugins' && pluginDetailId) && LEADS[section] && (
+                <p className="pref-pane-lead">{LEADS[section]}</p>
+              )}
+            </header>
             {section === 'appearance' && (
               <>
                 {/* Glance surface: theme, type, width, then the CSS escape hatch.

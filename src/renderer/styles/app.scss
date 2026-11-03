@@ -828,10 +828,21 @@ button:disabled { color: var(--muted); opacity: 0.7; }
    had no title bar to drag the window by. */
 .pref-dialog,
 .settings-shell {
-  --pref-nav-width: 220px;
-  /* Wide enough for a label, its hint and a control on one line; narrow
-     enough that a two-line hint is still read as one thought. */
-  --pref-measure: 680px;
+  --pref-nav-width: clamp(200px, 17vw, 248px);
+  /* Wide enough for a label, its hint and a control on one line inside a
+     group's card; narrow enough that a two-line hint is still read as one
+     thought. At 680 the pane was a strip down the middle of a wide window. */
+  --pref-measure: 800px;
+  /* A group of settings is a card a shade off the paper, as System Settings
+     and Typora draw theirs: the rows of one group read as one thing. */
+  /* Off the raised tone rather than the panel's: in the dark theme the panel
+     is darker than the paper, and the groups read as wells. */
+  --pref-card: color-mix(in srgb, var(--raised) 70%, var(--paper));
+  /* The gutter both sides keep for the pane's scroll bar, which Done allows
+     for too, so the cards end under Done whether or not the pane scrolls. */
+  --pref-gutter: 6px;
+  --pref-card-line: var(--hairline);
+  --pref-card-rule: color-mix(in srgb, var(--hairline) 70%, transparent);
   animation: noto-arrive var(--motion-default) var(--ease-out);
   display: grid;
   grid-template-columns: var(--pref-nav-width) minmax(0, 1fr);
@@ -865,12 +876,12 @@ button:disabled { color: var(--muted); opacity: 0.7; }
   border-right: 1px solid var(--hairline);
   background: var(--panel);
   /* Its head is the title bar's row, where the lights are. */
-  padding: calc(var(--titlebar-height, 32px) + 6px) 10px 12px;
+  padding: calc(var(--titlebar-height, 32px) + 10px) 14px 14px;
 }
 
 /* Said once for every pane, at the foot of the column that names them. */
 .pref-footnote {
-  margin: auto 8px 0;
+  margin: auto 10px 0;
   padding-top: 16px;
   color: var(--muted);
   font-size: 11px;
@@ -891,19 +902,18 @@ button:disabled { color: var(--muted); opacity: 0.7; }
   min-width: 0;
 }
 
-/* The pane's name and Done, over the pane and on the measure its rows are set
-   to, so the title starts where the labels start and Done ends where the
-   controls end. The rule under it spans the pane, not the categories, so the
-   left column stays one ground from top to bottom. */
+/* Done, over the pane on the lights' line, ending where the cards end. The
+   pane's name is no longer up here: it heads the pane itself. With nothing
+   but Done on it the bar needs no rule; the pane's head is what the eye
+   lands on. */
 .pref-heading {
   grid-column: 2;
   display: flex;
   align-items: center;
-  justify-content: space-between;
+  justify-content: flex-end;
   gap: 12px;
   min-width: 0;
-  border-bottom: 1px solid var(--hairline);
-  padding-inline: max(24px, calc((100% - var(--pref-measure)) / 2));
+  padding-inline: calc(max(28px, (100% - var(--pref-measure)) / 2) + var(--pref-gutter));
 
   button { -webkit-app-region: no-drag; }
 }
@@ -913,7 +923,7 @@ button:disabled { color: var(--muted); opacity: 0.7; }
 [data-platform='win32'] .pref-heading,
 [data-platform='linux'] .pref-heading {
   padding-right: max(
-    max(24px, calc((100% - var(--pref-measure)) / 2)),
+    calc(max(28px, (100% - var(--pref-measure)) / 2) + var(--pref-gutter)),
     min(180px, max(0px, calc(100vw - env(titlebar-area-width, calc(100vw - 138px)) - env(titlebar-area-x, 0px) - 8px)))
   );
 }
@@ -923,12 +933,12 @@ button:disabled { color: var(--muted); opacity: 0.7; }
 .pref-search {
   display: flex;
   align-items: center;
-  gap: 6px;
-  margin-bottom: 10px;
+  gap: 11px;
+  margin-bottom: 12px;
   border: 1px solid var(--hairline);
-  border-radius: 6px;
+  border-radius: 8px;
   background: var(--paper);
-  padding: 0 8px;
+  padding: 0 10px;
   color: var(--muted);
 
   &:focus-within { border-color: var(--focus); }
@@ -939,10 +949,10 @@ button:disabled { color: var(--muted); opacity: 0.7; }
     border: 0;
     outline: 0;
     background: transparent;
-    padding: 6px 0;
+    padding: 7px 0;
     color: var(--ink);
     font: inherit;
-    font-size: 12px;
+    font-size: 12.5px;
 
     &::-webkit-search-cancel-button { appearance: none; }
   }
@@ -954,75 +964,71 @@ button:disabled { color: var(--muted); opacity: 0.7; }
   font-size: 12px;
 }
 
-/* Remote and Plugins stay reachable but quiet: a hairline and lower contrast,
-   not a second entry from the title bar or the empty state. */
+/* The column's two groups, named: what most people come here for, and what
+   extends or drives the app. A hairline said only that something was
+   different about the rows under it. */
 .pref-nav-block {
   display: flex;
   flex-direction: column;
   gap: 1px;
-  margin-top: 6px;
 }
 
-.pref-nav-sep {
+.pref-nav-label {
   display: block;
-  height: 1px;
-  margin: 4px 8px 8px;
-  background: var(--hairline);
+  margin: 2px 10px 6px;
+  color: var(--muted);
+  font-size: 11.5px;
+  font-weight: 600;
+  letter-spacing: 0.01em;
 }
+
+.pref-nav-sep { margin-top: 18px; }
 
 .pref-section.is-buried {
-  /* Set back by the muted ink and a smaller size, not by fading the muted
-     ink further, which put Remote and Plugins at 3.5:1. */
-  color: var(--muted);
-  font-size: 12px;
+  /* The group's name sets Remote and Plugins apart now, so they keep the
+     column's size and ink; never faded, which put them at 3.5:1. */
+  color: var(--ink);
 }
 
 /* The mark beside the word. A column of words is a list; a column of words
    with marks is a place, and the eye finds its row without reading. */
 .pref-glyph {
   flex: 0 0 auto;
-  opacity: 0.75;
-}
-
-.pref-section.is-current .pref-glyph { opacity: 1; color: var(--accent); }
-
-.pref-section {
-  display: flex;
-  align-items: center;
-  gap: 8px;
-  min-height: 32px;
-  border: 0;
-  border-radius: 6px;
-  background: transparent;
-  padding: 6px 9px;
   color: var(--muted);
-  font-size: 13px;
-  text-align: left;
 }
 
-.pref-section:hover { background: var(--raised); color: var(--ink); }
-/* The indicator is its own bar with its own caps. As an inset shadow it
-   followed the row's border radius and came out as a crescent: thick in the
-   middle, pinched to nothing top and bottom. */
+.pref-section.is-current .pref-glyph { color: var(--accent); }
+
 .pref-section {
   position: relative;
-}
-
-.pref-section.is-current {
-  background: var(--raised);
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  width: 100%;
+  min-height: 34px;
+  border: 0;
+  border-radius: 8px;
+  background: transparent;
+  padding: 7px 10px;
   color: var(--ink);
-  font-weight: 600;
+  font-size: 13px;
+  text-align: left;
+  transition: background-color var(--motion-micro) var(--ease-out);
 }
 
-.pref-section.is-current::before {
-  content: '';
-  position: absolute;
-  left: 0;
-  top: 6px;
-  bottom: 6px;
-  width: 2px;
-  border-radius: 1px;
-  background: var(--accent);
+/* Above the app's own button hover and press, which would paint the chosen
+   pill back to plain while the pointer rests on it. */
+.pref-section:hover:not(:disabled) { background: color-mix(in srgb, var(--ink) 3.5%, transparent); }
+.pref-section:active:not(:disabled) { background: color-mix(in srgb, var(--ink) 8%, transparent); }
+
+/* The chosen pane is a filled pill in a tint of the accent, the one place the
+   column spends it. The bar it replaces was two pixels at the column's edge,
+   easy to lose when the eye comes back from the pane. */
+.pref-section.is-current,
+.pref-section.is-current:hover:not(:disabled) {
+  background: color-mix(in srgb, var(--accent) 18%, var(--panel));
+  color: var(--ink-strong);
+  font-weight: 600;
 }
 
 .pref-body {
@@ -1034,16 +1040,40 @@ button:disabled { color: var(--muted); opacity: 0.7; }
   min-height: 0;
 }
 
-/* The size of a window title rather than of a page heading: it sits on the
-   lights' line, and anything larger would sit on it like a banner. */
-.pref-heading h2 {
+.pref-close { min-height: 24px; padding: 2px 14px; font-size: 12px; }
+
+/* The pane's head: its name in the document's own face, the one place the
+   settings borrow the page's type, and a line saying what the pane is for. */
+.pref-pane-head {
+  margin: 0 0 26px;
+  padding: 6px 2px 0;
+}
+
+.pref-pane-head .settings-title {
   margin: 0;
-  font-size: 13.5px;
+  color: var(--ink-strong);
+  /* The variable is set only while a font is picked by name; without the
+     fallback the declaration fails and the title fell back to the UI sans. */
+  font-family: var(--prose-font-family, #{tokens.$prose}), tokens.$prose;
+  font-size: 26px;
   font-weight: 600;
+  line-height: 1.25;
   letter-spacing: -0.005em;
 }
 
-.pref-close { min-height: 24px; padding: 2px 12px; font-size: 12px; }
+:root[data-prose-face='sans'] .pref-pane-head .settings-title,
+:root[data-prose-face='mono'] .pref-pane-head .settings-title { font-family: tokens.$ui; }
+
+/* In the crumbs of a plugin's page, the way back is the same size but set
+   back, so the plugin's own name is what reads as the title. */
+.pref-pane-head .settings-crumb { font-weight: 500; }
+
+.pref-pane-lead {
+  margin: 6px 0 0;
+  color: var(--muted);
+  font-size: 13px;
+  line-height: 1.5;
+}
 
 .pref-select {
   flex: 0 1 240px;
@@ -1134,25 +1164,55 @@ button:disabled { color: var(--muted); opacity: 0.7; }
   min-height: 0;
   overflow: auto;
   overscroll-behavior: contain;
-  padding: 18px max(24px, calc((100% - var(--pref-measure)) / 2)) 40px;
+  padding: 22px max(28px, calc((100% - var(--pref-measure)) / 2)) 64px;
+  scrollbar-gutter: stable both-edges;
 }
 
 /* One row per setting: what it is on the left, the control on the right at its
    natural width. The old sheet stacked a legend, a label and a full-width
    control for each one, so three settings filled a screen. */
-/* No rule between rows.
-   A line under every setting draws a table where there is only a list, and the
-   last one in a section always ended up floating above the footer's own rule
-   with nothing between them. Space does the separating; the label and its
-   control are already a pair by being on one line. */
 .pref-row {
   display: flex;
   align-items: center;
   justify-content: space-between;
-  gap: 18px;
+  gap: 24px;
   min-height: 40px;
   padding: 9px 0;
 }
+
+/* A run of rows is one card: each row its own band in it, a soft rule between
+   bands, the run's first and last rounding the corners. Drawn from the rows
+   alone, so a pane groups its settings by where its headings and notes fall,
+   with no wrapper to keep in step with the markup. The Updates and Remote
+   panes keep their rows in a wrapper of their own, so they are named too. A
+   row of buttons is not a setting and stays off the card. */
+:is(.pref-content, .updates-pane, .remote-pane) > .pref-row:not(.pref-actions) {
+  border: 1px solid var(--pref-card-line);
+  background: var(--pref-card);
+  padding: 11px 16px;
+}
+
+:is(.pref-content, .updates-pane, .remote-pane) > .pref-row + .pref-row {
+  margin-top: -1px;
+  border-top-color: var(--pref-card-rule);
+}
+
+:is(.pref-content, .updates-pane, .remote-pane) > .pref-row:not(.pref-row + .pref-row) {
+  border-top-left-radius: 10px;
+  border-top-right-radius: 10px;
+}
+
+:is(.pref-content, .updates-pane, .remote-pane) > .pref-row:not(:has(+ .pref-row)) {
+  border-bottom-left-radius: 10px;
+  border-bottom-right-radius: 10px;
+}
+
+/* Notes, status lines and buttons between cards sit just off the card's
+   edge, at the labels' indent, so they read as said about the card above. */
+:is(.pref-content, .updates-pane) > :is(.pref-note, .pref-status, .pref-problem) { margin: 10px 16px; }
+.pref-row.pref-actions { padding-inline: 16px; }
+.remote-pane > :is(.pref-note, .pref-status, .remote-token) { margin-inline: 16px; }
+.remote-pane > .remote-regenerate { justify-self: start; margin-inline: 16px; }
 
 .pref-label {
   display: grid;
@@ -1288,9 +1348,11 @@ button:disabled { color: var(--muted); opacity: 0.7; }
   grid-template-columns: auto minmax(0, 1fr);
   align-items: start;
   gap: 9px;
-  border: 1px solid var(--hairline);
+  /* A choice inside the group's card is a line of it, not a card in a card:
+     no ground and no edge until the pointer or the choice gives it one. */
+  border: 1px solid transparent;
   border-radius: 7px;
-  background: var(--panel);
+  background: transparent;
   padding: 8px 10px;
   color: var(--ink);
   text-align: left;
@@ -1307,8 +1369,8 @@ button:disabled { color: var(--muted); opacity: 0.7; }
 }
 
 .pref-card.is-on {
-  border-color: var(--accent);
-  background: color-mix(in srgb, var(--accent) 7%, var(--panel));
+  border-color: color-mix(in srgb, var(--accent) 45%, transparent);
+  background: color-mix(in srgb, var(--accent) 8%, transparent);
 }
 
 .pref-card:focus-visible {
@@ -1402,7 +1464,9 @@ button:disabled { color: var(--muted); opacity: 0.7; }
   height: 20px;
   border: 1px solid var(--hairline);
   border-radius: 999px;
-  background: var(--panel);
+  /* A shade of ink over the card, so an off switch is a visible track on the
+     card rather than a stray dot: the panel's tone was 1.03:1 against it. */
+  background: color-mix(in srgb, var(--ink) 12%, var(--pref-card, var(--panel)));
   transition-property: background-color, border-color;
   transition-duration: var(--motion-micro);
   transition-timing-function: var(--ease-out);
@@ -2105,11 +2169,19 @@ button:disabled { color: var(--muted); opacity: 0.7; }
     border-bottom: 1px solid var(--hairline);
     padding: 8px;
   }
-  .pref-footnote { display: none; }
+  .pref-footnote, .pref-nav-label { display: none; }
+  .pref-nav-block { flex-direction: row; gap: 4px; }
+  .pref-section { flex: 0 0 auto; width: auto; }
   .pref-body { grid-row: 3; grid-column: 1; }
   .pref-content { padding-inline: 16px; }
-  .pref-section.is-current { box-shadow: none; }
-  .pref-row { flex-wrap: wrap; }
+  .pref-pane-head { margin-bottom: 18px; }
+  .pref-pane-head .settings-title { font-size: 22px; }
+  /* A wide control drops under its label; a switch stays beside it. */
+  .pref-row:not(.pref-switch) { flex-wrap: wrap; }
+  /* The strip wraps rather than scrolls: hidden off its end, a mouse wheel
+     never reached Updates, Remote or Plugins. */
+  .pref-sections { flex-wrap: wrap; overflow: visible; }
+  .pref-search { flex: 1 1 100%; }
 }
 
 @media (pointer: coarse) {
@@ -2229,19 +2301,15 @@ button:disabled { color: var(--muted); opacity: 0.7; }
 /* A heading inside a pane, so a pane of eight switches reads as two groups of
    four rather than as a list somebody stopped writing. */
 .pref-group {
-  margin: 4px 0 2px;
+  margin: 30px 16px 9px;
   color: var(--muted);
-  font-size: 11px;
+  font-size: 12px;
   font-weight: 600;
-  letter-spacing: 0.07em;
-  text-transform: uppercase;
-
-  &:not(:first-child) {
-    margin-top: 18px;
-    border-top: 1px solid var(--hairline);
-    padding-top: 16px;
-  }
+  letter-spacing: 0.01em;
 }
+
+/* Right under the pane's head the group needs no gap of its own. */
+.pref-pane-head + .pref-group { margin-top: 0; }
 
 /* Search in the rail, Typora's sidebar search: the field where the tabs
    were, and the notes found under it, each with the lines it matched on. */
