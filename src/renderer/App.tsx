@@ -2022,6 +2022,20 @@ function NotoWorkspace({ platform }: { platform: NotoPlatform }) {
     });
   }, []);
 
+  /*
+   * Every loaded note with unsaved changes, for main to ask about on Close
+   * Tab, on closing the window and on quitting. Sent when the set changes,
+   * which is when a note turns dirty or clean, not on every keystroke.
+   */
+  const unsavedKeyRef = useRef('');
+  useEffect(() => {
+    const paths = [...docs.values()].filter((doc) => doc.dirty).map((doc) => doc.opened.path).sort();
+    const key = paths.join('\n');
+    if (key === unsavedKeyRef.current) return;
+    unsavedKeyRef.current = key;
+    window.notoWorkspace.reportUnsaved({ version: 1, paths });
+  }, [docs]);
+
   const onDocumentDirtyChange = useCallback((documentId: string, dirty: boolean) => {
     // Main is told too: it holds the file, the renderer holds the edits, and
     // the remote control has to be able to say which is ahead.
@@ -2135,6 +2149,18 @@ function NotoWorkspace({ platform }: { platform: NotoPlatform }) {
       case 'save':
         void save();
         break;
+      case 'save-and-close': {
+        // Close Tab asked first and the reader chose Save: close only once
+        // the note is saved, so a refused save leaves it open with its edits.
+        const closing = activeIdRef.current;
+        const path = closing ? docsRef.current.get(closing)?.opened.path ?? null : null;
+        void save().then(() => {
+          const editor = closing ? editorsRef.current.get(closing) : undefined;
+          // The editor's own word, which a save that committed has already changed.
+          if (path && editor && !editor.isDirty) closeTab(path);
+        });
+        break;
+      }
       case 'save-as':
         void saveCopy();
         break;

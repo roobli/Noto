@@ -1,7 +1,7 @@
 import { randomUUID } from 'node:crypto';
 import { isTrustedRendererSender } from './ipc/trusted-renderer';
 import { ipcMain } from 'electron';
-import { isWorkspaceDirtyEventV1, isWorkspaceTextReplyV1 } from '../shared/workspace/v1/validate';
+import { isWorkspaceDirtyEventV1, isWorkspaceTextReplyV1, isWorkspaceUnsavedEventV1 } from '../shared/workspace/v1/validate';
 import {
   NOTO_WORKSPACE_VERSION, WORKSPACE_CHANNELS,
 } from '../shared/workspace/v1/contracts';
@@ -190,6 +190,55 @@ app.on('web-contents-created', (_event, contents) => {
  */
 let windowAlwaysOnTop = false;
 
+/*
+ * Unsaved notes, as the renderer last reported them, and the question asked
+ * before they are lost.
+ *
+ * Nothing used to ask: Close Tab, closing the window and quitting all went
+ * through with edits in notes that were never saved, and autosave is off by
+ * default. Each now asks first. Main only learns about the note in front
+ * through `dirtyChanged`, so the renderer reports every loaded note that has
+ * unsaved changes. A packaged test build asks only when a test opts in, since
+ * the harness closes the app between tests with notes left unsaved.
+ */
+let unsavedPaths: readonly string[] = [];
+/** Set once the reader chose to discard, so the quit that follows goes through. */
+let discardConfirmed = false;
+const unsavedPromptEnabled = __NTO_PACKAGE_VARIANT__ !== 'e2e' || process.env.NOTO_UNSAVED_PROMPT === '1';
+const quitHeldForUnsaved = (): boolean => unsavedPromptEnabled && !discardConfirmed && unsavedPaths.length > 0;
+let askingAboutUnsaved = false;
+
+function holdQuitForUnsaved(): void {
+  if (askingAboutUnsaved) return;
+  askingAboutUnsaved = true;
+  const names = unsavedPaths.map((filePath) => path.basename(filePath));
+  const listed = names.slice(0, 6).join('\n') + (names.length > 6 ? `\nand ${names.length - 6} more` : '');
+  const options: Electron.MessageBoxOptions = {
+    type: 'warning',
+    message: names.length === 1 ? `"${names[0]}" has unsaved changes.` : `${names.length} notes have unsaved changes.`,
+    detail: `${names.length > 1 ? `${listed}\n\n` : ''}Quitting now loses those changes.`,
+    buttons: ['Review Changes', 'Discard and Quit'],
+    defaultId: 0,
+    cancelId: 0,
+    noLink: true,
+  };
+  const window = editorWindow && !editorWindow.isDestroyed() ? editorWindow : null;
+  void (window ? dialog.showMessageBox(window, options) : dialog.showMessageBox(options)).then(({ response }) => {
+    askingAboutUnsaved = false;
+    if (response === 1) {
+      logger.log('unsaved_discarded_on_quit', { notes: names.length });
+      discardConfirmed = true;
+      app.quit();
+      return;
+    }
+    // Back to the first of them, so the reader can save or drop it.
+    window?.show();
+    window?.focus();
+    const first = unsavedPaths[0];
+    if (first) void session?.openPath(first).catch(() => {});
+  });
+}
+
 function createApplicationWindow(preloadPath: string, theme: NotoTheme = 'system'): BrowserWindow {
   editorWindow = createEditorWindow(preloadPath, logger, rendererConsole, {
     theme,
@@ -197,6 +246,13 @@ function createApplicationWindow(preloadPath: string, theme: NotoTheme = 'system
   });
   if (windowAlwaysOnTop) editorWindow.setAlwaysOnTop(true);
   editorWindow.on('closed', () => { editorWindow = null; });
+  // Closing the window quits the app (`window-all-closed`), so it asks the
+  // same question quitting does, while the window is still there to go back to.
+  editorWindow.on('close', (event) => {
+    if (!quitHeldForUnsaved()) return;
+    event.preventDefault();
+    holdQuitForUnsaved();
+  });
   // Back from another program, which may have been a terminal that committed
   // or an editor that wrote a note. Not a poll: once per return, debounced.
   editorWindow.on('focus', () => session?.refreshGitMarks());
@@ -384,7 +440,19 @@ async function run(): Promise<void> {
     () => settings.current().codeViewer,
     () => settings.current().remoteImages,
   );
-  app.once('before-quit', () => session?.closeAll());
+  // Registered first of the quit listeners. Node runs every listener even
+  // when one prevents the quit, so the others check the same hold.
+  app.prependListener('before-quit', (event) => {
+    if (!quitHeldForUnsaved()) return;
+    event.preventDefault();
+    holdQuitForUnsaved();
+  });
+  let documentsClosed = false;
+  app.on('before-quit', () => {
+    if (quitHeldForUnsaved() || documentsClosed) return;
+    documentsClosed = true;
+    session?.closeAll();
+  });
 
   /*
    * The two ticks in the View menu.
@@ -460,7 +528,30 @@ async function run(): Promise<void> {
     },
     closeTab: () => {
       const current = session?.currentPath;
-      if (current) session?.close(current);
+      if (!current) return;
+      if (!unsavedPromptEnabled || !unsavedPaths.includes(current)) {
+        session?.close(current);
+        return;
+      }
+      const window = editorWindow;
+      if (!window || window.isDestroyed()) return;
+      void dialog.showMessageBox(window, {
+        type: 'warning',
+        message: `Save the changes to "${path.basename(current)}" before closing it?`,
+        detail: 'If you don\'t save, the changes are lost.',
+        buttons: ['Save', 'Don\'t Save', 'Cancel'],
+        defaultId: 0,
+        cancelId: 2,
+        noLink: true,
+      }).then(({ response }) => {
+        // The note in front may have changed while the question was up.
+        if (session?.currentPath !== current) return;
+        if (response === 0) {
+          window.webContents.send(WORKSPACE_CHANNELS.menuCommand, { version: NOTO_WORKSPACE_VERSION, command: 'save-and-close' });
+        } else if (response === 1) {
+          session?.close(current);
+        }
+      });
     },
     reopenClosed: () => {
       void session?.reopenClosed().then(() => refreshMenu()).catch(reportOpenFailure);
@@ -572,6 +663,11 @@ async function run(): Promise<void> {
   ipcMain.on(WORKSPACE_CHANNELS.dirtyChanged, (event, value: unknown) => {
     if (!isTrustedRendererSender(editorWindow, event) || !isWorkspaceDirtyEventV1(value)) return;
     documentDirty = value.dirty;
+  });
+  ipcMain.on(WORKSPACE_CHANNELS.unsavedChanged, (event, value: unknown) => {
+    if (!isTrustedRendererSender(editorWindow, event) || !isWorkspaceUnsavedEventV1(value)) return;
+    unsavedPaths = value.paths;
+    session?.setUnsavedPaths(value.paths);
   });
 
   /**
@@ -797,7 +893,12 @@ async function run(): Promise<void> {
   };
 
   if (settings.current().remoteControl) await applyRemote(true);
-  app.once('before-quit', () => { void applyRemote(false); });
+  let remoteStopped = false;
+  app.on('before-quit', () => {
+    if (quitHeldForUnsaved() || remoteStopped) return;
+    remoteStopped = true;
+    void applyRemote(false);
+  });
 
   registerSettingsHandlers({
     settings,
@@ -942,7 +1043,7 @@ async function run(): Promise<void> {
 
   let shutdownStarted = false;
   app.on('before-quit', (event) => {
-    if (shutdownStarted) return;
+    if (shutdownStarted || quitHeldForUnsaved()) return;
     shutdownStarted = true;
     event.preventDefault();
     void pluginRegistry.shutdown()

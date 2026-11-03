@@ -620,10 +620,20 @@ export class WorkspaceSession {
    * the one that asks. A message box rather than something in the page because
    * it must not be dismissible by a stray keystroke aimed at the document.
    */
+  /** Loaded notes with unsaved changes, as the renderer last reported them. */
+  private unsavedPaths: readonly string[] = [];
+
+  setUnsavedPaths(paths: readonly string[]): void {
+    this.unsavedPaths = paths;
+  }
+
   private async confirmTrash(target: string, kind: 'file' | 'directory'): Promise<void> {
     const window = this.getWindow();
     if (!window) return;
     const name = path.basename(target);
+    // Trashing closes the notes it takes with it, edits and all, so the
+    // question says so when any of them has edits nobody saved.
+    const losing = this.unsavedPaths.filter((open) => open === target || isInside(target, open)).length;
     const answer = await dialog.showMessageBox(window, {
       type: 'warning',
       buttons: [trashLabel(process.platform), 'Cancel'],
@@ -632,7 +642,11 @@ export class WorkspaceSession {
       message: kind === 'directory'
         ? `Move the folder "${name}" and everything in it to the trash?`
         : `Move "${name}" to the trash?`,
-      detail: 'You can put it back from there.',
+      detail: losing === 0
+        ? 'You can put it back from there.'
+        : kind === 'file'
+          ? 'It has unsaved changes, which are lost: the trash keeps only what was saved.'
+          : `${losing === 1 ? 'A note' : `${losing} notes`} in it ${losing === 1 ? 'has' : 'have'} unsaved changes, which are lost: the trash keeps only what was saved.`,
     });
     if (answer.response !== 0) return;
     await this.manageEntry({ action: 'trash', target, name: null });

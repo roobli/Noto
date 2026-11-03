@@ -117,6 +117,7 @@ import type {
   WorkspacePasteEventV1,
   WorkspaceRemoteEventV1,
   WorkspaceDirtyEventV1,
+  WorkspaceUnsavedEventV1,
   WorkspaceTextRequestV1,
   WorkspaceTextReplyV1,
   WorkspaceLinksReplyV1,
@@ -161,6 +162,7 @@ import {
   isWorkspacePasteEventV1,
   isWorkspaceRemoteEventV1,
   isWorkspaceDirtyEventV1,
+  isWorkspaceUnsavedEventV1,
   isWorkspaceTextRequestV1,
   isWorkspaceTextReplyV1,
   isWorkspaceLinksResultV1,
@@ -495,6 +497,9 @@ const workspaceApi: NotoWorkspaceApiV1 = Object.freeze({
     subscribe(WORKSPACE_CHANNELS.remoteChanged, isWorkspaceRemoteEventV1, listener),
   reportDirty: (event: WorkspaceDirtyEventV1) => {
     if (isWorkspaceDirtyEventV1(event)) ipcRenderer.send(WORKSPACE_CHANNELS.dirtyChanged, event);
+  },
+  reportUnsaved: (event: WorkspaceUnsavedEventV1) => {
+    if (isWorkspaceUnsavedEventV1(event)) ipcRenderer.send(WORKSPACE_CHANNELS.unsavedChanged, event);
   },
   onTextRequest: (listener: (event: WorkspaceTextRequestV1) => void) =>
     subscribe(WORKSPACE_CHANNELS.documentText, isWorkspaceTextRequestV1, listener),

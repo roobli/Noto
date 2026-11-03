@@ -38,6 +38,7 @@ import {
   WorkspaceTagNoteV1,
   WorkspaceRemoteEventV1,
   WorkspaceDirtyEventV1,
+  WorkspaceUnsavedEventV1,
   WorkspaceTextRequestV1,
   WorkspaceTextReplyV1,
 } from './contracts';
@@ -314,6 +315,15 @@ export function isWorkspaceTextReplyV1(value: unknown): value is WorkspaceTextRe
 export function isWorkspaceDirtyEventV1(value: unknown): value is WorkspaceDirtyEventV1 {
   return record(value) && exact(value, ['version', 'dirty'])
     && value.version === 1 && typeof value.dirty === 'boolean';
+}
+
+/** More than this many loaded notes is past what the renderer keeps. */
+const UNSAVED_PATHS_MAX = 64;
+
+export function isWorkspaceUnsavedEventV1(value: unknown): value is WorkspaceUnsavedEventV1 {
+  return record(value) && exact(value, ['version', 'paths']) && value.version === 1
+    && Array.isArray(value.paths) && value.paths.length <= UNSAVED_PATHS_MAX
+    && value.paths.every((entry) => typeof entry === 'string' && entry.length > 0 && entry.length <= 4096);
 }
 
 export function isWorkspaceRemoteEventV1(value: unknown): value is WorkspaceRemoteEventV1 {

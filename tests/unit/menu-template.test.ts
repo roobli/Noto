@@ -136,7 +136,11 @@ describe('the menu and the renderer agree on commands', () => {
 
   it('offers every command the contract defines', () => {
     const ids = new Set(menuCommandIds(template('darwin')));
+    // Sent by main itself rather than offered: Close Tab's question sends
+    // `save-and-close` when the reader chooses Save.
+    const sentByMain = new Set(['save-and-close']);
     for (const command of known) {
+      if (sentByMain.has(command)) continue;
       expect(ids.has(command)).toBe(true);
     }
   });
