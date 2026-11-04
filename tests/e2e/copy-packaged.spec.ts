@@ -26,6 +26,8 @@ const NOTE = [
   'echo two',
   '```',
   '',
+  'After the fence.',
+  '',
 ].join('\n');
 
 /** Select `length` characters from `from` within the text of the first element matching `selector` that contains `needle`. */
@@ -52,6 +54,22 @@ async function select(page: Page, selector: string, needle: string, from: number
   // The editor reads the selection on selectionchange; two frames let it land.
   await page.evaluate(() => new Promise((resolve) => requestAnimationFrame(() => requestAnimationFrame(resolve))));
 }
+
+async function invokeMenu(app: ElectronApplication, id: string): Promise<void> {
+  await app.evaluate(({ Menu }, itemId) => {
+    const find = (items: Electron.MenuItem[]): Electron.MenuItem | null => {
+      for (const item of items) {
+        if (item.id === itemId) return item;
+        const nested = item.submenu ? find(item.submenu.items) : null;
+        if (nested) return nested;
+      }
+      return null;
+    };
+    find(Menu.getApplicationMenu()!.items)!.click();
+  }, id);
+}
+
+const frames = (page: Page) => page.evaluate(() => new Promise((resolve) => requestAnimationFrame(() => requestAnimationFrame(resolve))));
 
 /** Copy as the menu does, and read back both flavours the editor put on the clipboard. */
 async function copy(app: ElectronApplication, page: Page): Promise<{ text: string; html: string }> {
@@ -105,6 +123,34 @@ test('copy a selection inside one block as what was selected', async () => {
 
     await select(page, '.ProseMirror pre', 'echo one', 0, 13);
     expect((await copy(app, page)).text).toBe('echo one\necho');
+
+    // A drag over the whole fence that ends at the very start of the next
+    // line takes nothing of that line, so the code leaves without its fence.
+    await page.evaluate(() => {
+      const code = document.querySelector('.ProseMirror pre code')!;
+      const after = [...document.querySelectorAll('.ProseMirror p')].find((p) => p.textContent === 'After the fence.')!;
+      const first = document.createTreeWalker(code, NodeFilter.SHOW_TEXT).nextNode()!;
+      const range = document.createRange();
+      range.setStart(first, 0);
+      range.setEnd(document.createTreeWalker(after, NodeFilter.SHOW_TEXT).nextNode()!, 0);
+      const selection = window.getSelection()!;
+      selection.removeAllRanges();
+      selection.addRange(range);
+    });
+    await frames(page);
+    expect((await copy(app, page)).text).toBe('echo one\necho two');
+
+    // Select All in a fence takes its code, and the note on the next press.
+    await page.locator('.ProseMirror pre code').click();
+    // The click collapses the selection the step above left; let it land.
+    await expect.poll(() => page.evaluate(() => window.getSelection()!.isCollapsed)).toBe(true);
+    await frames(page);
+    await invokeMenu(app, 'select-all');
+    await frames(page);
+    expect((await copy(app, page)).text).toBe('echo one\necho two');
+    await invokeMenu(app, 'select-all');
+    await frames(page);
+    expect((await copy(app, page)).text).toContain('# Copy');
   } finally {
     await app.close();
   }

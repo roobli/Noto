@@ -206,7 +206,10 @@ export function buildMenuTemplate(options: MenuTemplateOptions): MenuItemConstru
       // Typora's, on its chord: the text on the clipboard read as markdown,
       // with the rich form ignored. Main reads the clipboard for it.
       { id: 'paste-plain', label: 'Paste as Plain Text', accelerator: 'Shift+CmdOrCtrl+V', click: () => actions.pastePlain() },
-      { role: 'selectAll' },
+      // Not the role: inside a code block the first press takes the block's
+      // code and the second the note, as Typora has it, and the role would
+      // take the whole page at once.
+      command('Select All', 'CmdOrCtrl+A', 'select-all'),
       // Typora's own three, on its chords.
       command('Select Word', 'CmdOrCtrl+D', 'select-word'),
       command('Select Line', 'CmdOrCtrl+L', 'select-line'),

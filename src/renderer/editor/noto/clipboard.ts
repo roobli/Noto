@@ -37,9 +37,31 @@ import { blockToMarkdown } from '../../../shared/markdown/v3/pm/to-mdast';
 function inlineSelection(state: EditorState): { from: number; to: number; parent: Node; start: number } | null {
   const selection = state.selection;
   if (!(selection instanceof TextSelection) || selection.empty) return null;
-  const { $from, $to } = selection;
-  if (!$from.sameParent($to) || !$from.parent.isTextblock) return null;
+  let { $from, $to } = selection;
+  const doc = state.doc;
+  // A drag that runs to the very start of the next line, or begins at the very
+  // end of the line before, looks like one block on screen and holds nothing of
+  // the other: copying the code of a fence must not bring its fence along.
+  if (!$from.sameParent($to) && $from.parent.isTextblock && $to.parentOffset === 0
+    && nothingBetween(doc, $from.end(), $to.pos)) {
+    $to = doc.resolve($from.end());
+  } else if (!$from.sameParent($to) && $to.parent.isTextblock
+    && $from.parentOffset === $from.parent.content.size && nothingBetween(doc, $from.pos, $to.start())) {
+    $from = doc.resolve($to.start());
+  }
+  if (!$from.sameParent($to) || !$from.parent.isTextblock || $from.pos === $to.pos) return null;
   return { from: $from.pos, to: $to.pos, parent: $from.parent, start: $from.start() };
+}
+
+/** Whether only block boundaries lie between two positions: no text, and no leaf such as a picture or a rule. */
+function nothingBetween(doc: Node, from: number, to: number): boolean {
+  let found = false;
+  doc.nodesBetween(from, to, (node, pos) => {
+    if (found) return false;
+    if ((node.isText || node.isLeaf) && pos + node.nodeSize > from && pos < to) found = true;
+    return !found;
+  });
+  return !found;
 }
 
 /** The copied slice for a selection inside one text block: its inline content, open at both ends. */

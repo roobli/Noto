@@ -862,6 +862,12 @@ export class NotoEditor implements NotoEditorPort {
     this.view?.focus();
   }
 
+  /** Whether the note itself has the keys, rather than a field drawn in it. */
+  hasFocus(): boolean {
+    const view = this.view;
+    return view !== null && view.hasFocus() && !this.fieldFocused(view);
+  }
+
   /**
    * A press in the page around the text: in its margin, above the first block
    * or below the last. The caret goes to the nearest place in the note, and a

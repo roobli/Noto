@@ -47,7 +47,7 @@ import {
   type TaskStampOptions,
 } from './todo-manager';
 
-import { TextSelection, type Command, type EditorState, type Plugin, type Transaction } from 'prosemirror-state';
+import { AllSelection, TextSelection, type Command, type EditorState, type Plugin, type Transaction } from 'prosemirror-state';
 import { notoSchema } from '../../../shared/markdown/v3/pm/schema';
 import { normalizeChord } from '../../../shared/shortcuts/chord';
 import { TIMELINE_LANGUAGE, TIMELINE_TEMPLATE } from './timeline';
@@ -355,6 +355,25 @@ export const clearFormat: Command = (state, dispatch) => {
 };
 
 /**
+ * Select All, a step at a time inside a code block: the block's code first,
+ * since that is what a reader in a fence means to take, and the whole note on
+ * the next press. Elsewhere, the whole note at once.
+ */
+export const selectAllStepwise: Command = (state, dispatch) => {
+  const { $from, $to, from, to } = state.selection;
+  if ($from.sameParent($to) && $from.parent.type.spec.code && $from.parent.content.size > 0) {
+    const start = $from.start();
+    const end = $from.end();
+    if (from !== start || to !== end) {
+      dispatch?.(state.tr.setSelection(TextSelection.create(state.doc, start, end)));
+      return true;
+    }
+  }
+  dispatch?.(state.tr.setSelection(new AllSelection(state.doc)));
+  return true;
+};
+
+/**
  * The run of text around the caret that carries the same marks, or null
  * when the caret's text carries none. Typora calls this the styled scope:
  * the whole of a bold phrase, from the caret anywhere inside it.
@@ -585,6 +604,7 @@ export const EDITOR_COMMANDS: Readonly<Record<string, Command>> = {
   'move-column-left': moveColumn(true),
   'move-column-right': moveColumn(false),
   'insert-link': openLinkEditor,
+  'select-all': selectAllStepwise,
   'select-word': selectWord,
   'select-line': selectLine,
   'jump-to-selection': jumpToSelection,
@@ -693,6 +713,7 @@ export function notoBindings({ mac, onWidthStep, taskStamp }: KeymapOptions): Re
     [`${mod}-k`]: openLinkEditor,
     [`${mod}-Shift-Backspace`]: clearFormat,
 
+    [`${mod}-a`]: selectAllStepwise,
     [`${mod}-z`]: undo,
     [`${mod}-Shift-z`]: redo,
     [`${mod}-y`]: redo,

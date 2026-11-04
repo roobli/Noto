@@ -79,6 +79,31 @@ describe('what copying puts on the clipboard', () => {
     expect(sliceToMarkdown(all.selection.content())).toBe('## A heading\n\nAnd a paragraph.');
   });
 
+  it('copies a fence\'s code without its fence when the drag runs onto the next line\'s start', () => {
+    const doc = 'Before.\n\n```bash\nnpm install\nnpm test\n```\n\nAfter.';
+    const state = EditorState.create({ doc: docFromSpans(splitBlocks(doc).spans) });
+    let fence = -1;
+    let after = -1;
+    let before = -1;
+    state.doc.forEach((node, offset) => {
+      if (node.type.name === 'code_block') fence = offset;
+      if (node.textContent === 'After.') after = offset;
+      if (node.textContent === 'Before.') before = offset;
+    });
+    const code = state.doc.nodeAt(fence)!;
+    const select = (from: number, to: number) => {
+      const selected = state.apply(state.tr.setSelection(TextSelection.create(state.doc, from, to)));
+      return inlineCopyText(selected) ?? sliceToMarkdown(selected.selection.content());
+    };
+    // From the code's start to the start of "After.": the code alone.
+    expect(select(fence + 1, after + 1)).toBe('npm install\nnpm test');
+    // From the end of "Before." into the code: the code alone.
+    const beforeEnd = before + 1 + state.doc.nodeAt(before)!.content.size;
+    expect(select(beforeEnd, fence + 1 + code.content.size)).toBe('npm install\nnpm test');
+    // Taking a word of the next paragraph is taking two blocks, fence and all.
+    expect(select(fence + 1, after + 3)).toBe('```bash\nnpm install\nnpm test\n```\n\nAf');
+  });
+
   it('gives nothing back for an empty selection', () => {
     const state = EditorState.create({ doc: docFromSpans(splitBlocks('text').spans) });
     expect(sliceToMarkdown(state.selection.content())).toBe('');

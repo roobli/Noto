@@ -2396,6 +2396,15 @@ function NotoWorkspace({ platform }: { platform: NotoPlatform }) {
           setLocalMessage('That source edit is no longer a single block, so it cannot be rendered yet.');
         }
         break;
+      case 'select-all': {
+        // The note's own Select All while the note has the keys; anywhere
+        // else, the browser's, which selects within the field that has them.
+        const editor = editorRef.current;
+        if (sourceMode || codeView || !editor?.hasFocus() || !editor.runCommand('select-all')) {
+          window.document.execCommand('selectAll');
+        }
+        break;
+      }
       case 'undo':
       case 'redo':
         // Source Code Mode's own history while it is open, unless another
