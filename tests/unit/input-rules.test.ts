@@ -11,8 +11,16 @@ import { autoPairPlugin } from '../../src/renderer/editor/noto/auto-pair';
  * auto-pair), falling back to a plain insert as ProseMirror does. `\n` presses
  * Enter through `fenceOnEnter`, the only Enter behaviour these tests need.
  */
-function typed(text: string, { autoPair = true } = {}) {
-  const plugins: Plugin[] = [notoInputRules({ autoPair: () => autoPair }), autoPairPlugin(() => autoPair)];
+function typed(text: string, { autoPair = true, smart = false } = {}) {
+  const plugins: Plugin[] = [
+    notoInputRules({
+      autoPair: () => autoPair,
+      smartQuotes: () => smart,
+      smartDashes: () => smart,
+      smartEllipsis: () => smart,
+    }),
+    autoPairPlugin(() => autoPair),
+  ];
   let state = EditorState.create({ schema: notoSchema, plugins });
   state = state.apply(state.tr.setSelection(TextSelection.atStart(state.doc)));
   const view = {
@@ -127,5 +135,55 @@ describe('typing a link', () => {
       if (node.marks.some((mark) => mark.type === notoSchema.marks.link)) linked = true;
     });
     expect(linked).toBe(false);
+  });
+});
+
+const inlineHtml = (doc: ReturnType<typeof typed>['doc']) => {
+  const out: string[] = [];
+  doc.descendants((node) => {
+    if (node.type === notoSchema.nodes.inline_html) out.push(node.attrs.value as string);
+  });
+  return out;
+};
+
+describe('typing an HTML tag', () => {
+  it('becomes a tag when its > is typed, so a sidenote draws at once', () => {
+    const result = typed('a<span class="sidenote">note</span>b');
+    expect(inlineHtml(result.doc)).toEqual(['<span class="sidenote">', '</span>']);
+    expect(result.markdown).toBe('a<span class="sidenote">note</span>b');
+  });
+
+  it('keeps straight quotes inside the tag while smart quotes are on', () => {
+    const result = typed('a<span class="sidenote">note</span>b', { smart: true });
+    expect(inlineHtml(result.doc)).toEqual(['<span class="sidenote">', '</span>']);
+    expect(result.markdown).toBe('a<span class="sidenote">note</span>b');
+  });
+
+  it('takes single-quoted, unquoted and empty attributes, and void tags', () => {
+    expect(inlineHtml(typed("<img src='a.png' width=30 hidden>").doc)).toEqual(["<img src='a.png' width=30 hidden>"]);
+    expect(inlineHtml(typed('x<br/>y').doc)).toEqual(['<br/>']);
+    expect(inlineHtml(typed('<kbd>K</kbd>').doc)).toEqual(['<kbd>', '</kbd>']);
+  });
+
+  it('leaves text that only looks like a tag alone', () => {
+    expect(inlineHtml(typed('List<String> x').doc)).toEqual([]);
+    expect(inlineHtml(typed('<https://example.com>').doc)).toEqual([]);
+    expect(inlineHtml(typed('a < b > c').doc)).toEqual([]);
+  });
+
+  it('leaves a tag typed inside inline code as code', () => {
+    const result = typed('`<span>` x', { autoPair: false });
+    expect(inlineHtml(result.doc)).toEqual([]);
+    expect(result.markdown).toBe('`<span>` x');
+  });
+});
+
+describe('smart punctuation', () => {
+  it('still curls quotes in prose', () => {
+    expect(typed('say "hi" now', { smart: true, autoPair: false }).markdown).toBe('say \u201chi\u201d now');
+  });
+
+  it('leaves quotes, dashes and dots straight inside code being typed', () => {
+    expect(typed('`a "b" -- c...` d', { smart: true, autoPair: false }).markdown).toBe('`a "b" -- c...` d');
   });
 });

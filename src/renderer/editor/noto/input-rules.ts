@@ -176,7 +176,7 @@ function gatedRules(rules: readonly InputRule[], enabled: () => boolean): InputR
     // The match expression is reachable on the rule; only the handler is gated.
     (rule as unknown as { match: RegExp }).match,
     (state, match, start, end) => {
-      if (!enabled()) return null;
+      if (!enabled() || insideCodeOrTag(state, start)) return null;
       const handler = (rule as unknown as {
         handler: (
           state: EditorState, match: RegExpMatchArray, start: number, end: number,
@@ -186,6 +186,58 @@ function gatedRules(rules: readonly InputRule[], enabled: () => boolean): InputR
     },
   ));
 }
+
+/** The text of the line before `pos`, with each inline node as one placeholder. */
+function lineBefore(state: EditorState, pos: number): string {
+  const $pos = state.doc.resolve(pos);
+  const text = $pos.parent.textBetween(0, $pos.parentOffset, '\n', '\ufffc');
+  return text.slice(text.lastIndexOf('\n') + 1);
+}
+
+/**
+ * Whether `pos` is inside inline code or inside an HTML tag still being typed.
+ *
+ * A smart quote there is never wanted: `class="sidenote"` came out as
+ * `class=“sidenote”`, which is not a tag, so the sidenote never drew. Code
+ * counts while it is being typed too, before its closing backtick makes it
+ * code: an odd number of backticks before the caret means one is open.
+ */
+function insideCodeOrTag(state: EditorState, pos: number): boolean {
+  const $pos = state.doc.resolve(pos);
+  if ((state.storedMarks ?? $pos.marks()).some((mark) => mark.type === marks.inline_code)) return true;
+  const line = lineBefore(state, pos);
+  if ((line.match(/`/g)?.length ?? 0) % 2 === 1) return true;
+  return /<\/?[A-Za-z][A-Za-z0-9-]*(?:\s[^<>\ufffc]*)?$/.test(line);
+}
+
+/**
+ * The elements a typed tag may name. CommonMark takes any name as raw HTML,
+ * but prose holds `List<String>` and `a <b> c` far more often than a custom
+ * element, so only names HTML has, and that notes use, become tags.
+ */
+const TYPED_TAG_NAMES = new Set([
+  'a', 'abbr', 'audio', 'b', 'bdi', 'bdo', 'big', 'br', 'center', 'cite', 'code', 'data', 'del',
+  'details', 'dfn', 'div', 'em', 'font', 'i', 'iframe', 'img', 'input', 'ins', 'kbd', 'label',
+  'mark', 'q', 'rp', 'rt', 'ruby', 's', 'samp', 'small', 'source', 'span', 'strong', 'sub',
+  'summary', 'sup', 'time', 'u', 'var', 'video', 'wbr',
+]);
+
+/**
+ * A tag typed in a paragraph becomes an HTML tag when its `>` is typed, as it
+ * does in Typora, so `<span class="sidenote">…</span>` draws as a sidenote
+ * at once. It used to stay text until the note was opened again. The pattern
+ * is CommonMark's open and closing tag: a name, attributes with a quoted,
+ * unquoted or no value, an optional `/`.
+ */
+const htmlTagRule = new InputRule(
+  /<(?:([A-Za-z][A-Za-z0-9-]*)(?:\s+[A-Za-z_:][\w.:-]*(?:\s*=\s*(?:"[^"\ufffc]*"|'[^'\ufffc]*'|[^\s"'=<>`\ufffc]+))?)*\s*\/?|\/([A-Za-z][A-Za-z0-9-]*)\s*)>$/,
+  (state, match, start, end) => {
+    const name = (match[1] ?? match[2] ?? '').toLowerCase();
+    if (!TYPED_TAG_NAMES.has(name) || insideCodeOrTag(state, start)) return null;
+    const tag = nodes.inline_html.create({ value: match[0] }, null, state.doc.resolve(start).marks());
+    return state.tr.replaceWith(start, end, tag);
+  },
+);
 
 /**
  * Two hyphens become an em dash, except on a line that starts with a pipe.
@@ -242,6 +294,7 @@ export function notoInputRules(options: InputRuleOptions = {}): Plugin {
       markInputRule(new RegExp('`([^`]+)`$'), marks.inline_code, '`', autoPair),
       linkInputRule(autoPair),
       inlineMathRule(),
+      htmlTagRule,
     ],
   });
 }
