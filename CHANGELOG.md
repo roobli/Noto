@@ -27,6 +27,16 @@ How releases are made, and what each channel receives, is in
 
 ### Changed
 
+- **Copying inside one block copies what was selected, and nothing around
+  it.** Ten words out of a table cell came out as a one-cell table with a
+  header rule, part of a list item with its bullet, and the command inside
+  backticks with the backticks. Now the plain text is the words selected:
+  a mark the selection holds whole, with more beside it, keeps its markdown
+  (`the **bold** word`), and one the selection is inside or cuts does not, so
+  the text in backticks copies as the bare command. Part of a code block
+  copies as the code. Rich-text targets get the words with their formatting
+  and no table, list or heading around them. A selection across blocks
+  copies as markdown, as before.
 - **A sidenote is edited where it is drawn.** With the caret in a note, the
   note stays in the margin and its tags stay hidden; they used to appear and
   pull the note back into the paragraph. Source Code Mode shows the tags.

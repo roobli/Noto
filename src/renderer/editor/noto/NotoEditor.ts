@@ -103,7 +103,7 @@ import { syntaxHighlightPlugin } from './highlight';
 import { wikiLinkPlugin } from './wiki-link-plugin';
 import { followLinkPlugin, linkEditorPlugin } from './link-plugin';
 import { DocumentCounter, type DocumentCount } from './word-count';
-import { sliceToMarkdown } from './clipboard';
+import { inlineCopySlice, inlineCopyText, sliceToMarkdown } from './clipboard';
 import { rootSpellCheck, SPELL_CHECK_RESCAN, spellCheckScopeKey, spellCheckScopePlugin } from './spell-check-scope';
 
 /** How long after the last keystroke the document is counted. */
@@ -301,8 +301,10 @@ export class NotoEditor implements NotoEditorPort {
       // take pointer input have to refuse separately, because a node view's
       // own handlers never see this.
       editable: () => !this.readOnly,
-      // What leaves on the clipboard is the markdown, not the words without it.
-      clipboardTextSerializer: (slice) => sliceToMarkdown(slice),
+      // What leaves on the clipboard is the markdown, not the words without
+      // it; inside one block, only what was selected (clipboard.ts).
+      transformCopied: (slice, view) => inlineCopySlice(view.state) ?? slice,
+      clipboardTextSerializer: (slice, view) => inlineCopyText(view.state) ?? sliceToMarkdown(slice),
       clipboardTextParser: (text, $context) => sliceFromText(text, $context),
       handleTextInput: (view, from, _to, text) => {
         // The second of two brackets: asked after the transaction, since the

@@ -13,9 +13,94 @@
  * selection across two is a fragment of blocks.
  */
 
-import { DOMSerializer, type Node, type Slice } from 'prosemirror-model';
+import { DOMSerializer, Fragment, Slice, type Mark, type Node } from 'prosemirror-model';
+import { TextSelection, type EditorState } from 'prosemirror-state';
 import { notoSchema } from '../../../shared/markdown/v3/pm/schema';
 import { blockToMarkdown } from '../../../shared/markdown/v3/pm/to-mdast';
+
+/**
+ * A selection inside one paragraph, heading, cell or list item copies as what
+ * was selected, and nothing around it.
+ *
+ * ProseMirror's copy carries every block the selection sits in, so ten words
+ * out of a table cell left as a one-cell table with a header rule, part of a
+ * list item as a list item, and the command inside backticks with its
+ * backticks. The reader selected words; the words are what leave.
+ *
+ * Marks follow what the selection holds. One it holds whole, with more beside
+ * it, is part of what was copied and keeps its markdown: `the **bold** word`.
+ * One the selection only cuts, or that runs over all of it, does not: the
+ * text inside backticks copies as the bare command, ready for a terminal. The
+ * HTML flavour keeps every mark, since an application that draws rich text
+ * shows them rather than printing their delimiters.
+ */
+function inlineSelection(state: EditorState): { from: number; to: number; parent: Node; start: number } | null {
+  const selection = state.selection;
+  if (!(selection instanceof TextSelection) || selection.empty) return null;
+  const { $from, $to } = selection;
+  if (!$from.sameParent($to) || !$from.parent.isTextblock) return null;
+  return { from: $from.pos, to: $to.pos, parent: $from.parent, start: $from.start() };
+}
+
+/** The copied slice for a selection inside one text block: its inline content, open at both ends. */
+export function inlineCopySlice(state: EditorState): Slice | null {
+  const inside = inlineSelection(state);
+  if (!inside) return null;
+  const content = inside.parent.slice(inside.from - inside.start, inside.to - inside.start).content;
+  const holder = inside.parent.type.spec.code
+    ? notoSchema.nodes.code_block.create(inside.parent.attrs, content)
+    : notoSchema.nodes.paragraph.create(null, content);
+  return new Slice(Fragment.from(holder), 1, 1);
+}
+
+/** The plain text for a selection inside one text block, by the rule above; null for any other selection. */
+export function inlineCopyText(state: EditorState): string | null {
+  const inside = inlineSelection(state);
+  if (!inside) return null;
+  const { from, to, parent, start } = inside;
+  if (parent.type.spec.code) return state.doc.textBetween(from, to);
+
+  // Each mark's runs across the whole block, so a run the selection cuts is
+  // known as cut even where the copied piece looks whole.
+  const kept = new Set<string>();
+  const open = new Map<Mark, number>();
+  const runs: Array<{ mark: Mark; from: number; to: number }> = [];
+  let offset = start;
+  const close = (mark: Mark, at: number) => {
+    runs.push({ mark, from: open.get(mark)!, to: at });
+    open.delete(mark);
+  };
+  parent.forEach((child) => {
+    for (const mark of [...open.keys()]) if (!mark.isInSet(child.marks)) close(mark, offset);
+    for (const mark of child.marks) if (![...open.keys()].some((known) => known.eq(mark))) open.set(mark, offset);
+    offset += child.nodeSize;
+  });
+  for (const mark of [...open.keys()]) close(mark, offset);
+  for (const run of runs) {
+    const whole = run.from >= from && run.to <= to;
+    const coversAll = run.from <= from && run.to >= to;
+    if (whole && !coversAll) kept.add(`${run.from}:${run.to}:${run.mark.type.name}`);
+  }
+  const keeps = (mark: Mark, at: number) => runs.some((run) =>
+    run.mark.eq(mark) && at >= run.from && at < run.to && kept.has(`${run.from}:${run.to}:${run.mark.type.name}`));
+
+  const nodes: Node[] = [];
+  let plain = true;
+  parent.forEach((node, offsetInParent) => {
+    const pos = start + offsetInParent;
+    const lo = Math.max(pos, from);
+    const hi = Math.min(pos + node.nodeSize, to);
+    if (lo >= hi) return;
+    const piece = node.isText ? node.cut(lo - pos, hi - pos) : node;
+    const marks = piece.marks.filter((mark) => keeps(mark, lo));
+    if (marks.length > 0 || !(piece.isText || piece.type === notoSchema.nodes.hard_break)) plain = false;
+    nodes.push(piece.mark(marks));
+  });
+  if (plain) {
+    return state.doc.textBetween(from, to, '', (leaf) => (leaf.type === notoSchema.nodes.hard_break ? '\n' : ''));
+  }
+  return blockToMarkdown(notoSchema.nodes.paragraph.create(null, nodes));
+}
 
 /**
  * The markdown for a copied slice.

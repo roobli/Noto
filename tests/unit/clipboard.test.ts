@@ -2,7 +2,7 @@ import { describe, expect, it } from 'vitest';
 import { EditorState, TextSelection } from 'prosemirror-state';
 import { splitBlocks } from '../../src/shared/markdown/v3/blocks';
 import { docFromSpans } from '../../src/shared/markdown/v3/pm/from-mdast';
-import { sliceToMarkdown } from '../../src/renderer/editor/noto/clipboard';
+import { inlineCopySlice, inlineCopyText, sliceToMarkdown } from '../../src/renderer/editor/noto/clipboard';
 
 /**
  * Copy `length` characters starting where `needle` begins.
@@ -22,19 +22,54 @@ function copied(markdown: string, needle: string, length = needle.length): strin
   });
   if (at < 0) throw new Error(`no "${needle}" in the document`);
   const selected = state.apply(state.tr.setSelection(TextSelection.create(state.doc, at, at + length)));
-  return sliceToMarkdown(selected.selection.content());
+  // As the editor does: the text for a selection inside one block, else the slice's markdown.
+  return inlineCopyText(selected) ?? sliceToMarkdown(selected.selection.content());
 }
 
 describe('what copying puts on the clipboard', () => {
-  it('keeps the marks a selection inside one paragraph carries', () => {
-    expect(copied('Some **bold** words here.', 'bold', 4)).toBe('**bold**');
+  it('keeps the markdown of a mark the selection holds whole, with more beside it', () => {
     expect(copied('Some **bold** words here.', 'bold', 10)).toBe('**bold** words');
-    expect(copied('Read `the code` now.', 'the code', 8)).toBe('`the code`');
+    expect(copied('See [the paper](https://e.com/x) today.', 'See ', 13)).toBe('See [the paper](https://e.com/x)');
   });
 
-  it('keeps a link whole, address and all', () => {
-    expect(copied('See [the paper](https://e.com/x) today.', 'the paper', 9))
-      .toBe('[the paper](https://e.com/x)');
+  it('copies the words alone when the selection is inside a mark, or cuts it', () => {
+    expect(copied('Read `kubectl get pods -A` now.', 'kubectl', 16)).toBe('kubectl get pods');
+    expect(copied('Read `the code` now.', 'the code', 8)).toBe('the code');
+    expect(copied('Some **bold** words here.', 'bold', 4)).toBe('bold');
+    expect(copied('Some **bold** words here.', 'old', 7)).toBe('old wor');
+    expect(copied('See [the paper](https://e.com/x) today.', 'the paper', 9)).toBe('the paper');
+  });
+
+  it('copies part of a table cell as its words, with no table around them', () => {
+    const table = '| 问题 | 处理 |\n| --- | --- |\n| 账号被封、换厂商、换区域；系统盘没有快照 | 重建 |';
+    expect(copied(table, '账号被封', 10)).toBe('账号被封、换厂商、换');
+  });
+
+  it('copies part of a list item, a heading or a fence as the words selected', () => {
+    expect(copied('- 第一项里有一段比较长的文字\n- 第二项', '项里有一段', 8)).toBe('项里有一段比较长');
+    expect(copied('1. first item here\n2. second', 'item', 4)).toBe('item');
+    expect(copied('## A heading here', 'heading', 7)).toBe('heading');
+    expect(copied('```sh\necho one\necho two\n```', 'echo one', 13)).toBe('echo one\necho');
+  });
+
+  it('keeps no markdown escape on words copied plain', () => {
+    expect(copied('| a | b |\n| --- | --- |\n| 2*3 = 6 and a_b | x |', '2*3', 15)).toBe('2*3 = 6 and a_b');
+  });
+
+  it('hands rich-text targets the words with their marks and no block around them', () => {
+    const table = '| a | b |\n| --- | --- |\n| some **bold** text | x |';
+    const state = EditorState.create({ doc: docFromSpans(splitBlocks(table).spans) });
+    let at = -1;
+    state.doc.descendants((node, pos) => {
+      if (at < 0 && node.isText && node.text === 'some ') at = pos;
+      return true;
+    });
+    const selected = state.apply(state.tr.setSelection(TextSelection.create(state.doc, at, at + 12)));
+    const slice = inlineCopySlice(selected)!;
+    expect(slice.openStart).toBe(1);
+    expect(slice.content.childCount).toBe(1);
+    expect(slice.content.firstChild!.type.name).toBe('paragraph');
+    expect(slice.content.firstChild!.textContent).toBe('some bold te');
   });
 
   it('keeps the block a whole block was copied from', () => {
