@@ -1,8 +1,8 @@
 /**
  * @vitest-environment happy-dom
  *
- * Fence tools (language + copy) mount on demand; the shared datalist binds
- * only when the language field is focused. Remount must not pay that cost.
+ * Fence tools (the language label and copy) mount on demand, so remount
+ * does not pay for them.
  */
 import { describe, expect, it } from 'vitest';
 import { EditorState } from 'prosemirror-state';
@@ -38,38 +38,41 @@ function mountFence(markdown = '```ts\nconst x = 1;\n```\n'): {
 }
 
 describe('FenceView chrome', () => {
-  it('mounts without tools or a datalist binding', () => {
+  it('mounts without tools', () => {
     const { view, fence } = mountFence();
     expect(fence.dom.querySelector('.noto-fence-tools')).toBeNull();
     expect(fence.dom.querySelector('.noto-fence-lang')).toBeNull();
     expect(fence.dom.querySelector('.noto-fence-copy')).toBeNull();
     expect(fence.dom.querySelector('.noto-fence-gutter')?.textContent).toBe('1');
-    expect(document.getElementById('noto-fence-languages')).toBeNull();
     fence.destroy();
     view.destroy();
   });
 
-  it('builds tools on pointerenter and binds the datalist only on language focus', () => {
+  it('builds tools on pointerenter, with the language by its name', () => {
     const { view, fence } = mountFence();
     fence.dom.dispatchEvent(new Event('pointerenter'));
     const tools = fence.dom.querySelector('.noto-fence-tools');
-    const language = fence.dom.querySelector('.noto-fence-lang') as HTMLInputElement | null;
-    const copy = fence.dom.querySelector('.noto-fence-copy');
+    const language = fence.dom.querySelector<HTMLButtonElement>('.noto-fence-lang');
     expect(tools).not.toBeNull();
-    expect(language).not.toBeNull();
-    expect(copy).not.toBeNull();
-    expect(language!.value).toBe('ts');
-    expect(language!.getAttribute('list')).toBeNull();
-    expect(document.getElementById('noto-fence-languages')).toBeNull();
-
-    language!.dispatchEvent(new Event('focus'));
-    expect(language!.getAttribute('list')).toBe('noto-fence-languages');
-    expect(document.getElementById('noto-fence-languages')).toBeInstanceOf(HTMLDataListElement);
+    expect(fence.dom.querySelector('.noto-fence-copy')).not.toBeNull();
+    expect(language?.textContent).toBe('TypeScript');
+    expect(language?.dataset.state).toBe('set');
 
     // Second enter is a no-op; tools stay the same node.
     fence.dom.dispatchEvent(new Event('pointerenter'));
     expect(fence.dom.querySelector('.noto-fence-tools')).toBe(tools);
 
+    fence.destroy();
+    view.destroy();
+  });
+
+  it('names what the code reads as when the fence names nothing, marked as a guess', () => {
+    const { view, fence } = mountFence('```\nkubectl get pods -A\n```\n');
+    fence.dom.dispatchEvent(new Event('pointerenter'));
+    const language = fence.dom.querySelector<HTMLButtonElement>('.noto-fence-lang');
+    expect(language?.dataset.state).toBe('guess');
+    expect(language?.querySelector('.noto-fence-lang-name')?.textContent).toBe('Shell');
+    expect(language?.querySelector('.noto-fence-lang-auto')?.textContent).toBe('auto');
     fence.destroy();
     view.destroy();
   });

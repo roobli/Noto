@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import { notoSchema } from '../../src/shared/markdown/v3/pm/schema';
-import { rangesFor, supportedLanguages } from '../../src/renderer/editor/noto/highlight';
+import { canHighlight, guessedLanguage, rangesFor } from '../../src/renderer/editor/noto/highlight';
+import { LANGUAGES, PLAIN_TEXT } from '../../src/renderer/editor/noto/languages';
 
 function codeBlock(lang: string, code: string) {
   return notoSchema.nodes.code_block.create({ lang, fenced: true }, notoSchema.text(code));
@@ -13,11 +14,11 @@ function classAt(node: ReturnType<typeof codeBlock>, offset: number): string | n
 }
 
 describe('code fence highlighting', () => {
-  it('supports the languages people actually write in a fence', () => {
-    const languages = supportedLanguages();
-    for (const name of ['typescript', 'javascript', 'python', 'rust', 'go', 'java', 'bash',
-      'json', 'yaml', 'sql', 'css', 'markup', 'cpp', 'diff']) {
-      expect(languages, `missing ${name}`).toContain(name);
+  it('colours every language the fence list offers, by every name it lists', () => {
+    const drawn = new Set(['mermaid', 'flow', 'sequence', 'timeline', PLAIN_TEXT]);
+    for (const entry of LANGUAGES) {
+      if (drawn.has(entry.id)) continue;
+      for (const name of [entry.id, ...entry.aliases]) expect(canHighlight(name), name).toBe(true);
     }
   });
 
@@ -47,9 +48,17 @@ describe('code fence highlighting', () => {
     expect(rangesFor(codeBlock('yml', 'a: 1')).length).toBeGreaterThan(0);
   });
 
-  it('leaves an unknown or absent language as plain text instead of guessing', () => {
+  it('leaves an unknown language, and code it cannot place, as plain text', () => {
     expect(rangesFor(codeBlock('', 'const a = 1;'))).toEqual([]);
     expect(rangesFor(codeBlock('not-a-language', 'const a = 1;'))).toEqual([]);
+    expect(rangesFor(codeBlock(PLAIN_TEXT, 'kubectl get pods -A'))).toEqual([]);
+  });
+
+  it('colours a fence that names no language as what its code clearly is', () => {
+    const node = codeBlock('', 'def greet(name):\n    return name\n');
+    expect(guessedLanguage(node)).toBe('python');
+    expect(rangesFor(node).some((range) => range.className.includes('keyword'))).toBe(true);
+    expect(guessedLanguage(codeBlock('python', 'x'))).toBeNull();
   });
 
   it('never emits overlapping ranges, so decorations cannot stack', () => {
@@ -86,16 +95,5 @@ describe('code fence highlighting', () => {
     const ranges = rangesFor(codeBlock('ts', code));
     expect(ranges.length).toBeGreaterThan(1000);
     expect(ranges.at(-1)!.to).toBeLessThanOrEqual(code.length);
-  });
-});
-
-describe('the language list a fence offers', () => {
-  it("holds the vault's languages and none of the scaffolding grammars", () => {
-    const languages = supportedLanguages();
-    for (const name of ['haskell', 'docker', 'ruby', 'php', 'csharp', 'powershell', 'lua', 'nginx', 'ini', 'makefile', 'vim', 'http']) {
-      expect(languages).toContain(name);
-    }
-    expect(languages).not.toContain('markup-templating');
-    expect(languages).not.toContain('clike');
   });
 });

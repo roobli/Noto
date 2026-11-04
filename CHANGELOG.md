@@ -21,6 +21,12 @@ How releases are made, and what each channel receives, is in
   carry a dotted rule, and pointing at the words or the note lights both.
   Remove Sidenote in the right-click menu takes a note out and keeps its
   words; so does Backspace after a note, which selects it first.
+- **A code block that names no language is read as one.** Noto reads the
+  code for the marks a language leaves (a `package` line, a `def` ending in a
+  colon, a command at the start of a line) and colours the block as that
+  language when one stands clearly above the rest; code it cannot place stays
+  plain. The guess is shown in the block's corner with an `auto` tag, and the
+  file is not changed until you choose.
 - **Plugins can add to the editor's right-click menu.** An editor extension
   may offer lines for the point clicked, each running one of its commands;
   `docs/plugins.md` says how.
@@ -65,9 +71,21 @@ How releases are made, and what each channel receives, is in
   a mark the selection holds whole, with more beside it, keeps its markdown
   (`the **bold** word`), and one the selection is inside or cuts does not, so
   the text in backticks copies as the bare command. Part of a code block
-  copies as the code. Rich-text targets get the words with their formatting
+  copies as the code, without its fence, also when the drag runs onto the
+  very start of the next line. Rich-text targets get the words with their formatting
   and no table, list or heading around them. A selection across blocks
   copies as markdown, as before.
+- **A code block's language is chosen from a list.** The box in the corner,
+  with the system's grey completion list under it, is now the language's name
+  and a chevron; a press opens a list with a search field. It filters by a
+  language's name, its fence name or the other names people type (`py`,
+  `sh`, `yml`), marks the letters that matched, and takes the arrows, Enter,
+  Tab and Escape. With nothing typed it starts with the guess, so Enter keeps
+  it, and with Detect automatically when the block names a language. What you
+  typed is what the fence says: `ts` chosen is `ts`. A name the list does not
+  know can still be used as written.
+- **Select All inside a code block selects its code first**, and the whole
+  note on the next press, as Typora does.
 - **A sidenote is edited where it is drawn.** With the caret in a note, the
   note stays in the margin and its tags stay hidden; they used to appear and
   pull the note back into the paragraph. Source Code Mode shows the tags.
@@ -94,6 +112,16 @@ How releases are made, and what each channel receives, is in
   starts the view over, so keys typed just after it are kept.
 - **Undo in the find bar and other text boxes undoes what was typed there**,
   not the last change to the note.
+- **Input methods have a caret while they compose.** The drawn caret steps
+  aside then, and the browser's own was hidden too, so Chinese and Japanese
+  input showed none until the text was committed. A click that puts the caret
+  in the note no longer shows it for a moment at the old place first.
+- **Paste as text acts only on the note it was offered for.** The button is
+  dropped when another note or Source Code Mode comes to the front, and a
+  paste that lost any words, in navigation, hidden text or a long button,
+  always says so. Code keeps its non-breaking and zero-width spaces.
+- **A press in the page around the text can drag to select**, as it can
+  inside the text.
 - **Undo in a field inside a note undoes what was typed there.** In a code
   block's language field or a sidenote's card, Edit > Undo undid the last
   change to the note behind it, and the Format menu's commands reached the

@@ -77,9 +77,9 @@ test.describe('code fences', () => {
       await expect.poll(() => digitsOf(page, 0)).toBe('2');
       // Tools mount on hover (lazy chrome); reveal before reading the language field.
       await page.locator('.ProseMirror pre').first().hover();
-      await expect(page.locator('.ProseMirror pre').first().locator('.noto-fence-lang')).toHaveValue('ts');
+      await expect(page.locator('.ProseMirror pre').first().locator('.noto-fence-lang')).toHaveText('TypeScript');
       await page.locator('.ProseMirror pre').nth(1).hover();
-      await expect(page.locator('.ProseMirror pre').nth(1).locator('.noto-fence-lang')).toHaveValue('');
+      await expect(page.locator('.ProseMirror pre').nth(1).locator('.noto-fence-lang')).toHaveAttribute('data-state', 'none');
 
       // A new line in the block is a new number in the gutter, at once.
       const code = page.locator('.ProseMirror pre').nth(1).locator('code');
