@@ -71,6 +71,18 @@ describe('tidying rich text pasted from elsewhere', () => {
     expect(pasted('<p>a b​c﻿</p>').markdown).toBe('a bc');
   });
 
+  it('keeps the characters inside code as they came', () => {
+    expect(pasted('<pre><code>a\u00A0b\u200Bc</code></pre>').markdown).toBe('```\na\u00A0b\u200Bc\n```');
+  });
+
+  it('says so whenever words were taken out, however long, hidden or in navigation', () => {
+    const long = 'A button with far more words on it than any control label has';
+    const result = pasted(`<nav>Home Docs</nav><p>Body <span aria-hidden="true">hidden words</span></p><p><span role="button">${long}</span></p>`);
+    expect(result.markdown).toBe('Body');
+    expect(result.tidy.removed).toEqual(['Home Docs', `${long.slice(0, 37)}...`, 'hidden words']);
+    expect(tidyIsWorthSaying(result.tidy)).toBe(true);
+  });
+
   it('leaves Noto’s own copies as they are', () => {
     const own = '<p data-pm-slice="1 1 []">x <strong>y</strong></p>';
     expect(tidyPastedHtml(own).html).toBe(own);

@@ -52,8 +52,6 @@ export function describeTidy(tidy: PasteTidy): string {
 const INVISIBLE = /[​﻿]/g;
 const NBSP = / /g;
 
-/** Elements that are never content. */
-const DROPPED = 'style, script, meta, link, title, noscript, template, nav';
 /** Controls drawn around content: their text is the page's, not the reader's. */
 const CONTROLS = 'button, [role="button"], select, textarea, svg';
 /** Attributes kept, per element; everything else is the source page's styling or state. */
@@ -78,8 +76,16 @@ export function tidyPastedHtml(html: string): { html: string; tidy: PasteTidy } 
   const languages: string[] = [];
   let formulas = 0;
   let joinedCells = 0;
+  /** Take an element out, and say so when it held words. */
+  const takeOut = (element: Element) => {
+    const label = (element.textContent ?? '').replace(/\s+/g, ' ').trim();
+    if (label && element.tagName.toLowerCase() !== 'svg') removed.push(label.length > 40 ? `${label.slice(0, 37)}...` : label);
+    element.remove();
+  };
 
-  body.querySelectorAll(DROPPED).forEach((element) => element.remove());
+  body.querySelectorAll('style, script, meta, link, title, noscript, template').forEach((element) => element.remove());
+  // A page's navigation is words the reader may have meant to copy.
+  body.querySelectorAll('nav').forEach(takeOut);
 
   // Formulas first, while KaTeX's drawing and its hidden TeX are both there.
   for (const rendered of [...body.querySelectorAll('.katex-display, .katex, math')]) {
@@ -97,11 +103,7 @@ export function tidyPastedHtml(html: string): { html: string; tidy: PasteTidy } 
   // Code blocks: the code alone, with its language when the page said one.
   for (const pre of [...body.querySelectorAll('pre')]) {
     // The buttons first, so their words are never read as code or as a label.
-    for (const control of [...pre.querySelectorAll(CONTROLS)]) {
-      const label = control.textContent?.trim();
-      if (label && label.length <= 40 && control.tagName.toLowerCase() !== 'svg') removed.push(label);
-      control.remove();
-    }
+    for (const control of [...pre.querySelectorAll(CONTROLS)]) takeOut(control);
     const code = pre.querySelector('code');
     const text = (code ?? pre).textContent ?? '';
     // What the block held besides its code: a header with the language, say.
@@ -117,7 +119,8 @@ export function tidyPastedHtml(html: string): { html: string; tidy: PasteTidy } 
       if (rest && rest.length <= 40) removed.push(rest);
     }
     const clean = doc.createElement('code');
-    clean.textContent = text.replace(NBSP, ' ').replace(INVISIBLE, '').replace(/\n$/, '');
+    // The code as it came: a space that does not break may be the point.
+    clean.textContent = text.replace(/\n$/, '');
     pre.replaceChildren(clean);
     for (const attribute of [...pre.attributes]) pre.removeAttribute(attribute.name);
     if (language) {
@@ -128,12 +131,11 @@ export function tidyPastedHtml(html: string): { html: string; tidy: PasteTidy } 
 
   // The page's own controls and the icons on them.
   for (const control of [...body.querySelectorAll(CONTROLS)]) {
-    if (!control.isConnected) continue;
-    const label = control.textContent?.trim();
-    if (label && label.length <= 40 && control.tagName.toLowerCase() !== 'svg') removed.push(label);
-    control.remove();
+    if (control.isConnected) takeOut(control);
   }
-  body.querySelectorAll('[aria-hidden="true"]').forEach((element) => element.remove());
+  for (const hidden of [...body.querySelectorAll('[aria-hidden="true"]')]) {
+    if (hidden.isConnected) takeOut(hidden);
+  }
   // An input is kept only as a task's checkbox.
   body.querySelectorAll('input').forEach((input) => {
     if (input.getAttribute('type') !== 'checkbox' || !input.closest('li')) input.remove();
@@ -194,6 +196,7 @@ export function tidyPastedHtml(html: string): { html: string; tidy: PasteTidy } 
   }
   const walker = doc.createTreeWalker(body, NodeFilter.SHOW_TEXT);
   for (let node = walker.nextNode(); node; node = walker.nextNode()) {
+    if (node.parentElement?.closest('pre, code')) continue;
     const value = node.nodeValue ?? '';
     const next = value.replace(NBSP, ' ').replace(INVISIBLE, '');
     if (next !== value) node.nodeValue = next;

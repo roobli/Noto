@@ -72,6 +72,7 @@ class CaretLayer {
     if (this.frame !== null) cancelAnimationFrame(this.frame);
     this.resize?.disconnect();
     window.removeEventListener('resize', this.schedule);
+    window.removeEventListener('mouseup', this.onRelease, { capture: true });
     this.view.dom.removeEventListener('focus', this.onFocus);
     this.view.dom.removeEventListener('blur', this.onBlur);
     this.view.dom.removeEventListener('mousedown', this.onPress);
@@ -93,13 +94,37 @@ class CaretLayer {
     });
   };
 
-  private readonly onFocus = () => this.draw(true);
+  // Focus that comes with a press is drawn when the press lets go: until then
+  // the selection is still the old one, and the caret would flash there, at
+  // the top of the note, before jumping to where the click went.
+  private readonly onFocus = () => { if (!this.pressing) this.draw(true); };
   private readonly onBlur = () => this.draw(false);
-  // The click's selection lands on the next transaction; the halo goes with it.
-  private readonly onPress = () => { this.pendingHalo = true; };
+  // The click's selection lands with a later transaction; the halo goes with it.
+  private readonly onPress = () => {
+    this.pendingHalo = true;
+    this.pressing = true;
+    window.addEventListener('mouseup', this.onRelease, { capture: true, once: true });
+  };
+  // A click on the caret's own place makes no transaction, so the release draws.
+  private readonly onRelease = () => {
+    this.pressing = false;
+    this.schedule();
+  };
   private pendingHalo = false;
-  private readonly onCompositionStart = () => { this.composing = true; this.draw(false); };
-  private readonly onCompositionEnd = () => { this.composing = false; this.schedule(); };
+  private pressing = false;
+  // While an input method composes, the browser's caret is the right one: it
+  // sits inside the underlined text the input method is drawing. So the
+  // native caret comes back for the composition and goes again after it.
+  private readonly onCompositionStart = () => {
+    this.composing = true;
+    this.host()?.classList.remove(HOST_CLASS);
+    this.draw(false);
+  };
+  private readonly onCompositionEnd = () => {
+    this.composing = false;
+    this.host()?.classList.add(HOST_CLASS);
+    this.schedule();
+  };
 
   /** Where the browser would draw its caret, relative to the layer, or null when it should not show. */
   private measure(): { left: number; top: number; height: number } | null {

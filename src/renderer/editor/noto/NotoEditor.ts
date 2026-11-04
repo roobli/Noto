@@ -316,6 +316,15 @@ export class NotoEditor implements NotoEditorPort {
         this.pasteTidy = tidy;
         return tidied;
       },
+      // Each paste starts with nothing tidied, so what the tidy reports is
+      // always this paste's, even when this paste was never tidied (into code,
+      // or as plain text).
+      handleDOMEvents: {
+        paste: () => {
+          this.pasteTidy = NO_TIDY;
+          return false;
+        },
+      },
       handleTextInput: (view, from, _to, text) => {
         // The second of two brackets: asked after the transaction, since the
         // question is about the document the keystroke is making, not the one
@@ -348,6 +357,9 @@ export class NotoEditor implements NotoEditorPort {
         return true;
       },
       handleDrop: (view, event) => {
+        // A drop of HTML is tidied on the way in too; what the tidy found
+        // belongs to the drop, and must not be read by the next paste.
+        this.pasteTidy = NO_TIDY;
         const note = droppedNote((event as DragEvent).dataTransfer?.files);
         if (note && this.options.onDropNote) {
           event.preventDefault();
@@ -851,26 +863,42 @@ export class NotoEditor implements NotoEditorPort {
   }
 
   /**
-   * Put the caret at the nearest place in the note to a point outside its
-   * text: in the page's margin, above the first block or below the last. A
-   * click there used to take the keys away from the note and leave no caret,
-   * which in a new, empty note looked like the note would not take any.
+   * A press in the page around the text: in its margin, above the first block
+   * or below the last. The caret goes to the nearest place in the note, and a
+   * drag from there selects, as it would from inside the text. A press there
+   * used to take the keys away from the note and leave no caret, which in a
+   * new, empty note looked like the note would not take any.
    */
-  focusAtPoint(x: number, y: number): void {
+  pressAtPoint(x: number, y: number): void {
     const view = this.view;
     if (!view) return;
+    const anchor = this.selectionNear(view, x, y);
+    view.dispatch(view.state.tr.setSelection(anchor).scrollIntoView());
+    view.focus();
+    const from = anchor.anchor;
+    const move = (event: MouseEvent) => {
+      if (this.view !== view || from > view.state.doc.content.size) return;
+      const head = this.selectionNear(view, event.clientX, event.clientY);
+      const selection = TextSelection.between(view.state.doc.resolve(from), head.$head);
+      if (!selection.eq(view.state.selection)) view.dispatch(view.state.tr.setSelection(selection));
+    };
+    const release = () => {
+      window.removeEventListener('mousemove', move);
+      window.removeEventListener('mouseup', release, true);
+    };
+    window.addEventListener('mousemove', move);
+    window.addEventListener('mouseup', release, true);
+  }
+
+  /** The selection nearest a point, which may be outside the text. */
+  private selectionNear(view: EditorView, x: number, y: number): Selection {
     const box = view.dom.getBoundingClientRect();
     const doc = view.state.doc;
-    let selection: Selection;
-    if (y >= box.bottom) selection = Selection.atEnd(doc);
-    else if (y <= box.top) selection = Selection.atStart(doc);
-    else {
-      const left = Math.min(Math.max(x, box.left + 1), box.right - 1);
-      const pos = view.posAtCoords({ left, top: y })?.pos;
-      selection = pos === undefined ? Selection.atEnd(doc) : Selection.near(doc.resolve(pos));
-    }
-    view.dispatch(view.state.tr.setSelection(selection).scrollIntoView());
-    view.focus();
+    if (y >= box.bottom) return Selection.atEnd(doc);
+    if (y <= box.top) return Selection.atStart(doc);
+    const left = Math.min(Math.max(x, box.left + 1), box.right - 1);
+    const pos = view.posAtCoords({ left, top: y })?.pos;
+    return pos === undefined ? Selection.atEnd(doc) : Selection.near(doc.resolve(pos));
   }
 
   /**
@@ -1257,7 +1285,6 @@ export class NotoEditor implements NotoEditorPort {
     return true;
   }
 
-  /** Paste text at the caret, read as markdown: Paste as Plain Text's half. */
   /**
    * After a tidied rich paste: say what was changed, with a way back to the
    * plain text. The paste is made its own undo step first, so taking it back
@@ -1282,12 +1309,16 @@ export class NotoEditor implements NotoEditorPort {
     });
   }
 
+  /** Paste text at the caret, read as markdown: Paste as Plain Text's half. */
   pasteText(text: string): void {
     const view = this.view;
     if (!view || this.readOnly) return;
     // Spaces that do not break, and characters with no width, ride along with
-    // copied text and stop a list marker or a table rule from being read.
-    text = text.replace(/\u00A0/g, ' ').replace(/[\u200B\uFEFF]/g, '');
+    // copied text and stop a list marker or a table rule from being read. In
+    // code they may be the point, so code takes the text as it came.
+    if (!view.state.selection.$from.parent.type.spec.code) {
+      text = text.replace(/\u00A0/g, ' ').replace(/[\u200B\uFEFF]/g, '');
+    }
     const slice = sliceFromText(text, view.state.selection.$from);
     view.dispatch(view.state.tr.replaceSelection(slice).scrollIntoView());
     view.focus();

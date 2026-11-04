@@ -54,6 +54,8 @@ test('draw a caret where the click put it, solid while typing and breathing afte
     await expect(caret).toHaveClass(/is-shown/);
     const [box, line] = [await caret.boundingBox(), await paragraph.boundingBox()];
     expect(box!.width).toBe(2);
+    // Drawn where the click went from the first frame, never first at the
+    // top of the note where the selection was before the click.
     expect(box!.x).toBeGreaterThan(line!.x);
     expect(box!.y).toBeGreaterThanOrEqual(line!.y - 2);
     expect(box!.y + box!.height).toBeLessThanOrEqual(line!.y + line!.height + 2);

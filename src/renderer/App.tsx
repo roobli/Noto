@@ -308,6 +308,9 @@ function NotoWorkspace({ platform }: { platform: NotoPlatform }) {
   const focusWhenReadyRef = useRef<string | null>(null);
   // Undo and Redo while Source Code Mode is open belong to its text.
   const sourceHistoryRef = useRef<((direction: 'undo' | 'redo') => boolean) | null>(null);
+  // Set when a reload replaces the note under an open Source Code Mode: the
+  // view about to be replaced must not put its draft of the old text back.
+  const sourceStaleRef = useRef(false);
   /** Bumped when an editor is ready, so a source view can be given its editor. */
   const [editorsReady, setEditorsReady] = useState(0);
   // Counts reloads from disk, so the Source Code Mode view starts over from
@@ -455,6 +458,12 @@ function NotoWorkspace({ platform }: { platform: NotoPlatform }) {
       if (timer) clearTimeout(timer);
     };
   }, []);
+  // A notice's action is about the note on screen when it was raised: once
+  // another note, or Source Code Mode, is in front, the button would act on
+  // a note the reader is not looking at.
+  useEffect(() => {
+    setNoticeAction(null);
+  }, [activeId, sourceMode]);
   /**
    * Quick open, and whether it was opened by typing two brackets.
    *
@@ -1882,6 +1891,7 @@ function NotoWorkspace({ platform }: { platform: NotoPlatform }) {
       const editor = editorsRef.current.get(documentId);
       if (editor?.isDirty) {
         const accepted = editor.acceptedDocument;
+        sourceStaleRef.current = true;
         editor.replaceMarkdown(accepted.text);
         editor.commit(accepted);
         setSourceReloads((count) => count + 1);
@@ -1900,6 +1910,7 @@ function NotoWorkspace({ platform }: { platform: NotoPlatform }) {
       return;
     }
     const editor = editorsRef.current.get(documentId);
+    sourceStaleRef.current = true;
     editor?.replaceMarkdown(outcome.opened.document.text);
     editor?.commit(outcome.opened.document);
     setSourceReloads((count) => count + 1);
@@ -2386,12 +2397,12 @@ function NotoWorkspace({ platform }: { platform: NotoPlatform }) {
         }
         break;
       case 'undo':
-        if (sourceHistoryRef.current) sourceHistoryRef.current('undo');
-        else editorRef.current?.history('undo');
-        break;
       case 'redo':
-        if (sourceHistoryRef.current) sourceHistoryRef.current('redo');
-        else editorRef.current?.history('redo');
+        // Source Code Mode's own history while it is open, unless another
+        // field (find, a rename, the palette) has the keys: that field's
+        // undo is the one meant, and the note's editor hands it on.
+        if (sourceHistoryRef.current && !otherFieldFocused()) sourceHistoryRef.current(event.command);
+        else editorRef.current?.history(event.command);
         break;
       case 'settings':
         // Cmd+, again is muscle memory for leave: toggle closed from any section.
@@ -2810,7 +2821,7 @@ function NotoWorkspace({ platform }: { platform: NotoPlatform }) {
             const editor = editorRef.current;
             if (!editor) return;
             event.preventDefault();
-            editor.focusAtPoint(event.clientX, event.clientY);
+            editor.pressAtPoint(event.clientX, event.clientY);
           }}
         >
           {codeView ? <CodeViewer view={codeView} /> : null}
@@ -2833,6 +2844,7 @@ function NotoWorkspace({ platform }: { platform: NotoPlatform }) {
                   startBlock={activeBlock}
                   registerFlush={(flush) => { sourceFlushRef.current = flush; }}
                   registerHistory={(step) => { sourceHistoryRef.current = step; }}
+                  stale={sourceStaleRef}
                 />
               )}
               <div hidden={sourceMode} className="canvas-rendered">
@@ -3143,14 +3155,30 @@ export function BootstrapFailure({ message }: { message: string }) {
   );
 }
 
+/** Whether a text field other than Source Code Mode's own has the keys. */
+function otherFieldFocused(): boolean {
+  const active = document.activeElement;
+  if (active instanceof HTMLTextAreaElement) return !active.classList.contains('noto-source-input');
+  return active instanceof HTMLInputElement
+    && ['text', 'search', 'url', 'email', 'tel', 'password', 'number'].includes(active.type);
+}
+
 /** The source view over one editor: reads its text once, settles block-wise or via source escape. */
-function SourceModeView({ editor, fileText, startBlock, registerFlush, registerHistory }: {
+function SourceModeView({ editor, fileText, startBlock, registerFlush, registerHistory, stale }: {
   editor: NotoEditor;
   fileText: string;
   startBlock: number;
   registerFlush: (flush: (() => void) | null) => void;
   registerHistory: (step: ((direction: 'undo' | 'redo') => boolean) | null) => void;
+  /** True once a reload has replaced the note this view was opened on. */
+  stale: { current: boolean };
 }) {
+  // This view opens on the text as it is now, reloaded or not. React runs the
+  // replaced view's passive unmount (where its draft would go in) before any
+  // passive mount, so by now that draft has already been dropped.
+  useEffect(() => {
+    stale.current = false;
+  }, [stale]);
   const initial = useMemo(() => sourceModeText({
     dirty: editor.isDirty,
     fileText,
@@ -3162,7 +3190,7 @@ function SourceModeView({ editor, fileText, startBlock, registerFlush, registerH
     <SourceMode
       initialText={initial}
       startBlock={Math.max(0, startBlock)}
-      apply={(markdown) => editor.applySourceBuffer(markdown)}
+      apply={(markdown) => !stale.current && editor.applySourceBuffer(markdown)}
       onLeave={(block) => editor.focusBlock(block)}
       registerFlush={registerFlush}
       registerHistory={registerHistory}

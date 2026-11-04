@@ -62,6 +62,11 @@ test('small controls take a press over 24px and draw the size they did', async (
       ['.noto-table-tool', 24, 22],
     ];
     for (const [selector, width, height] of expected) {
+      // The table's tools show only while the pointer is on the table.
+      if (selector === '.noto-table-tool') {
+        await editor.locator('td').first().hover();
+        await expect(page.locator('.noto-table-tools').first()).toHaveCSS('opacity', '1');
+      }
       const found = await reach(page, selector);
       expect({ selector, width: width === null ? null : found.width, height: found.height }).toEqual({ selector, width, height });
       expect({ selector, hits: found.hits }).toEqual({ selector, hits: [true, true, true, true] });
