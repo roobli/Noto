@@ -9,6 +9,13 @@ How releases are made, and what each channel receives, is in
 
 ## [Unreleased]
 
+### Fixed
+
+- **Undo in a field inside a note undoes what was typed there.** In a code
+  block's language field or a sidenote's card, Edit > Undo undid the last
+  change to the note behind it, and the Format menu's commands reached the
+  note too.
+
 ## [0.0.4] - 2026-11-03
 
 The second full release, on the Stable channel. It carries the two `0.0.4`

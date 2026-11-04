@@ -863,9 +863,19 @@ export class NotoEditor implements NotoEditorPort {
    * keep in step. False when the command has nothing to do where the caret
    * is, which is what lets the caller say so rather than pretending.
    */
+  /** Whether the keys belong to a text field drawn inside the note rather than to the note. */
+  private fieldFocused(view: EditorView): boolean {
+    const active = globalThis.document.activeElement;
+    return active instanceof HTMLElement && active !== view.dom && view.dom.contains(active)
+      && (active instanceof HTMLTextAreaElement || active instanceof HTMLInputElement);
+  }
+
   runCommand(name: string): boolean {
     const view = this.view;
     if (!view) return false;
+    // Bold from the menu while a sidenote is being written would bold the
+    // note's words behind the field, not anything in it.
+    if (this.fieldFocused(view)) return false;
     // Every editor command changes the document, so read-only refuses them all
     // rather than each one having to remember to check.
     if (this.readOnly) return false;
@@ -983,6 +993,9 @@ export class NotoEditor implements NotoEditorPort {
   history(direction: 'undo' | 'redo'): boolean {
     const view = this.view;
     if (!view) return false;
+    // A field inside the note (a sidenote being written, a code block's
+    // language) has its own undo; the menu's Undo is for what is typed there.
+    if (this.fieldFocused(view)) return globalThis.document.execCommand(direction);
     const command = direction === 'undo' ? undo : redo;
     return command(view.state, view.dispatch);
   }
