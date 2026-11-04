@@ -1,10 +1,10 @@
 # Writing a plugin for Noto
 
 This is the developer's guide to Noto's plugin model as it stands today. It
-says what a plugin is, what it may do, how the four bundled ones are put
-together, and where the line currently falls between what ships and what is
-built but not yet opened. Read the last section before planning a plugin that
-lives outside the repository.
+says what a plugin is, what it may do, how the bundled ones are put together,
+how to write one that someone can install from a folder, GitHub or a
+marketplace, and what is not there yet. Read the last section before planning
+a plugin.
 
 ## The model in one paragraph
 
