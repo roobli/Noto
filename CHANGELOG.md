@@ -35,6 +35,14 @@ How releases are made, and what each channel receives, is in
 
 ### Fixed
 
+- **Undo works in Source Code Mode, and leaving it shows what it says.**
+  Cmd+Z there undid a change in the hidden rendered note instead of the
+  text, so the text and the note drifted apart and leaving showed the note's
+  version. Undo and Redo now step through the text, a typed run at a time,
+  and leaving always hands the note what the text says. A save no longer
+  starts the view over, so keys typed just after it are kept.
+- **Undo in the find bar and other text boxes undoes what was typed there**,
+  not the last change to the note.
 - **Undo in a field inside a note undoes what was typed there.** In a code
   block's language field or a sidenote's card, Edit > Undo undid the last
   change to the note behind it, and the Format menu's commands reached the

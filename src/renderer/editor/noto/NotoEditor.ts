@@ -171,6 +171,9 @@ export interface InsertedImage {
   readonly alt: string;
 }
 
+/** Inputs that hold typed text, as opposed to a checkbox or a button. */
+const TEXT_INPUT_TYPES = new Set(['text', 'search', 'url', 'email', 'tel', 'password', 'number']);
+
 export class NotoEditor implements NotoEditorPort {
   private view: EditorView | null = null;
   private document: NotoDocumentWire;
@@ -875,11 +878,17 @@ export class NotoEditor implements NotoEditorPort {
     return editorExtensions.contextItems(view, { pos, element: hit });
   }
 
-  /** Whether the keys belong to a text field drawn inside the note rather than to the note. */
+  /**
+   * Whether the keys belong to a text field rather than to the note: one drawn
+   * inside it (a sidenote's card, a code block's language), the Source Code
+   * Mode text, or a box in the window such as the find bar. Each has its own
+   * undo, and the note's commands would act on the note behind it.
+   */
   private fieldFocused(view: EditorView): boolean {
     const active = globalThis.document.activeElement;
-    return active instanceof HTMLElement && active !== view.dom && view.dom.contains(active)
-      && (active instanceof HTMLTextAreaElement || active instanceof HTMLInputElement);
+    if (!(active instanceof HTMLElement) || active === view.dom) return false;
+    if (active instanceof HTMLTextAreaElement) return true;
+    return active instanceof HTMLInputElement && TEXT_INPUT_TYPES.has(active.type);
   }
 
   runCommand(name: string): boolean {

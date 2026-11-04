@@ -26,6 +26,21 @@ import { blockAtOffset, offsetOfBlock } from './source-lines';
 /** Typing pauses this long before the document takes the text. */
 const SETTLE_MS = 350;
 
+/**
+ * Edits closer together than this are one step of Undo, as typing a word is
+ * one step in any text field. The browser's own undo cannot be used: the
+ * coloured copy of the text under the field is redrawn on every key, and
+ * that ends the browser's typing group, so it undid a letter at a time.
+ */
+const UNDO_GROUP_MS = 800;
+/** Steps kept; the oldest go first. */
+const UNDO_LIMIT = 300;
+
+interface SourceStep {
+  readonly text: string;
+  readonly caret: number;
+}
+
 export interface SourceModeProps {
   /** The text as the document holds it now. */
   readonly initialText: string;
@@ -37,29 +52,71 @@ export interface SourceModeProps {
   readonly onLeave: (block: number) => void;
   /** Lets the owner push pending text into the document before a save. */
   readonly registerFlush: (flush: (() => void) | null) => void;
+  /** Lets the owner send Undo and Redo here while the mode is open; false when there was no step. */
+  readonly registerHistory: (step: ((direction: 'undo' | 'redo') => boolean) | null) => void;
 }
 
-export function SourceMode({ initialText, startBlock, apply, onLeave, registerFlush }: SourceModeProps) {
+export function SourceMode({ initialText, startBlock, apply, onLeave, registerFlush, registerHistory }: SourceModeProps) {
   const [text, setText] = useState(initialText);
   const textRef = useRef(text);
   textRef.current = text;
   const inputRef = useRef<HTMLTextAreaElement>(null);
   const timer = useRef<number | null>(null);
   const pending = useRef<string | null>(null);
+  // The text the note was last given, so leaving can tell whether the field
+  // still says something the note does not.
+  const applied = useRef(initialText);
+  const applyText = useCallback((draft: string) => {
+    applied.current = draft;
+    apply(draft);
+  }, [apply]);
 
   const flush = useCallback(() => {
     if (timer.current !== null) { window.clearTimeout(timer.current); timer.current = null; }
     if (pending.current !== null) {
       const draft = pending.current;
       pending.current = null;
-      apply(draft);
+      applyText(draft);
     }
-  }, [apply]);
+  }, [applyText]);
 
   useEffect(() => {
     registerFlush(flush);
     return () => registerFlush(null);
   }, [flush, registerFlush]);
+
+  // Text set from here, by Undo or Redo: the field, the colours and the note all follow.
+  const restore = useCallback((step: SourceStep) => {
+    const input = inputRef.current;
+    if (!input) return;
+    input.value = step.text;
+    input.setSelectionRange(step.caret, step.caret);
+    setText(step.text);
+    pending.current = step.text;
+    if (timer.current !== null) window.clearTimeout(timer.current);
+    timer.current = window.setTimeout(() => {
+      timer.current = null;
+      if (pending.current !== null) {
+        const draft = pending.current;
+        pending.current = null;
+        applyText(draft);
+      }
+    }, SETTLE_MS);
+  }, [applyText]);
+
+  useEffect(() => {
+    registerHistory((direction) => {
+      const history = steps.current;
+      const target = direction === 'undo' ? history.at - 1 : history.at + 1;
+      if (target < 0 || target >= history.list.length) return false;
+      history.at = target;
+      // A step taken back is never extended by the next key.
+      history.last = 0;
+      restore(history.list[target]!);
+      return true;
+    });
+    return () => registerHistory(null);
+  }, [registerHistory, restore]);
 
   // The caret opens where the reader was, and the leave hands back where
   // they went. Ref-held so the unmount sees the last caret, not the first.
@@ -68,6 +125,10 @@ export function SourceMode({ initialText, startBlock, apply, onLeave, registerFl
   useLayoutEffect(() => {
     const input = inputRef.current;
     if (!input) return;
+    // Set once and left to the browser after that. A controlled field had its
+    // text written back by React on every key, which cut the browser's undo
+    // into single characters: Cmd+Z took back one letter at a time.
+    input.value = initialText;
     const at = offsetOfBlock(initialText, startBlock);
     input.focus();
     input.setSelectionRange(at, at);
@@ -98,14 +159,38 @@ export function SourceMode({ initialText, startBlock, apply, onLeave, registerFl
     const at = caret.current;
     const draft = pending.current ?? textRef.current;
     if (timer.current !== null) window.clearTimeout(timer.current);
-    if (pending.current !== null) { pending.current = null; apply(draft); }
+    pending.current = null;
+    // Whatever the field says goes in, settled or not: the rendered note must
+    // open showing what was last seen here.
+    if (draft !== applied.current) applyText(draft);
     leaveRef.current(blockAtOffset(draft, at));
     // Mount and unmount only.
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
+  // Undo history: the text after each step, with the caret where the step left it.
+  const steps = useRef<{ list: SourceStep[]; at: number; last: number }>({
+    list: [{ text: initialText, caret: offsetOfBlock(initialText, startBlock) }],
+    at: 0,
+    last: 0,
+  });
+  const record = useCallback((next: string, caret: number) => {
+    const history = steps.current;
+    const now = Date.now();
+    history.list.length = history.at + 1;
+    if (history.at > 0 && now - history.last < UNDO_GROUP_MS) {
+      history.list[history.at] = { text: next, caret };
+    } else {
+      history.list.push({ text: next, caret });
+      if (history.list.length > UNDO_LIMIT) history.list.shift();
+      history.at = history.list.length - 1;
+    }
+    history.last = now;
+  }, []);
+
   const onChange = useCallback((next: string) => {
     setText(next);
+    record(next, inputRef.current?.selectionEnd ?? next.length);
     pending.current = next;
     if (timer.current !== null) window.clearTimeout(timer.current);
     timer.current = window.setTimeout(() => {
@@ -113,10 +198,10 @@ export function SourceMode({ initialText, startBlock, apply, onLeave, registerFl
       if (pending.current !== null) {
         const draft = pending.current;
         pending.current = null;
-        apply(draft);
+        applyText(draft);
       }
     }, SETTLE_MS);
-  }, [apply]);
+  }, [applyText]);
 
   // Coloured the way a fence is: the same grammar library, the markdown
   // grammar, and a trailing newline so the last empty line still has height.
@@ -130,7 +215,6 @@ export function SourceMode({ initialText, startBlock, apply, onLeave, registerFl
         className="noto-source-input"
         data-testid="source-input"
         aria-label="Markdown source"
-        value={text}
         spellCheck={false}
         autoCapitalize="off"
         autoCorrect="off"

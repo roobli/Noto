@@ -304,8 +304,14 @@ function NotoWorkspace({ platform }: { platform: NotoPlatform }) {
   const [sourceMode, setSourceMode] = useState(false);
   /** Pushes the source view's pending text into the document, before a save. */
   const sourceFlushRef = useRef<(() => void) | null>(null);
+  // Undo and Redo while Source Code Mode is open belong to its text.
+  const sourceHistoryRef = useRef<((direction: 'undo' | 'redo') => boolean) | null>(null);
   /** Bumped when an editor is ready, so a source view can be given its editor. */
   const [editorsReady, setEditorsReady] = useState(0);
+  // Counts reloads from disk, so the Source Code Mode view starts over from
+  // the file's new text. A save is not one: it keeps the view, and the keys
+  // typed into it, where they are.
+  const [sourceReloads, setSourceReloads] = useState(0);
   const [pluginSnapshots, setPluginSnapshots] = useState<PluginLifecycleSnapshot[]>([]);
   /** Every plugin's keys, for the Shortcuts pane; rebuilt only when a snapshot changes. */
   const pluginHotkeys = useMemo(() => pluginSnapshots.map((snapshot) => ({
@@ -1867,6 +1873,7 @@ function NotoWorkspace({ platform }: { platform: NotoPlatform }) {
         const accepted = editor.acceptedDocument;
         editor.replaceMarkdown(accepted.text);
         editor.commit(accepted);
+        setSourceReloads((count) => count + 1);
       }
       patchDoc(documentId, { state: cleanStateRef.current, outcome: null, dirty: false });
       setLocalMessage(null);
@@ -1884,6 +1891,7 @@ function NotoWorkspace({ platform }: { platform: NotoPlatform }) {
     const editor = editorsRef.current.get(documentId);
     editor?.replaceMarkdown(outcome.opened.document.text);
     editor?.commit(outcome.opened.document);
+    setSourceReloads((count) => count + 1);
     patchDoc(documentId, {
       opened: outcome.opened,
       document: outcome.opened.document,
@@ -2360,10 +2368,12 @@ function NotoWorkspace({ platform }: { platform: NotoPlatform }) {
         }
         break;
       case 'undo':
-        editorRef.current?.history('undo');
+        if (sourceHistoryRef.current) sourceHistoryRef.current('undo');
+        else editorRef.current?.history('undo');
         break;
       case 'redo':
-        editorRef.current?.history('redo');
+        if (sourceHistoryRef.current) sourceHistoryRef.current('redo');
+        else editorRef.current?.history('redo');
         break;
       case 'settings':
         // Cmd+, again is muscle memory for leave: toggle closed from any section.
@@ -2780,11 +2790,12 @@ function NotoWorkspace({ platform }: { platform: NotoPlatform }) {
             >
               {sourceMode && doc.document.documentId === activeId && editorsRef.current.get(doc.document.documentId) && (
                 <SourceModeView
-                  key={`${doc.document.documentId}:${doc.document.revisionId}:${editorsReady}`}
+                  key={`${doc.document.documentId}:${sourceReloads}:${editorsReady}`}
                   editor={editorsRef.current.get(doc.document.documentId)!}
                   fileText={doc.document.text}
                   startBlock={activeBlock}
                   registerFlush={(flush) => { sourceFlushRef.current = flush; }}
+                  registerHistory={(step) => { sourceHistoryRef.current = step; }}
                 />
               )}
               <div hidden={sourceMode} className="canvas-rendered">
@@ -3086,11 +3097,12 @@ export function BootstrapFailure({ message }: { message: string }) {
 }
 
 /** The source view over one editor: reads its text once, settles block-wise or via source escape. */
-function SourceModeView({ editor, fileText, startBlock, registerFlush }: {
+function SourceModeView({ editor, fileText, startBlock, registerFlush, registerHistory }: {
   editor: NotoEditor;
   fileText: string;
   startBlock: number;
   registerFlush: (flush: (() => void) | null) => void;
+  registerHistory: (step: ((direction: 'undo' | 'redo') => boolean) | null) => void;
 }) {
   const initial = useMemo(() => sourceModeText({
     dirty: editor.isDirty,
@@ -3106,6 +3118,7 @@ function SourceModeView({ editor, fileText, startBlock, registerFlush }: {
       apply={(markdown) => editor.applySourceBuffer(markdown)}
       onLeave={(block) => editor.focusBlock(block)}
       registerFlush={registerFlush}
+      registerHistory={registerHistory}
     />
   );
 }
