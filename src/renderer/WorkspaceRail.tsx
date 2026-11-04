@@ -211,31 +211,50 @@ export function WorkspaceRail({
   /**
    * Drag the rail wider.
    *
-   * The width is written straight to the element as a custom property while the
-   * pointer moves, and the setting is written once on release. Routing every
-   * move through React state and IPC would put a settings round trip between
-   * the pointer and the edge it is dragging, which is exactly the lag that
-   * makes a resize feel broken. Max is 35% of the window, not the soft
-   * absolute in SETTING_RANGES.
+   * The width is written straight to the elements as custom properties while
+   * the pointer moves, at most once a frame, and the setting is written once
+   * on release. Routing every move through React state and IPC would put a
+   * settings round trip between the pointer and the edge it is dragging,
+   * which is exactly the lag that makes a resize feel broken. Max is 35% of
+   * the window, not the soft absolute in SETTING_RANGES.
+   *
+   * Both widths move together: the rail's own, and the shell's column the
+   * rail stands in, which the page beside it and the title bar follow. Only
+   * the rail's used to move, so mid-drag the rail spilled over a page that
+   * had not moved, and the page's line marks and highlights showed through
+   * it in a band. The shell's column transition is off for the drag, or the
+   * page would trail the pointer by its duration.
    */
   const startResize = useCallback((event: React.PointerEvent<HTMLDivElement>) => {
     event.preventDefault();
     const rail = railRef.current;
     if (!rail) return;
+    const shell = rail.closest<HTMLElement>('.app-shell');
     const handle = event.currentTarget;
     const startX = event.clientX;
     const startWidth = rail.getBoundingClientRect().width;
     let latest = startWidth;
+    let frame: number | null = null;
     handle.setPointerCapture(event.pointerId);
+    shell?.classList.add('is-resizing-rail');
 
+    const apply = () => {
+      frame = null;
+      const width = `${Math.round(latest)}px`;
+      rail.style.setProperty('--rail-width', width);
+      shell?.style.setProperty('--shell-rail', width);
+    };
     const move = (moveEvent: PointerEvent) => {
       const max = railWidthMaxForScreen(window.innerWidth);
       latest = clampRailWidth(startWidth + moveEvent.clientX - startX, window.innerWidth);
       // Keep aria in step if the window resized mid-drag.
       setRailMax(max);
-      rail.style.setProperty('--rail-width', `${Math.round(latest)}px`);
+      if (frame === null) frame = requestAnimationFrame(apply);
     };
     const finish = () => {
+      if (frame !== null) cancelAnimationFrame(frame);
+      apply();
+      shell?.classList.remove('is-resizing-rail');
       handle.releasePointerCapture(event.pointerId);
       handle.removeEventListener('pointermove', move);
       handle.removeEventListener('pointerup', finish);

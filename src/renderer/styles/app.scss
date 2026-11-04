@@ -584,7 +584,18 @@ button:disabled { color: var(--muted); opacity: 0.7; }
 }
 
 .rail-resize:hover::after,
-.rail-resize:focus-visible::after { opacity: 0.55; }
+.rail-resize:focus-visible::after,
+.is-resizing-rail .rail-resize::after { opacity: 0.55; }
+
+/* While the rail's edge is dragged the page and the title bar follow the
+   pointer at once, not after the column's transition, and nothing in them
+   takes a selection or shows its own pointer. */
+.app-shell.is-resizing-rail,
+.app-shell.is-resizing-rail > .titlebar { transition: none; }
+.app-shell.is-resizing-rail {
+  cursor: col-resize;
+  user-select: none;
+}
 .rail-resize:focus-visible { outline: none; }
 
 .rail-empty {

@@ -112,6 +112,10 @@ How releases are made, and what each channel receives, is in
   starts the view over, so keys typed just after it are kept.
 - **Undo in the find bar and other text boxes undoes what was typed there**,
   not the last change to the note.
+- **The page follows the rail's edge while you drag it.** Only the rail grew
+  until the pointer was let go, so mid-drag it spilled over a page that had
+  not moved, and the page's line marks and highlights showed through it in a
+  band. The page and the title bar now move with the edge, a frame at a time.
 - **Input methods have a caret while they compose.** The drawn caret steps
   aside then, and the browser's own was hidden too, so Chinese and Japanese
   input showed none until the text was committed. A click that puts the caret
