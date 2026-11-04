@@ -103,7 +103,7 @@ import { syntaxHighlightPlugin } from './highlight';
 import { wikiLinkPlugin } from './wiki-link-plugin';
 import { followLinkPlugin, linkEditorPlugin } from './link-plugin';
 import { DocumentCounter, type DocumentCount } from './word-count';
-import { inlineCopySlice, inlineCopyText, sliceToMarkdown } from './clipboard';
+import { fenceCodeOnly, inlineCopySlice, inlineCopyText, sliceToMarkdown } from './clipboard';
 import { NO_TIDY, describeTidy, tidyIsWorthSaying, tidyPastedHtml, type PasteTidy } from './paste-clean';
 import { caretPlugin } from './caret-plugin';
 import { rootSpellCheck, SPELL_CHECK_RESCAN, spellCheckScopeKey, spellCheckScopePlugin } from './spell-check-scope';
@@ -175,6 +175,8 @@ export interface InsertedImage {
 
 /** Inputs that hold typed text, as opposed to a checkbox or a button. */
 const TEXT_INPUT_TYPES = new Set(['text', 'search', 'url', 'email', 'tel', 'password', 'number']);
+/** Commands that only move the selection, which a read-only note still takes. */
+const SELECTION_COMMANDS = new Set(['select-all', 'select-word', 'select-line', 'select-scope', 'jump-to-selection']);
 
 export class NotoEditor implements NotoEditorPort {
   private view: EditorView | null = null;
@@ -322,6 +324,15 @@ export class NotoEditor implements NotoEditorPort {
       handleDOMEvents: {
         paste: () => {
           this.pasteTidy = NO_TIDY;
+          return false;
+        },
+        // Cut takes what copy would: a fence's code, without the line break
+        // into the next block that a drag over it picked up. Left as it was,
+        // the clipboard would hold the code and the delete would pull the next
+        // paragraph up into the fence.
+        cut: (view) => {
+          const code = fenceCodeOnly(view.state);
+          if (code) view.dispatch(view.state.tr.setSelection(TextSelection.create(view.state.doc, code.from, code.to)));
           return false;
         },
       },
@@ -975,8 +986,9 @@ export class NotoEditor implements NotoEditorPort {
     // note's words behind the field, not anything in it.
     if (this.fieldFocused(view)) return false;
     // Every editor command changes the document, so read-only refuses them all
-    // rather than each one having to remember to check.
-    if (this.readOnly) return false;
+    // rather than each one having to remember to check, except the few that
+    // only move the selection.
+    if (this.readOnly && !SELECTION_COMMANDS.has(name)) return false;
     const stamp = this.taskStampOptions();
     const command = name === 'task-toggle' ? toggleTaskStatus(undefined, stamp)
       : name === 'task-complete' ? toggleTaskStatus(true, stamp)

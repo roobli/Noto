@@ -98,7 +98,11 @@ export class FenceView implements NodeView {
    * for them. Safe to call repeatedly.
    */
   private readonly ensureTools = (): void => {
-    if (this.tools) return;
+    if (this.tools) {
+      // A note can turn read-only without its fences changing.
+      if (this.language) this.language.disabled = !this.view.editable;
+      return;
+    }
 
     this.tools = document.createElement('div');
     this.tools.className = 'noto-fence-tools';
@@ -108,7 +112,7 @@ export class FenceView implements NodeView {
     this.language = document.createElement('button');
     this.language.type = 'button';
     this.language.className = 'noto-fence-lang';
-    this.language.setAttribute('aria-haspopup', 'listbox');
+    this.language.setAttribute('aria-haspopup', 'dialog');
     // The press must not move the note's selection; the click opens the list.
     this.language.addEventListener('mousedown', (event) => event.preventDefault());
     this.language.addEventListener('click', this.toggleLanguages);
@@ -249,6 +253,8 @@ export class FenceView implements NodeView {
       label.replaceChildren(name);
     }
     label.setAttribute('aria-label', `Code block language: ${label.title}`);
+    // A note that cannot be edited shows its language and offers no list.
+    label.disabled = !this.view.editable;
   }
 
   private render(): void {

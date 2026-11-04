@@ -23,24 +23,29 @@ const ENOUGH = 4;
 /** How far it must stand above the next. */
 const MARGIN = 2;
 
-const COMMANDS = 'cd|ls|ll|git|npm|pnpm|yarn|npx|bun|brew|apt|apt-get|yum|dnf|pacman|docker|docker-compose|kubectl|helm|curl|wget|pip|pip3|pipx|uv|conda|export|echo|mkdir|rm|cp|mv|chmod|chown|cat|grep|rg|find|ssh|scp|rsync|make|cargo|rustup|systemctl|journalctl|tar|unzip|sed|awk|source|alias|terraform|gh|nvm|deno|touch|ln|kill|pkill|df|du|tail|head|xargs|jq|openssl|gcloud|aws|ffmpeg|launchctl|defaults|sudo|go (?:build|run|test|mod|get|install)|python3? -m';
+/** Tools no sentence starts with: a line that does is a command. */
+const COMMANDS = 'cd|ls|ll|git|npm|pnpm|yarn|npx|bun|brew|apt|apt-get|yum|dnf|pacman|docker|docker-compose|kubectl|helm|curl|wget|pip|pip3|pipx|uv|conda|echo|mkdir|rm|cp|mv|chmod|chown|grep|rg|ssh|scp|rsync|cargo|rustup|systemctl|journalctl|tar|unzip|sed|awk|terraform|gh|nvm|deno|ln|pkill|df|du|xargs|jq|openssl|gcloud|aws|ffmpeg|launchctl|sudo|go (?:build|run|test|mod|get|install)|python3? -m';
+/** Commands that are also English words: a command only with an argument a sentence would not have. */
+const WORDY = 'find|touch|head|tail|cat|make|kill|source|open|less|vim|nano|code|top|defaults';
 
 const RULES: readonly Rule[] = [
   // Shell
   ['bash', /^#!.*\b(?:ba|z)?sh\b/m, 10],
-  ['bash', new RegExp(`^\\s*(?:\\$\\s+)?(?:${COMMANDS})(?=\\s|$)`, 'gm'), 4, 6],
-  ['bash', /^\s*\$\s+\S/gm, 3, 4],
-  ['bash', /^\s*(?:if \[|elif \[|fi|then|esac|done|do)\b/gm, 3, 3],
+  ['bash', new RegExp(`^[ \\t]*(?:\\$[ \\t]+)?(?:${COMMANDS})(?=[ \\t]|$)`, 'gm'), 4, 6],
+  ['bash', new RegExp(`^[ \\t]*(?:\\$[ \\t]+)?(?:${WORDY})(?:[ \\t]+[\\w.-]*)?[ \\t]+[-./~$"'|<>]`, 'gm'), 4, 4],
+  ['bash', /^[ \t]*(?:export|alias)[ \t]+[A-Za-z_]\w*=/gm, 4, 3],
+  ['bash', /^[ \t]*\$\s+\S/gm, 3, 4],
+  ['bash', /^[ \t]*(?:if \[|elif \[|fi|then|esac|done|do)\b/gm, 3, 3],
   ['bash', /\|\s*(?:grep|awk|sed|xargs|head|tail|sort|uniq|wc|jq|tee)\b/g, 2, 3],
   ['bash', /\s--?[a-zA-Z][\w-]*/g, 0.5, 4],
   ['bash', /\$\{?[A-Za-z_]\w*\}?/g, 0.5, 4],
 
   // Python
   ['python', /^#!.*python/m, 10],
-  ['python', /^\s*(?:async\s+)?def\s+\w+\s*\(.*\)\s*(?:->\s*[^:]+)?:\s*$/gm, 6, 3],
-  ['python', /^\s*class\s+\w+(?:\([^)]*\))?:\s*$/gm, 6, 2],
-  ['python', /^\s*(?:from\s+[\w.]+\s+)?import\s+[\w.]+(?:\s+as\s+\w+)?(?:\s*,\s*[\w.]+(?:\s+as\s+\w+)?)*\s*$/gm, 3, 3],
-  ['python', /^\s*(?:elif\b.*|except\b.*|try|finally|with\b.+\bas\s+\w+|for\s+\w+(?:\s*,\s*\w+)*\s+in\s+.+)\s*:\s*$/gm, 4, 3],
+  ['python', /^[ \t]*(?:async\s+)?def\s+\w+\s*\(.*\)\s*(?:->\s*[^:]+)?:\s*$/gm, 6, 3],
+  ['python', /^[ \t]*class\s+\w+(?:\([^)]*\))?:\s*$/gm, 6, 2],
+  ['python', /^[ \t]*(?:from\s+[\w.]+\s+)?import\s+[\w.]+(?:\s+as\s+\w+)?(?:\s*,\s*[\w.]+(?:\s+as\s+\w+)?)*\s*$/gm, 3, 3],
+  ['python', /^[ \t]*(?:elif\b.*|except\b.*|try|finally|with\b.+\bas\s+\w+|for\s+\w+(?:\s*,\s*\w+)*\s+in\s+.+)\s*:\s*$/gm, 4, 3],
   ['python', /\bself\.\w+/g, 2, 3],
   ['python', /\b(?:None|True|False)\b/g, 1, 3],
   ['python', /^if __name__ == ['"]__main__['"]:/m, 10],
@@ -54,37 +59,38 @@ const RULES: readonly Rule[] = [
   ['javascript', /\bfunction\b\s*[\w$]*\s*\(/g, 2, 3],
   ['javascript', /\bconsole\.(?:log|error|warn|info)\(/g, 5, 2],
   ['javascript', /\brequire\(['"]/g, 3, 2],
-  ['javascript', /^\s*import\s+.+\s+from\s+['"]/gm, 4, 3],
-  ['javascript', /^\s*import\s+['"]/gm, 3, 2],
-  ['javascript', /^\s*export\s+(?:default|const|function|class|async|let)\b/gm, 4, 2],
+  ['javascript', /^[ \t]*import\s+.+\s+from\s+['"]/gm, 4, 3],
+  ['javascript', /^[ \t]*import\s+['"]/gm, 3, 2],
+  ['javascript', /^[ \t]*export\s+(?:default|const|function|class|async|let)\b/gm, 4, 2],
   ['javascript', /\b(?:document|window)\.\w+/g, 3, 2],
   ['javascript', /===|!==/g, 2, 2],
   ['typescript', /\b\w+\??\s*:\s*(?:string|number|boolean|any|unknown|void|never)\b/g, 3, 3],
-  ['typescript', /^\s*(?:export\s+)?interface\s+\w+/gm, 5, 2],
-  ['typescript', /^\s*(?:export\s+)?type\s+\w+\s*(?:<[^>]*>)?\s*=/gm, 5, 2],
+  ['typescript', /^[ \t]*(?:export\s+)?interface\s+\w+/gm, 5, 2],
+  ['typescript', /^[ \t]*(?:export\s+)?type\s+\w+\s*(?:<[^>]*>)?\s*=/gm, 5, 2],
   ['typescript', /\bas\s+(?:const|string|number|any|unknown)\b/g, 3, 2],
 
   // JSON that does not parse, cut short or with comments
-  ['json', /^\s*"[^"\n]+"\s*:/gm, 2, 4],
+  ['json', /^[ \t]*"[^"\n]+"\s*:/gm, 2, 4],
 
   // YAML
-  ['yaml', /^\s*(?:-\s+)?[\w.-]+:\s+\S/gm, 1.5, 6],
-  ['yaml', /^\s*(?!(?:else|try|finally|except|elif|if|for|while|with|def|class|default|case|public|private|protected)\b)[\w.-]+:\s*$/gm, 1, 4],
+  ['yaml', /^[ \t]*(?:-\s+)?[\w.-]+:\s+\S/gm, 1.5, 6],
+  ['yaml', /^[ \t]*(?!(?:else|try|finally|except|elif|if|for|while|with|def|class|default|case|public|private|protected)\b)[\w.-]+:\s*$/gm, 1, 4],
   ['yaml', /^---\s*$/gm, 2, 1],
-  ['yaml', /^\s*(?:apiVersion|kind|metadata|spec|services|image|steps|jobs|runs-on|uses):/gm, 3, 3],
+  ['yaml', /^[ \t]*(?:apiVersion|kind|metadata|spec|services|image|steps|jobs|runs-on|uses):/gm, 3, 3],
   ['yaml', /[;{}]\s*$/gm, -1, 6],
   // A line with no key, no item and no comment is not YAML: `commit 8474d13`.
-  ['yaml', /^\s*(?![-#\s])[^:\n]+$/gm, -2, 4],
+  ['yaml', /^[ \t]*(?![-#\s])[^:\n]+$/gm, -2, 4],
 
   // TOML and INI
-  ['toml', /^\s*\[\[?[\w.\- "]+\]\]?\s*$/gm, 2, 3],
-  ['toml', /^\s*[\w.-]+\s*=\s*(?:"[^"]*"|'[^']*'|\d|true\b|false\b|\[|\{)/gm, 2, 5],
-  ['ini', /^\s*\[[\w.\- ]+\]\s*$/gm, 2, 3],
-  ['ini', /^\s*[\w.-]+\s*=\s*[^"'\s[{\d]/gm, 1.5, 5],
+  // A section names the file's kind; bare `x = 1` lines could be any language.
+  ['toml', /^[ \t]*\[\[?[\w.\- "]+\]\]?[ \t]*$/gm, 3, 3],
+  ['toml', /^[ \t]*[\w.-]+[ \t]*=[ \t]*(?:"[^"]*"|'[^']*'|\d|true\b|false\b|\[|\{)/gm, 1, 5],
+  ['ini', /^[ \t]*\[[\w.\- ]+\][ \t]*$/gm, 3, 3],
+  ['ini', /^[ \t]*[\w.-]+[ \t]*=[ \t]*[^"'\s[{\d]/gm, 1, 5],
 
   // Go
   ['go', /^package\s+\w+\s*$/m, 8],
-  ['go', /^\s*func\s+(?:\([^)]*\)\s*)?\w+\s*\(/gm, 4, 3],
+  ['go', /^[ \t]*func\s+(?:\([^)]*\)\s*)?\w+\s*\(/gm, 4, 3],
   ['go', /:=/g, 2, 3],
   ['go', /\bfmt\.\w+\(/g, 5, 2],
   ['go', /^import\s*(?:\(|"[^"]+")/m, 4],
@@ -93,27 +99,27 @@ const RULES: readonly Rule[] = [
   // Rust
   ['rust', /\bfn\s+\w+\s*(?:<[^>]*>)?\s*\(/g, 5, 3],
   ['rust', /\blet\s+mut\s+/g, 6, 2],
-  ['rust', /^\s*(?:impl\b|(?:pub\s+)?trait\s+\w+)/gm, 5, 2],
-  ['rust', /^\s*pub(?:\(crate\))?\s+(?:fn|struct|enum|mod|use)\b/gm, 4, 2],
+  ['rust', /^[ \t]*(?:impl\b|(?:pub\s+)?trait\s+\w+)/gm, 5, 2],
+  ['rust', /^[ \t]*pub(?:\(crate\))?\s+(?:fn|struct|enum|mod|use)\b/gm, 4, 2],
   ['rust', /\b(?:println|vec|format|macro_rules|panic|assert_eq|eprintln)!/g, 6, 2],
-  ['rust', /^\s*use\s+\w+(?:::[\w{}*, ]+)+;/gm, 5, 2],
+  ['rust', /^[ \t]*use\s+\w+(?:::[\w{}*, ]+)+;/gm, 5, 2],
   ['rust', /&(?:mut\s+)?(?:str|self)\b|\bOption<|\bResult<|\bSome\(|\bOk\(/g, 3, 3],
 
   // Java and C#
   ['java', /\bSystem\.out\.print(?:ln)?\(/g, 8, 1],
-  ['java', /^\s*import\s+javax?\./gm, 8, 1],
-  ['java', /^\s*package\s+[\w.]+;/m, 6],
+  ['java', /^[ \t]*import\s+javax?\./gm, 8, 1],
+  ['java', /^[ \t]*package\s+[\w.]+;/m, 6],
   ['java', /@Override\b/g, 5, 1],
   ['java', /\bString\[\]\s+args\b/g, 6, 1],
-  ['java', /^\s*(?:public|private|protected)\s+(?:static\s+)?(?:final\s+)?(?:class|interface|enum|void|record)\b/gm, 3, 2],
-  ['csharp', /^\s*using\s+System(?:\.\w+)*;/gm, 8, 1],
+  ['java', /^[ \t]*(?:public|private|protected)\s+(?:static\s+)?(?:final\s+)?(?:class|interface|enum|void|record)\b/gm, 3, 2],
+  ['csharp', /^[ \t]*using\s+System(?:\.\w+)*;/gm, 8, 1],
   ['csharp', /\bConsole\.Write(?:Line)?\(/g, 8, 1],
   ['csharp', /\{\s*get;\s*(?:(?:private\s+)?set;)?\s*\}/g, 6, 1],
-  ['csharp', /^\s*(?:public|private|protected)\s+(?:static\s+)?(?:class|interface|void)\b/gm, 2, 2],
+  ['csharp', /^[ \t]*(?:public|private|protected)\s+(?:static\s+)?(?:class|interface|void)\b/gm, 2, 2],
 
   // C, and C++ on top of it (see `cpp` below)
-  ['c', /^\s*#include\s*[<"]/gm, 6, 1],
-  ['c', /^\s*#(?:define|ifndef|ifdef|endif|pragma)\b/gm, 3, 2],
+  ['c', /^[ \t]*#include\s*[<"]/gm, 6, 1],
+  ['c', /^[ \t]*#(?:define|ifndef|ifdef|endif|pragma)\b/gm, 3, 2],
   ['c', /\bint\s+main\s*\(/g, 4, 1],
   ['c', /\bprintf\s*\(|\bmalloc\s*\(|#include\s*<(?:stdio|stdlib|string|unistd)\.h>/g, 2, 3],
   ['cpp', /\bstd::\w+|\b(?:cout|cin|cerr)\s*(?:<<|>>)|\btemplate\s*<|\bnullptr\b|#include\s*<(?:iostream|vector|string|map|memory|algorithm)>/g, 4, 3],
@@ -121,40 +127,40 @@ const RULES: readonly Rule[] = [
   // PHP and Ruby
   ['php', /<\?php/g, 15, 1],
   ['php', /\$this->|\$\w+\s*->\s*\w+/g, 3, 3],
-  ['ruby', /^\s*def\s+\w+[?!]?(?:\(.*\))?\s*$/gm, 3, 3],
-  ['ruby', /^\s*end\s*$/gm, 1.5, 4],
+  ['ruby', /^[ \t]*def\s+\w+[?!]?(?:\(.*\))?\s*$/gm, 3, 3],
+  ['ruby', /^[ \t]*end\s*$/gm, 1.5, 4],
   ['ruby', /\bputs\s|\.each\s+do\s*\||\bdo\s*\|[\w, ]+\||\battr_(?:accessor|reader|writer)\b/g, 5, 2],
-  ['ruby', /^\s*class\s+\w+\s*<\s*\w+/gm, 5, 1],
+  ['ruby', /^[ \t]*class\s+\w+\s*<\s*\w+/gm, 5, 1],
 
   // Lua
-  ['lua', /^\s*local\s+(?:function\s+)?\w+/gm, 4, 3],
+  ['lua', /^[ \t]*local\s+(?:function\s+)?\w+/gm, 4, 3],
   ['lua', /~=|\belseif\b/g, 3, 2],
-  ['lua', /^\s*end\s*$/gm, 1, 3],
+  ['lua', /^[ \t]*end\s*$/gm, 1, 3],
 
   // SQL
   ['sql', /\bselect\b[\s\S]{1,400}?\bfrom\b/i, 6],
-  ['sql', /^\s*(?:insert\s+into|update\s+\w+\s+set|delete\s+from|create\s+(?:table|index|view|database|schema)|alter\s+table|drop\s+(?:table|index|database)|truncate\s+table|with\s+\w+\s+as\s*\()/gim, 7, 2],
+  ['sql', /^[ \t]*(?:insert\s+into|update\s+\w+\s+set|delete\s+from|create\s+(?:table|index|view|database|schema)|alter\s+table|drop\s+(?:table|index|database)|truncate\s+table|with\s+\w+\s+as\s*\()/gim, 7, 2],
   ['sql', /\b(?:where|join|group\s+by|order\s+by|limit|values|primary\s+key|varchar)\b/gi, 1, 4],
 
   // HTML and XML
   ['html', /<!doctype\s+html/i, 10],
   ['html', /<(?:html|head|body|div|span|p|a|ul|ol|li|script|style|table|tr|td|img|meta|link|section|header|footer|button|input|form|template|h[1-6])\b[^>]*>/g, 2, 6],
   ['html', /<\/[a-z][\w-]*>/g, 1, 4],
-  ['xml', /^\s*<\?xml\b/m, 12],
+  ['xml', /^[ \t]*<\?xml\b/m, 12],
   ['xml', /<\/?[\w-]+:[\w-]+[\s/>]/g, 2, 3],
 
   // CSS, and SCSS on top of it (see `scss` below)
-  ['css', /^\s*(?:[.#]?[\w-]+|\*|::?[\w-]+)(?:[\s,>+~]+(?:[.#]?[\w-]+|::?[\w-]+))*\s*\{\s*$/gm, 1, 4],
-  ['css', /^\s*[a-z-]+\s*:\s*[^;{}\n]+;\s*$/gm, 1.5, 6],
+  ['css', /^[ \t]*(?:[.#]?[\w-]+|\*|::?[\w-]+)(?:[\s,>+~]+(?:[.#]?[\w-]+|::?[\w-]+))*\s*\{\s*$/gm, 1, 4],
+  ['css', /^[ \t]*[a-z-]+\s*:\s*[^;{}\n]+;\s*$/gm, 1.5, 6],
   ['css', /@(?:media|import|keyframes|font-face|supports)\b/g, 5, 1],
   ['css', /\b\d+(?:px|rem|em|vh|vw)\b/g, 1, 3],
-  ['scss', /^\s*\$[\w-]+\s*:|@(?:mixin|include|extend|use|forward)\b|&(?::|\.|-)/gm, 4, 2],
+  ['scss', /^[ \t]*\$[\w-]+\s*:|@(?:mixin|include|extend|use|forward)\b|&(?::|\.|-)/gm, 4, 2],
 
   // Build and config files
   ['dockerfile', /^FROM\s+[\w.-]+(?:[:/@][\w./:@-]+)+/m, 6],
   ['dockerfile', /^(?:RUN|CMD|COPY|ADD|ENV|WORKDIR|EXPOSE|ENTRYPOINT|ARG|USER|VOLUME|LABEL)\s/gm, 4, 5],
-  ['nginx', /^\s*(?:server|location|upstream|http|events)\b[^{;\n]*\{/gm, 3, 3],
-  ['nginx', /^\s*(?:listen|server_name|proxy_pass|root|index|rewrite|add_header|proxy_set_header|ssl_certificate)\s+[^;\n]+;/gm, 3, 4],
+  ['nginx', /^[ \t]*(?:server|location|upstream|http|events)\b[^{;\n]*\{/gm, 3, 3],
+  ['nginx', /^[ \t]*(?:listen|server_name|proxy_pass|root|index|rewrite|add_header|proxy_set_header|ssl_certificate)\s+[^;\n]+;/gm, 3, 4],
   ['makefile', /^\.PHONY\s*:/m, 10],
   ['makefile', /^[\w.%/-]+(?:\s+[\w.%/-]+)*\s*:(?!=)[^\n]*\n\t/gm, 5, 3],
   ['makefile', /\$\((?:CC|CFLAGS|MAKE|shell|wildcard|patsubst)\b/g, 4, 2],
@@ -164,10 +170,10 @@ const RULES: readonly Rule[] = [
   ['diff', /^diff --git\s|^@@\s+-\d+(?:,\d+)?\s+\+\d+(?:,\d+)?\s+@@/m, 10],
   ['diff', /^(?:---|\+\+\+)\s+(?:a\/|b\/|\S+\s+\d{4}-)/gm, 4, 2],
   ['diff', /^[+-](?![+-])/gm, 0.5, 6],
-  ['vim', /^\s*(?:set\s+\w+|let\s+[gbsl]:|n?noremap|inoremap|vnoremap|nmap|autocmd|augroup|syntax\s+on|filetype\s+plugin|colorscheme)\b/gm, 4, 4],
+  ['vim', /^[ \t]*(?:set\s+\w+|let\s+[gbsl]:|n?noremap|inoremap|vnoremap|nmap|autocmd|augroup|syntax\s+on|filetype\s+plugin|colorscheme)\b/gm, 4, 4],
 
   // Other languages, by their surest marks
-  ['swift', /^\s*import\s+(?:UIKit|SwiftUI|Foundation|Combine|AppKit)\s*$/m, 10],
+  ['swift', /^[ \t]*import\s+(?:UIKit|SwiftUI|Foundation|Combine|AppKit)\s*$/m, 10],
   ['swift', /\bguard\s+let\b|\bif\s+let\b|@(?:State|Published|Binding|main|objc|IBOutlet)\b|\bstruct\s+\w+\s*:\s*View\b/g, 6, 2],
   ['kotlin', /\bfun\s+(?:<[^>]*>\s*)?[\w.]+\s*\(/g, 6, 2],
   ['kotlin', /\bdata\s+class\b|\bcompanion\s+object\b/g, 6, 1],
@@ -175,27 +181,27 @@ const RULES: readonly Rule[] = [
   ['scala', /\bcase\s+class\b|\bobject\s+\w+\s+extends\b|\bdef\s+\w+\s*(?:\[[^\]]*\])?\s*\(.*\)\s*:\s*\w+\s*=/g, 6, 2],
   ['haskell', /^\w+\s*::\s*/gm, 6, 3],
   ['haskell', /^import\s+qualified\b|^module\s+[A-Z][\w.]*\s+where/m, 8],
-  ['elixir', /^\s*defmodule\s+[A-Z]|\bIO\.puts\b/m, 8],
-  ['elixir', /^\s*defp?\s+\w+.*\bdo\s*$/gm, 5, 2],
+  ['elixir', /^[ \t]*defmodule\s+[A-Z]|\bIO\.puts\b/m, 8],
+  ['elixir', /^[ \t]*defp?\s+\w+.*\bdo\s*$/gm, 5, 2],
   ['elixir', /\|>/g, 2, 3],
   ['erlang', /^-module\(/m, 10],
   ['r', /\blibrary\(\w+\)|\bggplot\(|\bdata\.frame\(/g, 6, 2],
   ['r', /\w+\s*<-\s*/g, 2, 4],
-  ['perl', /^\s*use\s+strict;|^#!.*perl|\bmy\s+[$@%]\w+/gm, 5, 2],
+  ['perl', /^[ \t]*use\s+strict;|^#!.*perl|\bmy\s+[$@%]\w+/gm, 5, 2],
   ['latex', /\\(?:documentclass|usepackage|begin|end)\{/g, 5, 3],
   ['latex', /\\(?:section|subsection|textbf|emph|frac|label|ref|cite)\{/g, 2, 3],
-  ['graphql', /^\s*(?:query|mutation|subscription|fragment)\s+\w+[\s({]/gm, 6, 2],
-  ['graphql', /^\s*\w+\s*(?:\([^)]*\))?\s*:\s*\[?[A-Z]\w*!/gm, 3, 3],
-  ['protobuf', /^\s*syntax\s*=\s*"proto[23]"/m, 12],
-  ['protobuf', /^\s*(?:repeated|optional|required)?\s*\w+\s+\w+\s*=\s*\d+;/gm, 3, 3],
-  ['dart', /^\s*import\s+'package:|\bWidget\s+build\(|@override\b/gm, 8, 2],
-  ['groovy', /\b(?:implementation|testImplementation|compileOnly)\s*[('"]|^\s*(?:plugins|dependencies|repositories|android)\s*\{/gm, 5, 2],
+  ['graphql', /^[ \t]*(?:query|mutation|subscription|fragment)\s+\w+[\s({]/gm, 6, 2],
+  ['graphql', /^[ \t]*\w+\s*(?:\([^)]*\))?\s*:\s*\[?[A-Z]\w*!/gm, 3, 3],
+  ['protobuf', /^[ \t]*syntax\s*=\s*"proto[23]"/m, 12],
+  ['protobuf', /^[ \t]*(?:repeated|optional|required)?\s*\w+\s+\w+\s*=\s*\d+;/gm, 3, 3],
+  ['dart', /^[ \t]*import\s+'package:|\bWidget\s+build\(|@override\b/gm, 8, 2],
+  ['groovy', /\b(?:implementation|testImplementation|compileOnly)\s*[('"]|^[ \t]*(?:plugins|dependencies|repositories|android)\s*\{/gm, 5, 2],
   ['zig', /@import\("std"\)/g, 12, 1],
-  ['objectivec', /^\s*#import\s*[<"]|@(?:interface|implementation|property)\b/gm, 6, 2],
-  ['lisp', /^\s*\((?:defun|defvar|defmacro|setq|use-package|defcustom)\b/gm, 5, 3],
-  ['markdown', /^\s*[-*+]\s+\[[ xX]\]\s|\[[^\]\n]+\]\([^)\s]+\)|\*\*[^*\n]+\*\*|^`{3}/gm, 2, 4],
+  ['objectivec', /^[ \t]*#import\s*[<"]|@(?:interface|implementation|property)\b/gm, 6, 2],
+  ['lisp', /^[ \t]*\((?:defun|defvar|defmacro|setq|use-package|defcustom)\b/gm, 5, 3],
+  ['markdown', /^[ \t]*[-*+]\s+\[[ xX]\]\s|\[[^\]\n]+\]\([^)\s]+\)|\*\*[^*\n]+\*\*|^`{3}/gm, 2, 4],
   ['markdown', /^#{1,6}\s+\S/gm, 1, 3],
-  ['mermaid', /^\s*(?:(?:graph|flowchart)\s+(?:TD|TB|BT|RL|LR)\b|sequenceDiagram|classDiagram|stateDiagram(?:-v2)?|erDiagram|gantt|journey|gitGraph|mindmap)/m, 12],
+  ['mermaid', /^[ \t]*(?:(?:graph|flowchart)\s+(?:TD|TB|BT|RL|LR)\b|sequenceDiagram|classDiagram|stateDiagram(?:-v2)?|erDiagram|gantt|journey|gitGraph|mindmap)/m, 12],
 ];
 
 /** A language that is another one with more on top: named only when its own marks are there. */
@@ -219,7 +225,11 @@ function count(text: string, pattern: RegExp): number {
 
 /** The language a fence's code reads as, or null when none stands out. */
 export function detectLanguage(code: string): string | null {
-  const text = code.length > SAMPLE ? code.slice(0, SAMPLE) : code;
+  // Blank lines say nothing about a language, and a long run of them made
+  // every line-start rule rescan the run: a fence of empty lines took seconds.
+  const text = (code.length > SAMPLE ? code.slice(0, SAMPLE) : code)
+    .replace(/\r\n?/g, '\n')
+    .replace(/\n(?:[ \t]*\n)+/g, '\n');
   const trimmed = text.trim();
   if (trimmed.replace(/\s/g, '').length < 3) return null;
 

@@ -104,6 +104,31 @@ describe('what copying puts on the clipboard', () => {
     expect(select(fence + 1, after + 3)).toBe('```bash\nnpm install\nnpm test\n```\n\nAf');
   });
 
+  it('keeps the markdown of a whole line selected onto the next line\'s start, outside code', () => {
+    const doc = '## Title\n\nNext.';
+    const state = EditorState.create({ doc: docFromSpans(splitBlocks(doc).spans) });
+    const next = state.doc.child(0).nodeSize;
+    const selected = state.apply(state.tr.setSelection(TextSelection.create(state.doc, 1, next + 1)));
+    expect(inlineCopyText(selected)).toBeNull();
+    expect(sliceToMarkdown(selected.selection.content()).trimEnd()).toBe('## Title');
+  });
+
+  it('copies the code of a fence inside a list item without its fence', () => {
+    const doc = '- item\n\n  ```sh\n  ls -la\n  ```\n\n  after\n';
+    const state = EditorState.create({ doc: docFromSpans(splitBlocks(doc).spans) });
+    let fence = -1;
+    let after = -1;
+    state.doc.descendants((node, pos) => {
+      if (node.type.name === 'code_block') fence = pos;
+      if (node.isTextblock && node.textContent === 'after') after = pos;
+      return true;
+    });
+    expect(fence).toBeGreaterThan(0);
+    expect(after).toBeGreaterThan(fence);
+    const selected = state.apply(state.tr.setSelection(TextSelection.create(state.doc, fence + 1, after + 1)));
+    expect(inlineCopyText(selected)).toBe('ls -la');
+  });
+
   it('gives nothing back for an empty selection', () => {
     const state = EditorState.create({ doc: docFromSpans(splitBlocks('text').spans) });
     expect(sliceToMarkdown(state.selection.content())).toBe('');

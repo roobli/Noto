@@ -783,16 +783,18 @@
   cursor: pointer;
   transition: background-color var(--motion-micro) var(--ease-out), color var(--motion-micro) var(--ease-out);
 
-  &:hover,
+  &:hover:not(:disabled),
   &[aria-expanded='true'] {
     background: color-mix(in srgb, var(--ink) 7%, transparent);
     color: var(--ink);
   }
+  &:disabled { cursor: default; }
   &:focus-visible { outline: 2px solid color-mix(in srgb, var(--accent) 55%, transparent); outline-offset: 1px; }
 }
 
-/* A small chevron: the word opens a list. On `::before`, since `::after`
-   is the hit area, and ordered after the words. */
+/* A small chevron: the word opens a list, and none when it cannot. On
+   `::before`, since `::after` is the hit area, and ordered after the words. */
+.ProseMirror .noto-fence-lang:disabled::before { display: none; }
 .ProseMirror .noto-fence-lang::before {
   content: '';
   order: 2;
@@ -923,6 +925,8 @@
   padding: 7px 9px;
   color: var(--muted);
   font-size: 12px;
+
+  &[hidden] { display: none; }
 }
 
 @media (prefers-reduced-motion: reduce) {

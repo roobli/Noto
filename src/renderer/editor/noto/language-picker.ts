@@ -53,18 +53,21 @@ export class LanguagePicker {
   private readonly root: HTMLElement;
   private readonly field: HTMLInputElement;
   private readonly list: HTMLElement;
+  private readonly empty: HTMLElement;
   private rows: Row[] = [];
+  /** Where the pointer last was, so a list scrolled under a still pointer does not count as a move. */
+  private pointer = { x: -1, y: -1 };
   private active = 0;
   private closed = false;
   private frame: number | null = null;
 
   static show(anchor: HTMLElement, options: LanguagePickerOptions): LanguagePicker {
     open?.close(false);
-    open = new LanguagePicker(anchor, options);
-    return open;
+    return new LanguagePicker(anchor, options);
   }
 
   private constructor(private readonly anchor: HTMLElement, private readonly options: LanguagePickerOptions) {
+    open = this;
     this.root = document.createElement('div');
     this.root.className = 'noto-lang-picker';
     this.root.dataset.testid = 'language-picker';
@@ -77,6 +80,7 @@ export class LanguagePicker {
     this.field.placeholder = 'Search languages';
     this.field.spellcheck = false;
     this.field.autocomplete = 'off';
+    this.field.setAttribute('aria-label', 'Search languages');
     this.field.setAttribute('role', 'combobox');
     this.field.setAttribute('aria-expanded', 'true');
     this.field.setAttribute('aria-autocomplete', 'list');
@@ -87,14 +91,22 @@ export class LanguagePicker {
     this.list.id = 'noto-lang-picker-list';
     this.list.setAttribute('role', 'listbox');
 
-    this.root.append(this.field, this.list);
+    this.empty = document.createElement('div');
+    this.empty.className = 'noto-lang-picker-empty';
+    this.empty.textContent = 'No language by that name';
+    this.empty.hidden = true;
+
+    this.root.append(this.field, this.list, this.empty);
     document.body.append(this.root);
 
     this.field.addEventListener('input', this.refresh);
     this.field.addEventListener('keydown', this.onKey);
     this.field.addEventListener('blur', this.onBlur);
-    // A press on a row must not take the keys from the field; the click chooses.
-    this.list.addEventListener('mousedown', (event) => event.preventDefault());
+    // A press anywhere in the list but the field must not take the keys from
+    // the field, or the field's blur would close it; a click on a row chooses.
+    this.root.addEventListener('mousedown', (event) => {
+      if (event.target !== this.field) event.preventDefault();
+    });
     this.list.addEventListener('click', this.onClick);
     this.list.addEventListener('pointermove', this.onHover);
     document.addEventListener('pointerdown', this.onPressOutside, true);
@@ -121,8 +133,10 @@ export class LanguagePicker {
 
   private choose(row: Row | undefined): void {
     if (!row) return;
-    this.options.onPick(row.lang);
+    // Closed first, so the keys are back in the note even if the choice
+    // redraws the fence this list hangs from.
     this.close(true);
+    this.options.onPick(row.lang);
   }
 
   /** The rows for what is typed now. */
@@ -140,13 +154,14 @@ export class LanguagePicker {
     const guessEntry = guess ? languageEntry(guess) : null;
     const rows: Row[] = [];
     const seen = new Set<LanguageEntry>();
-    const add = (entry: LanguageEntry, detail: string) => {
+    const add = (entry: LanguageEntry, detail: string, lang = entry.id) => {
       if (seen.has(entry)) return;
       seen.add(entry);
-      rows.push({ lang: entry.id, name: entry.name, detail, nameMarks: [], detailMarks: [] });
+      rows.push({ lang, name: entry.name, detail, nameMarks: [], detailMarks: [] });
     };
     if (current) {
-      if (currentEntry) add(currentEntry, current);
+      // As the fence writes it, so keeping it changes nothing: `ts` stays `ts`.
+      if (currentEntry) add(currentEntry, current, current);
       else rows.push({ lang: current, name: current, detail: 'as written', nameMarks: [], detailMarks: [] });
     } else if (guessEntry) {
       add(guessEntry, 'detected');
@@ -195,7 +210,10 @@ export class LanguagePicker {
       option.setAttribute('role', 'option');
       option.setAttribute('aria-selected', String(index === this.active));
       const rowId = row.lang ? languageEntry(row.lang)?.id ?? row.lang : '';
-      if (rowId === chosen && (rowId !== '' || current === '')) option.dataset.current = '';
+      if (rowId === chosen && (rowId !== '' || current === '')) {
+        option.dataset.current = '';
+        option.setAttribute('aria-label', `${row.name}, current`);
+      }
       const name = document.createElement('span');
       name.className = 'noto-lang-option-name';
       name.append(...marked(row.name, row.nameMarks));
@@ -205,22 +223,17 @@ export class LanguagePicker {
       option.append(name, detail);
       return option;
     }));
-    if (this.rows.length === 0) {
-      const empty = document.createElement('div');
-      empty.className = 'noto-lang-picker-empty';
-      empty.textContent = 'No language by that name';
-      this.list.append(empty);
-    }
+    this.empty.hidden = this.rows.length > 0;
     this.showActive();
   }
 
-  private showActive(): void {
+  private showActive(scroll = true): void {
     const options = this.list.querySelectorAll<HTMLElement>('.noto-lang-option');
     options.forEach((option, index) => option.setAttribute('aria-selected', String(index === this.active)));
     const row = options[this.active];
     if (row) {
       this.field.setAttribute('aria-activedescendant', row.id);
-      row.scrollIntoView({ block: 'nearest' });
+      if (scroll) row.scrollIntoView({ block: 'nearest' });
     } else {
       this.field.removeAttribute('aria-activedescendant');
     }
@@ -245,12 +258,15 @@ export class LanguagePicker {
   };
 
   private readonly onHover = (event: PointerEvent): void => {
+    // The list scrolling under a pointer that has not moved is the arrows'
+    // doing, not the pointer's, and must not take the row back from them.
+    if (event.clientX === this.pointer.x && event.clientY === this.pointer.y) return;
+    this.pointer = { x: event.clientX, y: event.clientY };
     const option = (event.target as Element).closest<HTMLElement>('.noto-lang-option');
     const index = option ? Number(option.dataset.index) : -1;
     if (index >= 0 && index !== this.active) {
       this.active = index;
-      this.list.querySelectorAll('.noto-lang-option')
-        .forEach((row, at) => row.setAttribute('aria-selected', String(at === index)));
+      this.showActive(false);
     }
   };
 
@@ -270,7 +286,8 @@ export class LanguagePicker {
     this.close(false);
   };
 
-  // The window losing focus, or the keys going anywhere but a row.
+  // The keys going anywhere but the field: Tab out of it, or a click the
+  // press handler did not see. The window losing focus keeps it open.
   private readonly onBlur = (): void => {
     queueMicrotask(() => {
       if (!this.closed && document.activeElement !== this.field) this.close(false);

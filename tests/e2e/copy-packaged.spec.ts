@@ -151,6 +151,26 @@ test('copy a selection inside one block as what was selected', async () => {
     await invokeMenu(app, 'select-all');
     await frames(page);
     expect((await copy(app, page)).text).toContain('# Copy');
+
+    // Cut takes what copy takes: the code goes, and the next paragraph stays
+    // where it was rather than being pulled up into the fence.
+    await page.locator('.ProseMirror h1').click();
+    await page.evaluate(() => {
+      const code = document.querySelector('.ProseMirror pre code')!;
+      const after = [...document.querySelectorAll('.ProseMirror p')].find((p) => p.textContent === 'After the fence.')!;
+      const range = document.createRange();
+      range.setStart(document.createTreeWalker(code, NodeFilter.SHOW_TEXT).nextNode()!, 0);
+      range.setEnd(document.createTreeWalker(after, NodeFilter.SHOW_TEXT).nextNode()!, 0);
+      const selection = window.getSelection()!;
+      selection.removeAllRanges();
+      selection.addRange(range);
+    });
+    await frames(page);
+    await app.evaluate(({ clipboard }) => clipboard.clear());
+    await app.evaluate(({ BrowserWindow }) => BrowserWindow.getAllWindows()[0]!.webContents.cut());
+    await expect.poll(() => app.evaluate(({ clipboard }) => clipboard.readText())).toBe('echo one\necho two');
+    await expect(page.locator('.ProseMirror pre code')).toHaveText('');
+    await expect(page.locator('.ProseMirror p').filter({ hasText: 'After the fence.' })).toHaveCount(1);
   } finally {
     await app.close();
   }
