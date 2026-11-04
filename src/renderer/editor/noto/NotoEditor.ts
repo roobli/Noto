@@ -25,7 +25,7 @@ import { EditorView } from 'prosemirror-view';
 import { closeHistory, history, redo, undo } from 'prosemirror-history';
 import { dropCursor } from 'prosemirror-dropcursor';
 import { gapCursor } from 'prosemirror-gapcursor';
-import { columnResizing, tableEditing } from 'prosemirror-tables';
+import { tableEditing } from 'prosemirror-tables';
 import { Fragment, type Node as ProseNode } from 'prosemirror-model';
 import { notoSchema } from '../../../shared/markdown/v3/pm/schema';
 import { blockFromSpan, blocksFromSpans, docFromSpans } from '../../../shared/markdown/v3/pm/from-mdast';
@@ -432,7 +432,6 @@ export class NotoEditor implements NotoEditorPort {
       typoraMarksPlugin(() => this.markKinds),
       typewriterPlugin(() => this.typewriter),
       autoPairPlugin(() => this.autoPair),
-      columnResizing(),
       tableEditing(),
       activeNodePlugin(),
       viewportLayoutPlugin(),

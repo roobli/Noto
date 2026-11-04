@@ -27,6 +27,12 @@ How releases are made, and what each channel receives, is in
 
 ### Changed
 
+- **Tables ask for less attention.** The table's tools stand in the page's
+  right margin beside the table, and only while the caret is in it and the
+  pointer is on it; they used to sit over the line above the table the whole
+  time a cell was being typed in. Only the row and the column under the
+  pointer show a handle, rather than every one at once, and each handle is
+  easier to grab. Every tool is in the Table menu as well.
 - **A caret you can find.** Noto draws the caret itself: two pixels in the
   accent where the browser would put its own one-pixel line. It stays solid
   while you type or move and breathes softly once it sits still, rather than
@@ -68,8 +74,18 @@ How releases are made, and what each channel receives, is in
   Cmd-Alt-S opens the card for the selected words instead of turning them
   into a note's text.
 
+### Removed
+
+- **Dragging a column's edge to set its width.** Markdown has no way to keep
+  a column's width, so the width was lost on save, and the drag rewrote the
+  table's rows behind the editor's back. Columns size to their text.
+
 ### Fixed
 
+- **Moving a row or column by its handle works more than once.** The
+  handles went away with the first move, with the caret moving between cells
+  and with every key typed, and came back only when the pointer left the
+  table and returned.
 - **Undo works in Source Code Mode, and leaving it shows what it says.**
   Cmd+Z there undid a change in the hidden rendered note instead of the
   text, so the text and the note drifted apart and leaving showed the note's
