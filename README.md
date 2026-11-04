@@ -41,8 +41,8 @@ The four states below come from the packaged build in the light theme.
 ## Project status
 
 Noto is usable and under active development. The current formal release is
-`v0.0.3` (17 October 2026), the first release outside alpha, on the Stable
-channel. It is unsigned by choice: macOS builds are ad-hoc signed and not
+`v0.0.4` (3 November 2026), on the Stable channel; the first release outside
+alpha was `v0.0.3`. Releases are unsigned by choice: macOS builds are ad-hoc signed and not
 notarized, the Windows installer is not code-signed, and there is no dmg.
 Signing comes in a later release: an Apple Developer ID with notarization on
 macOS and a code-signing certificate on Windows, and only then is in-app
@@ -51,8 +51,8 @@ The honest summary of where it stands is worth reading before you depend on
 it.
 
 All three platforms are now verified the same way: the packaged application is
-built and then driven through its real interface, and the whole suite of about 270 packaged tests passes on macOS, Windows and Linux
-on every change, alongside over 2,500 unit tests. Windows was unproven until the run that proved it,
+built and then driven through its real interface, and the whole suite of about 300 packaged tests passes on macOS, Windows and Linux
+on every change, alongside nearly 3,000 unit tests. Windows was unproven until the run that proved it,
 which is also the run that found two faults nobody could have read out of the
 code: every plugin came up needing recovery because a durability step that
 only POSIX has was being treated as a failure, and the remote control refused
@@ -70,10 +70,10 @@ numbers are below.
 
 Builds for macOS, Windows and Linux are on the
 [releases page](https://github.com/roobli/Noto/releases). Each release carries
-the downloads listed below, as of `v0.0.3`. macOS ships as zips; there is no
+the downloads listed below, as of `v0.0.4`. macOS ships as zips; there is no
 dmg.
 
-**First open:** `v0.0.3` is unsigned, so each OS warns once on a fresh
+**First open:** `v0.0.4` is unsigned, so each OS warns once on a fresh
 download. That is expected, not a broken build. On macOS, Gatekeeper blocks a
 double-click on the first open; on Windows, SmartScreen asks once (*More info →
 Run anyway*). Follow [`docs/install.md`](docs/install.md) (short, per

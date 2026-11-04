@@ -9,17 +9,37 @@ How releases are made, and what each channel receives, is in
 
 ## [Unreleased]
 
+## [0.0.4] - 2026-11-03
+
+The second full release, on the Stable channel. It carries the two `0.0.4`
+alphas, summarised at the end of this section, and everything listed here.
+Several fixes protect notes: a click on one of several empty notes could show
+another and route a save to it, a note with a full-width space before `>`
+froze as it opened, and unsaved edits are now asked about before Close Tab,
+closing the window or quitting would lose them. It also adds plugins installed
+from a folder, GitHub or a marketplace, sandboxed by default, a view of a
+note's unsaved changes, and a board of every shortcut. Like `0.0.3`, it is not
+signed; [docs/install.md](docs/install.md) has the steps for opening it the
+first time.
+
 ### Added
 
-- View > Show Git Changes, and a Git changes switch in Settings > Editor,
+- **View > Show Git Changes, and a Git changes switch in Settings > Editor,
   hide the bars beside changed blocks and the marks on changed notes in the
-  tree, for a clean screenshot. Turned back on, the current changes show at
+  tree, for a clean screenshot.** Turned back on, the current changes show at
   once.
-
-- File > Refresh Folder (Cmd-Alt-R) reads the open folder again: the tree,
-  Quick Open and the git marks. The folder was already followed on disk; this
+- **A new note asks for its name on its row.** File > New Note puts a name
+  field on the new note's row in the tree with Untitled selected. Return names
+  it and moves to the note; Escape or a click elsewhere keeps `Untitled.md`,
+  which is already on disk.
+- **Collapse Other Folders.** A button beside the rail's search, and View >
+  Collapse Other Folders (formerly Collapse All), shut every folder except
+  the ones leading to the note in front and scroll its row back into view.
+  With no note in front, every folder shuts, as before.
+- **File > Refresh Folder (Cmd-Alt-R) reads the open folder again: the tree,
+  Quick Open and the git marks.** The folder was already followed on disk; this
   is the same work on request.
-- Plugins can add to the editor. A trusted plugin registers an editor
+- **Plugins can add to the editor.** A trusted plugin registers an editor
   extension (ProseMirror plugins and named commands) that every open note
   picks up at once and drops when the plugin is switched off.
 - **See a note's unsaved changes before saving them.** While a note has
@@ -45,7 +65,6 @@ How releases are made, and what each channel receives, is in
   machine or the local network (an address, `localhost`, `.local` and the
   like). While a block is being edited its pages wait until the caret leaves,
   so a half-typed address is never fetched.
-
 - **Plugins you install yourself: from a folder, from GitHub, or from a
   marketplace.** Plugin Center can add a plugin from a folder you pick, from a
   GitHub repository (or a folder in one), or from a marketplace, a GitHub
@@ -75,19 +94,23 @@ How releases are made, and what each channel receives, is in
 
 ### Changed
 
-- Sidenotes are a bundled plugin, Sidenotes, switched on by default and
-  turned off in Plugin Center rather than in Settings > Markdown. Its key,
+- **Sidenotes are a bundled plugin, Sidenotes, switched on by default and
+  turned off in Plugin Center rather than in Settings > Markdown.** Its key,
   Cmd-Alt-S, wraps the selection in a note as before; the Format menu no
   longer lists it.
-- File > New Note makes the note beside the note in front instead of at the
-  root of the open folder.
-- A press on a pinned row at the top of the tree brings that row back to its
-  place instead of collapsing the folder under the pointer.
+- **File > New Note makes the note beside the note in front instead of at the
+  root of the open folder.**
+- **A press on a pinned row at the top of the tree brings that row back to its
+  place instead of collapsing the folder under the pointer.**
 - **Settings use the window.** The panes' list is wider, grouped under General
   and Advanced, and marks the open pane with a filled pill. Each pane opens
   with its name and a line saying what it is for, and its settings sit in
   grouped cards on a wider column centred in the pane, where they were a
   narrow strip of rows.
+- **Settings has a title bar.** On macOS the window buttons no longer sit on
+  the Settings search field, and the window can be dragged by the top of
+  Settings. Editor's fourteen switches are grouped into Writing, Code blocks
+  and Files, and Load images from the web is set only under Images.
 - **Quick open is taller.** It lists up to thirty notes and grows to most of
   the window's height, where it showed twelve in a strip high on the page.
 - **The log says why, and the remote control can debug.** A failed operation
@@ -103,59 +126,62 @@ How releases are made, and what each channel receives, is in
 
 ### Fixed
 
-- A click on a note opens that note when another open note has the same
-  bytes. Every new note starts empty, and so does an untouched copy of a
+- **A click on a note opens that note when another open note has the same
+  bytes.** Every new note starts empty, and so does an untouched copy of a
   template, so a working folder often holds several identical files. A
   note's identity was the hash of its bytes, so a click on the second empty
   note showed the first, the tree marked the first as the one in front, and
   a save could be routed to the wrong file. Each open note now has an
   identity of its own.
-- Off macOS, Inline Math and Toggle Task Status no longer share Control-M
+- **Off macOS, Inline Math and Toggle Task Status no longer share Control-M
   and Control-X with Minimize and Cut, and Close Window no longer shares
-  Control-W with Close Tab. They move to Alt+Shift+M, Alt+Shift+X and
+  Control-W with Close Tab.** They move to Alt+Shift+M, Alt+Shift+X and
   Control+Shift+W; macOS keeps Typora's keys.
-- A click in a paragraph shows the source of the span it lands in and moves
-  nothing else. Highlight, superscript, subscript and inline tags such as
+- **A click in a paragraph shows the source of the span it lands in and moves
+  nothing else.** Highlight, superscript, subscript and inline tags such as
   `<u>` and `<kbd>` showed every delimiter in the paragraph as soon as the
   caret entered it, so the words after each stepped right by its width.
   They now reveal one span at a time, as bold, emphasis, code and links
   already did.
-- A note with a tab, a no-break space or a full-width space before `>` no
-  longer freezes when it opens. The Markdown engine's quote test and quote
+- **A note with a tab, a no-break space or a full-width space before `>` no
+  longer freezes when it opens.** The Markdown engine's quote test and quote
   strip disagreed on such a line and its loop never ended; fixed in
   `@roobli/md` 0.1.24, which also reads a space or a tab wherever CommonMark
   means one, so a line of full-width spaces no longer splits a paragraph.
-- Quitting cannot hang on a step that never finishes. Each step of the
+- **Quitting cannot hang on a step that never finishes.** Each step of the
   shutdown (plugins, the plugin runtime, the service, settings) has a
   deadline and is logged when it runs past it.
-- Unsaved edits are asked about before they are lost. Close Tab on an
+- **Unsaved edits are asked about before they are lost.** Close Tab on an
   unsaved note asks Save, Don't Save or Cancel; quitting or closing the
   window with unsaved notes asks Review Changes or Discard and Quit; Trash
   says when it would close notes with unsaved edits. Nothing asked before,
   and autosave is off by default.
-- A save lands on the note it was taken from. Moving to another note while a
+- **A save lands on the note it was taken from.** Moving to another note while a
   save was in flight marked that other note saved with this one's baseline.
   With autosave on, a note left with a save pending is saved.
-- Reload from Disk discards unsaved edits when the file has not changed, as
-  its confirm says, instead of keeping them.
-- Quick Open finds a note Noto just made, duplicated or imported.
-- Renaming a note to a name with a dot in it (`Meeting 3.5`) keeps its
+- **A note renamed from the tree is called by its new name in the title bar
+  and the window title.** It went on showing the old one each time it came back
+  to the front, so a note made as `Untitled.md` and then renamed still said
+  Untitled.
+- **Reload from Disk discards unsaved edits when the file has not changed, as
+  its confirm says, instead of keeping them.**
+- **Quick Open finds a note Noto just made, duplicated or imported.**
+- **Renaming a note to a name with a dot in it (`Meeting 3.5`) keeps its
   extension instead of making it vanish from the tree; a name starting with
-  a dot is refused.
-- Two opens of the same note at once share one, instead of leaving a stray
-  copy that raised a false "Changed on disk".
-- Reopen Closed File offers only notes the reader closed, and keeps one whose
-  reopen failed.
-- `noto notes.md` with Noto already running opens the notes.md beside the
-  shell it was run from.
-- A folder past the tree's 2000-entry cap lists the same rows every time.
-
-- Sidenotes stay drawn in the margin wherever the caret is, and from the
+  a dot is refused.**
+- **Two opens of the same note at once share one, instead of leaving a stray
+  copy that raised a false "Changed on disk".**
+- **Reopen Closed File offers only notes the reader closed, and keeps one whose
+  reopen failed.**
+- **`noto notes.md` with Noto already running opens the notes.md beside the
+  shell it was run from.**
+- **A folder past the tree's 2000-entry cap lists the same rows every time.**
+- **Sidenotes stay drawn in the margin wherever the caret is, and from the
   moment a note opens; they used to show only while the caret was in or next
-  to their paragraph.
-- Quick Open lists a folder's notes before anything is typed, instead of an
+  to their paragraph.**
+- **Quick Open lists a folder's notes before anything is typed, instead of an
   empty panel for a folder nobody had opened a note from, and Backspace steps
-  out of a nested folder one level at a time.
+  out of a nested folder one level at a time.**
 - **A plugin's saved state survives a plugin going away.** A saved state
   that named a plugin no longer installed was taken for damage, and every
   plugin failed at the next launch. The entry is now kept, so a plugin that
@@ -212,6 +238,30 @@ How releases are made, and what each channel receives, is in
   wide and full widths. They are now a quiet line of `#tag` words at the head
   of the page, starting where the text starts at every width, with no fill
   until the pointer is on one. A click still opens the notes that share it.
+
+### From the 0.0.4 alphas
+
+What `0.0.3` users also get, in short. The full entries are under
+`0.0.4-alpha.2` and `0.0.4-alpha.1` in [CHANGELOG.md](CHANGELOG.md).
+
+- **Git changes show** in the file tree and beside each changed block, and a
+  changed or deleted block can go back to how it was committed.
+- **Typing no longer changes what is saved.** Emphasis beside Chinese, an
+  underscore inside a word, typed inline code, a typed fence and a typed link
+  were each saved differently from what was typed.
+- **Saving and recovery are safer.** Typing during a save is kept, a note
+  deleted on disk while open can be saved back, and a note can no longer read
+  files outside its folders.
+- **The sidebar runs the full height of the window**, and the tree, Quick
+  Open and wiki links follow notes renamed or moved outside Noto.
+- **The command palette is a real dialog** that takes the keyboard, and below
+  900px wide the sidebar opens over the page instead of pushing it away.
+- **Return after a fence line opens a code block**, as in Typora, and `$$`
+  and Return opens a math block.
+- **Smart quotes, dashes and ellipsis are off for new installs.** Settings →
+  Markdown turns them on.
+- **Updates no longer install themselves while builds are unsigned.** A found
+  update opens its download on the release page.
 
 ## [0.0.4-alpha.2] - 2026-10-27
 
