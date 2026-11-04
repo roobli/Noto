@@ -143,6 +143,14 @@ first time.
   caret entered it, so the words after each stepped right by its width.
   They now reveal one span at a time, as bold, emphasis, code and links
   already did.
+- **A tag typed in a paragraph becomes a tag when its `>` is typed**, as in
+  Typora, so a hand-typed `<span class="sidenote">…</span>` draws as a
+  sidenote at once. It stayed text until the note was opened again. Only
+  names HTML has become tags, so `List<String>` in prose stays text.
+- **Smart quotes, dashes and ellipsis leave code and tags alone.** Inside
+  inline code, even before its closing backtick, and inside an HTML tag being
+  typed, `"` stays straight. With smart quotes on, `class="sidenote"` came out
+  as `class=“sidenote”`, which is not a tag, so the sidenote never drew.
 - **A note with a tab, a no-break space or a full-width space before `>` no
   longer freezes when it opens.** The Markdown engine's quote test and quote
   strip disagreed on such a line and its loop never ended; fixed in

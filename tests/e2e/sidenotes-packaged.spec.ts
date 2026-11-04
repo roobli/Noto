@@ -1,7 +1,7 @@
-import { mkdir, rm, writeFile } from 'node:fs/promises';
+import { mkdir, readFile, rm, writeFile } from 'node:fs/promises';
 import path from 'node:path';
 import { expect, test, _electron as electron, type ElectronApplication, type Page } from '@playwright/test';
-import { packagedExecutable } from './packaged-app';
+import { packagedExecutable, placeCaret } from './packaged-app';
 
 const resultRoot = path.join(process.cwd(), 'test-results', 'sidenotes');
 
@@ -16,10 +16,12 @@ async function launch(
   note = NOTE,
   name = 'note',
   size = { width: 1200, height: 700 },
+  settings: Record<string, unknown> | null = null,
 ): Promise<{ app: ElectronApplication; page: Page }> {
   const workspace = path.join(resultRoot, name);
   await rm(workspace, { recursive: true, force: true });
   await mkdir(path.join(workspace, 'user-data'), { recursive: true });
+  if (settings) await writeFile(path.join(workspace, 'user-data', 'settings.json'), JSON.stringify(settings), 'utf8');
   const file = path.join(workspace, 'note.md');
   await writeFile(file, note, 'utf8');
   const app = await electron.launch({
@@ -130,6 +132,38 @@ test.describe('sidenotes', () => {
       await page.locator('.ProseMirror p').first().click();
       await page.waitForTimeout(300);
       await expect.poll(visibleInMargin).toEqual({ floated: true, pastText: true, painted: true });
+    } finally {
+      await app.close();
+    }
+  });
+
+  test('draw a note typed by hand as soon as its closing tag is typed, with smart quotes on', async () => {
+    const note = '# Notes\n\nA typed claim.\n';
+    const { app, page } = await launch(note, 'typed', { width: 1200, height: 700 }, { smartQuotes: true });
+    try {
+      const paragraph = page.locator('.ProseMirror > p').first();
+      await placeCaret(page, paragraph);
+      await page.keyboard.press('End');
+      await page.keyboard.type('<span class="sidenote">Typed by hand.</span>');
+      await expect(page.locator('.ProseMirror .noto-sidenote')).toHaveText('Typed by hand.');
+      // The caret leaving the block draws it as a numbered note.
+      await page.locator('.ProseMirror > h1').click();
+      await expect(page.locator('.ProseMirror .noto-sidenote-num')).toHaveCount(1);
+
+      await app.evaluate(({ Menu }) => {
+        const find = (items: Electron.MenuItem[]): Electron.MenuItem | null => {
+          for (const item of items) {
+            if (item.id === 'save') return item;
+            const nested = item.submenu ? find(item.submenu.items) : null;
+            if (nested) return nested;
+          }
+          return null;
+        };
+        find(Menu.getApplicationMenu()!.items)!.click();
+      });
+      const file = path.join(resultRoot, 'typed', 'note.md');
+      await expect.poll(() => readFile(file, 'utf8')).toContain('Typed by hand.');
+      expect(await readFile(file, 'utf8')).toBe('# Notes\n\nA typed claim.<span class="sidenote">Typed by hand.</span>\n');
     } finally {
       await app.close();
     }
