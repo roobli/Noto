@@ -27,6 +27,19 @@ How releases are made, and what each channel receives, is in
 
 ### Changed
 
+- **A caret you can find.** Noto draws the caret itself: two pixels in the
+  accent where the browser would put its own one-pixel line. It stays solid
+  while you type or move and breathes softly once it sits still, rather than
+  blinking hard on and off. A short move along a line glides and a jump to
+  another line does not, and a click or the note taking the keys shows a
+  brief halo where it landed. Reduce Motion keeps it solid and still. It
+  steps aside for an input method composing, a selection, a field inside the
+  note and the gap cursor.
+- **A click in the page around the text puts the caret in the note**, at the
+  nearest place: the margins, above the first block, below the last. It used
+  to take the keys away from the note, which in a new, empty note looked as
+  if the note would not take any. Naming a new note hands the keys to that
+  note even when its editor is still being built.
 - **Rich text pasted from ChatGPT, GitHub, a documentation site or Google
   Docs is tidied into what a note holds.** A code block keeps its code and
   its language, read from the page's class, GitHub's wrapper or ChatGPT's

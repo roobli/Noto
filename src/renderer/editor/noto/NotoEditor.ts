@@ -105,6 +105,7 @@ import { followLinkPlugin, linkEditorPlugin } from './link-plugin';
 import { DocumentCounter, type DocumentCount } from './word-count';
 import { inlineCopySlice, inlineCopyText, sliceToMarkdown } from './clipboard';
 import { NO_TIDY, describeTidy, tidyIsWorthSaying, tidyPastedHtml, type PasteTidy } from './paste-clean';
+import { caretPlugin } from './caret-plugin';
 import { rootSpellCheck, SPELL_CHECK_RESCAN, spellCheckScopeKey, spellCheckScopePlugin } from './spell-check-scope';
 
 /** How long after the last keystroke the document is counted. */
@@ -425,6 +426,7 @@ export class NotoEditor implements NotoEditorPort {
       history(),
       dropCursor({ color: 'var(--accent)' }),
       gapCursor(),
+      caretPlugin(),
       alertPlugin(),
       imageLinePlugin(),
       typoraMarksPlugin(() => this.markKinds),
@@ -847,6 +849,29 @@ export class NotoEditor implements NotoEditorPort {
 
   focus(): void {
     this.view?.focus();
+  }
+
+  /**
+   * Put the caret at the nearest place in the note to a point outside its
+   * text: in the page's margin, above the first block or below the last. A
+   * click there used to take the keys away from the note and leave no caret,
+   * which in a new, empty note looked like the note would not take any.
+   */
+  focusAtPoint(x: number, y: number): void {
+    const view = this.view;
+    if (!view) return;
+    const box = view.dom.getBoundingClientRect();
+    const doc = view.state.doc;
+    let selection: Selection;
+    if (y >= box.bottom) selection = Selection.atEnd(doc);
+    else if (y <= box.top) selection = Selection.atStart(doc);
+    else {
+      const left = Math.min(Math.max(x, box.left + 1), box.right - 1);
+      const pos = view.posAtCoords({ left, top: y })?.pos;
+      selection = pos === undefined ? Selection.atEnd(doc) : Selection.near(doc.resolve(pos));
+    }
+    view.dispatch(view.state.tr.setSelection(selection).scrollIntoView());
+    view.focus();
   }
 
   /**

@@ -3079,3 +3079,56 @@
   line-height: 1.3;
 }
 
+/* The caret Noto draws (`caret-plugin.ts`): two pixels in the accent, solid
+   while the reader types or moves and breathing once it sits still. The
+   browser's own caret is hidden in the note while it is drawn, and kept in
+   any field inside the note, which has its own. */
+.noto-editor-host.noto-custom-caret .ProseMirror { caret-color: transparent; }
+.noto-editor-host.noto-custom-caret .ProseMirror :is(textarea, input) { caret-color: var(--accent); }
+
+.noto-caret-layer {
+  position: relative;
+  height: 0;
+  z-index: 2;
+  pointer-events: none;
+}
+.noto-caret {
+  position: absolute;
+  left: 0;
+  top: 0;
+  width: 2px;
+  border-radius: 1px;
+  background: var(--accent);
+  opacity: 0;
+  pointer-events: none;
+  will-change: transform, opacity;
+}
+.noto-caret.is-shown {
+  opacity: 1;
+  animation: noto-caret-breath var(--motion-caret-breath) var(--ease-in-out) infinite;
+}
+.noto-caret.is-shown.is-solid { animation: none; }
+.noto-caret.is-gliding { transition: transform var(--motion-default) var(--ease-out); }
+/* Where it landed, once, after a click or when the note takes the keys. */
+.noto-caret.is-halo::after {
+  content: '';
+  position: absolute;
+  inset: -2px -4px;
+  border-radius: 3px;
+  background: color-mix(in srgb, var(--accent) 30%, transparent);
+  animation: noto-caret-halo var(--motion-caret-halo) var(--ease-out) forwards;
+}
+@keyframes noto-caret-breath {
+  0%, 50% { opacity: 1; }
+  75%, 88% { opacity: 0.15; }
+  100% { opacity: 1; }
+}
+@keyframes noto-caret-halo {
+  from { opacity: 1; transform: scale(1, 1); }
+  to { opacity: 0; transform: scale(2.6, 1.3); }
+}
+@media (prefers-reduced-motion: reduce) {
+  .noto-caret.is-shown { animation: none; }
+  .noto-caret.is-gliding { transition: none; }
+  .noto-caret.is-halo::after { display: none; }
+}

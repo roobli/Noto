@@ -304,6 +304,8 @@ function NotoWorkspace({ platform }: { platform: NotoPlatform }) {
   const [sourceMode, setSourceMode] = useState(false);
   /** Pushes the source view's pending text into the document, before a save. */
   const sourceFlushRef = useRef<(() => void) | null>(null);
+  /** A note that should take the keys as soon as its editor is built: a new one just named. */
+  const focusWhenReadyRef = useRef<string | null>(null);
   // Undo and Redo while Source Code Mode is open belong to its text.
   const sourceHistoryRef = useRef<((direction: 'undo' | 'redo') => boolean) | null>(null);
   /** Bumped when an editor is ready, so a source view can be given its editor. */
@@ -2003,7 +2005,14 @@ function NotoWorkspace({ platform }: { platform: NotoPlatform }) {
       const before = railBeforeNamingRef.current;
       railBeforeNamingRef.current = null;
       if (before) setRail(before);
-      queueMicrotask(() => editorRef.current?.focus());
+      // The new note's own editor, which may not be built yet: then it takes
+      // the keys when it is, rather than the note that was in front before.
+      const target = activeIdRef.current;
+      queueMicrotask(() => {
+        const editor = target ? editorsRef.current.get(target) : undefined;
+        if (editor) editor.focus();
+        else focusWhenReadyRef.current = target;
+      });
     }
     if (!editing || name === null) return;
     void window.notoWorkspace.manageEntry({
@@ -2784,7 +2793,26 @@ function NotoWorkspace({ platform }: { platform: NotoPlatform }) {
           />
         )}
 
-        <main id="document-canvas" className="canvas-scroll" tabIndex={-1} aria-label="Document canvas">
+        <main
+          id="document-canvas"
+          className="canvas-scroll"
+          tabIndex={-1}
+          aria-label="Document canvas"
+          onMouseDown={(event) => {
+            // A press in the page around the text (its margins, above the
+            // first block, below the last) puts the caret in the note, at the
+            // nearest place, instead of taking the keys away from it.
+            if (event.button !== 0 || sourceMode || codeView) return;
+            const canvas = event.currentTarget;
+            if (event.clientX >= canvas.getBoundingClientRect().left + canvas.clientWidth) return;
+            const target = event.target as Element;
+            if (target.closest('.ProseMirror, a, button, input, textarea, select, [role="button"], [contenteditable="true"], .noto-git-gutter, .tag-strip, .file-truth-alert')) return;
+            const editor = editorRef.current;
+            if (!editor) return;
+            event.preventDefault();
+            editor.focusAtPoint(event.clientX, event.clientY);
+          }}
+        >
           {codeView ? <CodeViewer view={codeView} /> : null}
           {/* Every open document keeps its editor mounted, with only the
               active one visible. Unmounting the others would destroy their
@@ -2856,6 +2884,10 @@ function NotoWorkspace({ platform }: { platform: NotoPlatform }) {
                 onWidthStep={(direction) => stepWidthRef.current(direction)}
                 onReady={(editor) => {
                   editorsRef.current.set(doc.document.documentId, editor);
+                  if (focusWhenReadyRef.current === doc.document.documentId) {
+                    focusWhenReadyRef.current = null;
+                    queueMicrotask(() => editor.focus());
+                  }
                   const gitBlocks = gitBlocksRef.current.get(doc.document.documentId);
                   if (gitBlocks) editor.setGitBlocks(gitBlocks);
                   setEditorsReady((count) => count + 1);

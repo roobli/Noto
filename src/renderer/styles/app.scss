@@ -46,6 +46,11 @@ body {
   --motion-default: 100ms;
   --motion-medium: 140ms;
   --motion-slow: 200ms;
+  /* The caret (caret-plugin.ts): one breath after it has sat still, and the
+     halo that shows where it landed. Slower than chrome motion on purpose: a
+     caret that flickers is harder to find, not easier. */
+  --motion-caret-breath: 1100ms;
+  --motion-caret-halo: 420ms;
   --ease-out: cubic-bezier(0.16, 1, 0.3, 1);
   --ease-in: cubic-bezier(0.7, 0, 0.84, 0);
   --ease-in-out: cubic-bezier(0.4, 0, 0.2, 1);
