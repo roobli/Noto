@@ -16,6 +16,28 @@
  */
 
 import type { Command, Plugin } from 'prosemirror-state';
+import type { EditorView } from 'prosemirror-view';
+
+/** A line a plugin adds to the editor's right-click menu: a title and the command it runs. */
+export interface EditorContextItem {
+  readonly title: string;
+  /** One of the extension's `commands`, run on the note in front when chosen. */
+  readonly command: string;
+}
+
+/**
+ * Where a right click landed: the document position under it, null off text,
+ * and the element it hit. A drawn widget or a note floated into the margin is
+ * an element with no text under every point of it, so the position alone can
+ * name the text beside it instead.
+ */
+export interface EditorContextPoint {
+  readonly pos: number | null;
+  readonly element: Element | null;
+}
+
+/** Past this many, a right click is a plugin's menu rather than the editor's. */
+const MAX_CONTEXT_ITEMS = 8;
 
 export interface EditorExtension {
   /** Unique per registry, and named in the plugin's manifest. */
@@ -24,6 +46,8 @@ export interface EditorExtension {
   readonly plugins: () => readonly Plugin[];
   /** Editor commands the plugin can run by name on the note in front. */
   readonly commands?: Readonly<Record<string, Command>>;
+  /** What a right click at `at` offers, judged from the editor's state there: nothing, usually. */
+  readonly contextMenu?: (view: EditorView, at: EditorContextPoint) => readonly EditorContextItem[];
 }
 
 type Listener = () => void;
@@ -53,6 +77,19 @@ export class EditorExtensionRegistry {
       if (command) return command;
     }
     return undefined;
+  }
+
+  /** Every extension's items for a right click, in registration order. */
+  contextItems(view: EditorView, at: EditorContextPoint): EditorContextItem[] {
+    const items: EditorContextItem[] = [];
+    for (const extension of this.extensions.values()) {
+      for (const item of extension.contextMenu?.(view, at) ?? []) {
+        // Only a command the editor can run by name; anything else would be a
+        // menu line that does nothing when chosen.
+        if (extension.commands?.[item.command]) items.push(item);
+      }
+    }
+    return items.slice(0, MAX_CONTEXT_ITEMS);
   }
 
   subscribe(listener: Listener): () => void {

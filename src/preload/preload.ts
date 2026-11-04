@@ -119,6 +119,9 @@ import type {
   WorkspaceDirtyEventV1,
   WorkspaceUnsavedEventV1,
   WorkspaceTextRequestV1,
+  WorkspaceContextCommandV1,
+  WorkspaceContextReplyV1,
+  WorkspaceContextRequestV1,
   WorkspaceTextReplyV1,
   WorkspaceLinksReplyV1,
   WorkspaceOpenPathRequestV1,
@@ -164,6 +167,9 @@ import {
   isWorkspaceDirtyEventV1,
   isWorkspaceUnsavedEventV1,
   isWorkspaceTextRequestV1,
+  isWorkspaceContextCommandV1,
+  isWorkspaceContextReplyV1,
+  isWorkspaceContextRequestV1,
   isWorkspaceTextReplyV1,
   isWorkspaceLinksResultV1,
   isWorkspaceOpenPathRequestV1,
@@ -503,6 +509,13 @@ const workspaceApi: NotoWorkspaceApiV1 = Object.freeze({
   },
   onTextRequest: (listener: (event: WorkspaceTextRequestV1) => void) =>
     subscribe(WORKSPACE_CHANNELS.documentText, isWorkspaceTextRequestV1, listener),
+  onContextRequest: (listener: (event: WorkspaceContextRequestV1) => void) =>
+    subscribe(WORKSPACE_CHANNELS.contextItems, isWorkspaceContextRequestV1, listener),
+  replyContext: (event: WorkspaceContextReplyV1) => {
+    if (isWorkspaceContextReplyV1(event)) ipcRenderer.send(WORKSPACE_CHANNELS.contextItemsReply, event);
+  },
+  onContextCommand: (listener: (event: WorkspaceContextCommandV1) => void) =>
+    subscribe(WORKSPACE_CHANNELS.contextCommand, isWorkspaceContextCommandV1, listener),
   replyText: (event: WorkspaceTextReplyV1) => {
     if (isWorkspaceTextReplyV1(event)) ipcRenderer.send(WORKSPACE_CHANNELS.documentTextReply, event);
   },

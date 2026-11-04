@@ -78,7 +78,7 @@ import { documentDomToHtml, sliceToHtml, sliceToPlainText } from './clipboard';
 import { alertPlugin } from './alert-plugin';
 import { imageLinePlugin } from './image-line';
 import { RESCAN, typoraMarksKey, typoraMarksPlugin } from './typora-marks-plugin';
-import { editorExtensions } from './editor-extensions';
+import { editorExtensions, type EditorContextItem } from './editor-extensions';
 import { ALL_MARK_KINDS, type TyporaMarkKinds } from './typora-marks';
 import { typewriterPlugin } from './typewriter-plugin';
 import { autoPairPlugin } from './auto-pair';
@@ -863,6 +863,18 @@ export class NotoEditor implements NotoEditorPort {
    * keep in step. False when the command has nothing to do where the caret
    * is, which is what lets the caller say so rather than pretending.
    */
+  /** What the editor's plugins add to a right click at a point in the page. */
+  contextItemsAt(x: number, y: number): EditorContextItem[] {
+    const view = this.view;
+    if (!view || this.readOnly) return [];
+    // A click outside the note (a rename field, a search box) or in a field
+    // drawn inside it is not about the note: no plugin has anything there.
+    const hit = globalThis.document.elementFromPoint(x, y);
+    if (!hit || !view.dom.contains(hit) || this.fieldFocused(view)) return [];
+    const pos = view.posAtCoords({ left: x, top: y })?.pos ?? null;
+    return editorExtensions.contextItems(view, { pos, element: hit });
+  }
+
   /** Whether the keys belong to a text field drawn inside the note rather than to the note. */
   private fieldFocused(view: EditorView): boolean {
     const active = globalThis.document.activeElement;

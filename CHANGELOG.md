@@ -9,6 +9,12 @@ How releases are made, and what each channel receives, is in
 
 ## [Unreleased]
 
+### Added
+
+- **Plugins can add to the editor's right-click menu.** An editor extension
+  may offer lines for the point clicked, each running one of its commands;
+  `docs/plugins.md` says how.
+
 ### Fixed
 
 - **Undo in a field inside a note undoes what was typed there.** In a code

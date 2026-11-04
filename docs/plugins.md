@@ -138,6 +138,8 @@ interface EditorExtension {
   readonly id: string;                                   // listed in the manifest's editorExtensions
   readonly plugins: () => readonly Plugin[];             // made fresh for each editor
   readonly commands?: Readonly<Record<string, Command>>;
+  readonly contextMenu?: (view: EditorView, at: { pos: number | null; element: Element | null })
+    => readonly { title: string; command: string }[];
 }
 ```
 
@@ -150,6 +152,16 @@ also starts as soon as it is switched on with a note open, rather than
 waiting for the next note. `runEditorCommand(name)` runs one of the
 extension's commands, or one of the editor's own, on the note in front, and
 needs `editor.transform`.
+
+`contextMenu` adds lines to the editor's right-click menu. On each right
+click, main asks the window what the extensions offer at the point clicked and
+waits a quarter of a second for the answer; each line names one of the
+extension's `commands`, which runs on the note in front when it is chosen.
+`at.pos` is the document position under the pointer and `at.element` the
+element hit, which is what identifies a widget or anything floated out of the
+text. Offer a line only when the click is about something the plugin owns:
+the menu is drawn fresh on every click, and most clicks are about nothing a
+plugin knows.
 
 This is a trusted surface. A sandboxed plugin's worker has no page to hand a
 ProseMirror plugin from, and its manifest must leave `editorExtensions`
