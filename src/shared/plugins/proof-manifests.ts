@@ -71,7 +71,10 @@ export const sidenotesManifest = {
   },
   capabilities: ['editor.read', 'editor.transform', 'editor.decorate'],
   lifecycle: ['activate', 'deactivate'],
-  commands: [{ id: 'sidenotes.insert', title: 'Sidenote: make the selection a margin note' }],
+  commands: [
+    { id: 'sidenotes.insert', title: 'Sidenote: add a note to the selected words' },
+    { id: 'sidenotes.remove', title: 'Sidenote: remove the note at the caret' },
+  ],
   settings: [],
   hotkeys: [{ command: 'sidenotes.insert', keys: 'Mod+Alt+S' }],
   editorExtensions: ['sidenotes'],

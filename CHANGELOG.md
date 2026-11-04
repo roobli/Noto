@@ -11,9 +11,27 @@ How releases are made, and what each channel receives, is in
 
 ### Added
 
+- **Write a sidenote in the margin.** Select words, then Add Sidenote from
+  the right-click menu or Cmd-Alt-S: a card opens in the right margin, beside
+  the line, with the keys in it. Enter saves the note and Escape leaves
+  nothing behind. The words become the note's target, written as
+  `<span class="sidenote-target">words</span><span class="sidenote">note</span>`;
+  Typora's sidenote plugin and theme draw the note as before and show the
+  target as plain text, so the file reads the same there. In Noto the words
+  carry a dotted rule, and pointing at the words or the note lights both.
+  Remove Sidenote in the right-click menu takes a note out and keeps its
+  words; so does Backspace after a note, which selects it first.
 - **Plugins can add to the editor's right-click menu.** An editor extension
   may offer lines for the point clicked, each running one of its commands;
   `docs/plugins.md` says how.
+
+### Changed
+
+- **A sidenote is edited where it is drawn.** With the caret in a note, the
+  note stays in the margin and its tags stay hidden; they used to appear and
+  pull the note back into the paragraph. Source Code Mode shows the tags.
+  Cmd-Alt-S opens the card for the selected words instead of turning them
+  into a note's text.
 
 ### Fixed
 

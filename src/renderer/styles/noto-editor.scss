@@ -2784,10 +2784,12 @@
 /* Sidenotes: drawn by the bundled Sidenotes plugin
    (`src/renderer/plugins/bundled/sidenotes/`), the author's Typora plugin.
    Nothing below applies while it is switched off, since only it adds these
-   classes.
-   Tags hide while the caret is elsewhere; a superscript number and the note
-   itself take their place. Wide enough windows float the note into a reserved
-   right gutter; narrower ones keep it as an inline chip. */
+   classes. The tags stay hidden even with the caret in a note: a note is
+   edited where it is drawn, and Source Code Mode shows the tags. A window
+   wide enough floats each note into a reserved right gutter; a narrower one
+   keeps it as an inline chip. */
+.noto-editor-host .ProseMirror .noto-inline-html.noto-sidenote-tag { display: none !important; }
+
 .ProseMirror .noto-sidenote-num {
   user-select: none;
   pointer-events: none;
@@ -2803,11 +2805,28 @@
   content: attr(data-sidenote-index);
 }
 
+/* The words a note is about: a quiet dotted rule, lit with its note. */
+.ProseMirror .noto-sidenote-target {
+  text-decoration-line: underline;
+  text-decoration-style: dotted;
+  text-decoration-color: color-mix(in srgb, var(--accent) 60%, transparent);
+  text-decoration-thickness: 1px;
+  text-underline-offset: 0.25em;
+  border-radius: 2px;
+  transition: background-color var(--motion-micro) var(--ease-out);
+}
+.ProseMirror .noto-sidenote-target.is-active,
+.ProseMirror .noto-sidenote-target.is-linked {
+  background: color-mix(in srgb, var(--accent) 14%, transparent);
+  text-decoration-style: solid;
+}
+
 .ProseMirror .noto-sidenote {
   font-size: 0.82em;
   line-height: 1.45;
   color: var(--muted);
   vertical-align: baseline;
+  transition: color var(--motion-micro) var(--ease-out), border-color var(--motion-micro) var(--ease-out);
 }
 .ProseMirror .noto-sidenote::before {
   content: attr(data-sidenote-index) ". ";
@@ -2815,27 +2834,52 @@
   color: var(--accent);
   font-size: 0.95em;
 }
-
-/* Editing: show the tags, drop the number and the floated layout. */
-.ProseMirror .noto-sidenote-editing .noto-sidenote-num { display: none; }
-.ProseMirror .noto-sidenote-editing .noto-inline-html.noto-sidenote-tag {
-  display: inline;
-  color: var(--muted);
-  font-family: tokens.$mono;
-  font-size: 0.85em;
-  font-style: normal;
+.ProseMirror .noto-sidenote.is-active,
+.ProseMirror .noto-sidenote.is-linked {
+  color: var(--ink);
 }
-.ProseMirror .noto-sidenote-editing .noto-sidenote {
-  float: none;
-  width: auto;
+
+/* A note with no text yet: one quiet line that opens the card. */
+.ProseMirror .noto-sidenote-empty {
+  font-style: italic;
+  cursor: pointer;
+  user-select: none;
+}
+
+/* The card a new note is written in, where the note will be. */
+.ProseMirror .noto-sidenote-composer::before { content: none; }
+.ProseMirror .noto-sidenote-composer {
+  display: inline-block;
+  min-width: 10rem;
+  color: var(--ink);
+}
+.ProseMirror .noto-sidenote-field {
+  display: block;
+  box-sizing: border-box;
+  width: 100%;
+  min-height: 1.45em;
   margin: 0;
   padding: 0;
   border: 0;
+  outline: none;
+  resize: none;
+  overflow: hidden;
   background: transparent;
-  font-size: inherit;
   color: inherit;
+  font: inherit;
+  line-height: inherit;
 }
-.ProseMirror .noto-sidenote-editing .noto-sidenote::before { content: none; }
+.ProseMirror .noto-sidenote-field::placeholder {
+  color: var(--muted);
+  opacity: 0.85;
+}
+.ProseMirror .noto-sidenote-hint {
+  display: block;
+  margin-top: 0.35em;
+  font-size: 0.85em;
+  color: var(--muted);
+  user-select: none;
+}
 
 /* Margin mode when the host has room for a gutter. */
 .noto-editor-host.noto-has-sidenotes {
@@ -2856,6 +2900,11 @@
     padding-left: 0.65em;
     background: transparent;
   }
+  .noto-editor-host.noto-has-sidenotes .ProseMirror .noto-sidenote.is-active,
+  .noto-editor-host.noto-has-sidenotes .ProseMirror .noto-sidenote.is-linked,
+  .noto-editor-host.noto-has-sidenotes .ProseMirror .noto-sidenote-composer {
+    border-left-color: var(--accent);
+  }
 }
 
 @media (max-width: 1099.98px) {
@@ -2864,6 +2913,12 @@
     background: color-mix(in srgb, var(--raised) 80%, var(--accent) 8%);
     border-radius: 4px;
     margin: 0 2px;
+  }
+  /* No gutter: the card sits under the line it belongs to. */
+  .ProseMirror .noto-sidenote-composer {
+    display: block;
+    margin: 0.4em 0;
+    padding: 0.45em 0.6em;
   }
 }
 

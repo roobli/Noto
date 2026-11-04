@@ -167,8 +167,9 @@ This is a trusted surface. A sandboxed plugin's worker has no page to hand a
 ProseMirror plugin from, and its manifest must leave `editorExtensions`
 empty. The bundled Sidenotes plugin
 (`src/renderer/plugins/bundled/sidenotes/`) is the worked example: its
-extension draws `<span class="sidenote">` as margin notes and owns the
-"wrap the selection" command behind `Cmd+Alt+S`.
+extension draws `<span class="sidenote">` as margin notes, opens the card a
+new note is written in from `Cmd+Alt+S` or the right-click menu, and offers
+Remove Sidenote when the click is on a note.
 
 Commands appear in the command palette (`Shift+Cmd+P`) while the plugin is active,
 under the title the manifest gives them. Hotkeys are dispatched by the shell
