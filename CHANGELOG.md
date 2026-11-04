@@ -27,6 +27,18 @@ How releases are made, and what each channel receives, is in
 
 ### Changed
 
+- **Rich text pasted from ChatGPT, GitHub, a documentation site or Google
+  Docs is tidied into what a note holds.** A code block keeps its code and
+  its language, read from the page's class, GitHub's wrapper or ChatGPT's
+  header, and loses the header and the Copy button. A KaTeX formula comes in
+  as its TeX instead of its drawing twice over. A table cell that held
+  paragraphs, breaks or a list is joined onto one line, since a markdown
+  cell is one. Bold, italic and code set by a style, as Google Docs writes
+  them, become marks, and non-breaking and zero-width spaces become spaces
+  or nothing. When the tidy took anything out, turned a formula round or
+  joined a cell, the status line says what, with Paste as text to put the
+  plain text in instead, in one undo step. A code block copied within Noto
+  keeps its language too; it used to lose it.
 - **Copying inside one block copies what was selected, and nothing around
   it.** Ten words out of a table cell came out as a one-cell table with a
   header rule, part of a list item with its bullet, and the command inside

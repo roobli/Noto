@@ -427,16 +427,25 @@ function NotoWorkspace({ platform }: { platform: NotoPlatform }) {
     setTrail((current) => recordTrail(current, activePath));
   }, [activePath]);
 
-  /* A short message from a plugin, shown in the status line for a moment. */
+  /*
+   * A short message, shown in the status line for a moment: from a plugin, or
+   * from the editor after a paste. One with an action stays longer and shows
+   * it as a button, such as the plain text in place of a tidied paste.
+   */
   const [notice, setNotice] = useState<string | null>(null);
+  const [noticeAction, setNoticeAction] = useState<{ label: string; run: () => void } | null>(null);
   useEffect(() => {
     let timer: ReturnType<typeof setTimeout> | null = null;
     const onNotice = (event: Event) => {
-      const message = (event as CustomEvent<string>).detail;
-      if (typeof message !== 'string' || message.length === 0) return;
+      const detail = (event as CustomEvent<unknown>).detail;
+      const message = typeof detail === 'string' ? detail
+        : detail && typeof (detail as { message?: unknown }).message === 'string' ? (detail as { message: string }).message : '';
+      if (message.length === 0) return;
+      const action = typeof detail === 'object' && detail !== null ? (detail as { action?: { label: string; run: () => void } }).action : undefined;
       setNotice(message);
+      setNoticeAction(action && typeof action.run === 'function' ? action : null);
       if (timer) clearTimeout(timer);
-      timer = setTimeout(() => setNotice(null), 2600);
+      timer = setTimeout(() => { setNotice(null); setNoticeAction(null); }, action ? 9000 : 2600);
     };
     window.addEventListener('noto:notice', onNotice);
     return () => {
@@ -3057,6 +3066,12 @@ function NotoWorkspace({ platform }: { platform: NotoPlatform }) {
             data-testid={notice ? 'status-notice' : undefined} aria-live="polite">
             {notice ?? (state === 'Opened' ? 'Exact source preserved' : state === 'Saved' ? 'Exact source saved' : '')}
           </span>
+          {notice && noticeAction && (
+            <button type="button" className="status-notice-action" data-testid="status-notice-action"
+              onClick={() => { const action = noticeAction; setNotice(null); setNoticeAction(null); action.run(); }}>
+              {noticeAction.label}
+            </button>
+          )}
           {/* The one number a writer looks for, at the end of the line where
               nothing else competes with it. Counted after typing stops, so it
               settles a moment behind the words rather than flickering under

@@ -104,6 +104,7 @@ import { wikiLinkPlugin } from './wiki-link-plugin';
 import { followLinkPlugin, linkEditorPlugin } from './link-plugin';
 import { DocumentCounter, type DocumentCount } from './word-count';
 import { inlineCopySlice, inlineCopyText, sliceToMarkdown } from './clipboard';
+import { NO_TIDY, describeTidy, tidyIsWorthSaying, tidyPastedHtml, type PasteTidy } from './paste-clean';
 import { rootSpellCheck, SPELL_CHECK_RESCAN, spellCheckScopeKey, spellCheckScopePlugin } from './spell-check-scope';
 
 /** How long after the last keystroke the document is counted. */
@@ -176,6 +177,8 @@ const TEXT_INPUT_TYPES = new Set(['text', 'search', 'url', 'email', 'tel', 'pass
 
 export class NotoEditor implements NotoEditorPort {
   private view: EditorView | null = null;
+  /** What tidying the rich text being pasted changed, read once by handlePaste. */
+  private pasteTidy: PasteTidy = NO_TIDY;
   private document: NotoDocumentWire;
   private substitutions = { quotes: false, dashes: false, ellipsis: false };
   private typewriter = false;
@@ -306,6 +309,12 @@ export class NotoEditor implements NotoEditorPort {
       transformCopied: (slice, view) => inlineCopySlice(view.state) ?? slice,
       clipboardTextSerializer: (slice, view) => inlineCopyText(view.state) ?? sliceToMarkdown(slice),
       clipboardTextParser: (text, $context) => sliceFromText(text, $context),
+      // Rich text from elsewhere is tidied before it is read (paste-clean.ts).
+      transformPastedHTML: (html) => {
+        const { html: tidied, tidy } = tidyPastedHtml(html);
+        this.pasteTidy = tidy;
+        return tidied;
+      },
       handleTextInput: (view, from, _to, text) => {
         // The second of two brackets: asked after the transaction, since the
         // question is about the document the keystroke is making, not the one
@@ -323,7 +332,15 @@ export class NotoEditor implements NotoEditorPort {
         // the paragraph the caret is in. Rich text, and the editor's own
         // copies, keep the library's path.
         const data = event.clipboardData;
-        if (!data || data.types.includes('text/html')) return false;
+        if (data?.types.includes('text/html')) {
+          // The library inserts it; if the tidy took anything out or turned
+          // anything round, the reader is told and offered the plain text.
+          const tidy = this.pasteTidy;
+          this.pasteTidy = NO_TIDY;
+          if (tidyIsWorthSaying(tidy)) this.offerPlainPaste(view, tidy, data.getData('text/plain'));
+          return false;
+        }
+        if (!data) return false;
         const text = data.getData('text/plain');
         if (text.length === 0) return false;
         this.pasteText(text);
@@ -1217,9 +1234,36 @@ export class NotoEditor implements NotoEditorPort {
   }
 
   /** Paste text at the caret, read as markdown: Paste as Plain Text's half. */
+  /**
+   * After a tidied rich paste: say what was changed, with a way back to the
+   * plain text. The paste is made its own undo step first, so taking it back
+   * takes nothing else with it.
+   */
+  private offerPlainPaste(view: EditorView, tidy: PasteTidy, plain: string): void {
+    view.dispatch(closeHistory(view.state.tr));
+    const before = view.state.doc;
+    queueMicrotask(() => {
+      const after = view.state.doc;
+      if (after === before) return;
+      const run = () => {
+        // Only while the paste is still the last thing done to the note.
+        if (this.view !== view || view.state.doc !== after) return;
+        if (!undo(view.state, view.dispatch)) return;
+        if (!view.state.doc.eq(before)) { redo(view.state, view.dispatch); return; }
+        if (plain.trim()) this.pasteText(plain);
+      };
+      globalThis.dispatchEvent(new CustomEvent('noto:notice', {
+        detail: { message: describeTidy(tidy), action: plain.trim() ? { label: 'Paste as text', run } : undefined },
+      }));
+    });
+  }
+
   pasteText(text: string): void {
     const view = this.view;
     if (!view || this.readOnly) return;
+    // Spaces that do not break, and characters with no width, ride along with
+    // copied text and stop a list marker or a table rule from being read.
+    text = text.replace(/\u00A0/g, ' ').replace(/[\u200B\uFEFF]/g, '');
     const slice = sliceFromText(text, view.state.selection.$from);
     view.dispatch(view.state.tr.replaceSelection(slice).scrollIntoView());
     view.focus();

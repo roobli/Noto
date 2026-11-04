@@ -2010,6 +2010,22 @@ section.plugin-group > .plugin-market-row.is-set-aside {
   &.is-notice { color: var(--ink); animation: noto-rise var(--motion-medium) var(--ease-out); }
 }
 
+/* The one thing a notice offers to do, such as the plain text in place of a
+   tidied paste: a word in the accent, as quiet as the line it sits on. */
+.status-notice-action {
+  margin-left: 8px;
+  padding: 1px 6px;
+  border: 0;
+  border-radius: 4px;
+  background: transparent;
+  color: var(--accent);
+  font: inherit;
+  cursor: pointer;
+  animation: noto-rise var(--motion-medium) var(--ease-out);
+  &:hover { background: color-mix(in srgb, var(--accent) 12%, transparent); }
+  &:focus-visible { outline: 2px solid var(--accent); outline-offset: 1px; }
+}
+
 /* Command palette
    ------------------------------------------------------------------------- */
 
