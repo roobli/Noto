@@ -39,6 +39,13 @@ export interface ShellHost {
   activeNote(): string | null;
   /** Bring a note to the front, as a click in the file tree would. */
   openNote(path: string): void;
+  /**
+   * The shell's own menu for a note or folder, as a right click on its row in
+   * the file tree shows it: open, rename, duplicate, move, reveal, copy path,
+   * trash. Main checks the path against the open folder and runs every item;
+   * a path outside it, or gone from disk, shows nothing.
+   */
+  showFileMenu(path: string, kind: 'file' | 'directory'): void;
   /** Called when the folder or the note in front changes. */
   subscribe(listener: () => void): Disposer;
 }
@@ -147,11 +154,13 @@ export class ShellState {
   private readonly where = new Signal();
   private readonly gitChanged = new Signal();
   private open: (path: string) => void = () => {};
+  private menu: (path: string, kind: 'file' | 'directory') => void = () => {};
 
   readonly host: ShellHost = {
     folder: () => this.folderRoot,
     activeNote: () => this.active,
     openNote: (path) => this.open(path),
+    showFileMenu: (path, kind) => this.menu(path, kind),
     subscribe: (listener) => this.where.subscribe(listener),
   };
 
@@ -162,6 +171,10 @@ export class ShellState {
 
   setOpener(open: (path: string) => void): void {
     this.open = open;
+  }
+
+  setFileMenu(menu: (path: string, kind: 'file' | 'directory') => void): void {
+    this.menu = menu;
   }
 
   update(next: { folder?: string | null; active?: string | null; git?: GitSnapshot | null }): void {

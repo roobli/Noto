@@ -1114,10 +1114,12 @@ function NotoWorkspace({ platform }: { platform: NotoPlatform }) {
       const next = { path: event.path, intent: event.intent };
       treeEditingRef.current = next;
       setTreeEditing(next);
-      // A note just made is named on its own row, so the tree has to be on
-      // screen. The rail is put back as it was once the name is given.
+      // A row is named where it sits in the file tree, so the tree has to be
+      // on screen: for a note just made, and for a rename or a new folder asked
+      // for from a page in the rail. The rail is put back as it was once the
+      // name is given.
       const rail = railStateRef.current;
-      if (event.intent === 'new-note' && !(rail.open && rail.view === 'files')) {
+      if (!(rail.open && rail.view === 'files')) {
         railBeforeNamingRef.current = rail;
         setRail({ open: true, view: 'files' });
       }
@@ -1754,6 +1756,8 @@ function NotoWorkspace({ platform }: { platform: NotoPlatform }) {
       version: 1, requestId: rid('tree-menu'), path: rowPath, kind,
     });
   }, []);
+  // The same menu for a row a plugin's page draws.
+  useEffect(() => { slotState.setFileMenu(showTreeMenu); }, [showTreeMenu]);
   countRef.current = (documentId, next) => {
     if (documentId === activeIdRef.current) setCount(next);
   };
@@ -2059,13 +2063,13 @@ function NotoWorkspace({ platform }: { platform: NotoPlatform }) {
     if (latest) {
       treeEditingRef.current = null;
       setTreeEditing(null);
-    }
-    if (editing?.intent === 'new-note' && latest) {
-      // The note was made to be written in, named or not: the caret goes to
-      // it, and a rail opened only for the name closes again.
+      // A rail turned to the files only for the name goes back as it was.
       const before = railBeforeNamingRef.current;
       railBeforeNamingRef.current = null;
       if (before) setRail(before);
+    }
+    if (editing?.intent === 'new-note' && latest) {
+      // The note was made to be written in, named or not: the caret goes to it.
       // The new note's own editor, which may not be built yet: then it takes
       // the keys when it is, rather than the note that was in front before.
       const target = activeIdRef.current;

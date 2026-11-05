@@ -291,6 +291,24 @@ export function FileTree({
     }
   }, [root, activePath, load]);
 
+  // A row named from elsewhere (a page in the rail, say) can be under closed
+  // folders; they open so its name field is there to type in.
+  const editingPath = editing?.path ?? null;
+  useEffect(() => {
+    if (!root || !editingPath) return;
+    const ancestors = foldersBetween(root, editingPath);
+    if (ancestors.length === 0) return;
+    setExpanded((current) => {
+      if (ancestors.every((directory) => current.has(directory))) return current;
+      const next = new Set(current);
+      for (const directory of ancestors) next.add(directory);
+      return next;
+    });
+    for (const directory of ancestors) {
+      if (!childrenRef.current.has(directory)) void load(directory);
+    }
+  }, [root, editingPath, load]);
+
   /*
    * Which rows are stuck to the top.
    *

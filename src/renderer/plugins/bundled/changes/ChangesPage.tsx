@@ -15,13 +15,15 @@ import { changeCounts, changeTree, type ChangeNode } from './tree';
 
 const WORDS = { modified: 'Changed', new: 'New', deleted: 'Deleted' } as const;
 
-function Level({ nodes, depth, active, folded, onFold, onOpen }: {
+function Level({ nodes, depth, root, active, folded, onFold, onOpen, onMenu }: {
   nodes: readonly ChangeNode[];
   depth: number;
+  root: string;
   active: string | null;
   folded: ReadonlySet<string>;
   onFold: (key: string) => void;
   onOpen: (path: string) => void;
+  onMenu: (path: string, kind: 'file' | 'directory') => void;
 }) {
   return (
     <div className={depth === 0 ? 'tree-level is-root' : 'tree-level'} style={{ '--tree-depth': depth } as CSSProperties}>
@@ -31,14 +33,16 @@ function Level({ nodes, depth, active, folded, onFold, onOpen }: {
           return (
             <div className="tree-node" key={node.key}>
               <button type="button" className="tree-row tree-directory" data-testid="changes-folder" data-depth={depth}
-                title={node.name} aria-expanded={open} onClick={() => onFold(node.key)}>
+                title={node.name} aria-expanded={open} onClick={() => onFold(node.key)}
+                // A chain of folders is one row, and its menu is the last folder's: where its notes are.
+                onContextMenu={(event) => { event.preventDefault(); onMenu(`${root}/${node.key}`, 'directory'); }}>
                 <span className="tree-leading">
                   <span className={open ? 'tree-twisty tree-twisty-open' : 'tree-twisty'} aria-hidden="true" />
                   <FolderGlyph />
                 </span>
                 <span className="tree-name">{node.name}</span>
               </button>
-              {open && <Level nodes={node.children} depth={depth + 1} active={active} folded={folded} onFold={onFold} onOpen={onOpen} />}
+              {open && <Level nodes={node.children} depth={depth + 1} root={root} active={active} folded={folded} onFold={onFold} onOpen={onOpen} onMenu={onMenu} />}
             </div>
           );
         }
@@ -52,7 +56,9 @@ function Level({ nodes, depth, active, folded, onFold, onOpen }: {
               title={`${node.name}, ${WORDS[node.change]}`}
               aria-current={isActive ? 'true' : undefined}
               aria-disabled={deleted ? 'true' : undefined}
-              onClick={() => { if (!deleted) onOpen(node.path); }}>
+              onClick={() => { if (!deleted) onOpen(node.path); }}
+              // The same menu as the row in the file tree. A deleted note has no file for it to act on.
+              onContextMenu={(event) => { event.preventDefault(); if (!deleted) onMenu(node.path, 'file'); }}>
               <span className="tree-leading">
                 <span className="tree-twisty tree-twisty-blank" aria-hidden="true" />
                 <FileGlyph />
@@ -80,6 +86,7 @@ export function ChangesPage({ host }: { host: RailPageHost }) {
     return next;
   }), []);
   const onOpen = useCallback((path: string) => host.openNote(path), [host]);
+  const onMenu = useCallback((path: string, kind: 'file' | 'directory') => host.showFileMenu(path, kind), [host]);
 
   const current = marks && root && marks.root === root ? marks : null;
   const tree = useMemo(() => (current ? changeTree(root, current.files) : []), [current, root]);
@@ -105,7 +112,7 @@ export function ChangesPage({ host }: { host: RailPageHost }) {
     <div className="changes-page" data-testid="changes-page">
       <p className="changes-summary" data-testid="changes-summary">{summary}</p>
       <div className="changes-body" ref={body}>
-        <Level nodes={tree} depth={0} active={active || null} folded={folded} onFold={onFold} onOpen={onOpen} />
+        <Level nodes={tree} depth={0} root={root} active={active || null} folded={folded} onFold={onFold} onOpen={onOpen} onMenu={onMenu} />
       </div>
     </div>
   );

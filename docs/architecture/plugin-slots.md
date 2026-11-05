@@ -38,9 +38,13 @@ host object a slot passes in carries only the services the plugin holds.
 | `git.read` | what changed in the open folder since the last commit (trusted plugins) |
 | `vault.read` | (next) the folder's notes and the vault index |
 
-Navigation (open a note by path) and where the window is (the folder, the
-note in front, and when either changes) come with every slot: they show
-nothing the person cannot already see.
+Navigation (open a note by path), the file tree's own menu for a note or
+folder, and where the window is (the folder, the note in front, and when
+either changes) come with every slot: they show nothing the person cannot
+already see, and every item of the menu runs in main against a path main
+checks, as it does for the tree. A rename or a new folder chosen from it is
+typed on the row in the file tree, so the rail turns to the files for the
+name and back to the page after.
 
 ## How a plugin uses it
 

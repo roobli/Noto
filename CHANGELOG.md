@@ -15,8 +15,11 @@ How releases are made, and what each channel receives, is in
   notes that differ from the last commit as one short tree: changed, new and
   deleted, each with its own mark, and a chain of folders holding only the
   next drawn as one row. A click opens the note; a deleted one is listed,
-  struck through. It is a bundled plugin, on by default, and can be switched
-  off in the Plugin Center.
+  struck through. A right click gives a note or folder the same menu as in
+  the file tree (open, rename, duplicate, move, reveal, copy path, trash); a
+  rename or new folder is typed on the row in the file tree, and the rail
+  comes back to Changes after. It is a bundled plugin, on by default, and can
+  be switched off in the Plugin Center.
 - **Plugins can put a page in the rail.** A trusted plugin may register a
   page with a toggle in the rail's head, and read the folder's git status if
   its manifest declares `git.read`. The page lives while the plugin is

@@ -112,6 +112,67 @@ test.describe('the Changes page', () => {
     }
   });
 
+  test('gives a row the file tree\'s own menu, and names it in the tree and comes back', async () => {
+    const vault = changedVault();
+    const { app, page } = await launch(vault);
+    // A native menu holds the input loop and no pointer can reach it, so the
+    // main process keeps each menu it would have shown, and the test picks
+    // from it. The clipboard is the person's, so it is put back afterwards.
+    const clipboardBefore = await app.evaluate(({ clipboard, Menu }) => {
+      const shown: Electron.Menu[] = [];
+      (globalThis as { shownMenus?: Electron.Menu[] }).shownMenus = shown;
+      Menu.prototype.popup = function popup(this: Electron.Menu) { shown.push(this); };
+      return clipboard.readText();
+    });
+    const menus = () => app.evaluate(() => (globalThis as { shownMenus?: Electron.Menu[] }).shownMenus!.map((menu) =>
+      menu.items.filter((item) => item.type !== 'separator').map((item) => item.label)));
+    const pick = (label: string) => app.evaluate((_electron, wanted) => {
+      const shown = (globalThis as { shownMenus?: Electron.Menu[] }).shownMenus!;
+      shown.at(-1)!.items.find((item) => item.label === wanted)!.click();
+    }, label);
+    const copied = () => app.evaluate(({ clipboard }) => clipboard.readText());
+    try {
+      await toggle(page).click();
+      const view = page.getByTestId('rail-plugin-view');
+      const audit = path.join(vault, 'Work', 'Acme', '研发组', 'TODO', 'audit.md');
+
+      await view.locator('[data-testid="changes-file"][data-change="modified"]').click({ button: 'right' });
+      await expect.poll(async () => (await menus()).length).toBe(1);
+      const [fileMenu] = await menus();
+      expect(fileMenu).toEqual(expect.arrayContaining(['Open', 'Rename…', 'Duplicate', 'Move to…', 'Copy Path']));
+      await pick('Copy Path');
+      await expect.poll(copied).toBe(audit);
+
+      // A chain of folders is one row; its menu is the last folder's.
+      await view.getByTestId('changes-folder').filter({ hasText: 'Work / Acme' }).click({ button: 'right' });
+      await expect.poll(async () => (await menus()).length).toBe(2);
+      expect((await menus())[1]).toEqual(expect.arrayContaining(['New Note Here', 'New Folder Here', 'Copy Path']));
+      await pick('Copy Path');
+      await expect.poll(copied).toBe(path.dirname(audit));
+
+      // A deleted note has no file for the menu to act on.
+      // Its row is aria-disabled, which a pointer in the test will not press, so the event is sent.
+      await view.locator('[data-testid="changes-file"][data-change="deleted"]').dispatchEvent('contextmenu');
+      await page.waitForTimeout(400);
+      expect(await menus()).toHaveLength(2);
+
+      // Rename is typed on the row in the file tree, so the rail turns to the
+      // files, open down to the note, and comes back to the page after.
+      await view.locator('[data-testid="changes-file"][data-change="modified"]').click({ button: 'right' });
+      await expect.poll(async () => (await menus()).length).toBe(3);
+      await pick('Rename…');
+      const field = page.getByTestId('file-tree').getByTestId('tree-name-field');
+      await expect(field).toBeVisible();
+      await expect(field).toHaveValue('audit.md');
+      await field.press('Escape');
+      await expect(page.getByTestId('rail-plugin-view')).toBeVisible();
+      await expect(toggle(page)).toHaveAttribute('aria-pressed', 'true');
+    } finally {
+      await app.evaluate(({ clipboard }, text) => clipboard.writeText(text), clipboardBefore).catch(() => {});
+      await app.close();
+    }
+  });
+
   test('says when there is nothing to list, and when the folder is not in git', async () => {
     const clean = scratch('clean');
     git(clean, 'init', '-q');
