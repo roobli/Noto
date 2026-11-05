@@ -9,7 +9,7 @@
  */
 
 import { execFileSync } from 'node:child_process';
-import { existsSync, mkdirSync, mkdtempSync, realpathSync, rmSync, writeFileSync } from 'node:fs';
+import { existsSync, mkdirSync, mkdtempSync, realpathSync, rmSync, symlinkSync, writeFileSync } from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
 import { afterEach, describe, expect, it } from 'vitest';
@@ -19,6 +19,7 @@ import {
 import {
   findGit, GitMarks, GitRunError, locate, statusArguments, systemGit, type GitMarksEventV1,
 } from '../../src/main/workspace/git-marks';
+import { isWorkspaceGitMarksV1 } from '../../src/shared/workspace/v1/validate';
 
 const HASH = '0123456789abcdef0123456789abcdef01234567';
 const ordinary = (xy: string, file: string) => `1 ${xy} N... 100644 100644 100644 ${HASH} ${HASH} ${file}`;
@@ -265,6 +266,25 @@ describe.skipIf(!hasGit)('GitMarks against a real repository', () => {
     });
     // Nothing changed is said as such: read, and empty.
     expect(published.at(-1)).toMatchObject({ files: [], repository: true });
+    marks.close();
+  });
+
+  it('says where the folder really is when it was opened through a link, and names the files from there', async () => {
+    const { vault } = changedRepository();
+    const holder = realpathSync(mkdtempSync(path.join(os.tmpdir(), 'noto-git-link-')));
+    temporary.push(holder);
+    const link = path.join(holder, 'notes');
+    symlinkSync(vault, link, process.platform === 'win32' ? 'junction' : 'dir');
+    const { marks } = await marksFor(link);
+    const event = marks.current();
+    expect(event.root).toBe(link);
+    expect(event.realRoot).toBe(realpathSync.native(vault));
+    expect(event.files.length).toBeGreaterThan(0);
+    for (const [file] of event.files) expect(file.startsWith(`${event.realRoot}${path.sep}`)).toBe(true);
+    expect(isWorkspaceGitMarksV1(event)).toBe(true);
+    // Read from git, the paths are only usable with it, so it cannot be left out.
+    const { realRoot: _left, ...withoutRealRoot } = event;
+    expect(isWorkspaceGitMarksV1(withoutRealRoot)).toBe(false);
     marks.close();
   });
 

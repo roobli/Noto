@@ -20,6 +20,11 @@ export interface ChangeFolder {
   readonly kind: 'folder';
   /** Relative to the folder root, `/`-joined; the key a fold is kept under. */
   readonly key: string;
+  /**
+   * Absolute, written as the files' paths are, for the folder's menu. For a
+   * chain of folders drawn as one row, the last of them, where its notes are.
+   */
+  readonly path: string;
   /** One name, or a chain of them joined by ` / `. */
   readonly name: string;
   readonly children: readonly ChangeNode[];
@@ -36,23 +41,31 @@ export interface ChangeCounts {
 const collator = new Intl.Collator(undefined, { numeric: true, sensitivity: 'base' });
 
 interface Building {
+  path: string;
   folders: Map<string, Building>;
   files: ChangeFile[];
 }
 
-/** The tree of changed notes under `root`, folders first, names in natural order. */
+/**
+ * The tree of changed notes under `root`, folders first, names in natural
+ * order. `root` is the folder as the files' paths name it, which is not
+ * always the name the window was given (see `GitSnapshot.realRoot`).
+ */
 export function changeTree(root: string, files: ReadonlyArray<readonly [string, GitChange]>): readonly ChangeNode[] {
   const base = root.replace(/[\\/]+$/, '');
-  const top: Building = { folders: new Map(), files: [] };
+  const top: Building = { path: base, folders: new Map(), files: [] };
   for (const [path, change] of files) {
     if (!path.startsWith(`${base}/`) && !path.startsWith(`${base}\\`)) continue;
     const parts = path.slice(base.length + 1).split(/[\\/]/).filter(Boolean);
     const name = parts.pop();
     if (!name) continue;
     let at = top;
+    let end = base.length;
     for (const part of parts) {
+      // The folder's own path is the file's, cut after this name, so it keeps the file's separators.
+      end = path.indexOf(part, end + 1) + part.length;
       let next = at.folders.get(part);
-      if (!next) { next = { folders: new Map(), files: [] }; at.folders.set(part, next); }
+      if (!next) { next = { path: path.slice(0, end), folders: new Map(), files: [] }; at.folders.set(part, next); }
       at = next;
     }
     at.files.push({ kind: 'file', path, name, change });
@@ -69,7 +82,7 @@ export function changeTree(root: string, files: ReadonlyArray<readonly [string, 
         key = `${key}/${nextName}`;
         inner = nextChild;
       }
-      return { kind: 'folder', key, name: label, children: finish(inner, key) };
+      return { kind: 'folder', key, name: label, path: inner.path, children: finish(inner, key) };
     });
     const leaves = [...node.files].sort((left, right) => collator.compare(left.name, right.name));
     return [...folders, ...leaves];

@@ -541,6 +541,13 @@ export interface WorkspaceGitMarksV1 {
    * "nothing known".
    */
   readonly repository?: true;
+  /**
+   * The folder as the file system names it, links and Windows short names
+   * resolved. Every path in `files` and `folders` is under it, as the file
+   * tree's paths are, and it differs from `root` when the folder was opened
+   * through another name for it. Sent with `repository`.
+   */
+  readonly realRoot?: string;
 }
 
 /** Bounds on a gutter message: a note over a megabyte has no gutter at all. */

@@ -119,6 +119,11 @@ How releases are made, and what each channel receives, is in
 
 ### Fixed
 
+- **Changes lists the notes of a folder opened through a link.** Git names
+  the notes from where the folder really is, and the page looked for them
+  under the name it was opened by, so it said nothing had changed while its
+  toggle counted them. On Windows every folder under a short name was
+  affected, the temporary folder among them.
 - **Moving a row or column by its handle works more than once.** The
   handles went away with the first move, with the caret moving between cells
   and with every key typed, and came back only when the pointer left the

@@ -15,10 +15,9 @@ import { changeCounts, changeTree, type ChangeNode } from './tree';
 
 const WORDS = { modified: 'Changed', new: 'New', deleted: 'Deleted' } as const;
 
-function Level({ nodes, depth, root, active, folded, onFold, onOpen, onMenu }: {
+function Level({ nodes, depth, active, folded, onFold, onOpen, onMenu }: {
   nodes: readonly ChangeNode[];
   depth: number;
-  root: string;
   active: string | null;
   folded: ReadonlySet<string>;
   onFold: (key: string) => void;
@@ -35,14 +34,14 @@ function Level({ nodes, depth, root, active, folded, onFold, onOpen, onMenu }: {
               <button type="button" className="tree-row tree-directory" data-testid="changes-folder" data-depth={depth}
                 title={node.name} aria-expanded={open} onClick={() => onFold(node.key)}
                 // A chain of folders is one row, and its menu is the last folder's: where its notes are.
-                onContextMenu={(event) => { event.preventDefault(); onMenu(`${root}/${node.key}`, 'directory'); }}>
+                onContextMenu={(event) => { event.preventDefault(); onMenu(node.path, 'directory'); }}>
                 <span className="tree-leading">
                   <span className={open ? 'tree-twisty tree-twisty-open' : 'tree-twisty'} aria-hidden="true" />
                   <FolderGlyph />
                 </span>
                 <span className="tree-name">{node.name}</span>
               </button>
-              {open && <Level nodes={node.children} depth={depth + 1} root={root} active={active} folded={folded} onFold={onFold} onOpen={onOpen} onMenu={onMenu} />}
+              {open && <Level nodes={node.children} depth={depth + 1} active={active} folded={folded} onFold={onFold} onOpen={onOpen} onMenu={onMenu} />}
             </div>
           );
         }
@@ -89,7 +88,9 @@ export function ChangesPage({ host }: { host: RailPageHost }) {
   const onMenu = useCallback((path: string, kind: 'file' | 'directory') => host.showFileMenu(path, kind), [host]);
 
   const current = marks && root && marks.root === root ? marks : null;
-  const tree = useMemo(() => (current ? changeTree(root, current.files) : []), [current, root]);
+  // Git's paths are under the folder's real location, which a link or a
+  // Windows short name makes differ from the name the window was given.
+  const tree = useMemo(() => (current ? changeTree(current.realRoot ?? root, current.files) : []), [current, root]);
   const counts = useMemo(() => changeCounts(current?.files ?? []), [current]);
   const body = useRef<HTMLDivElement>(null);
   useLayoutEffect(() => {
@@ -112,7 +113,7 @@ export function ChangesPage({ host }: { host: RailPageHost }) {
     <div className="changes-page" data-testid="changes-page">
       <p className="changes-summary" data-testid="changes-summary">{summary}</p>
       <div className="changes-body" ref={body}>
-        <Level nodes={tree} depth={0} root={root} active={active || null} folded={folded} onFold={onFold} onOpen={onOpen} onMenu={onMenu} />
+        <Level nodes={tree} depth={0} active={active || null} folded={folded} onFold={onFold} onOpen={onOpen} onMenu={onMenu} />
       </div>
     </div>
   );

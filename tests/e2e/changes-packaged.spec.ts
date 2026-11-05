@@ -9,7 +9,7 @@
  */
 
 import { execFileSync } from 'node:child_process';
-import { mkdirSync, mkdtempSync, realpathSync, rmSync, writeFileSync } from 'node:fs';
+import { mkdirSync, mkdtempSync, realpathSync, rmSync, symlinkSync, writeFileSync } from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
 import { expect, test, _electron as electron, type ElectronApplication, type Page } from '@playwright/test';
@@ -34,8 +34,13 @@ function write(file: string, text: string): void {
   writeFileSync(file, text);
 }
 
+/**
+ * A new directory, named as the file system names it. The native resolver is
+ * the one the app uses: on Windows it also expands a short name such as
+ * `RUNNER~1` in the temporary folder, which the JavaScript one leaves.
+ */
 function scratch(name: string): string {
-  const directory = realpathSync(mkdtempSync(path.join(os.tmpdir(), `noto-e2e-${name}-`)));
+  const directory = realpathSync.native(mkdtempSync(path.join(os.tmpdir(), `noto-e2e-${name}-`)));
   made.push(directory);
   return directory;
 }
@@ -107,6 +112,28 @@ test.describe('the Changes page', () => {
       await toggle(page).click();
       await expect(page.getByTestId('rail-plugin-view')).toHaveCount(0);
       await expect(page.getByTestId('file-tree')).toBeVisible();
+    } finally {
+      await app.close();
+    }
+  });
+
+  test('lists the changes of a folder opened through another name for it', async () => {
+    // Git names its paths from where the folder really is; the window keeps
+    // the name it was given. They differ for a folder opened through a link,
+    // and on Windows for any folder under a short name, as the temporary
+    // folder is on the test machines. A junction needs no rights on Windows.
+    const vault = changedVault();
+    const link = path.join(scratch('link'), 'notes');
+    symlinkSync(vault, link, process.platform === 'win32' ? 'junction' : 'dir');
+    const { app, page } = await launch(link);
+    try {
+      await expect(toggle(page).getByTestId('rail-page-badge')).toHaveText('3');
+      await toggle(page).click();
+      const view = page.getByTestId('rail-plugin-view');
+      await expect(view.getByTestId('changes-summary')).toHaveText('1 changed · 1 new · 1 deleted');
+      await expect(view.getByTestId('changes-file')).toHaveCount(3);
+      await view.locator('[data-testid="changes-file"][data-change="modified"]').click();
+      await expect(page.locator('.titlebar')).toContainText('audit.md');
     } finally {
       await app.close();
     }

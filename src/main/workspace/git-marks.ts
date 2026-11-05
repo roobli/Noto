@@ -348,6 +348,7 @@ export class GitMarks {
       files: [...marks.files].map(([relative, change]) => [absolute(relative), change] as const),
       folders: [...marks.folders].map(absolute),
       repository: true,
+      realRoot,
     });
   }
 

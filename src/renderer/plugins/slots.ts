@@ -23,6 +23,12 @@ export interface GitSnapshot {
   readonly files: ReadonlyArray<readonly [string, GitChange]>;
   /** True when git has been read for the folder; absent when nothing is known. */
   readonly repository?: true;
+  /**
+   * The folder as the file system names it, which every path in `files` is
+   * under. It differs from `root` when the folder was opened through a link,
+   * or on Windows through a short name. Present with `repository`.
+   */
+  readonly realRoot?: string;
 }
 
 /** The `git.read` capability. */

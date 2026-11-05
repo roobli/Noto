@@ -24,6 +24,18 @@ describe('the tree of changed notes', () => {
     expect(folder.kind === 'folder' && folder.key).toBe('Work/Acme/研发组/TODO');
   });
 
+  it('gives each folder row its own path, written as the files are, for its menu', () => {
+    const tree = changeTree('/v', [['/v/Work/Acme/TODO/a.md', 'modified'], ['/v/Work/b.md', 'new']]);
+    const work = tree[0]!;
+    expect(work.kind === 'folder' && work.path).toBe('/v/Work');
+    const chain = work.kind === 'folder' ? work.children[0]! : null;
+    // A chain drawn as one row is the last folder of it.
+    expect(chain?.kind === 'folder' && [chain.name, chain.path]).toEqual(['Acme / TODO', '/v/Work/Acme/TODO']);
+    // Windows paths keep their separators.
+    const windows = changeTree('C:\\Users\\runneradmin\\v', [['C:\\Users\\runneradmin\\v\\Work\\a.md', 'new']]);
+    expect(windows[0]!.kind === 'folder' && windows[0]!.path).toBe('C:\\Users\\runneradmin\\v\\Work');
+  });
+
   it('counts each kind of change', () => {
     expect(changeCounts([['/v/a.md', 'modified'], ['/v/b.md', 'modified'], ['/v/c.md', 'deleted']])).toEqual({ modified: 2, new: 0, deleted: 1 });
   });

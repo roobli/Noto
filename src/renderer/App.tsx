@@ -440,7 +440,14 @@ function NotoWorkspace({ platform }: { platform: NotoPlatform }) {
   // that arrive for a folder the window has since left are not drawn.
   // The shell's slots see the same folder, note and marks the tree does.
   useEffect(() => {
-    slotState.update({ git: gitMarks ? { root: gitMarks.root, files: gitMarks.files, ...(gitMarks.repository !== undefined ? { repository: gitMarks.repository } : {}) } : null });
+    slotState.update({
+      git: gitMarks ? {
+        root: gitMarks.root,
+        files: gitMarks.files,
+        ...(gitMarks.repository !== undefined ? { repository: gitMarks.repository } : {}),
+        ...(gitMarks.realRoot !== undefined ? { realRoot: gitMarks.realRoot } : {}),
+      } : null,
+    });
   }, [slotState, gitMarks]);
   const treeGitMarks = useMemo(() => {
     if (!gitMarks || gitMarks.root === null || gitMarks.root !== folder.root || gitMarks.files.length === 0) return null;
