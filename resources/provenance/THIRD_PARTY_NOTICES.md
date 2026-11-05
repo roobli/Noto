@@ -2,7 +2,7 @@
 
 Generated from the installed dependency tree. Do not edit by hand.
 
-- Lockfile SHA-256: `f0ec23d3ac1de63197569b4eea3f105c3d401699444edecbd3306d8c4254fd1b`
+- Lockfile SHA-256: `6949e408c8665a31c1775bd415b8e8234450d0701737022f9cc2fbbf284ebb5a`
 - Unique resolved packages: 744
 - Packages with copied license or notice text: 715
 - Packages without a root license or notice file: 29
@@ -599,12 +599,12 @@ Generated from the installed dependency tree. Do not edit by hand.
 | `prosemirror-history@1.5.0` | MIT | LICENSE | git://github.com/prosemirror/prosemirror-history.git |
 | `prosemirror-inputrules@1.5.1` | MIT | LICENSE | git://github.com/prosemirror/prosemirror-inputrules.git |
 | `prosemirror-keymap@1.2.3` | MIT | LICENSE | git://github.com/prosemirror/prosemirror-keymap.git |
-| `prosemirror-model@1.25.11` | MIT | LICENSE | git+https://code.haverbeke.berlin/prosemirror/prosemirror-model.git |
+| `prosemirror-model@1.25.12` | MIT | LICENSE | git+https://code.haverbeke.berlin/prosemirror/prosemirror-model.git |
 | `prosemirror-schema-list@1.5.1` | MIT | LICENSE | git://github.com/prosemirror/prosemirror-schema-list.git |
 | `prosemirror-state@1.4.4` | MIT | LICENSE | git://github.com/prosemirror/prosemirror-state.git |
 | `prosemirror-tables@1.8.5` | MIT | LICENSE | https://github.com/ProseMirror/prosemirror-tables.git |
 | `prosemirror-transform@1.12.0` | MIT | LICENSE | git://github.com/prosemirror/prosemirror-transform.git |
-| `prosemirror-view@1.42.3` | MIT | LICENSE | git+https://code.haverbeke.berlin/prosemirror/prosemirror-view.git |
+| `prosemirror-view@1.42.9` | MIT | LICENSE | git+https://code.haverbeke.berlin/prosemirror/prosemirror-view.git |
 | `pump@3.0.4` | MIT | LICENSE | git://github.com/mafintosh/pump.git |
 | `queue-microtask@1.2.3` | MIT | LICENSE | git://github.com/feross/queue-microtask.git |
 | `quick-lru@5.1.1` | MIT | license | sindresorhus/quick-lru |
@@ -20337,7 +20337,7 @@ OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN
 THE SOFTWARE.
 ```
 
-### prosemirror-model@1.25.11
+### prosemirror-model@1.25.12
 
 #### LICENSE
 
@@ -20467,7 +20467,7 @@ OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN
 THE SOFTWARE.
 ```
 
-### prosemirror-view@1.42.3
+### prosemirror-view@1.42.9
 
 #### LICENSE
 
