@@ -11,6 +11,24 @@ How releases are made, and what each channel receives, is in
 
 ### Added
 
+- **Table rows and columns come out from the right-click menu.** A right
+  click in a table offers Insert Row Above and Below, Insert Column Left and
+  Right, Delete Row, Delete Column and Delete Table. A row's or column's
+  handle now says what it does: a press selects it, Shift with a press takes
+  in the ones up to it, and Delete or Backspace takes out the whole rows or
+  columns selected, several at once; the menu then says how many (Delete 3
+  Rows). Before, the keys only emptied the cells and the source was the quick
+  way to remove a row.
+- **Down past a quote, list, table or code block at the end of a note makes a
+  line below it**, and Up past one at the start makes a line above. A note
+  that began with a quote had no line above it the keyboard could reach. The
+  line is empty until typed in, and an empty last line is not saved.
+- **A changed table is marked by its rows.** In a folder under git, the bar
+  beside a table that differs from the last commit stands beside the rows
+  that changed or are new, with a mark where rows were deleted, instead of
+  running the height of the table. A table whose columns or alignment changed
+  is still marked whole.
+
 - **Changes, in the rail.** A toggle beside search, with a count, opens the
   notes that differ from the last commit as one short tree: changed, new and
   deleted, each with its own mark, and a chain of folders holding only the
@@ -130,6 +148,11 @@ How releases are made, and what each channel receives, is in
   busy machine that came after a Shift and arrow pressed in the meantime and
   undid it. The editor engine (`prosemirror-view` 1.42.9) now leaves a
   selection that has moved since the focus.
+- **A key pressed straight after a click or a caret move acts where the caret
+  is now.** The browser reports a move a moment after it happens, and a key
+  that came first acted on the old place: Enter right after Command-Down put
+  its lines at the start of the note. A keyboard macro or a script would hit
+  it; so did the tests on a busy machine.
 - **Moving a row or column by its handle works more than once.** The
   handles went away with the first move, with the caret moving between cells
   and with every key typed, and came back only when the pointer left the
