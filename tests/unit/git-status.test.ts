@@ -254,6 +254,7 @@ describe.skipIf(!hasGit)('GitMarks against a real repository', () => {
   it('follows a refresh after the reader commits', async () => {
     const { repo, vault } = changedRepository();
     const { marks, published } = await marksFor(vault);
+    expect(marks.current().repository).toBe(true);
     git(repo, 'add', '-A');
     git(repo, 'commit', '-q', '-m', 'second');
     marks.refresh();
@@ -262,7 +263,8 @@ describe.skipIf(!hasGit)('GitMarks against a real repository', () => {
       const wait = () => (marks.current().files.length === 0 ? resolve() : setTimeout(wait, 20));
       wait();
     });
-    expect(published.at(-1)?.files).toEqual([]);
+    // Nothing changed is said as such: read, and empty.
+    expect(published.at(-1)).toMatchObject({ files: [], repository: true });
     marks.close();
   });
 

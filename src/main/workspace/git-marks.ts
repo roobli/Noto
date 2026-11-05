@@ -347,6 +347,7 @@ export class GitMarks {
       root,
       files: [...marks.files].map(([relative, change]) => [absolute(relative), change] as const),
       folders: [...marks.folders].map(absolute),
+      repository: true,
     });
   }
 
@@ -360,6 +361,8 @@ export class GitMarks {
 }
 
 function sameMarks(left: GitMarksEventV1, right: GitMarksEventV1): boolean {
+  // Learning that the folder is in git, or is not, is news even with no change in it.
+  if (left.repository !== right.repository) return false;
   if (left.files.length !== right.files.length || left.folders.length !== right.folders.length) return false;
   const files = new Map(left.files.map(([file, change]) => [file, change]));
   if (right.files.some(([file, change]) => files.get(file) !== change)) return false;

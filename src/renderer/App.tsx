@@ -11,7 +11,7 @@ import { fromLf } from '../shared/markdown/v3/line-endings';
 import { sourceModeText } from './source-mode-text';
 import { CommandPalette } from './CommandPalette';
 import { PLAIN_FLAGS, type SearchFlags } from '../shared/search/pattern';
-import { useCallback, useEffect, useMemo, useRef, useState, type CSSProperties } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState, useSyncExternalStore, type CSSProperties } from 'react';
 import type {
   FileTruthOpenReplyV1,
   FileTruthRecoveryRecordV1,
@@ -73,7 +73,8 @@ import {
 } from './file-truth-state';
 import { RendererPluginHost } from './plugins/RendererPluginHost';
 import { sandboxedPlugin, trustedModulePlugin } from './plugins/sandbox/installed-plugin';
-import { createRendererPluginHosts } from './plugins/bundled/hosts';
+import { createRendererPluginHosts, shellPlugins } from './plugins/bundled/hosts';
+import { railPages, shellContext, ShellState, type Disposer } from './plugins/slots';
 import { RendererPluginClient } from './plugins/RendererPluginClient';
 import { PluginCenter } from './plugins/PluginCenter';
 import { createPluginSnapshotStream } from './plugins/plugin-snapshot-stream';
@@ -327,6 +328,43 @@ function NotoWorkspace({ platform }: { platform: NotoPlatform }) {
   })), [pluginSnapshots]);
   const pluginSnapshotsRef = useRef(pluginSnapshots);
   pluginSnapshotsRef.current = pluginSnapshots;
+
+  /*
+   * Shell contributions: what a switched-on plugin adds to the window rather
+   * than to the editor, such as a page in the rail. They follow the plugin's
+   * switch, not a note's lease, so they are there with no note open.
+   */
+  const [slotState] = useState(() => new ShellState());
+  const shellRunning = useRef(new Map<string, Disposer>());
+  useEffect(() => {
+    const enabled = new Set(pluginSnapshots.filter((snapshot) => snapshot.desiredEnabled).map((snapshot) => snapshot.id));
+    for (const { manifest, plugin } of shellPlugins()) {
+      const running = shellRunning.current.get(manifest.id);
+      if (enabled.has(manifest.id) && !running) {
+        const { context, dispose } = shellContext(manifest, slotState, railPages);
+        try {
+          const stop = plugin.shell!(context);
+          shellRunning.current.set(manifest.id, () => {
+            try { stop(); } finally { dispose(); }
+          });
+        } catch (error) {
+          dispose();
+          window.dispatchEvent(new CustomEvent('noto:notice', { detail: `${manifest.name} could not start: ${(error as Error).message}` }));
+        }
+      } else if (!enabled.has(manifest.id) && running) {
+        shellRunning.current.delete(manifest.id);
+        running();
+      }
+    }
+  }, [pluginSnapshots, slotState]);
+  useEffect(() => () => {
+    for (const stop of shellRunning.current.values()) stop();
+    shellRunning.current.clear();
+  }, []);
+  const railPageEntries = useSyncExternalStore(
+    useCallback((listener: () => void) => railPages.subscribe(listener), []),
+    () => railPages.list(),
+  );
   /**
    * Telling the plugin host that an editor exists.
    *
@@ -400,6 +438,10 @@ function NotoWorkspace({ platform }: { platform: NotoPlatform }) {
   const [gitMarks, setGitMarks] = useState<WorkspaceGitMarksV1 | null>(null);
   // Keyed for the tree's lookups, and only for the folder on screen: marks
   // that arrive for a folder the window has since left are not drawn.
+  // The shell's slots see the same folder, note and marks the tree does.
+  useEffect(() => {
+    slotState.update({ git: gitMarks ? { root: gitMarks.root, files: gitMarks.files, ...(gitMarks.repository !== undefined ? { repository: gitMarks.repository } : {}) } : null });
+  }, [slotState, gitMarks]);
   const treeGitMarks = useMemo(() => {
     if (!gitMarks || gitMarks.root === null || gitMarks.root !== folder.root || gitMarks.files.length === 0) return null;
     return { files: new Map(gitMarks.files), folders: new Set(gitMarks.folders) };
@@ -1593,6 +1635,12 @@ function NotoWorkspace({ platform }: { platform: NotoPlatform }) {
     }
   }, []);
   openPathRef.current = openPath;
+  useEffect(() => {
+    slotState.setOpener((filePath) => { void openPathRef.current(filePath); });
+  }, [slotState]);
+  useEffect(() => {
+    slotState.update({ folder: folder.root, active: active?.opened.path ?? null });
+  }, [slotState, folder.root, active]);
 
   /** One step along the trail, replayed as an open so nothing records it. */
   const stepTrail = useCallback((direction: -1 | 1) => {
@@ -2597,6 +2645,7 @@ function NotoWorkspace({ platform }: { platform: NotoPlatform }) {
               onClose: () => setRail({ open: true, view: 'files' }),
             }}
             view={rail.view}
+            pages={railPageEntries}
             showLinks={settings.railLinks}
             onView={(view) => setRail({ open: true, view })}
             width={appliedRailWidth}

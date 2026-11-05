@@ -20,6 +20,7 @@ import {
   titleShiftManifest,
   markdownPaddingManifest,
   sidenotesManifest,
+  changesManifest,
 } from '../../shared/plugins/proof-manifests';
 import {
   cloneLocalPluginState,
@@ -142,6 +143,7 @@ export const bundledPluginCatalog = createPluginCatalog([
   rendererProofManifest,
   titleShiftManifest,
   sidenotesManifest,
+  changesManifest,
   markdownPaddingManifest,
   filesystemProofManifest,
 ]);

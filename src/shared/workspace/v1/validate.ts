@@ -577,7 +577,9 @@ const isMarkPath = (value: unknown): value is string =>
   typeof value === 'string' && value.length > 0 && value.length <= 4096;
 
 export function isWorkspaceGitMarksV1(value: unknown): value is WorkspaceGitMarksV1 {
-  return record(value) && exact(value, ['version', 'root', 'files', 'folders'])
+  return record(value)
+    && (exact(value, ['version', 'root', 'files', 'folders'])
+      || (exact(value, ['version', 'root', 'files', 'folders', 'repository']) && value.repository === true))
     && value.version === NOTO_WORKSPACE_VERSION
     && (value.root === null || isMarkPath(value.root))
     && Array.isArray(value.files) && value.files.length <= MAX_GIT_MARKS

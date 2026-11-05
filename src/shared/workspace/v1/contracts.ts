@@ -535,6 +535,12 @@ export interface WorkspaceGitMarksV1 {
   readonly files: ReadonlyArray<readonly [string, WorkspaceGitChangeV1]>;
   /** Folders, below the open one, holding a change somewhere inside. */
   readonly folders: readonly string[];
+  /**
+   * True once git has been read for the folder; absent otherwise (not in a
+   * repository, git missing, too slow). Lets "nothing changed" be told from
+   * "nothing known".
+   */
+  readonly repository?: true;
 }
 
 /** Bounds on a gutter message: a note over a megabyte has no gutter at all. */

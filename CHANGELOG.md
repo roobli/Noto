@@ -11,6 +11,22 @@ How releases are made, and what each channel receives, is in
 
 ### Added
 
+- **Changes, in the rail.** A toggle beside search, with a count, opens the
+  notes that differ from the last commit as one short tree: changed, new and
+  deleted, each with its own mark, and a chain of folders holding only the
+  next drawn as one row. A click opens the note; a deleted one is listed,
+  struck through. It is a bundled plugin, on by default, and can be switched
+  off in the Plugin Center.
+- **Plugins can put a page in the rail.** A trusted plugin may register a
+  page with a toggle in the rail's head, and read the folder's git status if
+  its manifest declares `git.read`. The page lives while the plugin is
+  switched on, with or without a note open. Changes is the first; the slots
+  and what they offer are described in `docs/architecture/plugin-slots.md`.
+- **A vault that keeps memory learns what you read.** In a folder with a
+  `.noto/` folder, each note brought to the front is one line in
+  `.noto/events/`, with the note you followed a link from. The vault tools
+  read it to tell which notes are warm and which are thought of together. A
+  folder without `.noto/` is never written to.
 - **Write a sidenote in the margin.** Select words, then Add Sidenote from
   the right-click menu or Cmd-Alt-S: a card opens in the right margin, beside
   the line, with the keys in it. Enter saves the note and Escape leaves

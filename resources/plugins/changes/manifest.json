@@ -1,0 +1,26 @@
+{
+  "schemaVersion": 2,
+  "id": "dev.lr00rl.noto.changes",
+  "name": "Changes",
+  "version": "1.0.0",
+  "runtime": "trusted-renderer",
+  "activation": {
+    "startup": false,
+    "events": [],
+    "hotkeys": []
+  },
+  "capabilities": [
+    "git.read"
+  ],
+  "lifecycle": [
+    "activate",
+    "deactivate"
+  ],
+  "commands": [],
+  "settings": [],
+  "hotkeys": [],
+  "editorExtensions": [],
+  "uiExtensions": [
+    "rail:changes"
+  ]
+}
