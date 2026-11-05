@@ -124,6 +124,12 @@ How releases are made, and what each channel receives, is in
   under the name it was opened by, so it said nothing had changed while its
   toggle counted them. On Windows every folder under a short name was
   affected, the temporary folder among them.
+- **A selection made right after clicking into a note keeps its last
+  letter.** 20 ms after the editor takes the focus it used to put back the
+  selection it last knew, to undo where the browser drops the caret; on a
+  busy machine that came after a Shift and arrow pressed in the meantime and
+  undid it. The editor engine (`prosemirror-view` 1.42.9) now leaves a
+  selection that has moved since the focus.
 - **Moving a row or column by its handle works more than once.** The
   handles went away with the first move, with the caret moving between cells
   and with every key typed, and came back only when the pointer left the
