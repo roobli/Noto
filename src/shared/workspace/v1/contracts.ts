@@ -153,6 +153,8 @@ export interface WorkspaceRequestV1 {
 
 export interface WorkspaceOpenPathRequestV1 extends WorkspaceRequestV1 {
   readonly path: string;
+  /** The note this one was reached from, by a link; recorded for the vault's memory. */
+  readonly from?: string;
 }
 
 /** Activating or closing a tab, both identified by path. */

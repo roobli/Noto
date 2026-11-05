@@ -98,7 +98,10 @@ export function isWorkspaceRequestV1(value: unknown): value is WorkspaceRequestV
 }
 
 export function isWorkspaceOpenPathRequestV1(value: unknown): value is WorkspaceOpenPathRequestV1 {
-  return record(value) && exact(value, ['version', 'requestId', 'path'])
+  return record(value)
+    && (exact(value, ['version', 'requestId', 'path'])
+      || (exact(value, ['version', 'requestId', 'path', 'from'])
+        && typeof value.from === 'string' && value.from.length > 0 && value.from.length <= 4096))
     && value.version === 1 && typeof value.requestId === 'string' && requestId.test(value.requestId)
     && typeof value.path === 'string' && value.path.length > 0 && value.path.length <= 4096;
 }

@@ -495,7 +495,7 @@ function NotoWorkspace({ platform }: { platform: NotoPlatform }) {
   /** A content-search query waiting for its document to arrive. */
   const pendingMatchRef = useRef<string | null>(null);
   const ensureFileIndexRef = useRef<() => Promise<void>>(async () => {});
-  const openPathRef = useRef<(filePath: string) => Promise<void>>(async () => {});
+  const openPathRef = useRef<(filePath: string, from?: string | null) => Promise<void>>(async () => {});
   const refreshRecentFoldersRef = useRef<() => void>(() => {});
   const [fileIndex, setFileIndex] = useState<{
     entries: readonly WorkspaceIndexEntryV1[]; truncated: boolean;
@@ -1546,7 +1546,7 @@ function NotoWorkspace({ platform }: { platform: NotoPlatform }) {
     }
   }, []);
 
-  const openPath = useCallback(async (filePath: string) => {
+  const openPath = useCallback(async (filePath: string, from?: string | null) => {
     setOpenError(null);
     // An automatic save waiting on the note being left goes now. Its timer was
     // cleared when the note left the front, so a note left within the delay
@@ -1556,7 +1556,7 @@ function NotoWorkspace({ platform }: { platform: NotoPlatform }) {
       void saveRef.current();
     }
     try {
-      const result = await window.notoWorkspace.openPath({ version: 1, requestId: rid('open-path'), path: filePath });
+      const result = await window.notoWorkspace.openPath({ version: 1, requestId: rid('open-path'), path: filePath, ...(from ? { from } : {}) });
       if (!result.ok) {
         // A replay that failed is over, and a note that cannot be opened is
         // not somewhere the trail should offer again.
@@ -1654,7 +1654,9 @@ function NotoWorkspace({ platform }: { platform: NotoPlatform }) {
     ).reduce((chosen, entry) => (
       searchBoost(frecency, entry.path, now) > searchBoost(frecency, chosen.path, now) ? entry : chosen
     ));
-    void openPath(best.path);
+    // Where it was reached from goes with it: a link followed is the strongest
+    // sign that two notes belong together.
+    void openPath(best.path, here);
   }, [active, folder.root, fileIndex.entries, frecency, openPath]);
   followWikiLinkRef.current = followWikiLink;
 
