@@ -84,9 +84,9 @@ interface Batch {
 }
 
 /** How many writes can be taken back, the latest first. */
+const UNDO_DEPTH = 20;
 /** Rows of each list Note Info is given: the eight it shows, and Show More's. */
 const ABOUT_LIMIT = 24;
-const UNDO_DEPTH = 20;
 
 /**
  * Marks in the note in front are few, so the page is not strewn with

@@ -21,6 +21,7 @@ import { createHash, randomUUID } from 'node:crypto';
 import { BrowserWindow, Menu, clipboard, dialog, shell, type MenuItemConstructorOptions } from 'electron';
 import { FILE_TRUTH_CHANNELS, type FileTruthOpenReplyV1 } from '../../shared/file-truth/v1/contracts';
 import { NOTE_PREVIEW_MAX, openableExternalUrl } from '../../shared/workspace/v1/validate';
+import { fenceAfter } from '../../shared/markdown-fence';
 import {
   NOTO_WORKSPACE_VERSION,
   WORKSPACE_CHANNELS,
@@ -2104,7 +2105,6 @@ export class WorkspaceSession {
     return reply;
   }
 
-  /** A note's text at one of its own commits. */
   /**
    * Quick Open's preview: the opening of a note in the open folder, or the
    * lines around a match in it. Only a few kilobytes are read for an opening;
@@ -2112,7 +2112,7 @@ export class WorkspaceSession {
    * file outside the folder, or not a note, gets nothing.
    */
   async notePreview(target: string, line: number | null): Promise<WorkspaceNotePreviewReplyV1> {
-    const none: WorkspaceNotePreviewReplyV1 = { version: NOTO_WORKSPACE_VERSION, text: null, from: 1, modified: null };
+    const none: WorkspaceNotePreviewReplyV1 = { version: NOTO_WORKSPACE_VERSION, text: null, from: 1, modified: null, fence: null };
     const real = await this.inRoot(target);
     if (real === null || !/\.(md|markdown|mdown|mkd|txt)$/i.test(real)) return none;
     try {
@@ -2125,7 +2125,7 @@ export class WorkspaceSession {
           const { bytesRead } = await handle.read(buffer, 0, buffer.length, 0);
           // A character cut at the end of the read is dropped, not shown as a replacement mark.
           const text = buffer.subarray(0, bytesRead).toString('utf8').replace(/\uFFFD+$/, '');
-          return { version: NOTO_WORKSPACE_VERSION, text: text.slice(0, NOTE_PREVIEW_MAX), from: 1, modified: info.mtimeMs };
+          return { version: NOTO_WORKSPACE_VERSION, text: text.slice(0, NOTE_PREVIEW_MAX), from: 1, modified: info.mtimeMs, fence: null };
         } finally {
           await handle.close();
         }
@@ -2134,7 +2134,9 @@ export class WorkspaceSession {
       const lines = (await readFile(real, 'utf8')).split('\n');
       const from = Math.max(1, Math.min(line, lines.length) - PREVIEW_BEFORE);
       const text = lines.slice(from - 1, from - 1 + PREVIEW_LINES).join('\n').slice(0, NOTE_PREVIEW_MAX);
-      return { version: NOTO_WORKSPACE_VERSION, text, from, modified: info.mtimeMs };
+      const open = fenceAfter(lines.slice(0, from - 1));
+      const fence = open ? open.char.repeat(Math.min(open.length, 32)) : null;
+      return { version: NOTO_WORKSPACE_VERSION, text, from, modified: info.mtimeMs, fence };
     } catch {
       return none;
     }

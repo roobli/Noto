@@ -68,7 +68,8 @@ function AskMain({ answer, label, testId, run }: {
 /**
  * One kind of relation: its name and how many, the first eight, and Show N
  * More for the rest the memory gave; past those, how many more the folder
- * holds, which are a search away rather than a scroll.
+ * holds, which are a search away rather than a scroll. Keyed by the note, so
+ * a group opened for one note starts closed for the next.
  */
 function Group({ title, count, rows, testId }: { readonly title: string; readonly count: number; readonly rows: readonly ReactNode[]; readonly testId: string }) {
   const [open, setOpen] = useState(false);
@@ -233,22 +234,22 @@ function Related({ host }: { readonly host: InfoTabHost }) {
           }}>{memory.supersededBy.title || nameOf(memory.supersededBy.path)}</button>
         </p>
       )}
-      <Group title="Links here" count={memory.linksHereCount} testId="related-links-here"
+      <Group key={`${note}:links`} title="Links here" count={memory.linksHereCount} testId="related-links-here"
         rows={memory.linksHere.map((item) => (
           <Row key={item.path} host={host} rel={item.path} title={item.title} heat={item.heat} testId="related-row"
             why={[item.relation ? item.relation.replace(/_/g, ' ') : 'links here', item.reads > 0 ? `read ${times(item.reads)}` : ''].filter(Boolean).join(' · ')} />
         ))} />
-      <Group title="Named here, not linked" count={memory.namedHereCount} testId="related-named-here"
+      <Group key={`${note}:named`} title="Named here, not linked" count={memory.namedHereCount} testId="related-named-here"
         rows={memory.namedHere.map((item) => (
           <Row key={item.id} host={host} rel={item.to} title={item.title} testId="related-row"
             why={<Mention around={item.around} />} />
         ))} />
-      <Group title="Read together" count={memory.togetherCount} testId="related-together"
+      <Group key={`${note}:together`} title="Read together" count={memory.togetherCount} testId="related-together"
         rows={memory.together.map((item) => (
           <Row key={`${item.path}:${item.type}`} host={host} rel={item.path} title={item.title} testId="related-row"
             why={togetherWhy(item.type, item.count)} />
         ))} />
-      <Group title="About the same" count={Math.min(memory.aboutSame.length, ABOUT_SAME)} testId="related-about-same"
+      <Group key={`${note}:about`} title="About the same" count={Math.min(memory.aboutSame.length, ABOUT_SAME)} testId="related-about-same"
         rows={memory.aboutSame.slice(0, ABOUT_SAME).map((item) => (
           <Row key={item.path} host={host} rel={item.path} title={item.title} testId="related-row"
             why={plainWhy(item.why, 'title') || item.excerpt} />

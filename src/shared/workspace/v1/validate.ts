@@ -390,8 +390,9 @@ export function isWorkspaceNotePreviewRequestV1(value: unknown): value is Worksp
 }
 
 export function isWorkspaceNotePreviewReplyV1(value: unknown): value is WorkspaceNotePreviewReplyV1 {
-  return record(value) && exact(value, ['version', 'text', 'from', 'modified'])
+  return record(value) && exact(value, ['version', 'text', 'from', 'modified', 'fence'])
     && value.version === 1
+    && (value.fence === null || (typeof value.fence === 'string' && /^(`{3,32}|~{3,32})$/.test(value.fence)))
     && (value.text === null || (typeof value.text === 'string' && value.text.length <= NOTE_PREVIEW_MAX))
     && typeof value.from === 'number' && Number.isSafeInteger(value.from) && value.from >= 1
     && (value.modified === null || time(value.modified));

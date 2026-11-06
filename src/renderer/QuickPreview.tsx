@@ -13,6 +13,8 @@ export interface PreviewValue {
   readonly text: string | null;
   readonly from: number;
   readonly modified: number | null;
+  /** The fence of a code block the text begins inside, or null. */
+  readonly fence: string | null;
 }
 
 export interface PreviewTarget {
@@ -67,7 +69,7 @@ export function QuickPreview({ target, value, query }: {
 }) {
   const title = stripExtension(target.name);
   const blocks = useMemo(() => {
-    const all = value?.text ? previewBlocks(value.text, value.from) : [];
+    const all = value?.text ? previewBlocks(value.text, value.from, value.fence) : [];
     // The name is said above, in the title; a first heading that only says it again is left out.
     const first = all[0];
     const same = (left: string, right: string) => left.replace(/\s+/g, '').toLowerCase() === right.replace(/\s+/g, '').toLowerCase();

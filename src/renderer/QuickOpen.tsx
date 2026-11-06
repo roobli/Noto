@@ -101,10 +101,12 @@ export interface QuickOpenProps {
   readonly onPreview?: (path: string, line: number | null) => Promise<PreviewValue | null>;
 }
 
-/** Previews kept while the palette is open, so walking back up the list reads nothing again. */
+/** Previews kept while the palette is open, so a note walked back to shows at once. */
 const PREVIEWS_KEPT = 60;
 /** A pause before reading, so holding an arrow key down reads only where it stops. */
 const PREVIEW_DELAY_MS = 60;
+/** How long a note's preview is shown from memory before it is read again. */
+const PREVIEW_FRESH_MS = 3000;
 
 /** The name with the matched characters marked, so a fuzzy hit shows its work. */
 function Highlighted({ text, query }: { text: string; query: string }) {
@@ -380,18 +382,25 @@ export function QuickOpen({
       ? { path: content.matches[selected]!.path, name: content.matches[selected]!.name, relativePath: content.matches[selected]!.relativePath, line: content.matches[selected]!.lines[0]?.lineNumber ?? null }
       : null;
   const previewKey = previewTarget ? `${previewTarget.path}\n${previewTarget.line ?? ''}` : '';
-  const previews = useRef(new Map<string, PreviewValue | null>());
+  const previews = useRef(new Map<string, { readonly value: PreviewValue; readonly at: number }>());
   const [preview, setPreview] = useState<{ key: string; value: PreviewValue | null } | null>(null);
   useEffect(() => {
     if (!open) { previews.current.clear(); return undefined; }
     if (!onPreview || !previewTarget) return undefined;
+    // A note walked back to shows what was read of it at once; read more than
+    // a few seconds ago, it is read again behind that, so a note changed while
+    // the palette is open shows its new text. A read that failed is not kept.
     const kept = previews.current.get(previewKey);
-    if (kept !== undefined) { setPreview({ key: previewKey, value: kept }); return undefined; }
+    if (kept) setPreview({ key: previewKey, value: kept.value });
+    if (kept && Date.now() - kept.at < PREVIEW_FRESH_MS) return undefined;
     let live = true;
     const timer = setTimeout(() => {
       void onPreview(previewTarget.path, previewTarget.line).then((value) => value, () => null).then((value) => {
-        if (previews.current.size >= PREVIEWS_KEPT) previews.current.delete(previews.current.keys().next().value!);
-        previews.current.set(previewKey, value);
+        previews.current.delete(previewKey);
+        if (value !== null) {
+          if (previews.current.size >= PREVIEWS_KEPT) previews.current.delete(previews.current.keys().next().value!);
+          previews.current.set(previewKey, { value, at: Date.now() });
+        }
         if (live) setPreview({ key: previewKey, value });
       });
     }, PREVIEW_DELAY_MS);

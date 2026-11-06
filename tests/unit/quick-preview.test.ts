@@ -48,3 +48,54 @@ describe('a line found inside notes', () => {
     expect(readable('![shot](a.png) and ![[pic.png]]')).toBe('[shot] and [pic.png]');
   });
 });
+
+describe('the edges of a preview', () => {
+  it('reads a window that starts inside a code block as code until its own fence closes', () => {
+    const text = ['x = 1', '```', '## Real heading', '- an item'].join('\n');
+    expect(previewBlocks(text, 20, '```').map((block) => [block.kind, block.text])).toEqual([
+      ['code', 'x = 1'], ['h2', 'Real heading'], ['li', 'an item'],
+    ]);
+    // Without the fence it would take the closing one for an opening.
+    expect(previewBlocks(text, 20).map((block) => block.kind)).toEqual(['p', 'code', 'code']);
+  });
+
+  it('closes a fence only with the same character, at least as long, and nothing after it', () => {
+    const text = ['````md', '```', '```js', 'still code', '````', 'after'].join('\n');
+    expect(previewBlocks(text).map((block) => [block.kind, block.text])).toEqual([
+      ['code', '```'], ['code', '```js'], ['code', 'still code'], ['p', 'after'],
+    ]);
+  });
+
+  it('drops a byte-order mark before frontmatter, and all of frontmatter the read did not finish', () => {
+    expect(previewBlocks('\uFEFF---\ntitle: x\n---\nBody').map((block) => block.text)).toEqual(['Body']);
+    expect(previewBlocks('---\ntitle: x\ntags: [a, b]')).toEqual([]);
+  });
+
+  it('marks the occurrence of a match where it was found, not the first one', () => {
+    const line = 'a cat and a hat';
+    expect(readableHit(line, line.indexOf('hat') + 1, 2).at).toBe(line.indexOf('hat') + 1);
+    const marked = '**bold** cat, then cat';
+    expect(readableHit(marked, marked.lastIndexOf('cat'), 3).at).toBe('bold cat, then '.length);
+  });
+
+  it('says which fence is still open after a run of lines', async () => {
+    const { fenceAfter } = await import('../../src/shared/markdown-fence');
+    expect(fenceAfter(['text', '~~~~', 'code'])).toEqual({ char: '~', length: 4 });
+    expect(fenceAfter(['```', 'code', '```'])).toBeNull();
+    expect(fenceAfter(['``` not `a fence`'])).toBeNull();
+  });
+});
+
+
+describe('the preview reply main sends', () => {
+  it('carries the fence a window starts inside, and nothing that is not one', async () => {
+    const { isWorkspaceNotePreviewReplyV1 } = await import('../../src/shared/workspace/v1/validate');
+    const reply = { version: 1, text: 'x', from: 3, modified: 1, fence: '````' };
+    expect(isWorkspaceNotePreviewReplyV1(reply)).toBe(true);
+    expect(isWorkspaceNotePreviewReplyV1({ ...reply, fence: null })).toBe(true);
+    expect(isWorkspaceNotePreviewReplyV1({ ...reply, fence: '```js' })).toBe(false);
+    expect(isWorkspaceNotePreviewReplyV1({ ...reply, fence: '`'.repeat(33) })).toBe(false);
+    const { fence: _fence, ...older } = reply;
+    expect(isWorkspaceNotePreviewReplyV1(older)).toBe(false);
+  });
+});

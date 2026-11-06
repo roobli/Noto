@@ -11,6 +11,8 @@
  * is plain text, drawn as a text node.
  */
 
+import { fenceCloses, fenceOpens, type Fence } from '../shared/markdown-fence';
+
 export type PreviewKind = 'h1' | 'h2' | 'h3' | 'p' | 'li' | 'quote' | 'code' | 'rule';
 
 export interface PreviewBlock {
@@ -62,38 +64,48 @@ export function readableLine(text: string): string {
 export function readableHit(line: string, column: number, length: number): { text: string; at: number; length: number } {
   const text = readableLine(line);
   const wanted = line.slice(column, column + length).toLowerCase();
-  const at = wanted ? text.toLowerCase().indexOf(wanted) : -1;
+  if (!wanted) return { text, at: -1, length: 0 };
+  // The cleaning moves characters, so the match is the occurrence nearest to
+  // where the text before it lands once cleaned, not the first one.
+  const near = readableLine(line.slice(0, column)).length;
+  const lower = text.toLowerCase();
+  let at = -1;
+  for (let found = lower.indexOf(wanted); found >= 0; found = lower.indexOf(wanted, found + 1)) {
+    if (at < 0 || Math.abs(found - near) < Math.abs(at - near)) at = found;
+  }
   return { text, at, length: at < 0 ? 0 : wanted.length };
 }
 
 /**
- * The blocks of `text`, which begins on line `from`. A note's opening loses
- * its frontmatter; fenced code is kept as a few lines of code; blank lines
- * only separate. The last line may be cut where the read stopped, and is
- * kept: the pane fades it out.
+ * The blocks of `text`, which begins on line `from`, inside the code block
+ * `inside` opened when the window starts within one. A note's opening loses
+ * its byte-order mark and its frontmatter, all of it when the read stopped
+ * before the frontmatter ended; fenced code is kept as a few lines of code;
+ * blank lines only separate. The last line may be cut where the read
+ * stopped, and is kept: the pane fades it out.
  */
-export function previewBlocks(text: string, from = 1): PreviewBlock[] {
-  const lines = text.replace(/\r\n?/g, '\n').split('\n');
+export function previewBlocks(text: string, from = 1, inside: string | null = null): PreviewBlock[] {
+  const lines = text.replace(/^\uFEFF/, '').replace(/\r\n?/g, '\n').split('\n');
   const blocks: PreviewBlock[] = [];
   let at = 0;
   if (from === 1 && /^---\s*$/.test(lines[0] ?? '')) {
     const end = lines.findIndex((line, index) => index > 0 && /^(---|\.\.\.)\s*$/.test(line));
-    at = end > 0 ? end + 1 : 0;
+    at = end > 0 ? end + 1 : lines.length;
   }
-  let fence: string | null = null;
+  let fence: Fence | null = inside ? fenceOpens(inside) : null;
   let fenced = 0;
   for (; at < lines.length && blocks.length < MOST; at += 1) {
     const raw = lines[at]!;
     const line = from + at;
-    const opener = /^\s*(`{3,}|~{3,})/.exec(raw);
     if (fence !== null) {
-      if (opener && raw.trim().startsWith(fence)) { fence = null; continue; }
+      if (fenceCloses(raw, fence)) { fence = null; continue; }
       // A long block of code is a few of its lines: enough to recognise it.
       if (fenced < 6) blocks.push({ kind: 'code', text: raw.replace(/\t/g, '  '), line });
       fenced += 1;
       continue;
     }
-    if (opener) { fence = opener[1]!.slice(0, 3); fenced = 0; continue; }
+    const opens = fenceOpens(raw);
+    if (opens) { fence = opens; fenced = 0; continue; }
     const trimmed = raw.trim();
     if (trimmed === '' || /^<!--.*-->$/.test(trimmed) || /^\[\^[^\]]+\]:/.test(trimmed)) continue;
     const heading = /^(#{1,6})\s+(.*)$/.exec(trimmed);

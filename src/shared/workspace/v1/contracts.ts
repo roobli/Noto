@@ -1067,6 +1067,12 @@ export interface WorkspaceNotePreviewReplyV1 {
   readonly from: number;
   /** When the file last changed, in milliseconds; null with no text. */
   readonly modified: number | null;
+  /**
+   * The fence of a code block the text begins inside, such as "```", when the
+   * window around a match starts within one; null at a note's opening or
+   * outside code. Without it, the block's closing fence reads as an opening.
+   */
+  readonly fence: string | null;
 }
 
 /** Where a value the vault holds about a note came from. */
