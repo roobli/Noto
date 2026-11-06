@@ -209,6 +209,16 @@ How releases are made, and what each channel receives, is in
 
 ### Changed
 
+- **Settings has room to breathe.** The groups are lifted cards on a
+  slightly darker floor, the list of panes is a panel set in from the
+  window's edges, Done has air around it, and everything in a pane lines up
+  on one edge. Each pane opens on its own mark in a ring of soft light.
+- **Quick Open fits a laptop's window.** Its margin grows with the window
+  instead of a fixed 24 px, it sits a tenth of the way down, the preview is
+  a shade under the list, and the list's scroll bar shows only under the
+  pointer.
+- **Note Info's ground runs to the top of the window,** as the rail's does,
+  so no seam crosses the pane under the title bar.
 - **Note Info's Related tab reads in plain words.** Each note says in a few
   words why it is offered (read together, linked from, a title like this
   one) instead of the index's own phrases cut off mid-word, a small meter
