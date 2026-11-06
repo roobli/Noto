@@ -6,7 +6,7 @@
  */
 
 import { describe, expect, it } from 'vitest';
-import { agoWords, claudeCodeSetup, codexSetup, indexWords, reachWords, serverName } from '../../src/renderer/memory-setup';
+import { agoWords, claudeCodeHook, claudeCodeSetup, codexSetup, indexWords, reachWords, serverName } from '../../src/renderer/memory-setup';
 import { isWorkspaceAgentRequestV1, isWorkspaceAgentsReplyV1 } from '../../src/shared/workspace/v1/validate';
 
 const setup = { script: '/Applications/Noto.app/Contents/Resources/app.asar.unpacked/.vite/build/noto-vault.js', root: "/Users/me/My Notes/RooB's" };
@@ -30,6 +30,12 @@ describe('the setup an agent is given', () => {
     expect(block).toContain(`args = ["${setup.script}", "mcp"]`);
     expect(block).toContain(`NOTO_VAULT_ROOT = "/Users/me/My Notes/RooB's"`);
     expect(block).toContain('NOTO_VAULT_KEY = "k3y"');
+  });
+
+  it('gives Claude Code a hook that says which notes it read and wrote itself, as settings JSON', () => {
+    const parsed = JSON.parse(claudeCodeHook({ ...setup, script: '/Applications/My Noto.app/noto-vault.js' })) as { hooks: { PostToolUse: { matcher: string; hooks: { type: string; command: string }[] }[] } };
+    expect(parsed.hooks.PostToolUse[0]!.matcher).toBe('Read|Write|Edit|MultiEdit|NotebookEdit');
+    expect(parsed.hooks.PostToolUse[0]!.hooks).toEqual([{ type: 'command', command: "node '/Applications/My Noto.app/noto-vault.js' record --hook" }]);
   });
 
   it('says what an agent may do in a few words', () => {

@@ -1093,7 +1093,8 @@ export interface NoteMemoryV1 {
   readonly reads: readonly { readonly day: string; readonly count: number }[];
   readonly readers: readonly { readonly actor: string; readonly count: number; readonly last: string }[];
   readonly leadsHere: readonly { readonly from: string | null; readonly query: string | null; readonly count: number }[];
-  readonly writes: { readonly commits: number; readonly appends: number };
+  /** Commits, entries appended, and the agents that said they wrote it (over MCP, or from a hook after an edit of their own), most recent first. */
+  readonly writes: { readonly commits: number; readonly appends: number; readonly agents: readonly { readonly actor: string; readonly count: number; readonly last: string }[] };
   readonly agents: readonly { readonly name: string; readonly canSee: boolean; readonly why: string | null }[];
 }
 

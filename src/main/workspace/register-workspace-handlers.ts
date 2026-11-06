@@ -5,7 +5,7 @@
  * the request, and never let an exception escape as an unhandled rejection.
  */
 
-import { ipcMain, type BrowserWindow } from 'electron';
+import { app, ipcMain, type BrowserWindow } from 'electron';
 import {
   NOTO_WORKSPACE_VERSION,
   WORKSPACE_CHANNELS,
@@ -78,6 +78,8 @@ export function registerWorkspaceHandlers(deps: {
   recentFolders: () => Promise<readonly RecentFileV1[]>;
 }): void {
   const visits = new VaultVisits((event, data) => deps.logger.log(event, data), (root) => deps.session.recordsReads(root));
+  // A note opened again and again is counted; the count is written before Noto goes.
+  app.on('will-quit', () => visits.flush());
   const register = <TRequest extends { requestId: string }, TReply>(
     channel: string,
     validate: (value: unknown) => value is TRequest,

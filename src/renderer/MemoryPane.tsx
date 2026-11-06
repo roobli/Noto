@@ -20,7 +20,7 @@ import type {
   AgentRowV1, WorkspaceAgentActionV1, WorkspaceAgentsReplyV1, WorkspaceMemoryFolderActionV1, WorkspaceMemoryFolderReplyV1,
 } from '../shared/workspace/v1/contracts';
 import { copyThroughSelection } from './editor/noto/clipboard';
-import { claudeCodeSetup, codexSetup, indexWords, reachWords } from './memory-setup';
+import { claudeCodeHook, claudeCodeSetup, codexSetup, indexWords, reachWords } from './memory-setup';
 import { Switch } from './PrefSwitch';
 
 const rid = () => `memory-agents:${crypto.randomUUID()}`;
@@ -143,6 +143,25 @@ export function MemoryPane() {
 
       {!adding && !added && (
         <button type="button" className="pref-inline-action" data-testid="memory-add-agent" onClick={() => setAdding(true)}>Add an Agent…</button>
+      )}
+
+      {reply.setup && (
+        <>
+          <p className="pref-group">Edits an agent makes itself</p>
+          <p className="pref-note">
+            Git keeps every change to a note but not who made it, so an agent that edits files with its own tools looks like you.
+            With this hook, Claude Code says which notes it read and wrote; Note Info then names it under Activity. Nothing is added to your commits.
+          </p>
+          <div className="memory-key-actions">
+            <button type="button" className="pref-inline-action" data-testid="memory-copy-hook" onClick={() => copy('hook', claudeCodeHook(reply.setup!))}>
+              {copied === 'hook' ? 'Copied' : 'Copy Hook for Claude Code'}
+            </button>
+          </div>
+          <p className="pref-note">
+            Merge it into ~/.claude/settings.json. It records only notes in a folder that keeps memory, takes about 30 ms an edit, and never stops the agent&apos;s step.
+            Any other agent can run the same command line itself: node, the script, then record write and the note&apos;s path.
+          </p>
+        </>
       )}
       {adding && (
         <form className="memory-add" data-testid="memory-add-form" onSubmit={(event) => { event.preventDefault(); if (valid && !busy) void add(); }}>

@@ -49,6 +49,8 @@ function rememberingFolder(): { root: string; note: string } {
   write(root, '.noto/events/e2e/2026-11.jsonl', [
     { time: day(2), actor: 'owner', verb: 'open', path: '目标设计说明.md', session: 's1', from: 'notes.md' },
     { time: day(0), actor: 'owner', verb: 'open', path: '目标设计说明.md', session: 's2' },
+    // An agent that edited the note itself and said so from its hook, three times in a row.
+    { time: day(1), actor: 'claude-code', verb: 'write', path: '目标设计说明.md', session: 'cc', repeat: 3, until: day(1) },
   ].map((line) => JSON.stringify(line)).join('\n') + '\n');
   return { root, note: path.join(root, '目标设计说明.md') };
 }
@@ -106,6 +108,9 @@ test.describe('memory in Note Info', () => {
       await expect(barred.filter({ hasText: 'claude-code' })).toContainText('the note is private');
       await expect(barred.filter({ hasText: 'Without a key' })).toBeVisible();
       await expect(pane(page).getByTestId('activity-heat')).toContainText('Read twice, last today');
+      // Its writes are named, and are not the person's reading.
+      await expect(pane(page).getByTestId('activity-writer')).toContainText('claude-code');
+      await expect(pane(page).getByTestId('activity-writer')).toContainText('wrote it 3 times');
 
       await tab(page, 'Properties').click();
       const sensitivity = pane(page).getByTestId('properties-memory').filter({ hasText: 'Sensitivity' });

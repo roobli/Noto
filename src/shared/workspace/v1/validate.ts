@@ -422,7 +422,8 @@ function isNoteMemoryV1(value: unknown): value is NoteMemoryV1 {
     && listOf(value.reads, 20000, (item) => exact(item, ['day', 'count']) && text(item.day, 10) && whole(item.count))
     && listOf(value.readers, 200, (item) => exact(item, ['actor', 'count', 'last']) && text(item.actor, 256) && whole(item.count) && text(item.last, 64))
     && listOf(value.leadsHere, 200, (item) => exact(item, ['from', 'query', 'count']) && textOrNull(item.from) && textOrNull(item.query, 1024) && whole(item.count))
-    && record(writes) && exact(writes, ['commits', 'appends']) && whole(writes.commits) && whole(writes.appends)
+    && record(writes) && exact(writes, ['commits', 'appends', 'agents']) && whole(writes.commits) && whole(writes.appends)
+    && listOf(writes.agents, 200, (item) => exact(item, ['actor', 'count', 'last']) && text(item.actor, 256) && whole(item.count) && text(item.last, 64))
     && listOf(value.agents, 200, (item) => exact(item, ['name', 'canSee', 'why']) && text(item.name, 256)
       && typeof item.canSee === 'boolean' && textOrNull(item.why, 512));
 }

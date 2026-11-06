@@ -45,6 +45,18 @@ export function codexSetup(setup: MemorySetup, key: string): string {
   ].join('\n');
 }
 
+/**
+ * The hook that has Claude Code say which notes it read and wrote with its
+ * own tools, for `~/.claude/settings.json`: after each Read, Write or Edit it
+ * runs the vault's command line, which records the note under the agent's
+ * name in whichever folder keeps memory for it, and passes over every other
+ * file. Git sees those edits too, but cannot say who made them.
+ */
+export function claudeCodeHook(setup: MemorySetup): string {
+  const command = ['node', setup.script, 'record', '--hook'].map(shellWord).join(' ');
+  return `${JSON.stringify({ hooks: { PostToolUse: [{ matcher: 'Read|Write|Edit|MultiEdit|NotebookEdit', hooks: [{ type: 'command', command }] }] } }, null, 2)}\n`;
+}
+
 /** What an agent may do, in a few words, from the verbs and paths the policy gives it. */
 export function reachWords(verbs: readonly string[], writes: readonly string[]): string {
   if (verbs.length === 0) return 'may not read anything';
