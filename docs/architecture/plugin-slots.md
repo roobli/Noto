@@ -37,7 +37,7 @@ host object a slot passes in carries only the services the plugin holds.
 | --- | --- |
 | `editor.read`, `editor.decorate`, `editor.transform` | as before |
 | `git.read` | what changed in the open folder since the last commit; a note's commits, following renames, and its text at any of them (trusted plugins) |
-| `vault.read` | (next) the folder's notes and the vault index |
+| `vault.read` | what the open folder's memory (`@roobli/vault`) knows about a note: what links to it, what it names, what is read with it, who reads it and who may; and asking to keep memory or to allow a folder's scripts, which main puts to the person in a sheet of its own (trusted plugins) |
 
 Navigation (open a note by path), the file tree's own menu for a note or
 folder, and where the window is (the folder, the note in front, and when

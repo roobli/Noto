@@ -194,6 +194,12 @@ through them, Compare with Now sets one against the note as it stands, and
 Restore This Version takes it back as an edit Undo reverses) and its
 Properties (frontmatter, counts, dates, path). Commits that only rewrote a
 tool's marked region, or changed a hundred files at once, are drawn quieter.
+In a folder that keeps memory, Related lists what links to the note, what it
+names without linking, what is read with it and what is about the same thing,
+and Activity says who read it, what led there and which agents may not read
+it; a folder without memory is offered it, with what would be written said
+first, and a folder whose memory runs scripts runs none until they are
+allowed.
 
 `Cmd+/` opens Source Code Mode: the whole note as the Markdown it is saved as,
 the way Typora's Command-slash does. `Cmd+Alt+/` still toggles source for the
@@ -282,13 +288,13 @@ the document only if it asked for that; a service plugin gets a filesystem
 grant scoped to a path, revocable, and denied everywhere else. Nothing is
 ambient.
 
-Seven plugins ship in the build. Title Shift promotes and demotes heading
+Eight plugins ship in the build. Title Shift promotes and demotes heading
 levels, and Markdown Padding applies CJK spacing rules; both are ports of the
 author's Typora plugins. Sidenotes draws `<span class="sidenote">` notes in the
 margin and writes new ones there, Changes lists the notes changed since the
 last commit as a page in the rail, the first plugin to use a slot outside the
-editor, and History fills the Note Info pane with a note's commits and
-properties. Semantic Focus and Fixture Reader are bundled
+editor, History fills the Note Info pane with a note's commits and
+properties, and Memory adds Related and Activity from the vault's index. Semantic Focus and Fixture Reader are bundled
 examples, one per runtime kind, kept so that a plugin author has a working
 plugin of each shape to read and so the capability broker has something that
 exercises it.

@@ -65,10 +65,22 @@ the foot of the Related tab: "This folder does not keep memory. Keep memory
 for this folder…". Choosing it opens a sheet that says, before anything is
 written, what will be: a `.noto/` folder with the settings and an index
 (listed by name), a line for each note opened, nothing sent anywhere, and
-that removing `.noto/` turns it all off. If the folder has a `vault.yaml` deny
-list or other obvious private folders, the sheet offers them as private, ticked.
+that removing `.noto/` turns it all off. The sheet is main's own, a native
+one attached to the window, so a plugin that asks to keep memory cannot say
+yes for the person. If the folder has a `vault.yaml` deny list or other
+obvious private folders, the sheet offers them as private, ticked (later).
 The index then builds in the background, with its progress in the status
 line ("Reading 7,976 notes, 9 s"), and every panel works on what it has so far.
+
+A folder can bring its own memory: a clone or a download with a `.noto/`
+already in it. Its `.noto/scripts/*.mjs` are code the vault imports when it
+opens, and an import can do anything a program can, so such a folder's
+memory is not opened until the person has allowed its scripts. Related says
+so and offers Review Scripts…, which opens main's sheet naming each script;
+the answer is kept per folder in Noto's own data, never in the folder, where
+a folder could grant itself trust. A folder Noto made memory for is trusted,
+and one whose memory runs no scripts needs no answer. History and Properties
+work either way.
 
 ### Note Info, the pane beside the note
 
@@ -228,8 +240,9 @@ Rebuild, and Turn Off, which says what it will remove.
 | state | what is shown |
 | --- | --- |
 | no `.noto/` | one line in the Related tab offering to keep memory; nothing else |
+| scripts not allowed | Related and Activity say the memory runs scripts, with Review Scripts…; nothing runs until then |
 | indexing | progress in the status line; panels fill in as it goes |
-| index unreadable | "The index could not be opened" with Rebuild; the notes are untouched |
+| index unreadable | "could not be read", tried again after 30 s, then a minute, up to ten; Rebuild in Settings; the notes are untouched |
 | nothing related | "Nothing else in the folder is linked to or about this note yet" |
 | note is sealed | the Related tab works for the person; agents never see the note |
 | proposal conflicts | the conflicted file shown with both versions; Accept again once fixed |
@@ -238,9 +251,11 @@ Rebuild, and Turn Off, which says what it will remove.
 
 ## Boundaries
 
-The vault opens in the main process (Node's SQLite runs there), never in the
-editor's page, and the panels ask for what they show over the workspace
-channels. The index follows the folder the way the tree already does, so a
+The vault opens on a worker thread of the main process (Node's SQLite runs
+there, and its calls are synchronous, so main's own thread would freeze
+while the index builds), never in the editor's page, and the panels ask for
+what they show over the workspace channels. Before the worker is stopped it
+is let close the index, so its last write lands whole. The index follows the folder the way the tree already does, so a
 saved note is re-read in about 80 ms and a note switch asks for related notes
 once, after a short pause. Nothing here runs per keystroke. A suggestion
 linked from a panel is an edit of the note through the editor when the note
@@ -267,8 +282,10 @@ the app's own features use the seams anyone else's would.
 ## Order of work
 
 1. Note Info with its slots, History and Properties, from git alone. Done.
-2. The vault embedded in main behind a handful of workspace channels;
-   Related, Activity and the read track; Keep Memory for This Folder.
+2. The vault on a worker thread of main behind three workspace channels;
+   Related, Activity and the read track; Keep Memory for This Folder; a
+   folder's scripts run only once allowed. Done, with `about` and
+   `initVault` added to the vault.
 3. The Review page: proposals in the diff view, the suggestion queue, Fix all
    for stale links.
 4. Settings → Memory, Privacy in the folder menu, Agents with keys and setup.
