@@ -101,7 +101,7 @@ export function shortcutGroups(mac: boolean): Group[] {
         { keys: ['Get Info on a folder'], what: 'Right-click a folder: how many notes and broken links, the warmest, the newest commits, what is read most and what nothing links to.', since: 2, tryIt: 'folder-info' },
         { keys: ['Privacy'], what: 'Right-click a folder: open, private (only agents allowed private notes) or sealed (no agent, ever). The tree shows a lock.', needs: 'The folder keeps memory.', since: 2 },
         { keys: ['Settings → Memory'], what: 'Who may read this folder: add an agent with a key and copy its setup for Claude Code or Codex, take a key back, rebuild the index.', since: 2, tryIt: 'settings-memory' },
-        { keys: ['Copy Hook for Claude Code'], what: 'In Settings → Memory: Claude Code then says which notes it read and wrote with its own tools, and Activity names it under Written instead of counting it as you.', needs: 'The folder keeps memory, and Node.js 22.13 or later.', since: 3, tryIt: 'settings-memory' },
+        { keys: ['Agent hook'], what: 'Copy Hook for Claude Code, in Settings → Memory: Claude Code then says which notes it read and wrote with its own tools, and Activity names it under Written instead of counting it as you.', needs: 'The folder keeps memory, and Node.js 22.13 or later.', since: 3, tryIt: 'settings-memory' },
       ],
     },
     {
@@ -128,8 +128,8 @@ export function shortcutGroups(mac: boolean): Group[] {
         { keys: ['View menu'], what: 'Sort the tree by name or by when a note changed, and collapse it all.' },
         { keys: [shift(mac) + mod('T', mac)], what: 'Open again the note closed most recently.' },
         { keys: ['Themes'], what: 'The View menu lists the stylesheets in your themes folder, and opens the folder to add one.' },
-        { keys: ['<!-- note-assistant:index -->'], what: 'A generated index block is drawn as its list of links, and its markdown is left alone.' },
-        { keys: ['<!-- note-assistant:start -->'], what: 'An issued Related Notes block gets its own chrome (title, tags, reasons), distinct from a directory index.' },
+        { keys: ['Index block'], what: 'A generated index (between note-assistant:index markers) is drawn as its list of links, and its markdown is left alone.' },
+        { keys: ['Related block'], what: 'A Related Notes block a tool wrote (note-assistant:start) gets its own frame, with its title, tags and reasons, apart from a folder index.' },
         { keys: ['Shortcuts'], what: 'Every key the app answers to, where it comes from, and a switch to turn one off, in Settings.' },
         { keys: ['Remote'], what: 'A script on this machine can drive the editor once the Remote pane says so. Off until you switch it on.' },
       ],
@@ -144,6 +144,21 @@ export interface ShortcutsProps {
   readonly seen?: number;
   /** Do what an entry's Try It says; the list closes first. */
   readonly onTry?: (action: GuideTry) => void;
+  /**
+   * Why a Try It cannot go anywhere yet (no folder open, no note in front),
+   * said where its button would be, or null when it can. A button that
+   * closes the list and then does nothing is worse than none.
+   */
+  readonly unavailable?: (action: GuideTry) => string | null;
+}
+
+/** What each Try It needs in the window: a note in front, or an open folder. */
+export function tryNeeds(action: GuideTry, window: { readonly folder: boolean; readonly note: boolean }): string | null {
+  const note = action === 'note-info' || action === 'note-history' || action === 'ask' || action === 'outline';
+  if (note && !window.note) return 'Open a note first';
+  const folder = action === 'review' || action === 'changes' || action === 'folder-info' || action === 'settings-memory' || action === 'search' || action === 'quick-open';
+  if (folder && !window.folder) return 'Open a folder first';
+  return null;
 }
 
 const TRY_WORDS: Record<GuideTry, string> = {
@@ -151,7 +166,7 @@ const TRY_WORDS: Record<GuideTry, string> = {
   'folder-info': 'Show Me', 'settings-memory': 'Show Me', outline: 'Show Me', search: 'Try It', 'quick-open': 'Try It', palette: 'Try It',
 };
 
-export function Shortcuts({ mac, onClose, seen = GUIDE_EDITION, onTry }: ShortcutsProps) {
+export function Shortcuts({ mac, onClose, seen = GUIDE_EDITION, onTry, unavailable }: ShortcutsProps) {
   const [query, setQuery] = useState('');
   const field = useRef<HTMLInputElement>(null);
 
@@ -212,12 +227,17 @@ export function Shortcuts({ mac, onClose, seen = GUIDE_EDITION, onTry }: Shortcu
                         {entry.what}
                       </span>
                       {entry.needs && <span className="shortcuts-needs">{entry.needs}</span>}
-                      {entry.tryIt && onTry && (
-                        <button type="button" className="shortcuts-try" data-testid="shortcuts-try" data-try={entry.tryIt}
-                          onClick={() => { onClose(); onTry(entry.tryIt!); }}>
-                          {TRY_WORDS[entry.tryIt]}
-                        </button>
-                      )}
+                      {entry.tryIt && onTry && (() => {
+                        const reason = unavailable?.(entry.tryIt) ?? null;
+                        return reason
+                          ? <span className="shortcuts-later" data-testid="shortcuts-later" data-try={entry.tryIt}>{reason}</span>
+                          : (
+                            <button type="button" className="shortcuts-try" data-testid="shortcuts-try" data-try={entry.tryIt}
+                              onClick={() => { onClose(); onTry(entry.tryIt!); }}>
+                              {TRY_WORDS[entry.tryIt]}
+                            </button>
+                          );
+                      })()}
                     </dd>
                   </div>
                 ))}

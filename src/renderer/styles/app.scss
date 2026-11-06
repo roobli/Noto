@@ -3048,9 +3048,19 @@ section.plugin-group > .plugin-market-row.is-set-aside {
   dd { margin: 0; color: var(--ink); font-size: 13px; line-height: 1.5; }
 
   /* What it needs, quieter than what it does, and the way to it at the row's end, so the list stays short. */
-  dd:has(> .shortcuts-try) { display: grid; grid-template-columns: minmax(0, 1fr) auto; column-gap: 14px; }
+  dd:has(> .shortcuts-try, > .shortcuts-later) { display: grid; grid-template-columns: minmax(0, 1fr) auto; column-gap: 14px; }
   .shortcuts-what { display: block; }
   .shortcuts-needs { display: block; grid-column: 1; color: var(--muted); font-size: 12px; }
+  /* Where a Try It cannot go yet, why, in its place and as quiet as a note. */
+  .shortcuts-later {
+    grid-column: 2;
+    grid-row: 1 / span 2;
+    align-self: start;
+    padding: 2px 0;
+    color: var(--muted);
+    font: 11.5px/18px tokens.$ui;
+    white-space: nowrap;
+  }
   .shortcuts-try {
     grid-column: 2;
     grid-row: 1 / span 2;
@@ -3084,7 +3094,9 @@ section.plugin-group > .plugin-market-row.is-set-aside {
     color: var(--muted);
     font-family: tokens.$mono;
     font-size: 11px;
-    white-space: nowrap;
+    /* A key stays on one line; a longer name wraps inside its column rather than over the words beside it. */
+    max-width: 100%;
+    overflow-wrap: anywhere;
   }
 }
 

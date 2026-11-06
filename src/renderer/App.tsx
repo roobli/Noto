@@ -48,7 +48,7 @@ import { WorkspaceRail, type RailView } from './WorkspaceRail';
 import { SourceMode } from './SourceMode';
 import { TableDialog } from './TableDialog';
 import { ReloadConfirmDialog } from './ReloadConfirmDialog';
-import { GUIDE_EDITION, Shortcuts, type GuideTry } from './Shortcuts';
+import { GUIDE_EDITION, Shortcuts, tryNeeds, type GuideTry } from './Shortcuts';
 import { RailFooter } from './RailFooter';
 import { Settings, type SettingsSection } from './Settings';
 import {
@@ -3178,7 +3178,8 @@ function NotoWorkspace({ platform }: { platform: NotoPlatform }) {
         className={`workspace-layout ${rail.open ? 'has-rail' : ''}`}
         data-source-mode={sourceMode ? 'on' : undefined}
       >
-        {shortcuts && <Shortcuts mac={platform === 'darwin'} seen={guideSeen} onClose={closeGuide} onTry={tryGuide} />}
+        {shortcuts && <Shortcuts mac={platform === 'darwin'} seen={guideSeen} onClose={closeGuide} onTry={tryGuide}
+          unavailable={(action) => tryNeeds(action, { folder: folder.root !== null, note: active !== null })} />}
         {reloadConfirm && (
           <ReloadConfirmDialog
             offerSaveCopy={reloadConfirm.offerSaveCopy}

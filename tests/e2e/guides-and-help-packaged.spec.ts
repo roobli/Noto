@@ -292,8 +292,10 @@ test('the title bar\'s ? leads to what is new, with a way to each, and stops say
     await expect(panel.locator('.shortcuts-group').first()).toContainText('Ask the vault');
     // What an entry needs is said where it is.
     await expect(panel).toContainText('The folder keeps memory');
+    // With no note in front, what needs one says so in its place.
+    await expect(panel.locator('[data-testid="shortcuts-later"][data-try="note-info"]').first()).toHaveText('Open a note first');
     // A Try It closes the list and goes there.
-    await panel.locator('[data-testid="shortcuts-try"][data-try="note-info"]').first().click();
+    await panel.locator('[data-testid="shortcuts-try"][data-try="folder-info"]').first().click();
     await expect(panel).toHaveCount(0);
     await expect(page.getByTestId('info-pane')).toBeVisible();
     // Looked at: no dot, and nothing marked New.
