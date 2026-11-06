@@ -255,15 +255,38 @@ running as one, which is what keeps a page in it from becoming a program.
 Publishing the vault as a package would let the setup say `npx` instead.
 
 `.noto/access.yaml` is the person's, often with comments, so these change
-only the lines they are about. Which notes are private is set where the
+only the lines they are about, in the file's own indent, and each change is
+read back with the server's parser before it is saved: if the file would
+mean anything besides that change, it is left alone and the person is told
+which part to change by hand. Which notes are private is set where the
 notes are: a folder's right-click menu has **Privacy ▸ Open, Private,
 Sealed**, the level it has now ticked, and writes the folder's own pattern
 only when the default or a folder around it would not give that level
-already. Still to come: a small lock on such a folder in the tree; the
-status line's lock while a note stricter than its folder (by `sensitivity:`
-in its frontmatter) is in front; and, in Settings → Memory, the switch for
-the read record, the index's state and size with Rebuild, and Turn Off,
-which says what it will remove.
+already.
+
+The tree draws a small lock after the name of a folder the policy makes
+private or sealed by a pattern of its own: outlined for private, solid for
+sealed, in the muted tier. The lock is on the folder that was locked, not
+repeated on every folder inside it; when the whole folder is private by
+default, the vault's own row wears it. While a note whose own frontmatter
+(`sensitivity:`) makes it stricter than its folder is in front, the status
+line says Private or Sealed beside the same lock; a note that is private
+only because its folder is has the folder's lock and nothing more. Both are
+read from `access.yaml` and the note alone, without opening the index, so a
+window that never shows Note Info still starts no worker.
+
+Below the agents, Settings → Memory has the memory itself: what the index
+holds (notes, links, size, how fresh), **Rebuild Index**, which empties it
+in place (safe for an agent's server that has it open) and builds it again
+from the notes and the read record while every answer says it is reading;
+a switch for the read record on this computer; and **Stop Keeping
+Memory…**, whose sheet lists what `.noto` holds before moving it to the
+Trash, and moves nothing if the folder changed while it was open. Putting
+`.noto` back turns everything on again. A server an agent still runs for
+the folder stops serving it at its next call, and one started afterwards
+refuses a folder without `.noto`: opening the vault there would make
+`.noto` anew under no policy and give an agent without a key every open
+note. A server answers for memory that exists and never begins it.
 
 ## States
 
@@ -319,10 +342,11 @@ the app's own features use the seams anyone else's would.
 3. The Review page: proposals in the diff view, the suggestion queue, Fix all
    for stale links, Undo. Done, with `proposalFile`, `dismissals`,
    `undismiss` and `prepare` added to the vault.
-4. Settings → Memory, Privacy in the folder menu, Agents with keys and setup.
-   Done but for the tree's lock, the status line's lock, the read record's
-   switch and the index's Rebuild and Turn Off; the vault gained the policy
-   editors and `readers`, and its command line ships with Noto.
+4. Settings → Memory, Privacy in the folder menu, Agents with keys and setup,
+   the locks in the tree and the status line, the read record's switch,
+   Rebuild and Stop Keeping Memory. Done; the vault gained the policy
+   editors, `readers`, `privacyMarks` and `noteSensitivity`, and its command
+   line ships with Noto.
 5. Link suggestions in the note in front.
 6. Ask the vault and Copy as context; the folder's info; one passage's
    history from its git mark.
