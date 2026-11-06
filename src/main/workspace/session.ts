@@ -31,6 +31,7 @@ import {
   type WorkspaceOpenExternalReplyV1,
   type WorkspaceLinksReplyV1,
   type WorkspaceNoteHistoryReplyV1,
+  type WorkspaceNotePassageReplyV1,
   type WorkspaceNoteMemoryReplyV1,
   type WorkspaceKeepMemoryReplyV1,
   type WorkspaceTrustMemoryReplyV1,
@@ -1818,6 +1819,16 @@ export class WorkspaceSession {
   }
 
   /** A note's commits, following renames; see `git-history.ts`. */
+  /** Which of a note's commits changed one passage of it; see `git-history.ts`. */
+  async notePassage(target: string, text: string): Promise<WorkspaceNotePassageReplyV1> {
+    const real = await this.readableNote(target);
+    if (real === null) return { version: NOTO_WORKSPACE_VERSION, state: 'outside', lines: null, commits: [] };
+    const started = Date.now();
+    const reply = await this.history.passage(real, text);
+    this.logger.log('note_passage', { outcome: reply.state, commits: reply.commits.length, ms: Date.now() - started });
+    return reply;
+  }
+
   async noteHistory(target: string): Promise<WorkspaceNoteHistoryReplyV1> {
     const real = await this.readableNote(target);
     if (real === null) {

@@ -125,6 +125,8 @@ import type {
   WorkspaceTextReplyV1,
   WorkspaceLinksReplyV1,
   WorkspaceNoteHistoryReplyV1,
+  WorkspaceNotePassageReplyV1,
+  WorkspaceNotePassageRequestV1,
   WorkspaceNoteMemoryReplyV1,
   WorkspaceMemoryChangedV1,
   WorkspaceKeepMemoryReplyV1,
@@ -192,6 +194,8 @@ import {
   isWorkspaceLinksResultV1,
   isWorkspaceNoteHistoryRequestV1,
   isWorkspaceNoteHistoryResultV1,
+  isWorkspaceNotePassageRequestV1,
+  isWorkspaceNotePassageResultV1,
   isWorkspaceNoteMemoryResultV1,
   isWorkspaceKeepMemoryResultV1,
   isWorkspaceTrustMemoryResultV1,
@@ -568,6 +572,9 @@ const workspaceApi: NotoWorkspaceApiV1 = Object.freeze({
   noteHistory: (request: WorkspaceNoteHistoryRequestV1) => isWorkspaceNoteHistoryRequestV1(request)
     ? invokeWorkspace<WorkspaceNoteHistoryReplyV1>(WORKSPACE_CHANNELS.noteHistory, request, request.requestId, isWorkspaceNoteHistoryResultV1)
     : Promise.resolve(rejectedWorkspace<WorkspaceNoteHistoryReplyV1>('invalid', 'Invalid note history request')),
+  notePassage: (request: WorkspaceNotePassageRequestV1) => isWorkspaceNotePassageRequestV1(request)
+    ? invokeWorkspace<WorkspaceNotePassageReplyV1>(WORKSPACE_CHANNELS.notePassage, request, request.requestId, isWorkspaceNotePassageResultV1)
+    : Promise.resolve(rejectedWorkspace<WorkspaceNotePassageReplyV1>('invalid', 'Invalid passage history request')),
   noteVersion: (request: WorkspaceNoteVersionRequestV1) => isWorkspaceNoteVersionRequestV1(request)
     ? invokeWorkspace<WorkspaceNoteVersionReplyV1>(WORKSPACE_CHANNELS.noteVersion, request, request.requestId, isWorkspaceNoteVersionResultV1)
     : Promise.resolve(rejectedWorkspace<WorkspaceNoteVersionReplyV1>('invalid', 'Invalid note version request')),

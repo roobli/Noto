@@ -14,7 +14,7 @@
 
 import { useCallback, useEffect, useRef, useState, type KeyboardEvent } from 'react';
 import { createRoot } from 'react-dom/client';
-import type { DiffAction, DiffRequest, InfoTabHost, InfoTabView, NoteCommit, NoteHistory } from '../../slots';
+import type { DiffAction, DiffRequest, InfoTabHost, InfoTabView, NoteCommit, NoteHistory, NotePassage } from '../../slots';
 import { commitDetail, lines, plural, when } from './model';
 
 /** Commits drawn at first, and added with each step further back. */
@@ -81,11 +81,14 @@ function HistoryTab({ host, onReveal }: { readonly host: InfoTabHost; readonly o
   const stillWanted = (mine: number) => mine === asked.current && host.note() === note;
   const listRef = useRef<HTMLOListElement>(null);
   const commits = history?.commits ?? [];
+  /** One passage's history (`passage:` revealed): only the commits that changed its lines. */
+  const [passage, setPassage] = useState<{ readonly text: string; readonly answer: NotePassage | null } | null>(null);
 
   useEffect(() => {
     setShown(PAGE);
     setSelected(null);
     setStatus('');
+    setPassage(null);
     versions.current.clear();
   }, [note]);
   // Closing the diff is the plugin's to do when it goes, and the tab's when the note does.
@@ -234,9 +237,21 @@ function HistoryTab({ host, onReveal }: { readonly host: InfoTabHost; readonly o
     else void open(index);
   };
 
-  // A mark on the timeline shows its commit here, reading further back if it has to.
+  // A mark on the timeline shows its commit here, reading further back if it has to;
+  // a passage, sent from the note, narrows the list to the commits that changed it.
   useEffect(() => {
     onReveal((key) => {
+      if (key.startsWith('passage:')) {
+        const text = key.slice('passage:'.length);
+        setPassage({ text, answer: null });
+        setShown(PAGE);
+        if (note !== null && host.git) {
+          void host.git.passage(note, text).then((answer) => {
+            setPassage((current) => (current?.text === text ? { text, answer: answer ?? { state: 'unavailable', lines: null, commits: [] } } : current));
+          });
+        }
+        return;
+      }
       const index = key === 'uncommitted' ? -1 : commits.findIndex((commit) => commit.hash === key);
       if (index >= shown) setShown(Math.ceil((index + 1) / PAGE) * PAGE);
       setLocated(key);
@@ -246,7 +261,7 @@ function HistoryTab({ host, onReveal }: { readonly host: InfoTabHost; readonly o
         row?.focus();
       });
     });
-  }, [commits, onReveal, shown]);
+  }, [commits, host, note, onReveal, shown]);
   useEffect(() => {
     if (located === null) return undefined;
     const timer = setTimeout(() => setLocated(null), 1600);
@@ -283,17 +298,41 @@ function HistoryTab({ host, onReveal }: { readonly host: InfoTabHost; readonly o
     );
   }
 
-  const stopKey = selected?.kind === 'uncommitted' ? 'uncommitted'
-    : selected?.kind === 'commit' ? selected.hash
-      : history.uncommitted ? 'uncommitted' : commits[0]?.hash ?? '';
   const isCurrent = (key: string) => (selected?.kind === 'uncommitted' ? key === 'uncommitted'
     : selected?.kind === 'commit' && (selected.hash === key || selected.against === key));
+
+  // A passage narrows the rows, each keeping its place in the whole history: Older and Newer, and the diff, are the note's.
+  const narrowed = passage?.answer?.state === 'ok' ? new Set(passage.answer.commits) : null;
+  const rows = commits.map((commit, index) => ({ commit, index })).filter(({ commit }) => narrowed === null || narrowed.has(commit.hash));
+  // The row Tab lands on: the one open, or the first shown.
+  const stopKey = selected?.kind === 'uncommitted' ? 'uncommitted'
+    : selected?.kind === 'commit' && rows.some(({ commit }) => commit.hash === selected.hash) ? selected.hash
+      : !passage && history.uncommitted ? 'uncommitted' : rows[0]?.commit.hash ?? '';
+  const passageWords = (() => {
+    if (!passage) return '';
+    const answer = passage.answer;
+    if (answer === null) return 'Reading which commits changed this passage…';
+    if (answer.state === 'ok') {
+      const at = answer.lines ? (answer.lines.from === answer.lines.to ? `line ${answer.lines.from}` : `lines ${answer.lines.from} to ${answer.lines.to}`) : '';
+      return `This passage, ${at} of the last commit: ${plural(answer.commits.length, 'commit')} changed it.`;
+    }
+    if (answer.state === 'not-found') return 'This passage is not in the last commit as it is, so git has no lines of it to follow. Commit it, and its history starts there.';
+    if (answer.state === 'untracked') return 'This note has not been committed yet, so the passage has no history.';
+    if (answer.state === 'slow') return 'Git took too long to follow this passage.';
+    return 'Git could not follow this passage.';
+  })();
 
   return (
     <div className="history-tab" data-testid="history-tab">
       {status && <p className="info-status" role="status" data-testid="history-status">{status}</p>}
-      <ol ref={listRef} className="history-list" aria-label="Commits" onKeyDown={walk}>
-        {history.uncommitted && (
+      {passage && (
+        <div className="history-passage" data-testid="history-passage" role="status">
+          <span>{passageWords}</span>
+          <button type="button" className="memory-link" data-testid="history-passage-clear" onClick={() => setPassage(null)}>Show All</button>
+        </div>
+      )}
+      <ol ref={listRef} className="history-list" aria-label={passage ? 'Commits that changed this passage' : 'Commits'} onKeyDown={walk}>
+        {!passage && history.uncommitted && (
           <li>
             <button type="button" className={`history-row is-pending${located === 'uncommitted' ? ' is-located' : ''}`}
               data-key="uncommitted" data-testid="history-uncommitted" aria-current={isCurrent('uncommitted') ? 'true' : undefined}
@@ -304,7 +343,7 @@ function HistoryTab({ host, onReveal }: { readonly host: InfoTabHost; readonly o
             </button>
           </li>
         )}
-        {commits.slice(0, shown).map((commit, index) => (
+        {rows.slice(0, shown).map(({ commit, index }) => (
           <li key={commit.hash}>
             <button
               type="button"
@@ -324,9 +363,9 @@ function HistoryTab({ host, onReveal }: { readonly host: InfoTabHost; readonly o
         ))}
       </ol>
       {history.state === 'untracked' && !history.uncommitted && <p className="info-note">This note has not been committed yet.</p>}
-      {commits.length > shown && (
+      {rows.length > shown && (
         <button type="button" className="info-button history-more" data-testid="history-more" onClick={() => setShown((count) => count + PAGE)}>
-          Show {Math.min(PAGE, commits.length - shown)} earlier
+          Show {Math.min(PAGE, rows.length - shown)} earlier
         </button>
       )}
       {history.more && commits.length <= shown && <p className="info-note">Showing the newest {commits.length.toLocaleString('en')} commits.</p>}

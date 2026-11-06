@@ -28,9 +28,9 @@
 import { Plugin, PluginKey, type EditorState, type Transaction } from 'prosemirror-state';
 import type { EditorView } from 'prosemirror-view';
 import type { Node as ProseNode } from 'prosemirror-model';
-import type { NotoBlockOrigin } from '../../../shared/markdown/v3/contracts';
+import type { NotoDocumentWire, NotoBlockOrigin } from '../../../shared/markdown/v3/contracts';
 import type { WorkspaceGitBlocksV1 } from '../../../shared/workspace/v1/contracts';
-import { originKey } from './origin-plugin';
+import { getBlockOrigins, originKey } from './origin-plugin';
 import { pinnedSource } from './capture';
 import { GIT_BLOCK_WORDS, openGitPopover, type GitPopoverAction } from './git-popover';
 import { blockToMarkdown } from '../../../shared/markdown/v3/pm/to-mdast';
@@ -237,6 +237,28 @@ function openDeleted(view: EditorView, before: number, head: string): boolean {
 }
 
 /** Where the keyboard's revert applies from the caret: its block, or a deleted run beside it. */
+/**
+ * The text the last commit has for the top-level block at `index`, so git
+ * can be asked which commits changed it: a changed block's committed text,
+ * the block as saved when git says it has not changed, and null for a block
+ * added since the last commit. A note git has said nothing about (nothing in
+ * it changed, or its marks are off) counts as unchanged when `inGit`, and as
+ * having no history otherwise.
+ */
+export function committedTextAt(state: EditorState, index: number, accepted: NotoDocumentWire, inGit: boolean): string | null {
+  const gutter = gitGutterKey.getState(state);
+  const known = gutter !== undefined && gutter.origins !== null;
+  if (!known && !inGit) return null;
+  const entry = known ? gitEntryAt(state, index) : null;
+  if (entry?.change === 'added') return null;
+  if (entry?.change === 'modified') return entry.head;
+  const origin = known ? originAt(state, gutter!.origins!, index) : getBlockOrigins(state)[index] ?? null;
+  if (!origin) return null;
+  const at = accepted.origins.findIndex((candidate) => candidate.blockId === origin.blockId);
+  const span = at < 0 ? undefined : accepted.spans[at];
+  return span ? accepted.text.slice(span.start, span.end) : null;
+}
+
 export function gitTargetAtSelection(state: EditorState): GitRevertTarget | null {
   const index = state.selection.$from.index(0);
   if (gitEntryAt(state, index)) return { kind: 'block', index };

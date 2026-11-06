@@ -441,6 +441,9 @@ function NotoWorkspace({ platform }: { platform: NotoPlatform }) {
   const [folder, setFolder] = useState<{ root: string | null; name: string | null }>({ root: null, name: null });
   /** What git says about the folder's notes, as main last sent it. */
   const [gitMarks, setGitMarks] = useState<WorkspaceGitMarksV1 | null>(null);
+  /** For the editors, which ask when a right click comes rather than when they are made. */
+  const gitMarksRef = useRef<WorkspaceGitMarksV1 | null>(null);
+  gitMarksRef.current = gitMarks !== null && gitMarks.root === folder.root ? gitMarks : null;
   // Keyed for the tree's lookups, and only for the folder on screen: marks
   // that arrive for a folder the window has since left are not drawn.
   // The shell's slots see the same folder, note and marks the tree does.
@@ -1792,6 +1795,12 @@ function NotoWorkspace({ platform }: { platform: NotoPlatform }) {
   // note, the note's text, taking a version back, and the diff view.
   useEffect(() => {
     slotState.setGitReader({
+      passage: async (filePath, text) => {
+        const result = await window.notoWorkspace.notePassage({ version: 1, requestId: rid('note-passage'), path: filePath, text });
+        if (!result.ok) return null;
+        const { version: _version, ...passage } = result.value;
+        return passage;
+      },
       history: async (filePath) => {
         const result = await window.notoWorkspace.noteHistory({ version: 1, requestId: rid('note-history'), path: filePath });
         if (!result.ok) return null;
@@ -3182,6 +3191,9 @@ function NotoWorkspace({ platform }: { platform: NotoPlatform }) {
                 }}
                 onFollowWikiLink={(target) => followWikiLinkRef.current(target)}
                 onNoteMarkAction={(key, action) => noteMarkActionRef.current(doc.document.documentId, key, action)}
+                // History opened on its tab, told the passage: it lists only the commits that changed those lines.
+                onPassageHistory={(text) => slotState.showTab('dev.lr00rl.noto.history:history', `passage:${text}`)}
+                inGit={() => gitMarksRef.current?.repository === true}
                 onWikiTrigger={() => {
                   // Only where there is something to choose from: an empty
                   // index would open a palette with nothing in it.

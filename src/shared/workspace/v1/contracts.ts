@@ -81,6 +81,8 @@ export const WORKSPACE_CHANNELS = {
   gitBlocksChanged: 'noto:v1:workspace:git-blocks-changed',
   /** One note's commits, following renames. See `WorkspaceNoteHistoryReplyV1`. */
   noteHistory: 'noto:v1:workspace:note-history',
+  /** Which of a note's commits changed one passage of it. See `WorkspaceNotePassageReplyV1`. */
+  notePassage: 'noto:v1:workspace:note-passage',
   /** One note's text as one of its commits had it. */
   noteVersion: 'noto:v1:workspace:note-version',
   /** What the folder's memory knows about one note. See `WorkspaceNoteMemoryReplyV1`. */
@@ -940,6 +942,29 @@ export interface WorkspaceNoteHistoryReplyV1 {
   readonly file: NoteFileFactsV1 | null;
 }
 
+export interface WorkspaceNotePassageRequestV1 extends WorkspaceRequestV1 {
+  /** The note. Main confines it to the open folder. */
+  readonly path: string;
+  /** The passage as the last commit has it: what the editor holds for a block git says is unchanged, or the committed text of a changed one. */
+  readonly text: string;
+}
+
+/**
+ * Which commits changed a passage, newest first, by git's own following of
+ * its lines (`git log -L`): the passage is found in the note as last
+ * committed, and its lines there are what git follows back. `not-found`: the
+ * passage is not in the last commit as it is (written since), so git has no
+ * lines to follow; the other states are those of `WorkspaceNoteHistoryReplyV1`.
+ */
+export interface WorkspaceNotePassageReplyV1 {
+  readonly version: typeof NOTO_WORKSPACE_VERSION;
+  readonly state: 'ok' | 'not-found' | 'untracked' | 'not-git' | 'slow' | 'unavailable' | 'outside';
+  /** The passage's lines in the last commit, from 1. */
+  readonly lines: { readonly from: number; readonly to: number } | null;
+  /** Commit hashes, newest first. */
+  readonly commits: readonly string[];
+}
+
 export interface WorkspaceNoteVersionRequestV1 extends WorkspaceRequestV1 {
   readonly path: string;
   readonly commit: string;
@@ -1353,6 +1378,7 @@ export interface NotoWorkspaceApiV1 {
   noteLinks(request: WorkspaceFolderRequestV1): Promise<WorkspaceResultV1<WorkspaceLinksReplyV1>>;
   /** One note's commits, newest first, following renames. */
   noteHistory(request: WorkspaceNoteHistoryRequestV1): Promise<WorkspaceResultV1<WorkspaceNoteHistoryReplyV1>>;
+  notePassage(request: WorkspaceNotePassageRequestV1): Promise<WorkspaceResultV1<WorkspaceNotePassageReplyV1>>;
   /** One note's text at one of its own commits. */
   noteVersion(request: WorkspaceNoteVersionRequestV1): Promise<WorkspaceResultV1<WorkspaceNoteVersionReplyV1>>;
   /** What the folder's memory knows about one note. */

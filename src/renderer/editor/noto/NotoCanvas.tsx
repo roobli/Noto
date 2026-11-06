@@ -45,6 +45,8 @@ export interface NotoCanvasProps {
   readonly onDocumentChanged?: () => void;
   readonly onFollowWikiLink?: (target: string) => void;
   readonly onNoteMarkAction?: (key: string, action: string) => void;
+  readonly onPassageHistory?: (text: string) => void;
+  readonly inGit?: () => boolean;
   readonly onWikiTrigger?: () => void;
   readonly onFollowLink?: (href: string) => void;
   readonly onDropNote?: (file: File) => void;
@@ -80,6 +82,8 @@ export function NotoCanvas({
   onDocumentChanged,
   onFollowWikiLink,
   onNoteMarkAction,
+  onPassageHistory,
+  inGit,
   onWikiTrigger,
   onFollowLink,
   onDropNote,
@@ -148,6 +152,8 @@ export function NotoCanvas({
           onDocumentChanged,
           onFollowWikiLink,
           onNoteMarkAction,
+          onPassageHistory,
+          inGit,
           onWikiTrigger,
           onFollowLink,
           onDropNote,

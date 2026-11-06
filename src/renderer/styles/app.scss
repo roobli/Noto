@@ -4147,6 +4147,19 @@ section.plugin-group > .plugin-market-row.is-set-aside {
 }
 
 /* History: a commit a row, its words on top and its when and who below. */
+/* One passage's history: which lines, how many commits, and the way back to all of them. */
+.history-passage {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 10px;
+  margin: 8px 16px 2px;
+  color: var(--muted);
+  font: 400 11.5px/16px tokens.$ui;
+
+  .memory-link { flex: 0 0 auto; color: var(--ink); }
+}
+
 .history-list {
   margin: 0;
   padding: 0 8px;

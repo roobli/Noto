@@ -125,6 +125,27 @@ describe('a note\'s history', () => {
     expect(await notes.version(path.join(root, 'a.md'), 'f'.repeat(40), 'a.md')).toBeNull();
   });
 
+  it('follows one passage back through the commits that changed its lines, and only those', async () => {
+    const { root, git, write } = repository();
+    const note = path.join(root, 'a.md');
+    write('a.md', '# A\n\nThe first paragraph.\n\nThe second paragraph.\n');
+    git('add', '-A'); git('commit', '-q', '-m', 'write both');
+    write('a.md', '# A\n\nThe first paragraph, longer.\n\nThe second paragraph.\n');
+    git('add', '-A'); git('commit', '-q', '-m', 'touch the first');
+    write('a.md', '# A\n\nAn opening line.\n\nThe first paragraph, longer.\n\nThe second paragraph, edited.\n');
+    git('add', '-A'); git('commit', '-q', '-m', 'open, and touch the second');
+    const notes = reader();
+    const [third, second, first] = (await notes.history(note)).commits;
+    // The first paragraph moved down two lines in the third commit; git follows it there.
+    const passage = await notes.passage(note, 'The first paragraph, longer.\n');
+    expect(passage.state).toBe('ok');
+    expect(passage.lines).toEqual({ from: 5, to: 5 });
+    expect(passage.commits).toEqual([second!.hash, first!.hash]);
+    expect((await notes.passage(note, 'The second paragraph, edited.')).commits).toEqual([third!.hash, first!.hash]);
+    // Written since the last commit: git has no lines of it to follow.
+    expect((await notes.passage(note, 'Not committed at all.')).state).toBe('not-found');
+  });
+
   it('says a new note is not committed, and a folder outside git has no history', async () => {
     const { root, git, write } = repository();
     write('kept.md', 'kept\n');

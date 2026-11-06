@@ -24,12 +24,15 @@ import path from 'node:path';
 import { GitRunError, gitEnvironment, locate, type GitRunner } from './git-marks';
 import type {
   NoteCommitV1,
+  WorkspaceNotePassageReplyV1,
   NoteFileFactsV1,
   WorkspaceNoteHistoryReplyV1,
 } from '../../shared/workspace/v1/contracts';
 import { NOTO_WORKSPACE_VERSION } from '../../shared/workspace/v1/contracts';
 
 const LOG_TIMEOUT_MS = 3_000;
+/** Following a passage's lines back reads each commit's diff of the note: allowed a little longer than the log. */
+const PASSAGE_TIMEOUT_MS = 5_000;
 const SMALL_TIMEOUT_MS = 2_000;
 /**
  * yagni: a note with more commits than this shows the newest and says there
@@ -402,6 +405,51 @@ export class NoteHistoryReader {
       return text.length > MAX_VERSION_BYTES ? null : text;
     } catch (error) {
       if (error instanceof GitRunError) return null;
+      throw error;
+    }
+  }
+
+  /**
+   * Which of the note's commits changed a passage of it. The passage is found
+   * in the note as last committed (`text` is it as committed: the editor sends
+   * a changed block's committed text), and git follows its lines back with
+   * `git log -L`, through edits around it. One not in the last commit as it is
+   * has no lines there to follow (`not-found`); one there twice is taken where
+   * it is first.
+   */
+  async passage(real: string, text: string): Promise<WorkspaceNotePassageReplyV1> {
+    const reply = (state: WorkspaceNotePassageReplyV1['state'], rest: Partial<WorkspaceNotePassageReplyV1> = {}): WorkspaceNotePassageReplyV1 => ({
+      version: NOTO_WORKSPACE_VERSION, state, lines: null, commits: [], ...rest,
+    });
+    const run = await this.run();
+    if (run === null) return reply('unavailable');
+    try {
+      const placed = await place(run, real);
+      if (!placed) return reply('not-git');
+      const kept = await this.read(run, real);
+      if (kept === null) return reply('not-git');
+      if (kept.head === '' || kept.commits.length === 0) return reply('untracked');
+      let committed: string;
+      try {
+        committed = await run([...PLUMBING, 'cat-file', 'blob', `HEAD:${placed.fromTop}`], placed.toplevel, SMALL_TIMEOUT_MS);
+      } catch (error) {
+        // In history but not in HEAD: deleted, or moved since without the move committed.
+        if (error instanceof GitRunError && error.reason !== 'slow') return reply('untracked');
+        throw error;
+      }
+      const needle = text.replace(/\r\n?/g, '\n').replace(/\n+$/, '');
+      const at = needle.trim() === '' ? -1 : committed.replace(/\r\n?/g, '\n').indexOf(needle);
+      if (at < 0) return reply('not-found');
+      const before = committed.replace(/\r\n?/g, '\n').slice(0, at);
+      const from = before.split('\n').length;
+      const to = from + needle.split('\n').length - 1;
+      const out = await run([
+        ...PLUMBING, 'log', `-L${from},${to}:${placed.fromTop}`, '--no-patch', '--format=%H', `--max-count=${MAX_HISTORY}`,
+      ], placed.toplevel, PASSAGE_TIMEOUT_MS);
+      const commits = out.split('\n').map((line) => line.trim()).filter((hash) => /^[0-9a-f]{40,64}$/.test(hash));
+      return reply('ok', { lines: { from, to }, commits });
+    } catch (error) {
+      if (error instanceof GitRunError) return reply(error.reason === 'slow' ? 'slow' : 'unavailable');
       throw error;
     }
   }

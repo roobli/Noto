@@ -52,6 +52,8 @@ import {
   WorkspaceNoteMemoryReplyV1,
   WorkspaceNoteHistoryReplyV1,
   WorkspaceNoteHistoryRequestV1,
+  WorkspaceNotePassageReplyV1,
+  WorkspaceNotePassageRequestV1,
   WorkspaceNoteVersionReplyV1,
   WorkspaceNoteVersionRequestV1,
   WorkspaceTagIndexReplyV1,
@@ -290,6 +292,29 @@ export function isWorkspaceLinksReplyV1(value: unknown): value is WorkspaceLinks
 export function isWorkspaceNoteHistoryRequestV1(value: unknown): value is WorkspaceNoteHistoryRequestV1 {
   return isWorkspaceFolderRequestV1(value);
 }
+
+export function isWorkspaceNotePassageRequestV1(value: unknown): value is WorkspaceNotePassageRequestV1 {
+  return record(value) && exact(value, ['version', 'requestId', 'path', 'text'])
+    && value.version === 1 && typeof value.requestId === 'string' && requestId.test(value.requestId)
+    && typeof value.path === 'string' && value.path.length > 0 && value.path.length <= 4096
+    && typeof value.text === 'string' && value.text.trim().length > 0 && value.text.length <= 256 * 1024;
+}
+
+const PASSAGE_STATES = new Set(['ok', 'not-found', 'untracked', 'not-git', 'slow', 'unavailable', 'outside']);
+
+export function isWorkspaceNotePassageReplyV1(value: unknown): value is WorkspaceNotePassageReplyV1 {
+  if (!record(value) || !exact(value, ['version', 'state', 'lines', 'commits']) || value.version !== 1) return false;
+  const lines = value.lines;
+  return typeof value.state === 'string' && PASSAGE_STATES.has(value.state)
+    && (lines === null || (record(lines) && exact(lines, ['from', 'to']) && whole(lines.from) && whole(lines.to)
+      && (lines.from as number) >= 1 && (lines.to as number) >= (lines.from as number)))
+    && Array.isArray(value.commits) && value.commits.length <= 1000
+    && value.commits.every((hash) => typeof hash === 'string' && /^[0-9a-f]{40,64}$/.test(hash));
+}
+
+export const isWorkspaceNotePassageResultV1 = (
+  value: unknown, id: string,
+): value is WorkspaceResultV1<WorkspaceNotePassageReplyV1> => isResult(value, id, isWorkspaceNotePassageReplyV1);
 
 export function isWorkspaceNoteVersionRequestV1(value: unknown): value is WorkspaceNoteVersionRequestV1 {
   return record(value) && exact(value, ['version', 'requestId', 'path', 'commit', 'at'])

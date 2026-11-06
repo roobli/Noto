@@ -26,6 +26,7 @@ import {
   type WorkspaceContentRequestV1,
   type WorkspaceNotesByTagRequestV1,
   type WorkspaceNoteHistoryRequestV1,
+  type WorkspaceNotePassageRequestV1,
   type WorkspaceNoteVersionRequestV1,
   type WorkspaceEntryRequestV1,
   type WorkspaceExportRequestV1,
@@ -46,6 +47,7 @@ import {
   isWorkspaceContentRequestV1,
   isWorkspaceNotesByTagRequestV1,
   isWorkspaceNoteHistoryRequestV1,
+  isWorkspaceNotePassageRequestV1,
   isWorkspaceNoteVersionRequestV1,
   isWorkspaceEntryRequestV1,
   isWorkspaceExportRequestV1,
@@ -157,6 +159,8 @@ export function registerWorkspaceHandlers(deps: {
 
   // Read-only: git log and cat-file on one note in the open folder, and only
   // a commit and path from that note's own history.
+  register(WORKSPACE_CHANNELS.notePassage, isWorkspaceNotePassageRequestV1,
+    (request: WorkspaceNotePassageRequestV1) => deps.session.notePassage(request.path, request.text));
   register(WORKSPACE_CHANNELS.noteHistory, isWorkspaceNoteHistoryRequestV1,
     (request: WorkspaceNoteHistoryRequestV1) => deps.session.noteHistory(request.path));
 

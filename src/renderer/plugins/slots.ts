@@ -14,7 +14,7 @@
 
 import { copyThroughSelection } from '../editor/noto/clipboard';
 import type {
-  WorkspaceNoteHistoryReplyV1, WorkspaceMemoryAskReplyV1, WorkspaceNoteMemoryReplyV1, WorkspaceReviewActionV1, WorkspaceReviewReplyV1,
+  WorkspaceNoteHistoryReplyV1, WorkspaceMemoryAskReplyV1, WorkspaceNoteMemoryReplyV1, WorkspaceNotePassageReplyV1, WorkspaceReviewActionV1, WorkspaceReviewReplyV1,
 } from '../../shared/workspace/v1/contracts';
 
 export type Disposer = () => void;
@@ -51,7 +51,15 @@ export interface GitService {
   history(path: string): Promise<NoteHistory | null>;
   /** A note's text at one of its own commits, by the path it had there. */
   version(path: string, commit: string, at: string): Promise<string | null>;
+  /**
+   * Which of a note's commits changed one passage of it, newest first: `text`
+   * is the passage as the last commit has it. Null when main could not be asked.
+   */
+  passage(path: string, text: string): Promise<NotePassage | null>;
 }
+
+/** Which commits changed a passage: see `WorkspaceNotePassageReplyV1`. */
+export type NotePassage = Omit<WorkspaceNotePassageReplyV1, 'version'>;
 
 /** What the folder's memory says about a note: see `WorkspaceNoteMemoryReplyV1`. */
 export type NoteMemoryAnswer = Omit<WorkspaceNoteMemoryReplyV1, 'version'>;
@@ -520,9 +528,10 @@ export class ShellState {
   private settled: string | null = null;
   private settleTimer: ReturnType<typeof setTimeout> | null = null;
   private readonly noteSettled = new Signal();
-  private reader: Pick<GitService, 'history' | 'version'> = {
+  private reader: Pick<GitService, 'history' | 'version' | 'passage'> = {
     history: async () => null,
     version: async () => null,
+    passage: async () => null,
   };
   private editorAccess: { text(): string | null; replace(text: string): boolean } = {
     text: () => null,
@@ -552,6 +561,7 @@ export class ShellState {
     subscribe: (listener) => this.gitChanged.subscribe(listener),
     history: (path) => this.reader.history(path),
     version: (path, commit, at) => this.reader.version(path, commit, at),
+    passage: (path, text) => this.reader.passage(path, text),
   };
 
   readonly vault: VaultService = {
@@ -597,7 +607,7 @@ export class ShellState {
     return this.noteSettled.subscribe(listener);
   }
 
-  setGitReader(reader: Pick<GitService, 'history' | 'version'>): void {
+  setGitReader(reader: Pick<GitService, 'history' | 'version' | 'passage'>): void {
     this.reader = reader;
   }
 
