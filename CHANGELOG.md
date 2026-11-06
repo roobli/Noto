@@ -11,6 +11,15 @@ How releases are made, and what each channel receives, is in
 
 ### Added
 
+- **Quick Open shows the note you are on beside its results.** The
+  highlighted note's title, folder and when it changed, then its opening as
+  readable text; in In Notes mode the lines around the match, with the
+  matched line marked. The palette is wider to make room for it.
+- **Appearance shows the page it sets.** The head of the pane draws a page
+  in miniature in the live theme, with real text in the document's face,
+  size and leading, as wide as the page width makes it, and it changes as
+  the controls under it move. Theme, document font and page width are
+  tiles that picture each choice.
 - **Note Info: a pane beside the page about the note in front.** View → Note
   Info, the command palette, or Get Info in the tree's menu opens it. Its
   head says where the note is and what git says about it, a timeline lays
@@ -200,6 +209,14 @@ How releases are made, and what each channel receives, is in
 
 ### Changed
 
+- **Note Info's Related tab reads in plain words.** Each note says in a few
+  words why it is offered (read together, linked from, a title like this
+  one) instead of the index's own phrases cut off mid-word, a small meter
+  shows how warm it is, and a group past eight notes has Show More. History
+  draws its commits on a line, and Properties groups its facts.
+- **Settings → Memory uses the same cards as every other pane.** Its agents
+  are one card with a mark for each and Add an Agent as the last row; the
+  Claude Code hook is a row with Copy Hook.
 - **A long note's timeline draws its last year.** When a note's commits or
   reads span more than a year, the timeline draws the last twelve months to
   scale and everything before as one muted mark at the left, said as how
