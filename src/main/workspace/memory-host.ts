@@ -74,7 +74,7 @@ const REVIEW_WRITE_TIMEOUT_MS = 10 * 60_000;
 const WRITES = new Set(['accept', 'reject', 'link', 'dismiss', 'undismiss', 'undo']);
 
 /** A Review request as the worker takes it, main having added what has unsaved edits. */
-export type ReviewRequest = Extract<Unnumbered, { kind: 'summary' | 'suggestions' | 'proposal-file' | 'accept' | 'reject' | 'link' | 'dismiss' | 'dismissals' | 'undismiss' | 'undo' }>;
+export type ReviewRequest = Extract<Unnumbered, { kind: 'summary' | 'suggestions' | 'proposal-file' | 'accept' | 'reject' | 'link' | 'dismiss' | 'dismissals' | 'undismiss' | 'undo' | 'mentions' }>;
 
 /** What the index holds, for Settings → Memory. */
 export interface MemoryIndexStatus {

@@ -51,7 +51,9 @@ export type MemoryRequest =
   | { readonly id: number; readonly kind: 'dismiss'; readonly type: ReviewKind; readonly ids: readonly string[] }
   | { readonly id: number; readonly kind: 'dismissals' }
   | { readonly id: number; readonly kind: 'undismiss'; readonly ids: readonly string[] | 'all' }
-  | { readonly id: number; readonly kind: 'undo'; readonly busy: readonly string[] };
+  | { readonly id: number; readonly kind: 'undo'; readonly busy: readonly string[] }
+  /** The likeliest unlinked mentions in one note, to mark in it while it is in front. */
+  | { readonly id: number; readonly kind: 'mentions'; readonly rel: string };
 
 export type MemoryAnswer =
   | { readonly id: number; readonly ok: true; readonly value: unknown }
@@ -77,6 +79,15 @@ interface Batch {
 
 /** How many writes can be taken back, the latest first. */
 const UNDO_DEPTH = 20;
+
+/**
+ * Marks in the note in front are few, so the page is not strewn with
+ * underlines: the likeliest, above the score most of a folder's mentions
+ * fall under (on the author's eight thousand notes, three in four score
+ * below 0.6), and no more than eight.
+ */
+const NOTE_MENTION_FLOOR = 0.6;
+const NOTE_MENTION_LIMIT = 8;
 
 let vault: Vault | null = null;
 // One request at a time: a refresh in the middle of an answer would read a half-built index.
@@ -290,6 +301,13 @@ async function handle(request: MemoryRequest): Promise<unknown> {
       if (count > 0) forgetAll();
       return { count };
     }
+    case 'mentions':
+      // The whole folder's names and counts, from scans kept per note: the first ask reads them all, the next only what changed.
+      return suggest(open(), { types: ['mention'], from: [request.rel] })
+        .filter((item) => item.score >= NOTE_MENTION_FLOOR && item.around && item.splice)
+        .sort((left, right) => right.score - left.score)
+        .slice(0, NOTE_MENTION_LIMIT)
+        .map((item) => ({ id: item.id, to: item.to, toTitle: item.toTitle, score: item.score, around: item.around!, replacement: item.splice!.replacement }));
     case 'undo': {
       const memory = open();
       const batch = batches.pop();

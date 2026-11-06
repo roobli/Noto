@@ -142,7 +142,7 @@ export const memoryManifest = {
   settings: [],
   hotkeys: [],
   editorExtensions: [],
-  uiExtensions: ['info:related', 'info:activity', 'track:reads', 'rail:review'],
+  uiExtensions: ['info:related', 'info:activity', 'track:reads', 'rail:review', 'marks:links'],
 } satisfies PluginManifest;
 
 /** Bundled plugins that start switched on for a reader who never touched them. */

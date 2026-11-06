@@ -1,6 +1,7 @@
 /**
  * Memory, as a bundled plugin: Related and Activity in Note Info, the reads
- * on its timeline, and the Review page in the rail.
+ * on its timeline, the Review page in the rail, and in the note in front a
+ * mark on each note it names without linking.
  *
  * Built from the info and rail slots, `vault.read` (the open folder's memory
  * as `@roobli/vault` holds it) and `vault.review` (its queue, and the writes
@@ -77,6 +78,37 @@ export class MemoryPlugin implements TrustedPlugin {
       const stopReview = review.subscribe(count);
       const stopHost = context.host.subscribe(count);
       stops.push(() => { clearTimeout(first); stopReview(); stopHost(); page.dispose(); });
+
+      // In the note in front, the few likeliest notes it names without linking, each marked where it is.
+      stops.push(context.registerNoteMarks({
+        id: 'links',
+        title: 'Link suggestion',
+        async load(note, signal) {
+          const answer = await review.ask({ kind: 'mentions', note });
+          if (signal.aborted || answer.state !== 'ok' || !answer.value) return [];
+          return answer.value.map((item) => ({
+            key: item.id,
+            before: item.around[0],
+            text: item.around[1],
+            after: item.around[2],
+            title: `Link to ${item.toTitle}`,
+            detail: item.to.includes('/') ? `In ${item.to.slice(0, item.to.lastIndexOf('/'))}` : 'At the top of the folder',
+            actions: [
+              { id: 'link', label: 'Link', replace: item.replacement },
+              // For good, as Review's No: the same suggestion, by the same id.
+              {
+                id: 'dismiss',
+                label: 'Not This',
+                async run() {
+                  const answer = await review.ask({ kind: 'dismiss', type: 'mention', ids: [item.id] });
+                  if (answer.state !== 'ok') throw new Error(answer.error ?? 'the folder\'s memory could not be asked.');
+                },
+              },
+            ],
+          }));
+        },
+        changes: (listener) => review.subscribe(listener),
+      }));
     }
     return () => { for (const stop of stops) stop(); };
   }

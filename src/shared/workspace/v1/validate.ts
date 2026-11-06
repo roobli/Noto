@@ -543,6 +543,8 @@ export function isWorkspaceReviewActionV1(value: unknown): value is WorkspaceRev
     case 'dismissals':
     case 'undo':
       return exact(value, ['kind']);
+    case 'mentions':
+      return exact(value, ['kind', 'note']) && text(value.note, 4096) && (value.note as string).length > 0 && !(value.note as string).includes('\0');
     default:
       return false;
   }
@@ -561,6 +563,13 @@ const reviewSuggestion = (item: Record<string, unknown>) => exact(item, ['id', '
   && ids([item.id]) && typeof item.type === 'string' && REVIEW_KINDS.has(item.type) && notePath(item.from) && notePath(item.to)
   && text(item.toTitle, 512) && number(item.score) && text(item.reason, 1024) && (item.line === null || whole(item.line))
   && (item.around === null || (Array.isArray(item.around) && item.around.length === 3 && item.around.every((part) => text(part, 1024))));
+
+const reviewMention = (item: Record<string, unknown>) => exact(item, ['id', 'to', 'toTitle', 'score', 'around', 'replacement'])
+  && ids([item.id]) && notePath(item.to) && text(item.toTitle, 512) && number(item.score)
+  && Array.isArray(item.around) && item.around.length === 3 && item.around.every((part) => text(part, 1024))
+  // One wiki link that still reads as the words it replaces: what the card offers is what is written.
+  && text(item.replacement, 2048) && /^\[\[[^[\]\r\n]+\]\]$/.test(item.replacement as string)
+  && ((item.replacement as string) === `[[${(item.around as string[])[1]}]]` || (item.replacement as string).endsWith(`|${(item.around as string[])[1]}]]`));
 
 /** Whether a reply's value is what its action answers. */
 const REVIEW_VALUES: { readonly [K in WorkspaceReviewActionV1['kind']]: (value: unknown) => boolean } = {
@@ -581,6 +590,7 @@ const REVIEW_VALUES: { readonly [K in WorkspaceReviewActionV1['kind']]: (value: 
   undismiss: (value) => record(value) && exact(value, ['count']) && whole(value.count),
   undo: (value) => value === null || (record(value) && exact(value, ['restored', 'changed', 'busy'])
     && paths(value.restored) && paths(value.changed) && paths(value.busy)),
+  mentions: (value) => listOf(value, 50, reviewMention),
 };
 
 export function isWorkspaceReviewReplyV1(value: unknown, kind: WorkspaceReviewActionV1['kind']): value is WorkspaceReviewReplyV1 {

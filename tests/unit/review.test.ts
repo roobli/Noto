@@ -153,6 +153,13 @@ describe('what Review may send and accept back', () => {
     expect(isWorkspaceReviewReplyV1(ok({ applied: ['a.md'], unchanged: [], conflicts: [], busy: [] }), 'accept')).toBe(true);
     expect(isWorkspaceReviewReplyV1(ok({ applied: ['a.md'], unchanged: [], conflicts: [], busy: [] }), 'link')).toBe(false);
     expect(isWorkspaceReviewReplyV1(ok(null), 'undo')).toBe(true);
+    // A mention to mark: one wiki link that reads as the words it replaces, and nothing else.
+    const mention = { id: 'abc1234', to: 'Ideas/Argus Index.md', toTitle: 'Argus Index', score: 2.1, around: ['Read the ', 'Argus Index', ' before'], replacement: '[[Argus Index]]' };
+    expect(isWorkspaceReviewReplyV1(ok([mention]), 'mentions')).toBe(true);
+    expect(isWorkspaceReviewReplyV1(ok([{ ...mention, replacement: '[[Ideas/Argus Index|Argus Index]]' }]), 'mentions')).toBe(true);
+    expect(isWorkspaceReviewReplyV1(ok([{ ...mention, replacement: '[[Elsewhere]]' }]), 'mentions')).toBe(false);
+    expect(isWorkspaceReviewReplyV1(ok([{ ...mention, replacement: '[[a]] and [[Argus Index]]' }]), 'mentions')).toBe(false);
+    expect(isWorkspaceReviewReplyV1(ok([{ ...mention, replacement: '[[Argus Index]]\n' }]), 'mentions')).toBe(false);
     expect(isWorkspaceReviewReplyV1(ok(null), 'summary')).toBe(false);
     expect(isWorkspaceReviewReplyV1({ version: 1, state: 'failed', value: null, error: 'There is no proposal x.' }, 'reject')).toBe(true);
     expect(isWorkspaceReviewReplyV1({ version: 1, state: 'opening', value: { count: 1, missing: [] }, error: null }, 'dismiss')).toBe(false);

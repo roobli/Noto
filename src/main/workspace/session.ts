@@ -1776,9 +1776,17 @@ export class WorkspaceSession {
       const rel = insideFolder(folder, open);
       return rel === null ? [] : [rel.normalize('NFC')];
     });
-    const request: ReviewRequest = action.kind === 'accept' || action.kind === 'link' || action.kind === 'undo'
-      ? { ...action, busy }
-      : action;
+    let request: ReviewRequest;
+    if (action.kind === 'mentions') {
+      // The note in front by its path on disk, as the vault names it; one outside the folder has none.
+      const real = await realpath(action.note).catch(() => null);
+      const root = memory.folder();
+      const rel = real === null || root === null ? null : insideFolder(root, real);
+      if (rel === null) return { version: NOTO_WORKSPACE_VERSION, state: 'outside', value: null, error: null };
+      request = { kind: 'mentions', rel };
+    } else {
+      request = action.kind === 'accept' || action.kind === 'link' || action.kind === 'undo' ? { ...action, busy } : action;
+    }
     const outcome = await memory.review(request);
     // A write that timed out may still have landed: the window asks again either way.
     const writes = ['accept', 'reject', 'link', 'dismiss', 'undismiss', 'undo'].includes(action.kind);

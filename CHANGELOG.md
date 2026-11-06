@@ -72,6 +72,13 @@ How releases are made, and what each channel receives, is in
   it is saved: one that would alter anything else in the policy is not made,
   and says which part to change by hand. The MCP server the setups start is the vault's command
   line, shipped with Noto and run by Node 22.13 or later.
+- **Link suggestions in the note.** In a folder that keeps memory, the few
+  likeliest notes the note in front names without linking get a faint
+  dotted underline. Rest the pointer on one, or press Option-Return with the
+  caret in it, for a card: Link writes the link in place as one edit Undo
+  takes back, and Not This says no for good, in Review as well. View → Show
+  Suggestions in Notes turns them off. Plugins can mark words in the note
+  the same way, through a new `marks:<id>` slot.
 - **Locks, and the memory's own settings.** A folder made private or
   sealed wears a small lock in the tree (outlined for private, solid for
   sealed), and a note private by its own frontmatter says so in the status

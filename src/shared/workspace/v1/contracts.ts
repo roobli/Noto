@@ -1159,7 +1159,12 @@ export type WorkspaceReviewActionV1 =
   | { readonly kind: 'dismissals' }
   | { readonly kind: 'undismiss'; readonly ids: readonly string[] | 'all' }
   /** Take back the last write Review made (an accept or a link), where the files are still as it left them. */
-  | { readonly kind: 'undo' };
+  | { readonly kind: 'undo' }
+  /**
+   * The few likeliest unlinked mentions in one note, for marking in it while
+   * it is in front: `note` is its path on disk, which main makes the vault's.
+   */
+  | { readonly kind: 'mentions'; readonly note: string };
 
 export interface WorkspaceReviewRequestV1 {
   readonly version: typeof NOTO_WORKSPACE_VERSION;
@@ -1195,6 +1200,21 @@ export interface ReviewSuggestionV1 {
   readonly around: readonly [string, string, string] | null;
 }
 
+/**
+ * A mention to mark in the note in front: the words as the saved note has
+ * them, with what is around them on their line, and the link to write in
+ * their place. The same id as Review's, so saying no to it is saying no there.
+ */
+export interface ReviewMentionV1 {
+  readonly id: string;
+  readonly to: string;
+  readonly toTitle: string;
+  readonly score: number;
+  readonly around: readonly [string, string, string];
+  /** What the words become: a wiki link to `to` that still reads as they did. */
+  readonly replacement: string;
+}
+
 export interface ReviewDismissalV1 {
   readonly id: string;
   readonly type: string;
@@ -1218,6 +1238,7 @@ export interface ReviewValuesV1 {
   readonly undismiss: { readonly count: number };
   /** Null when there is nothing to take back. Paths: put back, written to since, and with unsaved edits. */
   readonly undo: { readonly restored: readonly string[]; readonly changed: readonly string[]; readonly busy: readonly string[] } | null;
+  readonly mentions: readonly ReviewMentionV1[];
 }
 
 export interface WorkspaceReviewReplyV1<K extends WorkspaceReviewActionV1['kind'] = WorkspaceReviewActionV1['kind']> {

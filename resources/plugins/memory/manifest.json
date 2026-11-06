@@ -25,6 +25,7 @@
     "info:related",
     "info:activity",
     "track:reads",
-    "rail:review"
+    "rail:review",
+    "marks:links"
   ]
 }
