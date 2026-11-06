@@ -31,6 +31,7 @@ import type { UpdateStatusV1 } from '../shared/updates/v1/contracts';
 import { isComposing } from './ime';
 import { ShortcutsBoard } from './ShortcutsBoard';
 import type { PluginHotkeySource } from './shortcuts/catalog';
+import { Switch } from './PrefSwitch';
 
 export type SettingsSection = 'appearance' | 'editor' | 'markdown' | 'images' | 'updates' | 'memory' | 'shortcuts' | 'remote' | 'plugins';
 
@@ -711,31 +712,6 @@ function Choices<T extends string>({ label, hint, options, value, onPick, testPr
         ))}
       </div>
     </div>
-  );
-}
-
-function Switch({ label, hint, checked, onChange, testId }: {
-  label: string;
-  hint?: string;
-  checked: boolean;
-  onChange: (value: boolean) => void;
-  testId: string;
-}) {
-  return (
-    <label className="pref-row pref-switch">
-      <span className="pref-label">
-        {label}
-        {hint && <small>{hint}</small>}
-      </span>
-      <input
-        type="checkbox"
-        role="switch"
-        data-testid={testId}
-        checked={checked}
-        onChange={(event) => onChange(event.target.checked)}
-      />
-      <span className="pref-track" aria-hidden="true" />
-    </label>
   );
 }
 

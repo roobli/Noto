@@ -26,27 +26,43 @@ export function memoryScripts(root: string): string[] {
   }
 }
 
-export class MemoryTrust {
+/**
+ * Folders, by their real paths, kept in a file of Noto's own data: what the
+ * person said of each, where no folder can say it of itself. A list that
+ * cannot be saved is kept for this launch.
+ */
+export class FolderList {
   private readonly folders: Set<string>;
 
-  constructor(private readonly file: string, private readonly log: (event: string, fields: Record<string, unknown>) => void = () => {}) {
+  constructor(
+    private readonly file: string,
+    private readonly log: (event: string, fields: Record<string, unknown>) => void = () => {},
+    /** Logged when the file cannot be written. */
+    private readonly unsaved = 'folder_list_not_saved',
+  ) {
     this.folders = new Set(this.read());
   }
 
-  /** Whether the memory of the folder at `root` (a real path) may be opened: it runs no scripts, or was allowed to. */
-  mayOpen(root: string): boolean {
-    return this.folders.has(root) || memoryScripts(root).length === 0;
+  has(root: string): boolean {
+    return this.folders.has(root);
   }
 
-  trust(root: string): void {
+  add(root: string): void {
     if (this.folders.has(root)) return;
     this.folders.add(root);
+    this.save();
+  }
+
+  delete(root: string): void {
+    if (this.folders.delete(root)) this.save();
+  }
+
+  private save(): void {
     try {
       mkdirSync(path.dirname(this.file), { recursive: true });
       writeFileSync(this.file, `${JSON.stringify({ version: 1, folders: [...this.folders].sort() }, null, 2)}\n`, 'utf8');
     } catch (error) {
-      // Kept for this launch; the question comes again next time.
-      this.log('memory_trust_not_saved', { reason: (error as Error).message });
+      this.log(this.unsaved, { reason: (error as Error).message });
     }
   }
 
@@ -59,5 +75,23 @@ export class MemoryTrust {
     } catch {
       return [];
     }
+  }
+}
+
+export class MemoryTrust {
+  private readonly allowed: FolderList;
+
+  constructor(file: string, log: (event: string, fields: Record<string, unknown>) => void = () => {}) {
+    // Kept for this launch when it cannot be saved; the question comes again next time.
+    this.allowed = new FolderList(file, log, 'memory_trust_not_saved');
+  }
+
+  /** Whether the memory of the folder at `root` (a real path) may be opened: it runs no scripts, or was allowed to. */
+  mayOpen(root: string): boolean {
+    return this.allowed.has(root) || memoryScripts(root).length === 0;
+  }
+
+  trust(root: string): void {
+    this.allowed.add(root);
   }
 }
