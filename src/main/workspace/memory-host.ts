@@ -18,46 +18,26 @@
 
 import { existsSync } from 'node:fs';
 import path from 'node:path';
-import { Worker } from 'node:worker_threads';
 import {
   NOTO_WORKSPACE_VERSION,
   type NoteMemoryV1,
   type WorkspaceNoteMemoryReplyV1,
 } from '../../shared/workspace/v1/contracts';
-import type { MemoryAnswer, MemoryRequest } from '../../vault-worker/vault-worker';
 import { memoryScripts } from './memory-trust';
+import { MemoryError, WorkerLink, type MemoryWorker, type Unnumbered } from './memory-worker-link';
+
+export { systemMemoryWorker, type MemoryWorker } from './memory-worker-link';
 
 const ABOUT_TIMEOUT_MS = 5_000;
 /** Opening builds the index the first time, which for a big folder is a while. */
 const OPEN_TIMEOUT_MS = 180_000;
 const REFRESH_EVERY_MS = 30_000;
 const REFRESH_AFTER_CHANGE_MS = 1_500;
-/** How long the worker has to close the index before it is stopped anyway. */
-const CLOSE_TIMEOUT_MS = 3_000;
 /** The first pause before a failed memory is tried again; it doubles, up to the cap. */
 const RETRY_FIRST_MS = 30_000;
 const RETRY_CAP_MS = 10 * 60_000;
 
 type State = 'closed' | 'opening' | 'open' | 'failed';
-
-type Pending = { resolve: (value: unknown) => void; reject: (error: MemoryError) => void; timer: ReturnType<typeof setTimeout> };
-
-/** A request before it is numbered: `Omit` taken over each kind of request on its own. */
-type Unnumbered = MemoryRequest extends infer Each ? Each extends MemoryRequest ? Omit<Each, 'id'> : never : never;
-
-class MemoryError extends Error {
-  constructor(message: string, readonly unknown = false) {
-    super(message);
-  }
-}
-
-/** The worker, as the host talks to it: replaced by a fake in tests. */
-export interface MemoryWorker {
-  postMessage(request: MemoryRequest): void;
-  on(event: 'message', listener: (answer: MemoryAnswer) => void): void;
-  on(event: 'error' | 'exit', listener: (value: unknown) => void): void;
-  terminate(): Promise<number> | void;
-}
 
 export interface MemoryHostOptions {
   readonly startWorker: () => MemoryWorker;
@@ -75,10 +55,6 @@ export function memoryWorkerPath(packaged: boolean, resourcesPath: string, here:
     : path.join(here, 'vault-worker.js');
 }
 
-export function systemMemoryWorker(file: string): () => MemoryWorker {
-  return () => new Worker(file) as unknown as MemoryWorker;
-}
-
 /** A path inside the folder, as the vault names notes, or null. */
 export function insideFolder(root: string, file: string): string | null {
   const rel = path.relative(root, file);
@@ -92,9 +68,7 @@ const runsNoScripts = (root: string): boolean => memoryScripts(root).length === 
 export class MemoryHost {
   private root: string | null = null;
   private state: State = 'closed';
-  private worker: MemoryWorker | null = null;
-  private nextId = 1;
-  private readonly pending = new Map<number, Pending>();
+  private link: WorkerLink | null = null;
   private refreshTimer: ReturnType<typeof setTimeout> | null = null;
   private everyTimer: ReturnType<typeof setInterval> | null = null;
   private retryTimer: ReturnType<typeof setTimeout> | null = null;
@@ -161,14 +135,14 @@ export class MemoryHost {
     this.stop();
     this.root = root;
     this.state = 'opening';
-    const worker = this.start();
+    const link = this.start();
     try {
-      const value = await this.ask({ kind: 'keep', root }, OPEN_TIMEOUT_MS) as { made?: string[] } | null;
-      if (this.worker === worker) this.opened();
+      const value = await link.ask({ kind: 'keep', root }, OPEN_TIMEOUT_MS) as { made?: string[] } | null;
+      if (this.link === link) this.opened();
       // Made, even when the folder changed meanwhile.
       return value?.made ?? [];
     } catch (error) {
-      if (this.worker === worker) this.failed('memory_keep_failed', error as Error);
+      if (this.link === link) this.failed('memory_keep_failed', error as Error);
       return null;
     }
   }
@@ -190,18 +164,14 @@ export class MemoryHost {
     this.root = null;
   }
 
-  private start(): MemoryWorker {
-    const worker = this.options.startWorker();
-    this.worker = worker;
-    worker.on('message', (answer: MemoryAnswer) => this.answer(answer));
-    const lost = (why: string) => {
-      if (this.worker !== worker) return;
-      this.worker = null;
+  private start(): WorkerLink {
+    const link: WorkerLink = new WorkerLink(this.options.startWorker(), (why) => {
+      if (this.link !== link) return;
+      this.link = null;
       this.failed('memory_worker_lost', new Error(why));
-    };
-    worker.on('error', (error) => lost(error instanceof Error ? error.message : String(error)));
-    worker.on('exit', (code) => lost(`exit ${String(code)}`));
-    return worker;
+    });
+    this.link = link;
+    return link;
   }
 
   private opened(): void {
@@ -215,9 +185,7 @@ export class MemoryHost {
   /** The memory could not be had: stop its worker, and try again after a pause. */
   private failed(event: string, error: Error): void {
     this.options.log?.(event, { error: error.message, failures: this.failures + 1 });
-    const worker = this.worker;
     this.clear();
-    if (worker) this.close(worker);
     this.state = 'failed';
     const pause = Math.min(RETRY_CAP_MS, RETRY_FIRST_MS * 2 ** this.failures);
     this.failures += 1;
@@ -230,13 +198,13 @@ export class MemoryHost {
   private open(root: string): void {
     this.state = 'opening';
     const started = Date.now();
-    const worker = this.start();
-    void this.ask({ kind: 'open', root }, OPEN_TIMEOUT_MS).then((value) => {
-      if (this.worker !== worker) return;
+    const link = this.start();
+    void link.ask({ kind: 'open', root }, OPEN_TIMEOUT_MS).then((value) => {
+      if (this.link !== link) return;
       this.options.log?.('memory_open', { ms: Date.now() - started, notes: (value as { notes?: number } | null)?.notes ?? null });
       this.opened();
     }, (error: MemoryError) => {
-      if (this.worker === worker) this.failed('memory_open_failed', error);
+      if (this.link === link) this.failed('memory_open_failed', error);
     });
   }
 
@@ -244,12 +212,12 @@ export class MemoryHost {
     if (this.state !== 'open') return;
     if (this.refreshing) { this.again = true; return; }
     this.refreshing = true;
-    const worker = this.worker;
+    const link = this.link;
     const paths = this.touched === null ? null : [...this.touched];
     this.touched = new Set();
     try {
       const stats = await this.ask({ kind: 'refresh', paths }, OPEN_TIMEOUT_MS) as { parsed?: number; events?: number; removed?: number; moved?: number } | null;
-      if (this.worker !== worker) return;
+      if (this.link !== link) return;
       // Only news when something the window shows may differ, or an answer was missed meanwhile.
       const news = stats !== null && ((stats.parsed ?? 0) > 0 || (stats.events ?? 0) > 0 || (stats.removed ?? 0) > 0 || (stats.moved ?? 0) > 0);
       if (news || this.owed) {
@@ -258,12 +226,12 @@ export class MemoryHost {
       }
     } catch {
       // What was not read waits for the next one.
-      if (this.worker === worker) {
+      if (this.link === link) {
         if (paths === null) this.touched = null;
         else if (this.touched !== null) for (const rel of paths) this.touched.add(rel);
       }
     } finally {
-      if (this.worker === worker) {
+      if (this.link === link) {
         this.refreshing = false;
         if (this.again) {
           this.again = false;
@@ -274,55 +242,10 @@ export class MemoryHost {
   }
 
   private ask(request: Unnumbered, timeoutMs: number): Promise<unknown> {
-    const worker = this.worker;
-    if (!worker) return Promise.reject(new MemoryError('The memory is not open.'));
-    const id = this.nextId++;
-    return new Promise((resolve, reject) => {
-      const timer = setTimeout(() => {
-        this.pending.delete(id);
-        reject(new MemoryError('The memory took too long to answer.'));
-      }, timeoutMs);
-      this.pending.set(id, { resolve, reject, timer });
-      worker.postMessage({ ...request, id } as MemoryRequest);
-    });
+    return this.link ? this.link.ask(request, timeoutMs) : Promise.reject(new MemoryError('The memory is not open.'));
   }
 
-  private answer(answer: MemoryAnswer): void {
-    const waiting = this.pending.get(answer.id);
-    if (!waiting) return;
-    this.pending.delete(answer.id);
-    clearTimeout(waiting.timer);
-    if (answer.ok) waiting.resolve(answer.value);
-    else waiting.reject(new MemoryError(answer.error, answer.unknown === true));
-  }
-
-  private fail(error: MemoryError): void {
-    for (const waiting of this.pending.values()) {
-      clearTimeout(waiting.timer);
-      waiting.reject(error);
-    }
-    this.pending.clear();
-  }
-
-  /** Let the worker close the index (its last write lands whole), then stop it either way. */
-  private close(worker: MemoryWorker): void {
-    const id = this.nextId++;
-    let timer: ReturnType<typeof setTimeout> | null = null;
-    const end = () => {
-      if (timer !== null) clearTimeout(timer);
-      this.pending.delete(id);
-      void Promise.resolve(worker.terminate()).catch(() => {});
-    };
-    timer = setTimeout(end, CLOSE_TIMEOUT_MS);
-    this.pending.set(id, { resolve: end, reject: end, timer });
-    try {
-      worker.postMessage({ id, kind: 'close' });
-    } catch {
-      end();
-    }
-  }
-
-  /** Timers and bookkeeping off, everything waiting told the memory is gone. */
+  /** Timers and bookkeeping off, and the worker let go: everything waiting is told the memory closed. */
   private clear(): void {
     if (this.refreshTimer !== null) clearTimeout(this.refreshTimer);
     if (this.everyTimer !== null) clearInterval(this.everyTimer);
@@ -334,14 +257,13 @@ export class MemoryHost {
     this.refreshing = false;
     this.again = false;
     this.owed = false;
-    this.worker = null;
-    this.fail(new MemoryError('The memory closed.'));
+    const link = this.link;
+    this.link = null;
+    link?.close();
   }
 
   private stop(): void {
-    const worker = this.worker;
     this.clear();
     this.state = 'closed';
-    if (worker) this.close(worker);
   }
 }
