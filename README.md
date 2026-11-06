@@ -208,6 +208,11 @@ uses without linking, gone through one at a time with Y, N and S). What it
 writes shows up in Changes to be committed as usual, Undo takes the last
 write back, and a note with unsaved edits is left alone.
 
+Settings → Memory says which agents may read the folder and what they may
+do; Add an Agent gives one a key, shown once with a setup to paste for
+Claude Code or Codex, and Take Key Back stops it at its next request. A
+folder's right-click menu sets it open, private or sealed.
+
 `Cmd+/` opens Source Code Mode: the whole note as the Markdown it is saved as,
 the way Typora's Command-slash does. `Cmd+Alt+/` still toggles source for the
 single block under the caret, which is the escape hatch when you want to fix

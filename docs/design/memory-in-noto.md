@@ -233,23 +233,37 @@ Info's answer about the note in front.
 
 ### Agents and privacy
 
-Settings → Memory → Agents lists the agents the folder knows, each with what
-it may see and do and when it last read anything (from the read record).
-**Add an agent** asks three plain questions: its name; which notes it may read
-(open notes only, or private ones too; sealed notes are never offered); and
-what it may do (read and search, also propose changes, also write in one
-folder such as a daily log). It then shows the key once, with **Copy setup
-for Claude Code** and **Copy setup for Codex** that fill in the MCP lines.
-**Revoke** takes the key out; a running agent loses access within a second,
-since the server rereads the policy when it changes.
+Settings → Memory lists the agents the folder knows, each with what it may
+read and do and when it last read anything (from the read record), and
+**Any agent without a key** too: what any MCP client on the computer gets
+by not bringing one, open notes by default, which **Turn Off** makes
+nothing. **Add an Agent…** asks three plain questions: its name; which notes
+it may read (open notes only, or private ones too; sealed notes are never
+offered); and what it may do (read and search, also propose changes, also
+write in one folder such as a daily log). Main then asks once more in a
+sheet of its own, saying what the agent will be able to do, so no plugin
+can add one; the key is shown once, with **Copy Setup for Claude Code** (a
+`claude mcp add` line) and **Copy Setup for Codex** (a `config.toml`
+block). **Take Key Back…** empties the agent's keys and records when; a
+running server reads the policy again before its next answer, so the agent
+is refused from then on.
 
-Which notes are private is set where the notes are: a folder's right-click
-menu has **Privacy ▸ Open, Private, Sealed**, written to `.noto/access.yaml`,
-and a private or sealed folder carries a small lock in the tree. A note can be
-made stricter than its folder with `sensitivity:` in its own frontmatter, and
-the status line shows a lock while such a note is in front. Settings → Memory
-also has the switch for the read record, the index's state and size with
-Rebuild, and Turn Off, which says what it will remove.
+The MCP server those setups start is the vault's command line, which Noto
+ships unpacked beside itself, run by the computer's own Node (22.13 or
+later, for its SQLite). Noto cannot be that Node: its fuses keep it from
+running as one, which is what keeps a page in it from becoming a program.
+Publishing the vault as a package would let the setup say `npx` instead.
+
+`.noto/access.yaml` is the person's, often with comments, so these change
+only the lines they are about. Which notes are private is set where the
+notes are: a folder's right-click menu has **Privacy ▸ Open, Private,
+Sealed**, the level it has now ticked, and writes the folder's own pattern
+only when the default or a folder around it would not give that level
+already. Still to come: a small lock on such a folder in the tree; the
+status line's lock while a note stricter than its folder (by `sensitivity:`
+in its frontmatter) is in front; and, in Settings → Memory, the switch for
+the read record, the index's state and size with Rebuild, and Turn Off,
+which says what it will remove.
 
 ## States
 
@@ -306,6 +320,9 @@ the app's own features use the seams anyone else's would.
    for stale links, Undo. Done, with `proposalFile`, `dismissals`,
    `undismiss` and `prepare` added to the vault.
 4. Settings → Memory, Privacy in the folder menu, Agents with keys and setup.
+   Done but for the tree's lock, the status line's lock, the read record's
+   switch and the index's Rebuild and Turn Off; the vault gained the policy
+   editors and `readers`, and its command line ships with Noto.
 5. Link suggestions in the note in front.
 6. Ask the vault and Copy as context; the folder's info; one passage's
    history from its git mark.
