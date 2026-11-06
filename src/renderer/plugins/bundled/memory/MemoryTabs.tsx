@@ -308,21 +308,23 @@ function Activity({ host }: { readonly host: InfoTabHost }) {
       )}
       <section className="memory-group" aria-label="Written" data-testid="activity-writes">
         <h3 className="memory-heading"><span>Written</span></h3>
-        <p className="memory-plain">
-          {memory.writes.commits === 0 ? 'No commits' : `${memory.writes.commits.toLocaleString('en')} ${memory.writes.commits === 1 ? 'commit' : 'commits'}`}
-          {memory.writes.appends > 0 ? `, ${memory.writes.appends.toLocaleString('en')} added by agents` : ''}
-        </p>
-        {/* Git cannot say who made a change; an agent that says it wrote here is named, and the commits stay the person's. */}
-        {memory.writes.agents.length > 0 && (
-          <dl className="properties-list">
-            {memory.writes.agents.map((writer) => (
-              <div key={writer.actor} className="properties-row" data-testid="activity-writer">
-                <dt title={agentName(writer.actor)}>{agentName(writer.actor)}</dt>
-                <dd>wrote it {times(writer.count)}, last {new Date(writer.last).toLocaleDateString('en', { month: 'short', day: 'numeric' })}</dd>
-              </div>
-            ))}
-          </dl>
-        )}
+        {/* Rows like Read's. Git cannot say who made a change, so its count is git's, not the person's;
+            an agent that says it wrote here is named under it. */}
+        <dl className="properties-list">
+          <div className="properties-row" data-testid="activity-commits">
+            <dt>In git</dt>
+            <dd>
+              {memory.writes.commits === 0 ? 'no commits' : `${memory.writes.commits.toLocaleString('en')} ${memory.writes.commits === 1 ? 'commit' : 'commits'}`}
+              {memory.writes.appends > 0 ? `, ${memory.writes.appends.toLocaleString('en')} added by agents` : ''}
+            </dd>
+          </div>
+          {memory.writes.agents.map((writer) => (
+            <div key={writer.actor} className="properties-row" data-testid="activity-writer">
+              <dt title={agentName(writer.actor)}>{agentName(writer.actor)}</dt>
+              <dd>wrote it {times(writer.count)}, last {new Date(writer.last).toLocaleDateString('en', { month: 'short', day: 'numeric' })}</dd>
+            </div>
+          ))}
+        </dl>
       </section>
       <p className="memory-heat-words" data-testid="activity-heat">{heatWords(memory)}</p>
     </div>
