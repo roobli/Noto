@@ -38,8 +38,13 @@ export function clampInfoWidth(value: number, windowWidth: number): number {
   return Math.round(Math.min(infoWidthMax(windowWidth), Math.max(INFO_MIN, value)));
 }
 
-/** What git says about the note, in the words the head uses. */
-export function gitStateOf(snapshot: GitSnapshot | null, note: string): string {
+/**
+ * What git says about the note, in the words the head uses. The marks name
+ * only notes that differ from the last commit, so a note with no mark is
+ * committed only if it has commits at all: one git ignores has neither.
+ * `committed` is whether its history has a commit, or null before it is known.
+ */
+export function gitStateOf(snapshot: GitSnapshot | null, note: string, committed: boolean | null = null): string {
   if (!snapshot || snapshot.root === null || !snapshot.repository) return 'Not in git';
   // Git names notes from where the folder really is; the window may have opened it through a link.
   const real = snapshot.realRoot && snapshot.realRoot !== snapshot.root && note.startsWith(snapshot.root)
@@ -47,7 +52,7 @@ export function gitStateOf(snapshot: GitSnapshot | null, note: string): string {
     : note;
   const change = snapshot.files.find(([file]) => file === real || file === note)?.[1];
   if (change === 'modified') return 'Uncommitted changes';
-  if (change === 'new') return 'Not committed yet';
+  if (change === 'new' || committed === false) return 'Not committed yet';
   return 'Committed';
 }
 
@@ -274,6 +279,32 @@ export interface InfoPaneProps {
   readonly onClose: () => void;
 }
 
+/**
+ * Whether the note has a commit, from its history: the same read the History
+ * tab and the timeline make, which main walks once and keeps until HEAD moves.
+ * Asked again when the marks change, since a commit changes both.
+ */
+function useCommitted(state: InfoPaneProps['state'], note: string | null): boolean | null {
+  const [committed, setCommitted] = useState<boolean | null>(null);
+  useEffect(() => {
+    setCommitted(null);
+    if (note === null) return undefined;
+    let live = true;
+    let latest = 0;
+    const read = () => {
+      const mine = ++latest;
+      state.git.history(note).then((history) => {
+        // Only these two say: a slow or failed read is no news either way.
+        if (live && mine === latest) setCommitted(history?.state === 'ok' ? true : history?.state === 'untracked' ? false : null);
+      }, () => {});
+    };
+    read();
+    const stop = state.git.subscribe(read);
+    return () => { live = false; stop(); };
+  }, [state, note]);
+  return committed;
+}
+
 export function InfoPane({ registry, state, width, tab, reveal, onTab, onResize, onClose }: InfoPaneProps) {
   const tabs = useSyncExternalStore(useCallback((listener: () => void) => registry.subscribe(listener), [registry]), () => registry.tabs());
   const trackEntries = useSyncExternalStore(useCallback((listener: () => void) => registry.subscribe(listener), [registry]), () => registry.tracks());
@@ -281,6 +312,7 @@ export function InfoPane({ registry, state, width, tab, reveal, onTab, onResize,
   const snapshot = useSyncExternalStore(useCallback((listener: () => void) => state.git.subscribe(listener), [state]), () => state.git.current());
   const folder = useSyncExternalStore(useCallback((listener: () => void) => state.host.subscribe(listener), [state]), () => state.host.folder());
   const tracks = useTracks(trackEntries, note);
+  const committed = useCommitted(state, note);
   const views = useMemo(() => new Map<string, InfoTabView>(), []);
   const active = tabs.find((entry) => entry.key === tab) ?? tabs[0] ?? null;
   // Tabs are mounted the first time they are shown, and kept.
@@ -379,7 +411,7 @@ export function InfoPane({ registry, state, width, tab, reveal, onTab, onResize,
           {note && (
             <p className="info-where" data-testid="info-where">
               {where && <span className="info-folder">{where}</span>}
-              <span className="info-state" data-testid="info-state">{gitStateOf(snapshot, note)}</span>
+              <span className="info-state" data-testid="info-state">{gitStateOf(snapshot, note, committed)}</span>
             </p>
           )}
         </div>

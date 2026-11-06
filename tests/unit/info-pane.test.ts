@@ -87,6 +87,10 @@ describe('the pane', () => {
     const snapshot = { root: '/link', realRoot: '/real', repository: true as const, files: [['/real/a.md', 'modified'], ['/real/b.md', 'new']] as const };
     expect(gitStateOf(snapshot, '/link/a.md')).toBe('Uncommitted changes');
     expect(gitStateOf(snapshot, '/link/b.md')).toBe('Not committed yet');
+    // No mark is committed only when the history has a commit; an ignored note has neither.
+    expect(gitStateOf(snapshot, '/link/ignored.md', false)).toBe('Not committed yet');
+    expect(gitStateOf(snapshot, '/link/ignored.md', true)).toBe('Committed');
+    expect(gitStateOf(snapshot, '/link/ignored.md', null)).toBe('Committed');
     expect(gitStateOf(snapshot, '/link/c.md')).toBe('Committed');
     expect(gitStateOf({ root: null, files: [] }, '/x.md')).toBe('Not in git');
   });

@@ -1206,8 +1206,10 @@
      toggle stays where it always is; it used to vanish here, and with it the
      only visible way to the files. The first track is explicitly zero: the
      rail is out of flow, and the base grid's `--shell-rail` track would
-     otherwise reserve its width and push the document right. */
-  .app-shell { grid-template-columns: 0 minmax(0, 1fr); }
+     otherwise reserve its width and push the document right. The info pane
+     keeps its own track, so a narrow window with Note Info open still gives
+     it the width it was set to rather than an unsized extra column. */
+  .app-shell { grid-template-columns: 0 minmax(0, 1fr) var(--shell-info, 0px); }
   .app-shell > .workspace-rail {
     position: absolute;
     top: 0;
