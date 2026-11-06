@@ -53,7 +53,7 @@ agent; typing slowed by any of this.
 | `suggest --dismiss` | **Not this** wherever a suggestion is shown |
 | `link`, `supersede` | **Add relation…** and **Superseded by…** in the right-click menu and the palette |
 | `key add`, `access.yaml` | Settings → Memory → Agents, and **Privacy** in a folder's right-click menu |
-| `graph` | later: a heat map of the folder (phase 3) |
+| `graph` | **Get Info** on a folder: its warmest notes, what is read most, what nothing links to; a heat map later (phase 3) |
 | `eval` | stays a developer's tool |
 
 ## The pieces
@@ -107,7 +107,13 @@ work in any folder, memory or not.
   diff view; its bar steps to the commit before or after, compares the
   version with the note as it stands, copies it, or takes it back as an edit
   Undo reverses, saved only when the note is. Shift with a press compares
-  any two. The history of one passage, from a git mark, comes later.
+  any two. A right click on a paragraph offers History of This Passage:
+  History then lists only the commits that changed those lines, followed
+  where they moved (`git log -L` on the passage as the last commit has it),
+  each row keeping its place in the whole history, and Show All has the
+  rest back. A passage written since the last commit has no history yet,
+  and History says so. The right click rather than the git mark, because a
+  passage git has not marked has a history too.
 - **Properties** groups each value by where it comes from: the note's own
   frontmatter, its text (words, Chinese a character each; tables; code;
   links), git, and the file. The vault adds the values a folder's policy, a
@@ -178,6 +184,48 @@ The marks are a slot of their own (`marks:<id>`, see [the slots
 plan](../architecture/plugin-slots.md)), and link suggestions are the Memory
 plugin's use of it, so a later plugin can underline words for its own
 reasons the same way.
+
+### A folder's info
+
+Get Info in a folder's right-click menu turns the same pane to the folder,
+until a note is chosen, another folder is opened or the pane is closed;
+**Back to** the note in front does it at once. The head is the folder's name
+and where it sits; there is no timeline and there are no tabs, only a column
+of sections with a rule between each:
+
+```
+ ┌─ Ideas ───────────────────── × ┐
+ │ Projects · Folder               │
+ │ ‹ Back to plan                  │
+ │ 42 notes · 3 broken links       │
+ │ Warmest                         │
+ │ Plan                     ━━━━━━ │
+ │ Argus Index              ━━━──  │
+ ├─────────────────────────────────┤
+ │ Recent commits                  │
+ │ longer plan                     │
+ │ Today 00:19 · Noto              │
+ │ plan                            │
+ ├─────────────────────────────────┤
+ │ Read most                       │
+ │ Linked to nothing             5 │
+ └─────────────────────────────────┘
+```
+
+The memory gives the first and last: how many notes and broken links, the
+warmest notes each with a short meter against the warmest of them, the notes
+read most with how often and when last, and the notes nothing links to and
+that link nowhere. It reads the index by the folder's prefix in a few
+queries and never opens a note, so a folder of thousands answers at once.
+Git gives the middle in any folder it tracks, memory or not: the twenty
+newest commits that changed anything under the folder and only there, each
+naming the notes it changed, which open on a press. A section with nothing
+to say is not shown at all.
+
+The sections are a slot (`folder:<id>`, see [the slots
+plan](../architecture/plugin-slots.md)): History adds the commits, Memory the
+other two, each asking for itself. The meters are where the heat map starts;
+a treemap comes only if a list with meters turns out not to be enough.
 
 ### The Review page
 
@@ -311,6 +359,8 @@ note. A server answers for memory that exists and never begins it.
 | proposal conflicts | the conflicted file shown with both versions; Accept again once fixed |
 | read-only window | everything that reads works; Link, Accept and Fix all are disabled with the reason |
 | agent revoked | its row says Revoked, with when |
+| a folder's info, no `.noto/` | one line saying how its notes are read is not known, with Keep Memory for the Open Folder… |
+| a folder's info, not in git | Recent commits says the folder is not in git; the memory's sections answer as usual |
 
 ## Boundaries
 
@@ -360,6 +410,8 @@ the app's own features use the seams anyone else's would.
 5. Link suggestions in the note in front, on a note marks slot any plugin
    can use. Done; the vault's mention scan is kept per note.
 6. Ask the vault and Copy as context; the folder's info; one passage's
-   history from its git mark.
+   history. Done, on a `folder:<id>` slot for a folder's sections; the
+   vault gained `folderAbout` and `formatRecall`, and one passage's history
+   is offered by a right click rather than the git mark.
 
 Progress is kept in the author's notes; the changelog says what shipped.

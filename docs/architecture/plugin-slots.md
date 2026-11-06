@@ -117,6 +117,24 @@ The Memory plugin's link suggestions are the first user. The slot is meant
 for anything that wants a few words of the note to say more and offer to
 change them: a reviewer's comment, a term to check, a date to confirm.
 
+### A folder's info
+
+Get Info on a folder turns the info pane to the folder until a note is
+chosen. A folder section (`registerFolderSection`, named `folder:<id>`) is
+one part of what the pane then shows, in order, with a rule between each. It
+is mounted with the folder's path on disk (the open folder itself, or one
+inside it) and the plugin's host, and disposed when the pane turns away, so
+a section asks for what it shows when mounted and again on the changes it
+follows; it draws its own headings. A section that renders nothing is not
+shown at all, so one with nothing to say for this folder needs no API to
+hide itself. `git.read` answers a folder's newest commits
+(`git.folder(path)`), and `vault.read` what the memory knows about it
+(`vault.folder(path)`).
+
+History's Recent commits and Memory's warmest, most read and unlinked notes
+are the first users. The slot is where a heat map of the folder, a
+dashboard of its tasks, or anything else about a folder as a whole goes.
+
 History (`src/renderer/plugins/bundled/history/`) is the worked example: a
 History tab, a Properties tab and a track of commits, from the slot alone.
 The vault's memory adds Related and Activity, and a track of reads, the same
@@ -128,9 +146,11 @@ way.
    plugin that lists only the changed notes as a tree, built from the slot
    alone.
 2. Done: Note Info, the pane beside the note, with tabs and timeline tracks
-   as its slots, and History and Properties as its first users. Next on it:
-   Related and Activity from the vault index (`@roobli/vault`), replacing the
-   panel that reads `.note-assistant/graph.json`.
+   as its slots, and History and Properties as its first users; Related and
+   Activity from the vault index (`@roobli/vault`); marks on the note; a
+   folder's info with sections as its slot. Still to do here: the rail's
+   Links panel reads `.note-assistant/graph.json`, and should read the vault
+   index as Related does.
 3. Status items and fenced blocks, each moved out of the shell as its first
    user.
 4. The same slots for sandboxed plugins, through the message protocol the

@@ -87,6 +87,22 @@ How releases are made, and what each channel receives, is in
   stops keeping memory: its sheet lists what `.noto` holds, then moves it to
   the Trash. An agent's server stops serving a folder whose `.noto` is gone,
   and one started later refuses it rather than making `.noto` again.
+- **Ask the vault, and Copy as Context.** At the top of Related, or from
+  "Memory: ask the folder a question" in the command palette, a question in words is answered with
+  the notes most likely to matter, each with why and a few lines of it, the
+  note in front's neighbours counting for more. Copy as Context puts the
+  answer on the clipboard as the Markdown an agent asking through MCP is
+  given, for pasting into a chat.
+- **One passage's history.** History of This Passage, in a paragraph's
+  right-click menu in a note under git, lists only the commits that changed
+  those lines, followed where they moved, with Show All to have the rest
+  back. A passage written since the last commit says it has no history yet.
+- **A folder's info.** Get Info in a folder's right-click menu turns Note
+  Info to the folder until a note is chosen: how many notes it holds and how
+  many of its links are broken, its warmest notes each with a meter, the
+  newest commits that changed anything in it with the notes they changed,
+  the notes read most, and those nothing links to or from. Back returns to
+  the note in front. Plugins add to it through a `folder:<id>` slot.
 - **Plugins can add to Note Info.** A tab (`info:<id>`) and a timeline track
   (`track:<id>`) are slots like the rail's pages, and `git.read` now gives a
   note's history and its text at any of its commits. History and Properties
