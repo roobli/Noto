@@ -137,6 +137,10 @@ How releases are made, and what each channel receives, is in
 
 ### Fixed
 
+- **A quote written on a list item's own line is a quote.** `- > a` showed
+  as a list item reading "> a", and so did a heading, a code fence or a
+  nested list started on the marker's line (`- # h`, `- - a`). They are now
+  the blocks CommonMark makes of them, and are written back as they were.
 - **Changes lists the notes of a folder opened through a link.** Git names
   the notes from where the folder really is, and the page looked for them
   under the name it was opened by, so it said nothing had changed while its
