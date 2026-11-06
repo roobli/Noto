@@ -49,14 +49,18 @@ export class VaultVisits {
   private readonly host = hostName();
   private last: { path: string; time: number } | null = null;
 
-  constructor(private readonly log: (event: string, data: Record<string, unknown>) => void = () => {}) {}
+  constructor(
+    private readonly log: (event: string, data: Record<string, unknown>) => void = () => {},
+    /** Whether the person keeps a read record for the folder at `root`, on this computer; on unless they said not. */
+    private readonly recording: (root: string) => boolean = () => true,
+  ) {}
 
   /**
    * Record that a note was brought to the front. The same note again within
    * a second is one visit (an open that also activates its tab).
    */
   async opened(root: string | null, file: string, from?: string | null): Promise<void> {
-    if (root === null || !isNote(file)) return;
+    if (root === null || !isNote(file) || !this.recording(root)) return;
     const rel = inside(root, path.resolve(file));
     if (rel === null) return;
     const now = Date.now();

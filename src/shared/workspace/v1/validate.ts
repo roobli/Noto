@@ -43,6 +43,10 @@ import {
   WorkspaceAgentActionV1,
   WorkspaceAgentRequestV1,
   WorkspaceAgentsReplyV1,
+  WorkspaceMemoryFolderReplyV1,
+  WorkspaceMemoryFolderRequestV1,
+  WorkspaceMemoryPrivacyReplyV1,
+  WorkspaceMemoryPrivacyRequestV1,
   WorkspaceNoteMemoryReplyV1,
   WorkspaceNoteHistoryReplyV1,
   WorkspaceNoteHistoryRequestV1,
@@ -466,6 +470,51 @@ export function isWorkspaceAgentsReplyV1(value: unknown): value is WorkspaceAgen
     && (value.setup === null || (record(value.setup) && exact(value.setup, ['script', 'root'])
       && text(value.setup.script, 4096) && text(value.setup.root, 4096)));
 }
+
+export function isWorkspaceMemoryPrivacyRequestV1(value: unknown): value is WorkspaceMemoryPrivacyRequestV1 {
+  return record(value) && exact(value, ['version', 'requestId', 'note']) && value.version === 1
+    && typeof value.requestId === 'string' && requestId.test(value.requestId)
+    && (value.note === null || (text(value.note, 4096) && !(value.note as string).includes('\0')));
+}
+
+const level = (value: unknown) => typeof value === 'string' && SENSITIVITY_LEVELS.has(value);
+
+export function isWorkspaceMemoryPrivacyReplyV1(value: unknown): value is WorkspaceMemoryPrivacyReplyV1 {
+  return record(value) && exact(value, ['version', 'root', 'vault', 'folders', 'note']) && value.version === 1
+    && textOrNull(value.root, 4096) && level(value.vault)
+    && listOf(value.folders, 5000, (item) => exact(item, ['path', 'level']) && text(item.path, 4096) && level(item.level))
+    && (value.note === null || (record(value.note) && exact(value.note, ['level', 'folder'])
+      && (value.note.level === 'private' || value.note.level === 'sealed')
+      && (value.note.folder === 'open' || value.note.folder === 'private')));
+}
+
+export const isWorkspaceMemoryPrivacyResultV1 = (
+  value: unknown, id: string,
+): value is WorkspaceResultV1<WorkspaceMemoryPrivacyReplyV1> => isResult(value, id, isWorkspaceMemoryPrivacyReplyV1);
+
+export function isWorkspaceMemoryFolderRequestV1(value: unknown): value is WorkspaceMemoryFolderRequestV1 {
+  if (!record(value) || !exact(value, ['version', 'requestId', 'action']) || value.version !== 1
+    || typeof value.requestId !== 'string' || !requestId.test(value.requestId) || !record(value.action)) return false;
+  const action = value.action;
+  if (action.kind === 'record') return exact(action, ['kind', 'on']) && typeof action.on === 'boolean';
+  return (action.kind === 'status' || action.kind === 'rebuild' || action.kind === 'turn-off') && exact(action, ['kind']);
+}
+
+const FOLDER_STATES = new Set(['outside', 'no-memory', 'untrusted', 'opening', 'open', 'unavailable']);
+
+export function isWorkspaceMemoryFolderReplyV1(value: unknown): value is WorkspaceMemoryFolderReplyV1 {
+  return record(value) && exact(value, ['version', 'state', 'outcome', 'error', 'index', 'recording']) && value.version === 1
+    && typeof value.state === 'string' && FOLDER_STATES.has(value.state)
+    && (value.outcome === 'done' || value.outcome === 'cancelled' || value.outcome === 'failed')
+    && textOrNull(value.error, 4096) && typeof value.recording === 'boolean'
+    && (value.index === null || (record(value.index) && exact(value.index, ['notes', 'links', 'reads', 'bytes', 'refreshed'])
+      && whole(value.index.notes) && whole(value.index.links) && whole(value.index.reads) && whole(value.index.bytes)
+      && textOrNull(value.index.refreshed, 64)));
+}
+
+export const isWorkspaceMemoryFolderResultV1 = (
+  value: unknown, id: string,
+): value is WorkspaceResultV1<WorkspaceMemoryFolderReplyV1> => isResult(value, id, isWorkspaceMemoryFolderReplyV1);
 
 export const isWorkspaceAgentsResultV1 = (
   value: unknown, id: string,

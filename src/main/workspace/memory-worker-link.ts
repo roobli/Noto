@@ -46,6 +46,7 @@ export class WorkerLink {
   private nextId = 1;
   private readonly pending = new Map<number, Pending>();
   private done = false;
+  private closed: Promise<void> | null = null;
 
   /** `onLost` is called once if the worker dies or errs before it is closed. */
   constructor(private readonly worker: MemoryWorker, onLost: (why: string) => void) {
@@ -76,25 +77,32 @@ export class WorkerLink {
   /**
    * Everything waiting is told the memory closed; the worker is let close
    * the index (its last write lands whole), then stopped either way.
+   * Resolves once the worker has stopped, so the index files are no longer
+   * held by it; closing again resolves with the same.
    */
-  close(): void {
-    if (this.done) return;
+  close(): Promise<void> {
+    if (this.closed) return this.closed;
+    // A worker that died or erred has stopped already.
+    if (this.done) return (this.closed = Promise.resolve());
     this.done = true;
     this.failAll(new MemoryError('The memory closed.'));
     const id = this.nextId++;
     let timer: ReturnType<typeof setTimeout> | null = null;
-    const end = () => {
-      if (timer !== null) clearTimeout(timer);
-      this.pending.delete(id);
-      void Promise.resolve(this.worker.terminate()).catch(() => {});
-    };
-    timer = setTimeout(end, CLOSE_TIMEOUT_MS);
-    this.pending.set(id, { resolve: end, reject: end, timer });
-    try {
-      this.worker.postMessage({ id, kind: 'close' });
-    } catch {
-      end();
-    }
+    this.closed = new Promise<void>((settle) => {
+      const end = () => {
+        if (timer !== null) clearTimeout(timer);
+        this.pending.delete(id);
+        void Promise.resolve(this.worker.terminate()).catch(() => {}).then(() => settle());
+      };
+      timer = setTimeout(end, CLOSE_TIMEOUT_MS);
+      this.pending.set(id, { resolve: end, reject: end, timer });
+      try {
+        this.worker.postMessage({ id, kind: 'close' });
+      } catch {
+        end();
+      }
+    });
+    return this.closed;
   }
 
   private answer(answer: MemoryAnswer): void {

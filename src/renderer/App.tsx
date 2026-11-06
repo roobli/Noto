@@ -56,7 +56,8 @@ import {
 } from '../shared/settings/v1/contracts';
 import type { AssetRefusalV1 } from '../shared/assets/v1/contracts';
 import { copyThroughSelection } from './editor/noto/clipboard';
-import type { WorkspaceEntryRefusalV1, WorkspaceExportKindV1, WorkspaceExportRefusalV1, WorkspaceGitBlocksV1, WorkspaceGitMarksV1 } from '../shared/workspace/v1/contracts';
+import type { WorkspaceEntryRefusalV1, WorkspaceExportKindV1, WorkspaceExportRefusalV1, WorkspaceGitBlocksV1, WorkspaceGitMarksV1, WorkspaceMemoryPrivacyReplyV1 } from '../shared/workspace/v1/contracts';
+import { LockGlyph } from './FileTree';
 import { EXPORT_PALETTE_COMMANDS } from '../shared/export/targets';
 import { EMPTY_TRAIL, forget as forgetTrail, record as recordTrail, stepBack, stepForward, type Trail } from './trail';
 import { wikiCandidates, wikiTargetFor } from './wiki-target';
@@ -452,6 +453,23 @@ function NotoWorkspace({ platform }: { platform: NotoPlatform }) {
       } : null,
     });
   }, [slotState, gitMarks]);
+  // What the folder's access policy says, for the tree's locks and the note in front's own.
+  const [privacy, setPrivacy] = useState<WorkspaceMemoryPrivacyReplyV1 | null>(null);
+  const [memoryVersion, setMemoryVersion] = useState(0);
+  const notePath = opened?.path ?? null;
+  useEffect(() => {
+    let current = true;
+    void window.notoWorkspace.memoryPrivacy({ version: 1, requestId: rid('ws-privacy'), note: notePath })
+      .then((result) => { if (current && result.ok) setPrivacy(result.value); })
+      .catch(() => { /* No locks is the ordinary answer. */ });
+    return () => { current = false; };
+    // The save token: frontmatter that says `sensitivity:` counts once it is saved.
+  }, [folder.root, notePath, token, memoryVersion]);
+  const treePrivacyMarks = useMemo(() => {
+    if (!privacy || privacy.root === null || privacy.root !== folder.root) return null;
+    return { vault: privacy.vault, folders: new Map(privacy.folders.map((item) => [item.path, item.level])) };
+  }, [privacy, folder.root]);
+  const notePrivacy = privacy && privacy.root !== null && privacy.root === folder.root ? privacy.note : null;
   const treeGitMarks = useMemo(() => {
     if (!gitMarks || gitMarks.root === null || gitMarks.root !== folder.root || gitMarks.files.length === 0) return null;
     return { files: new Map(gitMarks.files), folders: new Set(gitMarks.folders) };
@@ -1155,7 +1173,10 @@ function NotoWorkspace({ platform }: { platform: NotoPlatform }) {
       if (active) setGitMarks(event);
     });
     // The folder's memory opened or took in new reads: whatever asked it asks again.
-    const unsubscribeMemory = window.notoWorkspace.onMemoryChanged(() => slotState.memoryMoved());
+    const unsubscribeMemory = window.notoWorkspace.onMemoryChanged(() => {
+      slotState.memoryMoved();
+      setMemoryVersion((current) => current + 1);
+    });
     const unsubscribeGitBlocks = window.notoWorkspace.onGitBlocksChanged((event) => {
       if (!active) return;
       gitBlocksRef.current.set(event.documentId, event);
@@ -2828,6 +2849,7 @@ function NotoWorkspace({ platform }: { platform: NotoPlatform }) {
               reloadToken: treeVersion,
               collapseToken: treeCollapse,
               gitMarks: treeGitMarks,
+              privacyMarks: treePrivacyMarks,
             }}
             onCollapseTree={() => setTreeCollapse((current) => current + 1)}
           />
@@ -3331,9 +3353,20 @@ function NotoWorkspace({ platform }: { platform: NotoPlatform }) {
           {/* Read-only is a mode with no other sign on screen, and a reader
               whose typing does nothing needs to be told why rather than
               concluding the app is broken. */}
-          {(readOnly || remote.listening) && (
+          {(readOnly || remote.listening || notePrivacy) && (
             <span className="status-flags">
               {readOnly && <span className="status-flag" data-testid="read-only-flag">Read-only</span>}
+              {/* Only when the note's own frontmatter is what makes it private: a
+                  note under a locked folder has the folder's lock in the tree. */}
+              {notePrivacy && (
+                <span className="status-flag status-privacy" data-testid="privacy-flag" data-privacy={notePrivacy.level}
+                  title={notePrivacy.level === 'sealed'
+                    ? 'Sealed by its own frontmatter: no agent reads this note.'
+                    : `Private by its own frontmatter, though its folder is ${notePrivacy.folder}: only agents allowed private notes read it.`}>
+                  <LockGlyph level={notePrivacy.level} />
+                  {notePrivacy.level === 'sealed' ? 'Sealed' : 'Private'}
+                </span>
+              )}
               {/* Something outside this window can drive it, and a reader must
                   never have to wonder whether that is so. */}
               {remote.listening && (

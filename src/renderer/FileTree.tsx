@@ -11,7 +11,7 @@
  */
 
 import { useCallback, useEffect, useRef, useState, type ReactNode } from 'react';
-import type { WorkspaceEntryV1, WorkspaceGitChangeV1 } from '../shared/workspace/v1/contracts';
+import type { SensitivityV1, WorkspaceEntryV1, WorkspaceGitChangeV1 } from '../shared/workspace/v1/contracts';
 import { branchToCurrentFile, sizeTreeGuides, startTreeGuides } from './tree-guides';
 import { isComposing } from './ime';
 
@@ -63,6 +63,51 @@ export interface FileTreeProps {
    * repository; null when it is not. See `TreeGitMarks`.
    */
   readonly gitMarks?: TreeGitMarks | null;
+  /**
+   * Which folders `.noto/access.yaml` makes private or sealed by name, when
+   * the folder keeps memory; null when it does not. See `TreePrivacyMarks`.
+   */
+  readonly privacyMarks?: TreePrivacyMarks | null;
+}
+
+/**
+ * The locks the tree draws: on a folder given a level by a pattern of its
+ * own, and on the vault's own row when every note is private by default. A
+ * folder inside a locked one is not locked again; it sits under the lock.
+ */
+export interface TreePrivacyMarks {
+  readonly vault: SensitivityV1;
+  readonly folders: ReadonlyMap<string, SensitivityV1>;
+}
+
+const PRIVACY_WORDS: Readonly<Record<'private' | 'sealed', string>> = {
+  private: 'Private: only agents allowed private notes read it',
+  sealed: 'Sealed: no agent reads it',
+};
+
+/**
+ * A small lock after a folder's name. Private is drawn open in the body,
+ * sealed solid, so the two differ in shape and not only in weight; both in
+ * the muted tier, since a lock is a fact about the folder and not a call to
+ * act. The words ride along hidden, as the git mark's do.
+ */
+export function PrivacyMark({ level }: { level: 'private' | 'sealed' }) {
+  return (
+    <span className={`tree-privacy tree-privacy-${level}`} data-testid="tree-privacy-mark" data-privacy={level}>
+      <LockGlyph level={level} />
+      <span className="tree-git-words">, {level === 'private' ? 'Private' : 'Sealed'}</span>
+    </span>
+  );
+}
+
+/** The lock itself, the same wherever privacy is shown: the tree, and the status line. */
+export function LockGlyph({ level }: { level: 'private' | 'sealed' }) {
+  return (
+    <svg className={`lock-glyph lock-glyph-${level}`} viewBox="0 0 8 10" aria-hidden="true">
+      <path d="M2 4.5V3a2 2 0 0 1 4 0v1.5" />
+      <rect className="lock-glyph-body" x="0.75" y="4.5" width="6.5" height="4.75" rx="1" />
+    </svg>
+  );
 }
 
 /** The git marks keyed for lookup by row path. */
@@ -179,7 +224,7 @@ function foldersBetween(root: string, target: string | null): string[] {
 
 export function FileTree({
   root, rootName, activePath, list, onOpenFile, onRowMenu, onChooseFolder, onMoveEntry, vaultMenu,
-  editing = null, onEditingDone, reloadToken = 0, collapseToken = 0, gitMarks = null,
+  editing = null, onEditingDone, reloadToken = 0, collapseToken = 0, gitMarks = null, privacyMarks = null,
 }: FileTreeProps) {
   const [children, setChildren] = useState<ReadonlyMap<string, readonly WorkspaceEntryV1[]>>(new Map());
   const [expanded, setExpanded] = useState<ReadonlySet<string>>(new Set());
@@ -477,6 +522,8 @@ export function FileTree({
             const onPath = activePath !== null
               && (activePath.startsWith(`${entry.path}/`) || activePath.startsWith(`${entry.path}\\`));
             const holdsChanges = gitMarks?.folders.has(entry.path) ?? false;
+            const own = privacyMarks?.folders.get(entry.path);
+            const lock = own === 'private' || own === 'sealed' ? own : null;
             return (
               <div className="tree-node" key={entry.path}>
                 <button
@@ -484,7 +531,7 @@ export function FileTree({
                   className={`${onPath ? 'tree-row tree-directory tree-on-path' : 'tree-row tree-directory'}${dropClass(entry.path)}`}
                   data-testid="tree-directory"
                   data-depth={depth}
-                  title={holdsChanges ? `${entry.name}, ${GIT_WORDS.folder}` : entry.name}
+                  title={[entry.name, ...(lock ? [PRIVACY_WORDS[lock]] : []), ...(holdsChanges ? [GIT_WORDS.folder] : [])].join(', ')}
                   aria-expanded={isOpen}
                   {...dragProps(entry.path)}
                   {...dropProps(entry.path)}
@@ -498,6 +545,7 @@ export function FileTree({
                   {editing && editing.intent !== 'new-folder' && editing.path === entry.path
                     ? <NameField initial={entry.name} onDone={commitEdit} />
                     : <span className="tree-name">{entry.name}</span>}
+                  {lock && <PrivacyMark level={lock} />}
                   {holdsChanges && <GitMark kind="folder" />}
                 </button>
                 {editing?.intent === 'new-folder' && editing.path === entry.path && (
@@ -591,6 +639,7 @@ export function FileTree({
   const commitEdit = (name: string | null) => onEditingDone?.(name);
 
   const vaultName = rootName ?? root.split(/[\\/]/).filter(Boolean).at(-1) ?? root;
+  const vaultLock = privacyMarks?.vault === 'private' || privacyMarks?.vault === 'sealed' ? privacyMarks.vault : null;
 
   return (
     <div className="tree-root" data-testid="file-tree">
@@ -607,9 +656,10 @@ export function FileTree({
               than from the folder. Dropping the column puts the icon where the
               line starts. */}
           <div className={`tree-row tree-directory tree-vault-row${dropClass(root)}`} data-testid="tree-vault"
-            data-depth={0} title={root} {...dropProps(root)}>
+            data-depth={0} title={vaultLock ? `${root}, ${PRIVACY_WORDS[vaultLock]}` : root} {...dropProps(root)}>
             <FolderGlyph />
             <span className="tree-name">{vaultName}</span>
+            {vaultLock && <PrivacyMark level={vaultLock} />}
             {vaultMenu}
           </div>
           {renderLevel(root, 1)}

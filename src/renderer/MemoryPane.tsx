@@ -1,5 +1,6 @@
 /**
- * Settings → Memory: who may read the open folder, and what they may do.
+ * Settings → Memory: who may read the open folder, what they may do, and
+ * the memory itself.
  *
  * The agents its `.noto/access.yaml` names, each with what it reads, what it
  * may do, and when it last read anything; whoever brings no key is listed
@@ -7,12 +8,20 @@
  * asks three plain questions, then main asks once more in a sheet of its own
  * and the key is shown here once, with the setup to paste where the agent
  * runs. Taking a key back stops the agent at its next request.
+ *
+ * Below the agents, the memory: what its index holds and building it again,
+ * whether this computer keeps the read record, and stopping keeping memory,
+ * which main asks about in a sheet that says what `.noto` holds before it
+ * goes to the Trash.
  */
 
 import { useCallback, useEffect, useState } from 'react';
-import type { AgentRowV1, WorkspaceAgentActionV1, WorkspaceAgentsReplyV1 } from '../shared/workspace/v1/contracts';
+import type {
+  AgentRowV1, WorkspaceAgentActionV1, WorkspaceAgentsReplyV1, WorkspaceMemoryFolderActionV1, WorkspaceMemoryFolderReplyV1,
+} from '../shared/workspace/v1/contracts';
 import { copyThroughSelection } from './editor/noto/clipboard';
-import { claudeCodeSetup, codexSetup, reachWords } from './memory-setup';
+import { claudeCodeSetup, codexSetup, indexWords, reachWords } from './memory-setup';
+import { Switch } from './PrefSwitch';
 
 const rid = () => `memory-agents:${crypto.randomUUID()}`;
 
@@ -36,6 +45,7 @@ export function MemoryPane() {
   const [added, setAdded] = useState<{ name: string; key: string } | null>(null);
   const [copied, setCopied] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
+  const [memory, setMemory] = useState<WorkspaceMemoryFolderReplyV1 | null>(null);
 
   const ask = useCallback(async (action: WorkspaceAgentActionV1) => {
     const result = await window.notoWorkspace.memoryAgents({ version: 1, requestId: rid(), action });
@@ -43,10 +53,19 @@ export function MemoryPane() {
     return result.ok ? result.value : null;
   }, []);
 
+  const askMemory = useCallback(async (action: WorkspaceMemoryFolderActionV1) => {
+    const result = await window.notoWorkspace.memoryFolder({ version: 1, requestId: rid(), action });
+    if (result.ok) setMemory(result.value);
+  }, []);
+
   useEffect(() => {
     void ask({ kind: 'list' });
-    return window.notoWorkspace.onMemoryChanged(() => { void ask({ kind: 'list' }); });
-  }, [ask]);
+    void askMemory({ kind: 'status' });
+    return window.notoWorkspace.onMemoryChanged(() => {
+      void ask({ kind: 'list' });
+      void askMemory({ kind: 'status' });
+    });
+  }, [ask, askMemory]);
 
   if (reply === null) return null;
   if (reply.state === 'outside') return <p className="pref-note" data-testid="memory-pane-state">Open a folder to choose who may read it.</p>;
@@ -81,6 +100,7 @@ export function MemoryPane() {
         Agents reach this folder&apos;s memory through its MCP server, each with a key that says what it may read and do.
         Sealed notes are never given to any of them.
       </p>
+      <p className="pref-group">Agents</p>
       <ul className="memory-agents" data-testid="memory-agents">
         {reply.agents.map((agent) => {
           const active = agent.name === 'default' ? agent.verbs.length > 0 : agent.keys > 0;
@@ -154,6 +174,42 @@ export function MemoryPane() {
             <button type="button" className="pref-inline-action" onClick={() => setAdding(false)}>Cancel</button>
           </div>
         </form>
+      )}
+
+      {memory && memory.state !== 'outside' && memory.state !== 'no-memory' && (
+        <>
+          <p className="pref-group">This folder&apos;s memory</p>
+          <div className="pref-row" data-testid="memory-index">
+            <span className="pref-label">
+              Index
+              <small data-testid="memory-index-words">{indexWords(memory.state, memory.index)}</small>
+            </span>
+            <button type="button" className="pref-inline-action" data-testid="memory-rebuild"
+              disabled={memory.state === 'opening' || memory.state === 'untrusted'}
+              onClick={() => { void askMemory({ kind: 'rebuild' }); }}>
+              Rebuild Index
+            </button>
+          </div>
+          <Switch
+            label="Keep a record of the notes I open"
+            hint="On this computer only. Heat, Activity and Related come from it. What agents read is recorded by their server either way."
+            checked={memory.recording}
+            // The switch moves when pressed; main's answer then settles it.
+            onChange={(on) => { setMemory({ ...memory, recording: on }); void askMemory({ kind: 'record', on }); }}
+            testId="memory-record"
+          />
+          <div className="pref-row">
+            <span className="pref-label">
+              Stop keeping memory
+              <small>Moves this folder&apos;s .noto to the Trash, after saying what is in it. Your notes are not touched.</small>
+            </span>
+            <button type="button" className="pref-inline-action is-danger" data-testid="memory-turn-off"
+              onClick={() => { void askMemory({ kind: 'turn-off' }); }}>
+              Stop Keeping Memory…
+            </button>
+          </div>
+          {memory.outcome === 'failed' && memory.error && <p className="pref-problem" role="status">{memory.error}</p>}
+        </>
       )}
     </div>
   );

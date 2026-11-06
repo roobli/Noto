@@ -14,8 +14,11 @@ import { tmpdir } from 'node:os';
 import path from 'node:path';
 import { afterAll, afterEach, beforeEach, describe, expect, it, vi, type Mock } from 'vitest';
 import { MemoryHost, insideFolder, memoryWorkerPath, type MemoryWorker } from '../../src/main/workspace/memory-host';
-import { MemoryTrust, memoryScripts } from '../../src/main/workspace/memory-trust';
-import { isWorkspaceKeepMemoryReplyV1, isWorkspaceNoteMemoryReplyV1, isWorkspaceTrustMemoryReplyV1 } from '../../src/shared/workspace/v1/validate';
+import { FolderList, MemoryTrust, memoryScripts } from '../../src/main/workspace/memory-trust';
+import {
+  isWorkspaceKeepMemoryReplyV1, isWorkspaceMemoryFolderReplyV1, isWorkspaceMemoryFolderRequestV1, isWorkspaceMemoryPrivacyReplyV1,
+  isWorkspaceMemoryPrivacyRequestV1, isWorkspaceNoteMemoryReplyV1, isWorkspaceTrustMemoryReplyV1,
+} from '../../src/shared/workspace/v1/validate';
 import type { MemoryAnswer, MemoryRequest } from '../../src/vault-worker/vault-worker';
 import { MEMORY } from './memory-fixture';
 
@@ -264,6 +267,95 @@ describe('the memory in main', () => {
     }
   });
 
+  /** Open the memory of a new folder that keeps it, and return the folder. */
+  async function opened(): Promise<string> {
+    const root = folder(true);
+    host.setFolder(root);
+    await host.about(path.join(root, 'a.md'));
+    worker.reply({ id: worker.last('open').id, ok: true, value: { notes: 2 } });
+    await flush();
+    return root;
+  }
+
+  it('says what the index holds once it is open', async () => {
+    await opened();
+    const asking = host.status();
+    await flush();
+    const index = { notes: 2, links: 1, reads: 5, bytes: 4096, refreshed: '2026-11-05T12:00:00.000Z' };
+    worker.reply({ id: worker.last('status').id, ok: true, value: index });
+    expect(await asking).toEqual({ state: 'open', index });
+  });
+
+  it('builds the index again on a worker of its own, opening nothing else while the old one closes', async () => {
+    const root = await opened();
+    const first = worker;
+    changed.mockClear();
+    const building = host.rebuild();
+    // While the first worker lets go of the index, every answer is "opening" and no worker starts.
+    expect((await host.about(path.join(root, 'a.md'))).state).toBe('opening');
+    expect(workers).toHaveLength(1);
+    expect(changed).toHaveBeenCalled();
+    first.reply({ id: first.last('close').id, ok: true, value: null });
+    await flush();
+    expect(first.terminated).toBe(true);
+    expect(workers).toHaveLength(2);
+    expect(worker.last('open')).toMatchObject({ kind: 'open', root, rebuild: true });
+    worker.reply({ id: worker.last('open').id, ok: true, value: { notes: 2 } });
+    expect(await building).toBe('ok');
+  });
+
+  it('is one rebuild when asked twice, and none for a folder left while the workers closed', async () => {
+    const root = await opened();
+    const first = worker;
+    const once = host.rebuild();
+    const twice = host.rebuild();
+    expect(twice).toBe(once);
+    first.reply({ id: first.last('close').id, ok: true, value: null });
+    await flush();
+    expect(workers).toHaveLength(2);
+    worker.reply({ id: worker.last('open').id, ok: true, value: { notes: 2 } });
+    expect(await once).toBe('ok');
+
+    // Away and back while the workers close: the rebuild gives way to what the window asked since.
+    const second = worker;
+    const building = host.rebuild();
+    host.setFolder(folder(false));
+    host.setFolder(root);
+    expect((await host.about(path.join(root, 'a.md'))).state).toBe('opening');
+    const fresh = worker;
+    second.reply({ id: second.last('close').id, ok: true, value: null });
+    expect(await building).toBe('failed');
+    expect(worker).toBe(fresh);
+    expect(fresh.last('open')).toMatchObject({ kind: 'open', root });
+    expect((fresh.last('open') as { rebuild?: boolean }).rebuild).toBeUndefined();
+  });
+
+  it('builds nothing for a folder whose scripts are not allowed', async () => {
+    const scripted = new MemoryHost({ startWorker: () => new FakeWorker(), onChanged: () => {}, mayOpen: () => false });
+    scripted.setFolder(folder(true, ['a.mjs']));
+    expect(await scripted.rebuild()).toBe('untrusted');
+    scripted.dispose();
+  });
+
+  it('stops keeping memory: the workers let go first, and nothing opens it while .noto goes', async () => {
+    const root = await opened();
+    const first = worker;
+    const remove = vi.fn(async (noto: string) => {
+      // The worker has stopped, and a question now does not open the memory again.
+      expect(first.terminated).toBe(true);
+      expect((await host.about(path.join(root, 'a.md'))).state).toBe('opening');
+      rmSync(noto, { recursive: true, force: true });
+    });
+    // Asked about another folder than the one the window holds, it does nothing.
+    expect(await host.turnOff('/elsewhere', remove)).toBe(false);
+    const turning = host.turnOff(root, remove);
+    first.reply({ id: first.last('close').id, ok: true, value: null });
+    expect(await turning).toBe(true);
+    expect(remove).toHaveBeenCalledWith(path.join(root, '.noto'));
+    expect(workers).toHaveLength(1);
+    expect((await host.about(path.join(root, 'a.md'))).state).toBe('no-memory');
+  });
+
   it('counts a note whose name begins with two dots as inside the folder', () => {
     expect(insideFolder('/v', '/v/..notes.md')).toBe('..notes.md');
     expect(insideFolder('/v', '/v/..x/a.md')).toBe('..x/a.md');
@@ -293,6 +385,17 @@ describe('which folders may run their memory\'s scripts', () => {
     expect(JSON.parse(readFileSync(file, 'utf8'))).toEqual({ version: 1, folders: [scripted] });
   });
 
+  it('keeps a list of folders across launches, which a folder may also leave', () => {
+    const data = folder(false);
+    const file = path.join(data, 'memory-unrecorded.json');
+    const list = new FolderList(file);
+    list.add('/a/b');
+    list.add('/c');
+    list.delete('/a/b');
+    expect(new FolderList(file).has('/c')).toBe(true);
+    expect(new FolderList(file).has('/a/b')).toBe(false);
+  });
+
   it('trusts nothing from a record it cannot read', () => {
     const data = folder(false);
     const file = path.join(data, 'memory-trust.json');
@@ -316,6 +419,25 @@ describe('what the window accepts of the memory', () => {
     expect(isWorkspaceTrustMemoryReplyV1({ version: 1, trusted: true })).toBe(true);
     expect(isWorkspaceTrustMemoryReplyV1({ version: 1, trusted: 'yes' })).toBe(false);
     expect(isWorkspaceNoteMemoryReplyV1({ version: 1, state: 'untrusted', memory: null })).toBe(true);
+  });
+
+  it('takes what privacy and the memory\'s settings answered, and nothing else', () => {
+    expect(isWorkspaceMemoryPrivacyRequestV1({ version: 1, requestId: 'r-1', note: '/x/a.md' })).toBe(true);
+    expect(isWorkspaceMemoryPrivacyRequestV1({ version: 1, requestId: 'r-1', note: 'a\0b' })).toBe(false);
+    const privacy = { version: 1, root: '/x', vault: 'open', folders: [{ path: '/x/Work', level: 'private' }], note: { level: 'sealed', folder: 'open' } };
+    expect(isWorkspaceMemoryPrivacyReplyV1(privacy)).toBe(true);
+    // A note never says it is open, nor sealed under a sealed folder: it would not be stricter.
+    expect(isWorkspaceMemoryPrivacyReplyV1({ ...privacy, note: { level: 'open', folder: 'open' } })).toBe(false);
+    expect(isWorkspaceMemoryPrivacyReplyV1({ ...privacy, folders: [{ path: '/x/Work', level: 'secret' }] })).toBe(false);
+    for (const action of [{ kind: 'status' }, { kind: 'rebuild' }, { kind: 'turn-off' }, { kind: 'record', on: false }]) {
+      expect(isWorkspaceMemoryFolderRequestV1({ version: 1, requestId: 'r-1', action })).toBe(true);
+    }
+    expect(isWorkspaceMemoryFolderRequestV1({ version: 1, requestId: 'r-1', action: { kind: 'record' } })).toBe(false);
+    expect(isWorkspaceMemoryFolderRequestV1({ version: 1, requestId: 'r-1', action: { kind: 'turn-off', path: '/' } })).toBe(false);
+    const folderReply = { version: 1, state: 'open', outcome: 'done', error: null, recording: true,
+      index: { notes: 2, links: 1, reads: 0, bytes: 10, refreshed: null } };
+    expect(isWorkspaceMemoryFolderReplyV1(folderReply)).toBe(true);
+    expect(isWorkspaceMemoryFolderReplyV1({ ...folderReply, state: 'closed' })).toBe(false);
   });
 
   it('takes a whole answer and refuses a malformed one', () => {

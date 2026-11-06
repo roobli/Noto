@@ -16,6 +16,8 @@ import {
   type WorkspaceFolderRequestV1,
   type WorkspaceReviewRequestV1,
   type WorkspaceAgentRequestV1,
+  type WorkspaceMemoryFolderRequestV1,
+  type WorkspaceMemoryPrivacyRequestV1,
   type RecentFileV1,
   type WorkspaceOpenExternalRequestV1,
   type WorkspaceTreeMenuRequestV1,
@@ -34,6 +36,8 @@ import {
   isWorkspaceFolderRequestV1,
   isWorkspaceReviewRequestV1,
   isWorkspaceAgentRequestV1,
+  isWorkspaceMemoryFolderRequestV1,
+  isWorkspaceMemoryPrivacyRequestV1,
   isWorkspaceOpenExternalRequestV1,
   isWorkspaceTreeMenuRequestV1,
   isWorkspaceRevealRequestV1,
@@ -67,7 +71,7 @@ export function registerWorkspaceHandlers(deps: {
   /** The folders opened before, read at call time so the list is current. */
   recentFolders: () => Promise<readonly RecentFileV1[]>;
 }): void {
-  const visits = new VaultVisits((event, data) => deps.logger.log(event, data));
+  const visits = new VaultVisits((event, data) => deps.logger.log(event, data), (root) => deps.session.recordsReads(root));
   const register = <TRequest extends { requestId: string }, TReply>(
     channel: string,
     validate: (value: unknown) => value is TRequest,
@@ -164,6 +168,10 @@ export function registerWorkspaceHandlers(deps: {
   // Agents: listing them, and adding one or taking a key back after main has asked the person.
   register(WORKSPACE_CHANNELS.memoryAgents, isWorkspaceAgentRequestV1,
     (request: WorkspaceAgentRequestV1) => deps.session.memoryAgents(request.action));
+  register(WORKSPACE_CHANNELS.memoryPrivacy, isWorkspaceMemoryPrivacyRequestV1,
+    (request: WorkspaceMemoryPrivacyRequestV1) => deps.session.memoryPrivacy(request.note));
+  register(WORKSPACE_CHANNELS.memoryFolder, isWorkspaceMemoryFolderRequestV1,
+    (request: WorkspaceMemoryFolderRequestV1) => deps.session.memoryFolder(request.action));
   // Review: reads, and the writes the person asked for (accept, link, take back), each refusing notes with unsaved edits.
   register(WORKSPACE_CHANNELS.memoryReview, isWorkspaceReviewRequestV1,
     (request: WorkspaceReviewRequestV1) => deps.session.memoryReview(request.action));

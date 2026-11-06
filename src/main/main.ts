@@ -30,7 +30,7 @@ import {
 import { RendererLeaseBridge } from './plugins/renderer-lease-bridge';
 import { ServiceHost } from './plugins/service-host';
 import { memoryWorkerPath, systemMemoryWorker } from './workspace/memory-host';
-import { MemoryTrust } from './workspace/memory-trust';
+import { FolderList, MemoryTrust } from './workspace/memory-trust';
 import { ExperimentalPluginRuntimeHost } from './plugins/experimental-plugin-runtime-host';
 import { PluginInstaller } from './plugins/plugin-installer';
 import { discoverUserPlugins, FRESH_MARKER, joinCatalog, readUserPluginCode, userPluginCodeUrl, type SetAsidePlugin, type UserPlugin } from './plugins/user-plugins';
@@ -446,12 +446,13 @@ async function run(): Promise<void> {
     () => settings.current().codeViewer,
     () => settings.current().remoteImages,
   );
-  session.useMemory(
-    systemMemoryWorker(memoryWorkerPath(app.isPackaged, process.resourcesPath, __dirname)),
-    new MemoryTrust(path.join(app.getPath('userData'), 'memory-trust.json'), (event, fields) => logger.log(event, fields)),
+  session.useMemory({
+    startWorker: systemMemoryWorker(memoryWorkerPath(app.isPackaged, process.resourcesPath, __dirname)),
+    trust: new MemoryTrust(path.join(app.getPath('userData'), 'memory-trust.json'), (event, fields) => logger.log(event, fields)),
     // The vault's command line, which an agent's copied setup runs with Node.
-    memoryWorkerPath(app.isPackaged, process.resourcesPath, __dirname, 'noto-vault.js'),
-  );
+    cli: memoryWorkerPath(app.isPackaged, process.resourcesPath, __dirname, 'noto-vault.js'),
+    unrecorded: new FolderList(path.join(app.getPath('userData'), 'memory-unrecorded.json'), (event, fields) => logger.log(event, fields)),
+  });
   // Registered first of the quit listeners. Node runs every listener even
   // when one prevents the quit, so the others check the same hold.
   app.prependListener('before-quit', (event) => {

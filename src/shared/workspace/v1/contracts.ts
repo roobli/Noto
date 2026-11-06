@@ -91,6 +91,10 @@ export const WORKSPACE_CHANNELS = {
   trustMemory: 'noto:v1:workspace:trust-memory',
   /** The agents the open folder's memory names, and adding one or taking its key back. See `WorkspaceAgentActionV1`. */
   memoryAgents: 'noto:v1:workspace:memory-agents',
+  /** Privacy as the window draws it: the tree's locks, and the note in front's own. See `WorkspaceMemoryPrivacyReplyV1`. */
+  memoryPrivacy: 'noto:v1:workspace:memory-privacy',
+  /** The open folder's memory itself: its index, the read record, and turning it off. See `WorkspaceMemoryFolderActionV1`. */
+  memoryFolder: 'noto:v1:workspace:memory-folder',
   /** Review: the folder-wide queue of what agents proposed and what the tools found. See `WorkspaceReviewActionV1`. */
   memoryReview: 'noto:v1:workspace:memory-review',
   /** Push: the folder's memory opened or changed, so what was asked of it may be asked again. */
@@ -1065,6 +1069,67 @@ export interface WorkspaceAgentsReplyV1 {
   readonly setup: { readonly script: string; readonly root: string } | null;
 }
 
+export type SensitivityV1 = 'open' | 'private' | 'sealed';
+
+export interface WorkspaceMemoryPrivacyRequestV1 {
+  readonly version: typeof NOTO_WORKSPACE_VERSION;
+  readonly requestId: string;
+  /** The note in front, to say whether its own frontmatter makes it stricter than its folder; null for none. */
+  readonly note: string | null;
+}
+
+/**
+ * What `.noto/access.yaml` says, as the window draws it. Read from the file
+ * and the note alone, without opening the index, so the window asks on every
+ * note it brings to the front and a window that never shows Note Info still
+ * costs nothing.
+ */
+export interface WorkspaceMemoryPrivacyReplyV1 {
+  readonly version: typeof NOTO_WORKSPACE_VERSION;
+  /** The tree's root the paths are under; null outside a folder that keeps memory. */
+  readonly root: string | null;
+  /** The level of a note no folder pattern names, which the folder's own row shows when it is not open. */
+  readonly vault: SensitivityV1;
+  /** Folders given a level by a pattern of their own, as tree row paths. */
+  readonly folders: readonly { readonly path: string; readonly level: SensitivityV1 }[];
+  /** The note in front, when its own frontmatter is what makes it private or sealed; null otherwise. */
+  readonly note: { readonly level: 'private' | 'sealed'; readonly folder: 'open' | 'private' } | null;
+}
+
+export type WorkspaceMemoryFolderActionV1 =
+  | { readonly kind: 'status' }
+  /** Build the index again from the notes; the notes and the read record are not touched. */
+  | { readonly kind: 'rebuild' }
+  /** Whether opening a note in this folder is written in its read record, on this computer. */
+  | { readonly kind: 'record'; readonly on: boolean }
+  /** Stop keeping memory: `.noto` goes to the Trash, after main's own sheet says what it holds. */
+  | { readonly kind: 'turn-off' };
+
+export interface WorkspaceMemoryFolderRequestV1 {
+  readonly version: typeof NOTO_WORKSPACE_VERSION;
+  readonly requestId: string;
+  readonly action: WorkspaceMemoryFolderActionV1;
+}
+
+export interface WorkspaceMemoryFolderReplyV1 {
+  readonly version: typeof NOTO_WORKSPACE_VERSION;
+  readonly state: 'outside' | 'no-memory' | 'untrusted' | 'opening' | 'open' | 'unavailable';
+  /** What the action did: `cancelled` when the person said no in main's sheet. */
+  readonly outcome: 'done' | 'cancelled' | 'failed';
+  readonly error: string | null;
+  /** What the index holds, while the memory is open. */
+  readonly index: {
+    readonly notes: number;
+    readonly links: number;
+    /** Lines in the read record: notes opened, by the person and by agents. */
+    readonly reads: number;
+    readonly bytes: number;
+    readonly refreshed: string | null;
+  } | null;
+  /** Whether opening a note here is written in the read record. */
+  readonly recording: boolean;
+}
+
 /** The kinds of suggestion Review lists. */
 export type ReviewKindV1 = 'stale' | 'mention' | 'together';
 
@@ -1239,6 +1304,8 @@ export interface NotoWorkspaceApiV1 {
   trustMemory(request: WorkspaceRequestV1): Promise<WorkspaceResultV1<WorkspaceTrustMemoryReplyV1>>;
   /** List the folder's agents, add one, or take a key back. */
   memoryAgents(request: WorkspaceAgentRequestV1): Promise<WorkspaceResultV1<WorkspaceAgentsReplyV1>>;
+  memoryPrivacy(request: WorkspaceMemoryPrivacyRequestV1): Promise<WorkspaceResultV1<WorkspaceMemoryPrivacyReplyV1>>;
+  memoryFolder(request: WorkspaceMemoryFolderRequestV1): Promise<WorkspaceResultV1<WorkspaceMemoryFolderReplyV1>>;
   /** Ask Review's question of the folder's memory. */
   memoryReview<K extends WorkspaceReviewActionV1['kind']>(request: WorkspaceReviewRequestV1 & { readonly action: { readonly kind: K } }): Promise<WorkspaceResultV1<WorkspaceReviewReplyV1<K>>>;
   tagIndex(request: WorkspaceRequestV1): Promise<WorkspaceResultV1<WorkspaceTagIndexReplyV1>>;

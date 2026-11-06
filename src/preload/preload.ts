@@ -133,6 +133,10 @@ import type {
   WorkspaceReviewRequestV1,
   WorkspaceAgentRequestV1,
   WorkspaceAgentsReplyV1,
+  WorkspaceMemoryFolderReplyV1,
+  WorkspaceMemoryFolderRequestV1,
+  WorkspaceMemoryPrivacyReplyV1,
+  WorkspaceMemoryPrivacyRequestV1,
   WorkspaceNoteHistoryRequestV1,
   WorkspaceNoteVersionReplyV1,
   WorkspaceNoteVersionRequestV1,
@@ -193,6 +197,10 @@ import {
   isWorkspaceReviewResultV1,
   isWorkspaceAgentRequestV1,
   isWorkspaceAgentsResultV1,
+  isWorkspaceMemoryFolderRequestV1,
+  isWorkspaceMemoryFolderResultV1,
+  isWorkspaceMemoryPrivacyRequestV1,
+  isWorkspaceMemoryPrivacyResultV1,
   isWorkspaceNoteVersionRequestV1,
   isWorkspaceNoteVersionResultV1,
   isWorkspaceOpenPathRequestV1,
@@ -569,6 +577,12 @@ const workspaceApi: NotoWorkspaceApiV1 = Object.freeze({
   memoryAgents: (request: WorkspaceAgentRequestV1) => isWorkspaceAgentRequestV1(request)
     ? invokeWorkspace<WorkspaceAgentsReplyV1>(WORKSPACE_CHANNELS.memoryAgents, request, request.requestId, isWorkspaceAgentsResultV1)
     : Promise.resolve(rejectedWorkspace<WorkspaceAgentsReplyV1>('invalid', 'Invalid agents request')),
+  memoryPrivacy: (request: WorkspaceMemoryPrivacyRequestV1) => isWorkspaceMemoryPrivacyRequestV1(request)
+    ? invokeWorkspace<WorkspaceMemoryPrivacyReplyV1>(WORKSPACE_CHANNELS.memoryPrivacy, request, request.requestId, isWorkspaceMemoryPrivacyResultV1)
+    : Promise.resolve(rejectedWorkspace<WorkspaceMemoryPrivacyReplyV1>('invalid', 'Invalid privacy request')),
+  memoryFolder: (request: WorkspaceMemoryFolderRequestV1) => isWorkspaceMemoryFolderRequestV1(request)
+    ? invokeWorkspace<WorkspaceMemoryFolderReplyV1>(WORKSPACE_CHANNELS.memoryFolder, request, request.requestId, isWorkspaceMemoryFolderResultV1)
+    : Promise.resolve(rejectedWorkspace<WorkspaceMemoryFolderReplyV1>('invalid', 'Invalid memory request')),
   trustMemory: (request: WorkspaceRequestV1) => isWorkspaceRequestV1(request)
     ? invokeWorkspace<WorkspaceTrustMemoryReplyV1>(WORKSPACE_CHANNELS.trustMemory, request, request.requestId, isWorkspaceTrustMemoryResultV1)
     : Promise.resolve(rejectedWorkspace<WorkspaceTrustMemoryReplyV1>('invalid', 'Invalid trust memory request')),

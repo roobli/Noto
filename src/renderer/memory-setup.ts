@@ -4,6 +4,8 @@
  * Node, told the folder and the agent's key.
  */
 
+import { sizeWords } from '../shared/size-words';
+
 export interface MemorySetup {
   /** The vault's command line, unpacked beside Noto. */
   readonly script: string;
@@ -50,4 +52,33 @@ export function reachWords(verbs: readonly string[], writes: readonly string[]):
   if (verbs.includes('propose')) parts.push('proposes changes');
   if (verbs.includes('write') && writes.length > 0) parts.push(`writes in ${writes.map((pattern) => pattern.replace(/\/\*\*$|\/$/, '')).join(', ')}`);
   return parts.join(', ');
+}
+
+
+/** How long ago, roughly, as a person says it. */
+export function agoWords(at: string, now = Date.now()): string {
+  const seconds = Math.max(0, Math.round((now - Date.parse(at)) / 1000));
+  if (!Number.isFinite(seconds)) return 'at a time not known';
+  if (seconds < 60) return 'just now';
+  const minutes = Math.round(seconds / 60);
+  if (minutes < 60) return `${minutes} ${minutes === 1 ? 'minute' : 'minutes'} ago`;
+  const hours = Math.round(minutes / 60);
+  if (hours < 24) return `${hours} ${hours === 1 ? 'hour' : 'hours'} ago`;
+  const days = Math.round(hours / 24);
+  return `${days} ${days === 1 ? 'day' : 'days'} ago`;
+}
+
+/** What the index holds, or why it holds nothing now, in one line. */
+export function indexWords(
+  state: 'outside' | 'no-memory' | 'untrusted' | 'opening' | 'open' | 'unavailable',
+  index: { notes: number; links: number; reads: number; bytes: number; refreshed: string | null } | null,
+  now = Date.now(),
+): string {
+  if (state === 'opening') return 'Reading the notes. A large folder takes a while the first time.';
+  if (state === 'untrusted') return 'Waiting for you to allow the folder\'s scripts, in Note Info.';
+  if (state === 'unavailable' || index === null) return 'The index could not be opened. Your notes are not affected.';
+  const count = (n: number, one: string, many: string) => `${n.toLocaleString('en')} ${n === 1 ? one : many}`;
+  const parts = [`${count(index.notes, 'note', 'notes')} and ${count(index.links, 'link', 'links')}`, sizeWords(index.bytes)];
+  if (index.refreshed) parts.push(`up to date ${agoWords(index.refreshed, now)}`);
+  return parts.join(' · ');
 }

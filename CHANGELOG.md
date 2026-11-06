@@ -72,6 +72,14 @@ How releases are made, and what each channel receives, is in
   it is saved: one that would alter anything else in the policy is not made,
   and says which part to change by hand. The MCP server the setups start is the vault's command
   line, shipped with Noto and run by Node 22.13 or later.
+- **Locks, and the memory's own settings.** A folder made private or
+  sealed wears a small lock in the tree (outlined for private, solid for
+  sealed), and a note private by its own frontmatter says so in the status
+  line. Settings → Memory now says what the index holds and how fresh it
+  is, rebuilds it, keeps or stops the read record on this computer, and
+  stops keeping memory: its sheet lists what `.noto` holds, then moves it to
+  the Trash. An agent's server stops serving a folder whose `.noto` is gone,
+  and one started later refuses it rather than making `.noto` again.
 - **Plugins can add to Note Info.** A tab (`info:<id>`) and a timeline track
   (`track:<id>`) are slots like the rail's pages, and `git.read` now gives a
   note's history and its text at any of its commits. History and Properties

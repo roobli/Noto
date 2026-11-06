@@ -38,6 +38,9 @@ import {
   type WorkspaceReviewReplyV1,
   type WorkspaceAgentActionV1,
   type WorkspaceAgentsReplyV1,
+  type WorkspaceMemoryFolderActionV1,
+  type WorkspaceMemoryFolderReplyV1,
+  type WorkspaceMemoryPrivacyReplyV1,
   type WorkspaceNoteVersionReplyV1,
   type WorkspaceTagIndexReplyV1,
   type WorkspaceNotesByTagReplyV1,
@@ -87,8 +90,9 @@ import { buildFileIndex } from './file-index';
 import { GitMarks, defaultGitRunner, findGit } from './git-marks';
 import { NoteHistoryReader, systemBatchGit } from './git-history';
 import { MemoryHost, insideFolder, type MemoryWorker, type ReviewRequest } from './memory-host';
-import { memoryScripts, type MemoryTrust } from './memory-trust';
-import { addAgent, agentList, folderSensitivity, revokeAgent, setFolderSensitivity } from '@roobli/vault/policy';
+import { memoryScripts, type FolderList, type MemoryTrust } from './memory-trust';
+import { sizeWords } from '../../shared/size-words';
+import { addAgent, agentList, folderSensitivity, noteSensitivity, privacyMarks, revokeAgent, setFolderSensitivity } from '@roobli/vault/policy';
 import { VaultWatcher, classifyTouched, inspectTouched } from './vault-watcher';
 import { gitBlockDiff } from './git-blocks';
 import type { WorkspaceGitBlocksV1 } from '../../shared/workspace/v1/contracts';
@@ -155,6 +159,10 @@ export class WorkspaceSession {
   private memoryTrust: MemoryTrust | null = null;
   /** The vault's command line shipped with Noto, for an agent's MCP setup. */
   private memoryCli: string | null = null;
+  /** Folders whose read record is not kept on this computer, by real path. */
+  private unrecorded: FolderList | null = null;
+  /** A Stop Keeping Memory sheet is open: a second press does not stack another. */
+  private turningOff = false;
   /** One reader for the window, so a note's history is walked once until HEAD moves. */
   private readonly history = new NoteHistoryReader(
     defaultGitRunner,
@@ -675,7 +683,16 @@ export class WorkspaceSession {
             this.logger.log('memory_privacy_set', { level: next });
             this.send(WORKSPACE_CHANNELS.memoryChanged, { version: NOTO_WORKSPACE_VERSION });
           } catch (error) {
-            this.logger.log('memory_privacy_not_set', { reason: (error as Error).message });
+            this.logger.log('memory_privacy_not_set', { level: next });
+            // The policy says why in words for the person: which part to change by hand.
+            const window = this.getWindow();
+            if (window) {
+              void dialog.showMessageBox(window, {
+                type: 'warning', buttons: ['OK'],
+                message: `"${path.basename(real)}" was left as it was.`,
+                detail: (error as Error).message,
+              });
+            }
           }
         },
       };
@@ -1437,13 +1454,21 @@ export class WorkspaceSession {
   }
 
   /**
-   * Give the session a way to start the memory's worker, and the record of
-   * which folders may run their memory's scripts. Main does, once, at startup.
+   * Give the session a way to start the memory's worker, the record of
+   * which folders may run their memory's scripts, the command line an agent's
+   * setup runs, and which folders keep no read record. Main does, once, at
+   * startup.
    */
-  useMemory(startWorker: () => MemoryWorker, trust: MemoryTrust, cli: string | null = null): void {
+  useMemory({ startWorker, trust, cli = null, unrecorded = null }: {
+    readonly startWorker: () => MemoryWorker;
+    readonly trust: MemoryTrust;
+    readonly cli?: string | null;
+    readonly unrecorded?: FolderList | null;
+  }): void {
     this.memory?.dispose();
     this.memoryTrust = trust;
     this.memoryCli = cli;
+    this.unrecorded = unrecorded;
     this.memory = new MemoryHost({
       startWorker,
       mayOpen: (root) => trust.mayOpen(root),
@@ -1613,6 +1638,127 @@ export class WorkspaceSession {
       lastRead: readers.get(agent.name)?.last ?? null, readCount: readers.get(agent.name)?.count ?? 0,
     }));
     return reply({ outcome, error, agents, key });
+  }
+
+  /** Whether opening a note in the folder at `root` (the tree's root) is written in its read record. */
+  recordsReads(root: string): boolean {
+    const real = root === this.folderRoot ? this.memory?.folder() ?? root : root;
+    return !(this.unrecorded?.has(real) ?? false);
+  }
+
+  /**
+   * What `.noto/access.yaml` says, for the window to draw: the folders given
+   * a level by name, the folder's own default, and whether the note in front
+   * is made private by its own frontmatter. From the files alone: the index
+   * is not opened, so this is asked on every note brought to the front.
+   */
+  async memoryPrivacy(note: string | null): Promise<WorkspaceMemoryPrivacyReplyV1> {
+    const none: WorkspaceMemoryPrivacyReplyV1 = { version: NOTO_WORKSPACE_VERSION, root: null, vault: 'open', folders: [], note: null };
+    const root = this.memory?.folder() ?? null;
+    const tree = this.folderRoot;
+    if (root === null || tree === null || !(await stat(path.join(root, '.noto')).then(() => true, () => false))) return none;
+    try {
+      const marks = privacyMarks(root);
+      let front: WorkspaceMemoryPrivacyReplyV1['note'] = null;
+      const real = note === null ? null : await realpath(note).catch(() => null);
+      const rel = real === null ? null : insideFolder(root, real);
+      // A note: a regular Markdown file, never any file the window names.
+      if (rel !== null && /\.(md|markdown)$/i.test(rel) && (await stat(real!).then((info) => info.isFile(), () => false))) {
+        const own = noteSensitivity(root, rel);
+        if (own.stricter && (own.own === 'private' || own.own === 'sealed') && own.folder !== 'sealed') front = { level: own.own, folder: own.folder };
+      }
+      return {
+        version: NOTO_WORKSPACE_VERSION,
+        root: tree,
+        vault: marks.default,
+        folders: marks.folders.map((item) => ({ path: path.join(tree, ...item.folder.split('/')), level: item.level })),
+        note: front,
+      };
+    } catch {
+      return none;
+    }
+  }
+
+  /**
+   * The open folder's memory itself, for Settings → Memory: what its index
+   * holds, building it again, whether this computer keeps its read record,
+   * and stopping keeping memory, which moves `.noto` to the Trash once main's
+   * own sheet has said what is in it.
+   */
+  async memoryFolder(action: WorkspaceMemoryFolderActionV1): Promise<WorkspaceMemoryFolderReplyV1> {
+    const memory = this.memory;
+    const root = memory?.folder() ?? null;
+    const reply = (fields: Partial<WorkspaceMemoryFolderReplyV1>): WorkspaceMemoryFolderReplyV1 => ({
+      version: NOTO_WORKSPACE_VERSION, state: 'outside', outcome: 'done', error: null, index: null,
+      recording: root === null || !(this.unrecorded?.has(root) ?? false), ...fields,
+    });
+    if (!memory || root === null) return reply({});
+    const noto = path.join(root, '.noto');
+    if (!(await stat(noto).then(() => true, () => false))) return reply({ state: 'no-memory' });
+    let outcome: WorkspaceMemoryFolderReplyV1['outcome'] = 'done';
+    let error: string | null = null;
+    try {
+      if (action.kind === 'record') {
+        if (action.on) this.unrecorded?.delete(root);
+        else this.unrecorded?.add(root);
+        this.logger.log('memory_record_set', { on: action.on });
+      } else if (action.kind === 'rebuild') {
+        if (memoryScripts(root).length > 0 && !this.memoryTrust?.mayOpen(root)) {
+          outcome = 'failed';
+          error = "This folder's memory runs scripts you have not allowed yet. Allow them from Note Info first.";
+        } else {
+          // It runs on; the window hears when it is done, and asks again.
+          void memory.rebuild().then((done) => this.logger.log('memory_rebuild', { done }));
+        }
+      } else if (action.kind === 'turn-off') {
+        const window = this.getWindow();
+        if (!window) return reply({ outcome: 'failed', error: 'There is no window to ask in.' });
+        if (this.turningOff) return reply({ outcome: 'cancelled' });
+        // The Trash would take the link and leave what it points to: say so rather than claim otherwise.
+        if ((await lstat(noto)).isSymbolicLink()) {
+          return reply({ outcome: 'failed', error: "This folder's .noto is a link to another place. Remove the link by hand to stop keeping memory here." });
+        }
+        this.turningOff = true;
+        try {
+          const answer = await dialog.showMessageBox(window, {
+            type: 'warning',
+            buttons: ['Move to Trash', 'Cancel'],
+            defaultId: 1,
+            cancelId: 1,
+            message: `Stop keeping memory for "${path.basename(root)}"?`,
+            detail: [
+              'Noto moves the folder\'s .noto folder to the Trash. In it:',
+              ...(await memoryContents(root)).map((line) => `  ${line}`),
+              '',
+              'Agents stop reading the folder at their next request. Your notes are not touched, and putting .noto back from the Trash turns all of it on again.',
+            ].join('\n'),
+          });
+          if (answer.response !== 0) outcome = 'cancelled';
+          // What the sheet described must still be what is there: the same folder, its .noto still in it.
+          else if (memory.folder() !== root || !(await stat(noto).then(() => true, () => false))) {
+            outcome = 'failed';
+            error = 'The folder changed while the sheet was open; nothing was moved.';
+          } else if (!(await memory.turnOff(root, async (folder) => { await shell.trashItem(folder); }))) {
+            outcome = 'failed';
+            error = 'The folder changed while its memory closed; nothing was moved.';
+          } else {
+            // Kept memory again later, the folder starts with the read record on.
+            this.unrecorded?.delete(root);
+            this.logger.log('memory_turned_off', {});
+            this.send(WORKSPACE_CHANNELS.memoryChanged, { version: NOTO_WORKSPACE_VERSION });
+            return reply({ state: 'no-memory' });
+          }
+        } finally {
+          this.turningOff = false;
+        }
+      }
+    } catch (failure) {
+      outcome = 'failed';
+      error = (failure as Error).message;
+    }
+    if (outcome === 'done' && action.kind === 'record') this.send(WORKSPACE_CHANNELS.memoryChanged, { version: NOTO_WORKSPACE_VERSION });
+    const status = await memory.status();
+    return reply({ state: status.state, index: status.index, outcome, error });
   }
 
   /**
@@ -1966,4 +2112,29 @@ export class WorkspaceSession {
  */
 function pathTag(filePath: string): string {
   return createHash('sha256').update(filePath).digest('hex').slice(0, 12);
+}
+
+
+/** What a folder's `.noto` holds, a line each, for the sheet that asks before it goes. */
+async function memoryContents(root: string): Promise<string[]> {
+  const noto = path.join(root, '.noto');
+  const names = (await readdir(noto).catch(() => [] as string[])).sort();
+  const size = async (name: string) => (await stat(path.join(noto, name)).catch(() => null))?.size ?? 0;
+  const lines: string[] = [];
+  if (names.some((name) => name.startsWith('index.sqlite'))) {
+    let bytes = 0;
+    for (const name of names.filter((item) => item.startsWith('index.sqlite'))) bytes += await size(name);
+    lines.push(`The index (${sizeWords(bytes)}), built from your notes.`);
+  }
+  for (const name of names) {
+    if (name.startsWith('index.sqlite')) continue;
+    if (name === 'events') lines.push('The read record: which notes were opened, by you and by agents.');
+    else if (name === 'access.yaml') {
+      const keyed = (() => { try { return agentList(root).filter((agent) => agent.keys > 0).length; } catch { return 0; } })();
+      lines.push(`Who may read the folder${keyed > 0 ? `: ${keyed} ${keyed === 1 ? 'agent' : 'agents'} with a key` : ''}.`);
+    } else if (name === 'brain.yaml') lines.push('How the notes are sorted into kinds.');
+    else if (name === 'scripts') lines.push(`The folder's scripts: ${memoryScripts(root).join(', ') || 'none'}.`);
+    else lines.push(name);
+  }
+  return lines;
 }

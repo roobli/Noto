@@ -1787,6 +1787,9 @@ button:disabled { color: var(--muted); opacity: 0.7; }
 }
 
 .pref-action.is-danger { color: var(--danger); }
+.pref-inline-action.is-danger { color: var(--danger); }
+/* The pane's rows run to its edges, so its group headings do too. */
+.memory-pane > .pref-group { margin-right: 0; margin-left: 0; }
 
 .plugin-source-folder {
   margin-left: auto;
@@ -2088,6 +2091,17 @@ section.plugin-group > .plugin-market-row.is-set-aside {
   letter-spacing: 0.02em;
   line-height: 15px;
   white-space: nowrap;
+}
+
+/* A note made private by its own frontmatter: a fact about the note, so in
+   the muted tier with the tree's lock, where Read-only and Remote take the
+   accent because they change what the window does. */
+.status-flag.status-privacy {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  border-color: color-mix(in srgb, var(--muted) 45%, transparent);
+  color: var(--muted);
 }
 
 .status-message {

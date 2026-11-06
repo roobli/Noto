@@ -6,7 +6,7 @@
  */
 
 import { describe, expect, it } from 'vitest';
-import { claudeCodeSetup, codexSetup, reachWords, serverName } from '../../src/renderer/memory-setup';
+import { agoWords, claudeCodeSetup, codexSetup, indexWords, reachWords, serverName } from '../../src/renderer/memory-setup';
 import { isWorkspaceAgentRequestV1, isWorkspaceAgentsReplyV1 } from '../../src/shared/workspace/v1/validate';
 
 const setup = { script: '/Applications/Noto.app/Contents/Resources/app.asar.unpacked/.vite/build/noto-vault.js', root: "/Users/me/My Notes/RooB's" };
@@ -67,5 +67,21 @@ describe('what main takes for agents', () => {
     expect(isWorkspaceAgentsReplyV1(reply)).toBe(true);
     expect(isWorkspaceAgentsReplyV1({ ...reply, key: 'Ab_cD-0123456789xyz' })).toBe(true);
     expect(isWorkspaceAgentsReplyV1({ ...reply, key: 'has spaces in it' })).toBe(false);
+  });
+});
+
+describe('what Settings says of the index', () => {
+  const now = Date.parse('2026-11-05T12:00:00Z');
+  it('counts what it holds and says how fresh it is', () => {
+    expect(indexWords('open', { notes: 7976, links: 1, reads: 3, bytes: 38 * 1024 * 1024, refreshed: '2026-11-05T11:58:00Z' }, now))
+      .toBe('7,976 notes and 1 link · 38 MB · up to date 2 minutes ago');
+    expect(agoWords('2026-11-05T11:59:40Z', now)).toBe('just now');
+    expect(agoWords('2026-11-04T12:00:00Z', now)).toBe('1 day ago');
+  });
+
+  it('says why there is nothing to count', () => {
+    expect(indexWords('opening', null)).toMatch(/^Reading the notes/);
+    expect(indexWords('untrusted', null)).toMatch(/allow the folder's scripts/);
+    expect(indexWords('unavailable', null)).toMatch(/could not be opened/);
   });
 });

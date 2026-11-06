@@ -17,11 +17,11 @@
  * first worker reads them in when the folder's watcher reports the files.
  */
 
-import { readFileSync, unlinkSync, writeFileSync, mkdirSync } from 'node:fs';
+import { readFileSync, statSync, unlinkSync, writeFileSync, mkdirSync } from 'node:fs';
 import path from 'node:path';
 import { parentPort } from 'node:worker_threads';
 import {
-  about, dismiss, dismissals, initVault, prepare, suggest, undismiss, Vault,
+  about, dismiss, dismissals, indexPath, initVault, prepare, suggest, undismiss, Vault,
   type FileChange, type Suggestion, type SuggestionType,
 } from '@roobli/vault';
 import { PROPOSAL_ID } from '../shared/workspace/v1/contracts';
@@ -30,11 +30,14 @@ import { PROPOSAL_ID } from '../shared/workspace/v1/contracts';
 export type ReviewKind = 'stale' | 'mention' | 'together';
 
 export type MemoryRequest =
-  | { readonly id: number; readonly kind: 'open'; readonly root: string; readonly refresh?: boolean }
+  /** `rebuild`: empty the index first, so it is built again from the notes and the read record. */
+  | { readonly id: number; readonly kind: 'open'; readonly root: string; readonly refresh?: boolean; readonly rebuild?: boolean }
   | { readonly id: number; readonly kind: 'keep'; readonly root: string }
   | { readonly id: number; readonly kind: 'about'; readonly rel: string }
   | { readonly id: number; readonly kind: 'refresh'; readonly paths: readonly string[] | null }
   | { readonly id: number; readonly kind: 'close' }
+  /** What the index holds, for Settings → Memory. */
+  | { readonly id: number; readonly kind: 'status' }
   /** Who has read the folder's notes, how often and when last. */
   | { readonly id: number; readonly kind: 'readers' }
   /** The notes changed on disk: what was worked out from them is worked out again when next asked. */
@@ -176,8 +179,9 @@ async function handle(request: MemoryRequest): Promise<unknown> {
       vault = null;
       forgetAll();
       batches.length = 0;
-      // The owner: the person at the window may read every note of their own folder.
-      vault = await Vault.open(request.root, { owner: true, refresh: request.refresh !== false });
+      // The owner: the person at the window may read every note of their own folder. A rebuild
+      // empties the index in place, safe for an agent's server that has it open too.
+      vault = await Vault.open(request.root, { owner: true, refresh: request.refresh !== false, rebuild: request.rebuild === true });
       return { notes: (vault.status() as { notes?: number }).notes ?? null };
     }
     case 'keep': {
@@ -201,6 +205,16 @@ async function handle(request: MemoryRequest): Promise<unknown> {
       vault?.close();
       vault = null;
       return null;
+    case 'status': {
+      const memory = open();
+      const status = memory.status() as { notes?: number; links?: number; events?: number; refreshed?: string | null };
+      const index = indexPath(memory.root);
+      const size = (file: string) => { try { return statSync(file).size; } catch { return 0; } };
+      return {
+        notes: status.notes ?? 0, links: status.links ?? 0, reads: status.events ?? 0,
+        bytes: size(index) + size(`${index}-wal`), refreshed: status.refreshed ?? null,
+      };
+    }
     case 'summary': {
       const memory = open();
       const counts: Partial<Record<ReviewKind, number | null>> = {};

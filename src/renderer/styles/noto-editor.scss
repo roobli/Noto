@@ -1896,6 +1896,33 @@
   }
 }
 
+/* A lock after a locked folder's name: muted, a little under the name's
+   x-height, sat on its baseline. Private is an outlined body, sealed a solid
+   one. It never shrinks, so a long name gives way to it rather than hiding it. */
+.tree-privacy {
+  flex: 0 0 auto;
+  display: inline-flex;
+  align-items: center;
+  margin-left: 5px;
+  color: var(--muted);
+  pointer-events: none;
+
+}
+
+.lock-glyph {
+  display: block;
+  flex: 0 0 auto;
+  width: 8px;
+  height: 10px;
+  fill: none;
+  stroke: currentcolor;
+  stroke-width: 1.2;
+  stroke-linecap: round;
+}
+
+.lock-glyph-sealed .lock-glyph-body { fill: currentcolor; }
+.tree-row:has(> .tree-privacy) > .tree-name { min-width: 0; overflow: hidden; text-overflow: ellipsis; }
+
 /* Visually hidden, read with the row's name. */
 .tree-git-words {
   position: absolute;

@@ -76,6 +76,20 @@ const WRITES = new Set(['accept', 'reject', 'link', 'dismiss', 'undismiss', 'und
 /** A Review request as the worker takes it, main having added what has unsaved edits. */
 export type ReviewRequest = Extract<Unnumbered, { kind: 'summary' | 'suggestions' | 'proposal-file' | 'accept' | 'reject' | 'link' | 'dismiss' | 'dismissals' | 'undismiss' | 'undo' }>;
 
+/** What the index holds, for Settings → Memory. */
+export interface MemoryIndexStatus {
+  readonly notes: number;
+  readonly links: number;
+  /** Lines in the read record: notes opened, by the person and by agents. */
+  readonly reads: number;
+  /** The index's files on disk. */
+  readonly bytes: number;
+  /** When it last took in the notes, as an ISO time. */
+  readonly refreshed: string | null;
+}
+
+export type MemoryFolderState = 'outside' | 'no-memory' | 'untrusted' | 'opening' | 'open' | 'unavailable';
+
 export interface ReviewOutcome {
   readonly state: WorkspaceReviewReplyV1['state'];
   readonly value: unknown;
@@ -103,6 +117,10 @@ export class MemoryHost {
   private owed = false;
   private failures = 0;
   private retryAt = 0;
+  /** Bumped by every stop, so work that waited across one knows the memory it started on is gone. */
+  private generation = 0;
+  /** The rebuild running, which a second ask joins rather than starting another. */
+  private rebuilding: Promise<'ok' | 'outside' | 'no-memory' | 'untrusted' | 'failed'> | null = null;
 
   constructor(private readonly options: MemoryHostOptions) {}
 
@@ -158,6 +176,86 @@ export class MemoryHost {
     }
   }
 
+  /**
+   * How the memory stands, and what its index holds once it is open. Asking
+   * opens it when it may be opened, as Note Info does: the person is looking
+   * at the memory's own settings.
+   */
+  async status(): Promise<{ state: MemoryFolderState; index: MemoryIndexStatus | null }> {
+    const root = this.root;
+    if (root === null) return { state: 'outside', index: null };
+    const closed = this.gate(root);
+    if (closed !== null) return { state: closed, index: null };
+    try {
+      return { state: 'open', index: await this.ask({ kind: 'status' }, ABOUT_TIMEOUT_MS) as MemoryIndexStatus };
+    } catch {
+      this.owed = true;
+      return { state: 'unavailable', index: null };
+    }
+  }
+
+  /**
+   * Build the index again from the notes: the workers let go of it, and a
+   * new one empties it in place and reads everything in again. The notes and
+   * the read record are not touched; the read record is read back in.
+   * Meanwhile every answer is `opening`. Asked again while it runs, it is the
+   * same rebuild.
+   */
+  rebuild(): Promise<'ok' | 'outside' | 'no-memory' | 'untrusted' | 'failed'> {
+    this.rebuilding ??= this.rebuildOnce().finally(() => { this.rebuilding = null; });
+    return this.rebuilding;
+  }
+
+  private async rebuildOnce(): Promise<'ok' | 'outside' | 'no-memory' | 'untrusted' | 'failed'> {
+    const root = this.root;
+    if (root === null) return 'outside';
+    if (!existsSync(path.join(root, '.noto'))) return 'no-memory';
+    if (!(this.options.mayOpen ?? runsNoScripts)(root)) return 'untrusted';
+    const closing = this.stop();
+    const generation = this.generation;
+    // Nothing opens the memory while its workers close: answers say `opening` until the new one is open.
+    this.state = 'opening';
+    this.options.onChanged();
+    await closing;
+    // The folder changed, or something else stopped the memory, while the workers closed.
+    if (this.generation !== generation || this.root !== root) return 'failed';
+    const started = Date.now();
+    const link = this.start();
+    try {
+      const value = await link.ask({ kind: 'open', root, rebuild: true }, OPEN_TIMEOUT_MS) as { notes?: number } | null;
+      if (this.link !== link) return 'failed';
+      this.options.log?.('memory_rebuilt', { ms: Date.now() - started, notes: value?.notes ?? null });
+      this.opened();
+      return 'ok';
+    } catch (error) {
+      if (this.link === link) this.failed('memory_rebuild_failed', error as Error);
+      return 'failed';
+    }
+  }
+
+  /**
+   * Stop keeping memory for `root`, the folder the person was asked about:
+   * the workers are let go, and `remove` takes its `.noto` away (main moves
+   * it to the Trash). Until it is gone nothing opens the memory again, since
+   * opening would make the index anew inside it. Resolves with whether it
+   * was removed: not when the window has moved to another folder since.
+   */
+  async turnOff(root: string, remove: (folder: string) => Promise<void>): Promise<boolean> {
+    if (this.root !== root) return false;
+    const closing = this.stop();
+    const generation = this.generation;
+    this.state = 'opening';
+    try {
+      await closing;
+      if (this.generation !== generation || this.root !== root) return false;
+      await remove(path.join(root, '.noto'));
+      return true;
+    } finally {
+      if (this.generation === generation && this.root === root && this.link === null) this.state = 'closed';
+      this.options.onChanged();
+    }
+  }
+
   /** Who has read the folder's notes, from the read record: null unless the memory is open now. */
   async readers(): Promise<readonly { actor: string; count: number; last: string }[] | null> {
     if (this.state !== 'open' || this.link === null) return null;
@@ -201,9 +299,12 @@ export class MemoryHost {
   async keep(): Promise<readonly string[] | null> {
     const root = this.root;
     if (root === null) return null;
-    this.stop();
-    this.root = root;
+    const closing = this.stop();
+    const generation = this.generation;
     this.state = 'opening';
+    await closing;
+    // The window may have moved to another folder while the workers closed.
+    if (this.generation !== generation || this.root !== root) return null;
     const link = this.start();
     try {
       const value = await link.ask({ kind: 'keep', root }, OPEN_TIMEOUT_MS) as { made?: string[] } | null;
@@ -337,8 +438,11 @@ export class MemoryHost {
     return this.link ? this.link.ask(request, timeoutMs) : Promise.reject(new MemoryError('The memory is not open.'));
   }
 
-  /** Timers and bookkeeping off, and the worker let go: everything waiting is told the memory closed. */
-  private clear(): void {
+  /**
+   * Timers and bookkeeping off, and the workers let go: everything waiting
+   * is told the memory closed. Resolves once both workers have stopped.
+   */
+  private clear(): Promise<void> {
     if (this.refreshTimer !== null) clearTimeout(this.refreshTimer);
     if (this.everyTimer !== null) clearInterval(this.everyTimer);
     if (this.retryTimer !== null) clearTimeout(this.retryTimer);
@@ -354,12 +458,13 @@ export class MemoryHost {
     this.link = null;
     this.reader = null;
     this.readerReady = null;
-    link?.close();
-    reader?.close();
+    return Promise.all([link?.close(), reader?.close()]).then(() => {});
   }
 
-  private stop(): void {
-    this.clear();
+  private stop(): Promise<void> {
+    this.generation += 1;
+    const closing = this.clear();
     this.state = 'closed';
+    return closing;
   }
 }
