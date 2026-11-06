@@ -915,17 +915,6 @@ button:disabled { color: var(--muted); opacity: 0.7; }
 
 /* Cursor-style Settings: full-page shell, left categories / right content. */
 .settings-page,
-.pref-scrim {
-  animation: noto-fade var(--motion-micro) var(--ease-out);
-  position: fixed;
-  z-index: 60;
-  inset: 0;
-  display: grid;
-  place-items: stretch;
-  background: var(--paper);
-  padding: 0;
-}
-
 /* The same frame as the window under it: a title-bar row across the top, the
    categories' ground from floor to ceiling down the left with the traffic
    lights on its head, the pane on paper to its right. Drawn as a column that
@@ -2432,7 +2421,6 @@ section.plugin-group > .plugin-market-row.is-set-aside {
   .operational-status { height: 24px; grid-template-columns: minmax(0, 1fr); }
   .status-message, .recent-strip { display: none; }
   .settings-page,
-  .pref-scrim { padding: 0; }
   /* One column: the title bar, the categories as a strip under it, then the
      pane. The title moves past the lights, as the main bar's controls do. */
   .pref-dialog,
@@ -2486,7 +2474,7 @@ section.plugin-group > .plugin-market-row.is-set-aside {
    (docs/design/motion.md, amendment of 2026-10-20). `data-input` is the hand
    last used, kept on the root by input-modality.ts. */
 :root[data-input='keyboard'] :is(
-  .vault-menu-list, .pref-scrim, .settings-shell, .command-palette,
+  .vault-menu-list, .guide-scrim, .settings-shell, .command-palette,
   .command-palette-scrim, .quick-scrim, .quick-open, .table-dialog-scrim,
   .table-dialog, .reload-confirm-scrim, .reload-confirm, .shortcuts,
   .noto-git-popover
@@ -2960,12 +2948,30 @@ section.plugin-group > .plugin-market-row.is-set-aside {
   box-shadow: 0 0 0 2px var(--titlebar, var(--paper));
 }
 
+/* What Noto Can Do is a sheet over the window, the way the palette and quick
+   open are: the note it leads back to stays in view, dimmed, behind it; the
+   traffic lights and the title bar stay clear above it; a press outside
+   closes it. It once borrowed Settings' scrim, which became an opaque page
+   of its own in September, and so drew the guide as a box in the window's
+   corner, under the lights, over nothing. */
+.guide-scrim {
+  animation: noto-fade var(--motion-micro) var(--ease-out);
+  position: fixed;
+  z-index: 60;
+  inset: 0;
+  display: flex;
+  align-items: flex-start;
+  justify-content: center;
+  padding: 64px 24px 32px;
+  background: var(--scrim);
+}
+
 .shortcuts {
   animation: noto-arrive var(--motion-default) var(--ease-out);
   display: grid;
   grid-template-rows: auto minmax(0, 1fr);
-  width: min(760px, 92vw);
-  max-height: min(680px, 86vh);
+  width: min(760px, 100%);
+  max-height: min(720px, 100%);
   border: 1px solid var(--hairline);
   border-radius: 10px;
   background: var(--paper);

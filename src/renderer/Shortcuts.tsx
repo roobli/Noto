@@ -180,7 +180,7 @@ export function Shortcuts({ mac, onClose, seen = GUIDE_EDITION, onTry }: Shortcu
     .filter((group) => group.entries.length > 0);
 
   return (
-    <div className="pref-scrim" onMouseDown={(event) => { if (event.target === event.currentTarget) onClose(); }}>
+    <div className="guide-scrim" data-testid="shortcuts-scrim" onMouseDown={(event) => { if (event.target === event.currentTarget) onClose(); }}>
       <section className="shortcuts" role="dialog" aria-label="What Noto can do" data-testid="shortcuts-panel">
         <header className="shortcuts-header">
           <h2>What Noto can do</h2>
