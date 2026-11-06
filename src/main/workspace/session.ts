@@ -71,7 +71,7 @@ import { inlineImages } from './inline-images';
 import { resolveAssetPath } from '../protocol/asset-guard';
 import { readResolvedAsset } from '../protocol/asset-read';
 import { CopyDestinations } from '../file-truth/v1/copy-destinations';
-import { buildTreeRowMenu, type TreeRowActions, trashLabel } from './tree-row-menu';
+import { buildSelectionMenu, buildTreeRowMenu, type TreeRowActions, trashLabel } from './tree-row-menu';
 import {
   findPandoc,
   importDocument,
@@ -648,7 +648,7 @@ export class WorkspaceSession {
    * renderer asking about somewhere, and only somewhere inside the folder the
    * reader opened is an answerable question.
    */
-  async treeMenu(target: string, kind: 'file' | 'directory'): Promise<WorkspaceTreeMenuReplyV1> {
+  async treeMenu(target: string, kind: 'file' | 'directory', also: readonly string[] = []): Promise<WorkspaceTreeMenuReplyV1> {
     const window = this.getWindow();
     const root = this.folderRoot;
     if (!window || root === null) return { version: NOTO_WORKSPACE_VERSION, accepted: false };
@@ -664,6 +664,26 @@ export class WorkspaceSession {
     if (!isInside(realRoot, real)) {
       this.logger.log('tree_menu_refused', {});
       return { version: NOTO_WORKSPACE_VERSION, accepted: false };
+    }
+
+    // Several rows chosen together: one menu for all of them, each checked as the one pressed was.
+    if (also.length > 0) {
+      const chosen = [real];
+      for (const other of also) {
+        const resolved = await realpath(path.resolve(other)).catch(() => null);
+        if (resolved && resolved !== realRoot && isInside(realRoot, resolved) && !chosen.includes(resolved)) chosen.push(resolved);
+      }
+      // A row inside a chosen folder goes with the folder.
+      const top = chosen.filter((entry) => !chosen.some((other) => other !== entry && isInside(other, entry)));
+      if (top.length > 1) {
+        const many = buildSelectionMenu(top.length, {
+          move: () => { void this.moveManyWithDialog(top); },
+          trash: () => { void this.confirmTrashMany(top); },
+          copyPaths: () => clipboard.writeText(top.join('\n')),
+        });
+        setImmediate(() => Menu.buildFromTemplate(many).popup({ window }));
+        return { version: NOTO_WORKSPACE_VERSION, accepted: true };
+      }
     }
 
     const items = buildTreeRowMenu(real, kind, {
@@ -811,14 +831,67 @@ export class WorkspaceSession {
       message: kind === 'directory'
         ? `Move the folder "${name}" and everything in it to the trash?`
         : `Move "${name}" to the trash?`,
-      detail: losing === 0
+      detail: (losing === 0
         ? 'You can put it back from there.'
         : kind === 'file'
           ? 'It has unsaved changes, which are lost: the trash keeps only what was saved.'
-          : `${losing === 1 ? 'A note' : `${losing} notes`} in it ${losing === 1 ? 'has' : 'have'} unsaved changes, which are lost: the trash keeps only what was saved.`,
+          : `${losing === 1 ? 'A note' : `${losing} notes`} in it ${losing === 1 ? 'has' : 'have'} unsaved changes, which are lost: the trash keeps only what was saved.`) + linked,
     });
     if (answer.response !== 0) return;
     await this.manageEntry({ action: 'trash', target, name: null });
+  }
+
+  /**
+   * Move several rows to one folder chosen in the system's dialog, each checked
+   * as one row is; their links follow in one pass. What could not go is said
+   * once, with why.
+   */
+  private async moveManyWithDialog(reals: readonly string[]): Promise<void> {
+    const window = this.getWindow();
+    if (!window || reals.length === 0) return;
+    const chosen = await dialog.showOpenDialog(window, {
+      title: `Move ${reals.length} items to`,
+      defaultPath: path.dirname(reals[0]!),
+      properties: ['openDirectory', 'createDirectory'],
+    });
+    if (chosen.canceled || chosen.filePaths.length === 0) return;
+    const destination = await this.inRoot(chosen.filePaths[0]!, true);
+    if (destination === null) return;
+    const left: string[] = [];
+    for (const real of reals) {
+      const reply = await this.moveInto(real, destination);
+      if (!reply.done) left.push(path.basename(real));
+    }
+    this.logger.log('entries_moved', { moved: reals.length - left.length, left: left.length });
+    if (left.length > 0) {
+      await dialog.showMessageBox(window, {
+        type: 'info',
+        message: `${left.length === 1 ? 'One item' : `${left.length} items`} stayed where ${left.length === 1 ? 'it was' : 'they were'}.`,
+        detail: `${left.slice(0, 6).join(', ')}${left.length > 6 ? ', and more' : ''}: the name is taken there, a note has unsaved changes, or a folder would go inside itself.`,
+      });
+    }
+  }
+
+  /** Ask once before moving several rows to the trash, saying what is lost and what would lead nowhere. */
+  private async confirmTrashMany(reals: readonly string[]): Promise<void> {
+    const window = this.getWindow();
+    if (!window || reals.length === 0) return;
+    const losing = this.unsavedPaths.filter((open) => reals.some((real) => open === real || isInside(real, open))).length;
+    const realRoot = this.folderRoot === null ? null : await realpath(this.folderRoot).catch(() => null);
+    const into = realRoot === null ? { notes: 0, links: 0 } : await linksInto(realRoot, reals, this.linkSources()).catch(() => ({ notes: 0, links: 0 }));
+    const parts = [losing === 0 ? 'You can put them back from there.'
+      : `${losing === 1 ? 'A note' : `${losing} notes`} among them ${losing === 1 ? 'has' : 'have'} unsaved changes, which are lost.`];
+    if (into.notes > 0) parts.push(`${into.notes === 1 ? 'One note links' : `${into.notes} notes link`} to them; ${into.links === 1 ? 'that link' : 'those links'} will lead nowhere until they are put back.`);
+    const answer = await dialog.showMessageBox(window, {
+      type: 'warning',
+      buttons: [`Move ${reals.length} Items to ${trashLabel(process.platform).replace(/^Move to /, '')}`, 'Cancel'],
+      defaultId: 1,
+      cancelId: 1,
+      message: `Move ${reals.length} items to the trash?`,
+      detail: parts.join(' '),
+    });
+    if (answer.response !== 0) return;
+    for (const real of reals) await this.manageEntry({ action: 'trash', target: real, name: null });
   }
 
   /**

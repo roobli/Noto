@@ -13,6 +13,7 @@
 import { useCallback, useEffect, useRef, useState, type ReactNode } from 'react';
 import type { SensitivityV1, WorkspaceEntryV1, WorkspaceGitChangeV1 } from '../shared/workspace/v1/contracts';
 import { branchToCurrentFile, sizeTreeGuides, startTreeGuides } from './tree-guides';
+import { EDGE_DELAY_MS, SPRING_MS, carried, dropVerdict, dropWords, edgeSpeed, edgeStrength, rangeOf } from './tree-drag';
 import { isComposing } from './ime';
 
 export interface FileTreeProps {
@@ -22,14 +23,18 @@ export interface FileTreeProps {
   readonly activePath: string | null;
   readonly list: (directory: string) => Promise<readonly WorkspaceEntryV1[]>;
   readonly onOpenFile: (filePath: string) => void;
-  /** A press of the right button on a row: main draws the menu for it. */
-  readonly onRowMenu: (rowPath: string, kind: 'file' | 'directory') => void;
+  /**
+   * A press of the right button on a row: main draws the menu for it. `also`
+   * are the other rows chosen with it, when it is one of several, and the menu
+   * is for all of them.
+   */
+  readonly onRowMenu: (rowPath: string, kind: 'file' | 'directory', also?: readonly string[]) => void;
   readonly onChooseFolder: () => void;
   /**
    * A row dragged onto a folder. Absent while no folder is open, in which
    * case the rows are not draggable at all.
    */
-  readonly onMoveEntry?: (source: string, destination: string) => void;
+  readonly onMoveEntry?: (source: string, destination: string) => void | Promise<void>;
   /**
    * The folder's own actions, drawn on the folder's own row.
    *
@@ -234,8 +239,22 @@ export function FileTree({
   // Which row is being dragged and which folder is under it. Declared here,
   // with every other hook, because the tree returns early while no folder is
   // open and React needs the same hooks on every render.
-  const [dragging, setDragging] = useState<string | null>(null);
+  /** The rows in the air: the one picked up, or every chosen row when it was one of them. */
+  const [dragging, setDragging] = useState<readonly string[] | null>(null);
+  /** Rows chosen with Command or Shift, to drag, move or trash together. */
+  const [selected, setSelected] = useState<ReadonlySet<string>>(new Set());
+  /** Where a Shift-click's range begins: the row chosen or opened last. */
+  const anchorRef = useRef<string | null>(null);
+  /** The folder a drop would land in: the one under the pointer, or the folder of the note under it. */
   const [over, setOver] = useState<string | null>(null);
+  /** Which way the tree is scrolling under a held drag, so no row is offered while rows pass beneath it. */
+  const [edgeScrolling, setEdgeScrolling] = useState<-1 | 0 | 1>(0);
+  /** A closed folder held over, filling its line until it opens. */
+  const [springing, setSpringing] = useState<string | null>(null);
+  /** Folders opened for the drag, shut again afterwards unless the drop went into them. */
+  const springOpened = useRef(new Set<string>());
+  const edgeUp = useRef<HTMLDivElement>(null);
+  const edgeDown = useRef<HTMLDivElement>(null);
 
   /** The file last scrolled into view, so a tree change never scrolls the rail again. */
   const shownRef = useRef<string | null>(null);
@@ -293,6 +312,8 @@ export function FileTree({
   useEffect(() => {
     setChildren(new Map());
     setExpanded(new Set());
+    setSelected(new Set());
+    anchorRef.current = null;
     setFailed(null);
     childrenRef.current = new Map();
     if (root) void load(root);
@@ -441,6 +462,92 @@ export function FileTree({
     };
   }, [children, expanded, root, activePath]);
 
+  /*
+   * Hold a dragged row at the top or bottom of the rail and the tree scrolls
+   * toward it, faster the nearer the edge and fastest past it, after a short
+   * rest so passing through the band does nothing (`tree-drag.ts`). The pointer
+   * is read from every dragover in the window, since past the edge it is over
+   * the rail's header or footer, not a row. Frames run only while a row is in
+   * the air; at rest the tree costs nothing. The edge says it is moving with a
+   * tint and a chevron as strong as the scroll.
+   */
+  useEffect(() => {
+    if (dragging === null) return undefined;
+    const scroller = bodyRef.current?.closest<HTMLElement>('.rail-view');
+    if (!scroller) return undefined;
+    let pointer: { x: number; y: number } | null = null;
+    let since: number | null = null;
+    let frame = 0;
+    let way: -1 | 0 | 1 = 0;
+    const going = (next: -1 | 0 | 1) => { if (next !== way) { way = next; setEdgeScrolling(next); } };
+    const track = (event: DragEvent) => { pointer = { x: event.clientX, y: event.clientY }; };
+    // Out of the window there is no pointer to scroll for, and an old one would keep the tree running.
+    const gone = (event: DragEvent) => { if (event.relatedTarget === null) pointer = null; };
+    const show = (up: number, down: number) => {
+      edgeUp.current?.style.setProperty('--edge', String(up));
+      edgeDown.current?.style.setProperty('--edge', String(down));
+    };
+    const step = (time: number) => {
+      frame = requestAnimationFrame(step);
+      const box = scroller.getBoundingClientRect();
+      // Beside the rail, not over the page: a row dragged toward the editor is not asking the tree to move.
+      const at = pointer !== null && pointer.x >= box.left - 32 && pointer.x <= box.right + 32 ? pointer : null;
+      const speed = at ? edgeSpeed(at.y, box.top, box.bottom) : 0;
+      if (speed === 0) { since = null; show(0, 0); going(0); return; }
+      since ??= time;
+      if (time - since < EDGE_DELAY_MS) return;
+      const before = scroller.scrollTop;
+      scroller.scrollTop = before + speed;
+      // At the end of the list nothing moves, and the rows there can be chosen again.
+      const moved = scroller.scrollTop !== before;
+      const strength = moved ? 0.35 + 0.65 * edgeStrength(speed) : 0;
+      show(speed < 0 ? strength : 0, speed > 0 ? strength : 0);
+      going(moved ? (speed < 0 ? -1 : 1) : 0);
+    };
+    document.addEventListener('dragover', track, true);
+    document.addEventListener('dragleave', gone, true);
+    frame = requestAnimationFrame(step);
+    return () => {
+      cancelAnimationFrame(frame);
+      document.removeEventListener('dragover', track, true);
+      document.removeEventListener('dragleave', gone, true);
+      show(0, 0);
+      setEdgeScrolling(0);
+    };
+  }, [dragging]);
+
+  // A chosen row that went (moved, trashed) or that a folder shut over is let go: nothing is moved or trashed out of sight.
+  useEffect(() => {
+    if (selected.size === 0 || !root) return;
+    const shown = new Set<string>();
+    const walk = (directory: string) => {
+      for (const entry of children.get(directory) ?? []) {
+        shown.add(entry.path);
+        if (entry.kind === 'directory' && expanded.has(entry.path)) walk(entry.path);
+      }
+    };
+    walk(root);
+    const kept = [...selected].filter((path) => shown.has(path));
+    if (kept.length !== selected.size) setSelected(new Set(kept));
+  }, [children, expanded, root, selected]);
+
+  // A closed folder held over opens, once its line has filled, so a drop can go deep without letting go.
+  useEffect(() => {
+    if (dragging === null || over === null || over === root || expanded.has(over) || dropVerdict(dragging, over) !== 'move') {
+      setSpringing(null);
+      return undefined;
+    }
+    const folder = over;
+    setSpringing(folder);
+    const timer = setTimeout(() => {
+      springOpened.current.add(folder);
+      setExpanded((current) => new Set(current).add(folder));
+      if (!childrenRef.current.has(folder)) void load(folder);
+      setSpringing(null);
+    }, SPRING_MS);
+    return () => clearTimeout(timer);
+  }, [dragging, over, expanded, root, load]);
+
   if (!root) {
     return (
       <div className="tree-root is-empty" data-testid="file-tree">
@@ -509,7 +616,7 @@ export function FileTree({
       return (
         <div className="tree-level" style={{ '--tree-depth': depth } as React.CSSProperties}>
           <div className="tree-node">
-            <p className={entries ? 'tree-row tree-empty' : 'tree-row tree-loading'}>
+            <p className={entries ? 'tree-row tree-empty' : 'tree-row tree-loading'} {...dropProps(directory)}>
               {entries ? 'Nothing here.' : 'Reading…'}
             </p>
           </div>
@@ -533,15 +640,18 @@ export function FileTree({
               <div className="tree-node" key={entry.path}>
                 <button
                   type="button"
-                  className={`${onPath ? 'tree-row tree-directory tree-on-path' : 'tree-row tree-directory'}${dropClass(entry.path)}`}
+                  className={`${onPath ? 'tree-row tree-directory tree-on-path' : 'tree-row tree-directory'}${dropClass(entry.path)}${springClass(entry.path)}${draggedClass(entry.path)}${selectedClass(entry.path)}`}
                   data-testid="tree-directory"
+                  data-path={entry.path}
+                  aria-selected={selected.has(entry.path) || undefined}
                   data-depth={depth}
                   title={[entry.name, ...(lock ? [PRIVACY_WORDS[lock]] : []), ...(holdsChanges ? [GIT_WORDS.folder] : [])].join(', ')}
                   aria-expanded={isOpen}
+                  style={springing === entry.path ? { '--spring-ms': `${SPRING_MS}ms` } as React.CSSProperties : undefined}
                   {...dragProps(entry.path)}
                   {...dropProps(entry.path)}
-                  onClick={(event) => { if (!revealPinned(event.currentTarget)) toggle(entry.path); }}
-                  onContextMenu={(event) => { event.preventDefault(); onRowMenu(entry.path, 'directory'); }}
+                  onClick={(event) => { if (!choose(event, entry.path) && !revealPinned(event.currentTarget)) toggle(entry.path); }}
+                  onContextMenu={(event) => menuFor(event, entry.path, 'directory')}
                 >
                   <span className="tree-leading">
                     <span className={isOpen ? 'tree-twisty tree-twisty-open' : 'tree-twisty'} aria-hidden="true" />
@@ -552,6 +662,7 @@ export function FileTree({
                     : <span className="tree-name">{entry.name}</span>}
                   {lock && <PrivacyMark level={lock} />}
                   {holdsChanges && <GitMark kind="folder" />}
+                  {dropClass(entry.path) && <span className="tree-drop-ring" aria-hidden="true" />}
                 </button>
                 {editing?.intent === 'new-folder' && editing.path === entry.path && (
                   <div className="tree-level" style={{ '--tree-depth': depth + 1 } as React.CSSProperties}>
@@ -577,14 +688,16 @@ export function FileTree({
             <div className={isActive ? 'tree-node tree-node-active' : 'tree-node'} key={entry.path}>
               <button
                 type="button"
-                className={isActive ? 'tree-row tree-file tree-file-active' : 'tree-row tree-file'}
+                className={`${isActive ? 'tree-row tree-file tree-file-active' : 'tree-row tree-file'}${draggedClass(entry.path)}${selectedClass(entry.path)}`}
+                aria-selected={selected.has(entry.path) || undefined}
                 data-testid="tree-file"
                 data-path={entry.path}
                 title={change ? `${entry.name}, ${GIT_WORDS[change]}` : entry.name}
                 aria-current={isActive ? 'true' : undefined}
                 {...dragProps(entry.path)}
-                onClick={(event) => { if (!revealPinned(event.currentTarget)) onOpenFile(entry.path); }}
-                onContextMenu={(event) => { event.preventDefault(); onRowMenu(entry.path, 'file'); }}
+                {...dropProps(directory)}
+                onClick={(event) => { if (!choose(event, entry.path) && !revealPinned(event.currentTarget)) onOpenFile(entry.path); }}
+                onContextMenu={(event) => menuFor(event, entry.path, 'file')}
               >
                 <span className="tree-leading">
                   <span className="tree-twisty tree-twisty-blank" aria-hidden="true" />
@@ -611,35 +724,137 @@ export function FileTree({
    * checks everything: this only says what was dragged onto what. The two
    * pieces of state are declared at the top, with the other hooks.
    */
+  /** The drag carries a small pill of the row's glyph and name, not a picture of the row and its guides. */
+  const liftImage = (event: React.DragEvent, count: number) => {
+    const row = event.currentTarget as HTMLElement;
+    const pill = document.createElement('div');
+    pill.className = 'tree-drag-pill';
+    const glyph = row.querySelector('.tree-glyph');
+    if (glyph) pill.append(glyph.cloneNode(true));
+    const name = document.createElement('span');
+    name.textContent = row.querySelector('.tree-name')?.textContent ?? '';
+    pill.append(name);
+    if (count > 1) {
+      const more = document.createElement('b');
+      more.className = 'tree-drag-count';
+      more.textContent = `+${count - 1}`;
+      pill.append(more);
+    }
+    document.body.append(pill);
+    try { event.dataTransfer.setDragImage(pill, 14, 14); } catch { /* A drag made in a test has no picture to set. */ }
+    setTimeout(() => pill.remove(), 0);
+  };
+
+  /** The drag is over. Folders opened for it shut again, but the one it went into and those around it. */
+  const finishDrag = (destination: string | null) => {
+    const opened = springOpened.current;
+    springOpened.current = new Set();
+    setDragging(null);
+    setOver(null);
+    setSpringing(null);
+    if (opened.size === 0) return;
+    setExpanded((current) => {
+      const next = new Set(current);
+      for (const folder of opened) {
+        const into = destination !== null && (destination === folder || destination.startsWith(`${folder}/`) || destination.startsWith(`${folder}\\`));
+        if (!into) next.delete(folder);
+      }
+      return next;
+    });
+  };
+
   const dragProps = (path: string) => (onMoveEntry === undefined ? {} : {
     draggable: true,
     onDragStart: (event: React.DragEvent) => {
+      const moving = carried(path, selected);
       event.dataTransfer.effectAllowed = 'move';
-      event.dataTransfer.setData('text/plain', path);
-      setDragging(path);
+      event.dataTransfer.setData('text/plain', moving.join('\n'));
+      liftImage(event, moving.length);
+      springOpened.current = new Set();
+      setDragging(moving);
     },
-    onDragEnd: () => { setDragging(null); setOver(null); },
+    onDragEnd: () => finishDrag(null),
   });
 
+  /**
+   * A drop on a folder's row goes into the folder; one on a note's row goes
+   * into the note's folder, which lights up, as Finder's list does. The rows
+   * are where the pointer is, so the target is as tall as the folder is long.
+   */
   const dropProps = (folder: string) => (onMoveEntry === undefined ? {} : {
     onDragOver: (event: React.DragEvent) => {
       // Only our own rows; a file dragged in from the Finder is not this.
-      if (dragging === null || dragging === folder) return;
+      if (dragging === null) return;
+      // Rows are passing under the pointer: none is the one meant, and letting go does nothing.
+      if (edgeScrolling !== 0) { setOver(null); return; }
+      setOver(folder);
+      if (dropVerdict(dragging, folder) !== 'move') return;
       event.preventDefault();
       event.dataTransfer.dropEffect = 'move';
-      setOver(folder);
     },
-    onDragLeave: () => setOver((current) => (current === folder ? null : current)),
+    onDragLeave: (event: React.DragEvent) => {
+      // Between two rows the next one says where the pointer is; only leaving the tree clears it.
+      const next = event.relatedTarget as Node | null;
+      if (next && bodyRef.current?.contains(next)) return;
+      setOver((current) => (current === folder ? null : current));
+    },
     onDrop: (event: React.DragEvent) => {
       event.preventDefault();
-      const source = dragging ?? event.dataTransfer.getData('text/plain');
-      setDragging(null);
-      setOver(null);
-      if (source && source !== folder) onMoveEntry(source, folder);
+      const sources = dragging ?? event.dataTransfer.getData('text/plain').split('\n').filter(Boolean);
+      finishDrag(folder);
+      if (dropVerdict(sources, folder) !== 'move') return;
+      // One after another, so each is checked against where the one before landed; main follows their links in one pass.
+      void (async () => {
+        for (const source of sources) if (dropVerdict(source, folder) === 'move') await onMoveEntry(source, folder);
+      })();
+      setSelected(new Set());
     },
   });
 
-  const dropClass = (folder: string) => (over === folder ? ' is-drop-target' : '');
+  const dropClass = (folder: string) => (over === folder && dragging !== null && dropVerdict(dragging, folder) === 'move' ? ' is-drop-target' : '');
+  const springClass = (folder: string) => (springing === folder ? ' is-springing' : '');
+  const draggedClass = (path: string) => (dragging?.includes(path) ? ' is-dragged' : '');
+  const selectedClass = (path: string) => (selected.has(path) ? ' is-selected' : '');
+
+  /**
+   * Command-click chooses a row or lets it go, and Shift-click chooses the rows
+   * between it and the last one chosen, in the order they are drawn, as in
+   * Finder. Neither opens anything. A plain click lets the choice go and does
+   * what it always did. The note in front counts as chosen when a choice
+   * begins, since it is the row the reader is on. True when the click was a
+   * choice and nothing else should happen.
+   */
+  const choose = (event: React.MouseEvent, path: string): boolean => {
+    if (event.metaKey || event.ctrlKey) {
+      setSelected((current) => {
+        const next = new Set(current);
+        if (next.size === 0 && activePath && activePath !== path) next.add(activePath);
+        if (next.has(path)) next.delete(path);
+        else next.add(path);
+        return next;
+      });
+      anchorRef.current = path;
+      return true;
+    }
+    if (event.shiftKey) {
+      const from = anchorRef.current ?? activePath;
+      const order = Array.from(bodyRef.current?.querySelectorAll<HTMLElement>('.tree-row[data-path]') ?? []).map((row) => row.dataset.path!);
+      if (from) {
+        setSelected(new Set(rangeOf(order, from, path)));
+        return true;
+      }
+    }
+    if (selected.size > 0) setSelected(new Set());
+    anchorRef.current = path;
+    return false;
+  };
+
+  /** What the right button is pressed on: the row, and the rows chosen with it when it is one of them. */
+  const menuFor = (event: React.MouseEvent, path: string, kind: 'file' | 'directory') => {
+    event.preventDefault();
+    const also = selected.has(path) && selected.size > 1 ? [...selected].filter((other) => other !== path) : undefined;
+    onRowMenu(path, kind, also);
+  };
 
   const commitEdit = (name: string | null) => onEditingDone?.(name);
 
@@ -648,8 +863,10 @@ export function FileTree({
 
   return (
     <div className="tree-root" data-testid="file-tree">
+      {dragging !== null && <div ref={edgeUp} className="tree-edge tree-edge-up" aria-hidden="true" />}
       {failed && <p role="alert" className="tree-error">{failed}</p>}
-      <nav className="tree-body" ref={bodyRef}>
+      <nav className="tree-body" ref={bodyRef}
+        onKeyDown={(event) => { if (event.key === 'Escape' && selected.size > 0) { event.preventDefault(); setSelected(new Set()); } }}>
         {/* The folder itself is the first row, and the first level hangs from
             it: a tree whose lines begin one level down reads as a list with a
             tree inside it. */}
@@ -666,10 +883,23 @@ export function FileTree({
             <span className="tree-name">{vaultName}</span>
             {vaultLock && <PrivacyMark level={vaultLock} />}
             {vaultMenu}
+            {dropClass(root) && <span className="tree-drop-ring" aria-hidden="true" />}
           </div>
           {renderLevel(root, 1)}
         </div>
       </nav>
+      {dragging !== null && (
+        <div className="tree-drop-chip" role="status" data-testid="tree-drop-chip"
+          data-verdict={edgeScrolling !== 0 ? 'scrolling' : over === null ? 'none' : dropVerdict(dragging, over)}>
+          {dropWords(dragging, over, root, vaultName, edgeScrolling)}
+        </div>
+      )}
+      {dragging === null && selected.size > 1 && (
+        <div className="tree-drop-chip is-choice" role="status" data-testid="tree-choice-chip">
+          {selected.size} chosen · drag to move · Esc to let go
+        </div>
+      )}
+      {dragging !== null && <div ref={edgeDown} className="tree-edge tree-edge-down" aria-hidden="true" />}
     </div>
   );
 }

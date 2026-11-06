@@ -146,7 +146,7 @@ export function registerWorkspaceHandlers(deps: {
     () => deps.session.newFile());
 
   register(WORKSPACE_CHANNELS.treeMenu, isWorkspaceTreeMenuRequestV1,
-    (request: WorkspaceTreeMenuRequestV1) => deps.session.treeMenu(request.path, request.kind));
+    (request: WorkspaceTreeMenuRequestV1) => deps.session.treeMenu(request.path, request.kind, request.also ?? []));
 
   register(WORKSPACE_CHANNELS.searchContent, isWorkspaceContentRequestV1,
     (request: WorkspaceContentRequestV1) => deps.session.searchContent(request.query, {

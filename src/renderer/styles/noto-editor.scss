@@ -2804,15 +2804,186 @@
 
 /* The folder a dragged row will land in. The accent's own tint, as the
    hover is, with a ring so a folder in a list of folders is unmistakably
-   the one under the pointer. */
+   the one under the pointer. The sticky column with the twisty and glyph is
+   opaque so names can scroll under it, so it takes the same tint, and the
+   ring is a layer of its own above it: drawn on the row, the column covered
+   its left side and left the glyph on a grey patch inside a broken frame.
+   The glyph comes up to the accent, the row's name to ink. */
 .tree-row.is-drop-target,
 .tree-row.is-drop-target:hover {
-  background: color-mix(in srgb, var(--accent) 14%, transparent);
-  box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--accent) 45%, transparent);
+  color: var(--ink);
+  background-color: color-mix(in srgb, var(--accent) 14%, transparent);
+}
+.tree-row.is-drop-target > .tree-leading { background: color-mix(in srgb, var(--accent) 14%, var(--panel)); }
+.tree-directory[data-stuck].is-drop-target::before { background: color-mix(in srgb, var(--accent) 14%, var(--panel)); }
+.tree-row.is-drop-target .tree-glyph { color: var(--accent); }
+
+.tree-drop-ring {
+  position: absolute;
+  inset: 0;
+  z-index: 2;
+  border-radius: inherit;
+  box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--accent) 55%, transparent);
+  pointer-events: none;
 }
 
-/* What is being dragged recedes while it is in the air. */
+/* A closed folder held over fills a line under its name, then opens: the
+   wait is shown, so the opening is expected rather than a surprise. */
+.tree-row.is-springing {
+  background-image: linear-gradient(var(--accent), var(--accent));
+  background-repeat: no-repeat;
+  background-position: left 30px bottom 3px;
+  background-size: 0 2px;
+  /* As long as the wait itself, which the tree sets from `SPRING_MS`. */
+  animation: tree-spring var(--spring-ms) var(--ease-linear) forwards;
+}
+@keyframes tree-spring { to { background-size: calc(100% - 36px) 2px; } }
+
+/* Rows chosen with Command or Shift: a wash of the accent, lighter than the
+   drop target's and without its ring, across the sticky column too, so a
+   chosen row reads as one band from the twisty to the end of its name. */
+.tree-row.is-selected,
+.tree-row.is-selected:hover {
+  color: var(--ink);
+  background-color: color-mix(in srgb, var(--accent) 10%, transparent);
+}
+.tree-row.is-selected > .tree-leading { background: color-mix(in srgb, var(--accent) 10%, var(--panel)); }
+/* Chosen rows next to each other are one band, as a run of them is in Finder. */
+.tree-node:has(> .tree-row.is-selected) + .tree-node > .tree-row.is-selected {
+  border-top-left-radius: 0;
+  border-top-right-radius: 0;
+}
+.tree-node:has(> .tree-row.is-selected):has(+ .tree-node > .tree-row.is-selected) > .tree-row.is-selected {
+  border-bottom-left-radius: 0;
+  border-bottom-right-radius: 0;
+}
+.tree-row.is-selected .tree-glyph { color: var(--ink); }
+
+/* What is being dragged stays in its place, faded, so the eye follows the
+   pill and still sees where it came from. */
+.tree-row.is-dragged { opacity: 0.45; }
 .tree-row[draggable='true']:active { cursor: grabbing; }
+
+/* The pill a dragged row is carried as: its glyph and name, nothing of the
+   guides or the rows around it. Drawn off screen for the moment the browser
+   takes its picture. */
+.tree-drag-pill {
+  position: fixed;
+  top: -1000px;
+  left: -1000px;
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  max-width: 320px;
+  padding: 4px 11px 4px 8px;
+  border: 1px solid color-mix(in srgb, var(--accent) 45%, var(--hairline));
+  border-radius: 999px;
+  background: var(--panel);
+  color: var(--ink);
+  font: 13px/18px tokens.$prose;
+  white-space: nowrap;
+
+  .tree-glyph { color: var(--accent); }
+  span { overflow: hidden; text-overflow: ellipsis; }
+}
+
+/* How many more come with it, when several rows are carried. */
+.tree-drag-count {
+  flex: 0 0 auto;
+  padding: 0 6px;
+  border-radius: 999px;
+  background: var(--accent);
+  color: var(--paper);
+  font: 600 10.5px/16px tokens.$ui;
+  font-variant-numeric: tabular-nums;
+}
+
+/* Held at an edge, the tree scrolls toward it, and the edge says so: a tint
+   from the edge and a chevron, as strong as the scroll (`--edge`, set each
+   frame from the speed). Sticky, so they stay at the rail's edges while the
+   rows run under them; above the held rows. */
+.tree-edge {
+  --edge: 0;
+  position: sticky;
+  left: 0;
+  z-index: 6;
+  height: 0;
+  pointer-events: none;
+}
+.tree-edge-up { top: 0; }
+/* Past the rail's foot, which sticky positions measure from inside of. */
+.tree-edge-down { bottom: calc(-1 * var(--rail-foot, 0px)); }
+
+.tree-edge::before {
+  content: '';
+  position: absolute;
+  left: calc(-1 * var(--rail-side, 0px));
+  right: calc(-1 * var(--rail-side, 0px));
+  height: 40px;
+  opacity: var(--edge);
+  transition: opacity var(--motion-fast) var(--ease-out);
+}
+.tree-edge-up::before { top: 0; background: linear-gradient(to bottom, color-mix(in srgb, var(--accent) 22%, var(--panel)), transparent); }
+.tree-edge-down::before { bottom: 0; background: linear-gradient(to top, color-mix(in srgb, var(--accent) 22%, var(--panel)), transparent); }
+
+.tree-edge::after {
+  content: '';
+  position: absolute;
+  left: 50%;
+  width: 7px;
+  height: 7px;
+  margin-left: -4px;
+  border: solid var(--accent);
+  border-width: 1.5px 0 0 1.5px;
+  opacity: var(--edge);
+  transition: opacity var(--motion-fast) var(--ease-out);
+  animation: tree-edge-nudge var(--motion-nudge) var(--ease-in-out) infinite alternate;
+}
+.tree-edge-up::after { top: 9px; rotate: 45deg; }
+.tree-edge-down::after { bottom: 9px; rotate: -135deg; }
+@keyframes tree-edge-nudge { to { translate: 0 -2px; } }
+.tree-edge-down::after { animation-name: tree-edge-nudge-down; }
+@keyframes tree-edge-nudge-down { to { translate: 0 2px; } }
+
+/* Where the drop would go, in words, at the foot of the rail: by the time a
+   long drag arrives, the folder's own row may be scrolled out of sight.
+   Never in the way: the pointer passes through it to the rows beneath. */
+.tree-drop-chip {
+  position: sticky;
+  bottom: calc(10px - var(--rail-foot, 0px));
+  left: 8px;
+  z-index: 7;
+  box-sizing: border-box;
+  width: fit-content;
+  max-width: calc(100% - 16px);
+  margin: 6px 8px 0;
+  padding: 4px 11px;
+  overflow: hidden;
+  border: 1px solid var(--hairline);
+  border-radius: 999px;
+  background: var(--panel);
+  color: var(--muted);
+  font: 500 11.5px/16px tokens.$ui;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  box-shadow: 0 2px 10px color-mix(in srgb, var(--shadow) 12%, transparent);
+  pointer-events: none;
+  animation: tree-chip-in var(--motion-default) var(--ease-out);
+
+  &[data-verdict='move'] {
+    border-color: color-mix(in srgb, var(--accent) 50%, var(--hairline));
+    color: var(--ink);
+  }
+
+  /* What is chosen, and what can be done with it, while nothing is in the air. */
+  &.is-choice { color: var(--ink); }
+}
+@keyframes tree-chip-in { from { opacity: 0; translate: 0 4px; } }
+
+@media (prefers-reduced-motion: reduce) {
+  .tree-row.is-springing { animation: none; background-image: none; }
+  .tree-edge::after, .tree-drop-chip { animation: none; }
+}
 
 /* The face the document is set in, from the Appearance pane. The serif is
    the theme's own and needs no rule; the other two name the stacks the

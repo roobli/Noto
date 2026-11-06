@@ -35,6 +35,25 @@ export interface TreeRowActions {
   readonly privacy?: { readonly level: 'open' | 'private' | 'sealed'; readonly set: (level: 'open' | 'private' | 'sealed') => void };
 }
 
+/** What a menu for several chosen rows does: one action for all of them. */
+export interface TreeSelectionActions {
+  readonly move: () => void;
+  readonly trash: () => void;
+  readonly copyPaths: () => void;
+}
+
+/** The menu for several rows chosen together: what can be done to all of them at once. */
+export function buildSelectionMenu(count: number, actions: TreeSelectionActions, platform: NodeJS.Platform = process.platform): MenuItemConstructorOptions[] {
+  const bin = trashLabel(platform).replace(/^Move to /, '');
+  return [
+    { id: 'tree-many-move', label: `Move ${count} Items to…`, click: () => actions.move() },
+    { id: 'tree-many-copy-paths', label: 'Copy Paths', click: () => actions.copyPaths() },
+    { type: 'separator' },
+    // Last and alone, as for one row: the only action here with no undo.
+    { id: 'tree-many-trash', label: `Move ${count} Items to ${bin}`, click: () => actions.trash() },
+  ];
+}
+
 /** What each level means, said where it is chosen. */
 const PRIVACY: readonly { readonly level: 'open' | 'private' | 'sealed'; readonly label: string }[] = [
   { level: 'open', label: 'Open: agents with a key may read it' },

@@ -469,6 +469,12 @@ export interface WorkspaceNewFileReplyV1 {
 export interface WorkspaceTreeMenuRequestV1 extends WorkspaceRequestV1 {
   readonly path: string;
   readonly kind: 'file' | 'directory';
+  /**
+   * The other rows chosen with it, when it is one of several: the menu is then
+   * for all of them (move them, trash them, copy their paths). Each is checked
+   * against the open folder as `path` is.
+   */
+  readonly also?: readonly string[];
 }
 
 export interface WorkspaceTreeMenuReplyV1 {

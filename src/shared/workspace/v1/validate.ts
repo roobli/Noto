@@ -963,8 +963,15 @@ export function isWorkspaceNewFileReplyV1(value: unknown): value is WorkspaceNew
 export const isWorkspaceNewFileResultV1 = (value: unknown, id: string): value is WorkspaceResultV1<WorkspaceNewFileReplyV1> =>
   isResult(value, id, isWorkspaceNewFileReplyV1);
 
+/** The most rows one menu is for: a Shift-click across a folder of hundreds. */
+export const TREE_MENU_ALSO_MAX = 2000;
+
 export function isWorkspaceTreeMenuRequestV1(value: unknown): value is WorkspaceTreeMenuRequestV1 {
-  return record(value) && exact(value, ['version', 'requestId', 'path', 'kind'])
+  return record(value)
+    && (exact(value, ['version', 'requestId', 'path', 'kind'])
+      || (exact(value, ['version', 'requestId', 'path', 'kind', 'also']) && Array.isArray(value.also) && value.also.length > 0
+        && value.also.length <= TREE_MENU_ALSO_MAX
+        && value.also.every((other) => typeof other === 'string' && other.length > 0 && other.length <= 4096)))
     && value.version === 1
     && typeof value.requestId === 'string' && requestId.test(value.requestId)
     && typeof value.path === 'string' && value.path.length > 0 && value.path.length <= 4096

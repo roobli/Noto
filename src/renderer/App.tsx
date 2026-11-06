@@ -2028,9 +2028,9 @@ function NotoWorkspace({ platform }: { platform: NotoPlatform }) {
    * The path only names the row; main resolves it, checks it is inside the
    * open folder and draws the menu itself, so nothing the menu does runs here.
    */
-  const showTreeMenu = useCallback((rowPath: string, kind: 'file' | 'directory') => {
+  const showTreeMenu = useCallback((rowPath: string, kind: 'file' | 'directory', also?: readonly string[]) => {
     void window.notoWorkspace.treeMenu({
-      version: 1, requestId: rid('tree-menu'), path: rowPath, kind,
+      version: 1, requestId: rid('tree-menu'), path: rowPath, kind, ...(also && also.length > 0 ? { also } : {}),
     });
   }, []);
   // The same menu for a row a plugin's page draws.
@@ -2374,8 +2374,8 @@ function NotoWorkspace({ platform }: { platform: NotoPlatform }) {
   }, [treeEditing]);
 
   /** A row dragged onto a folder: main moves it and the tree hears about it. */
-  const moveEntryInto = useCallback((source: string, destination: string) => {
-    void window.notoWorkspace.manageEntry({
+  const moveEntryInto = useCallback((source: string, destination: string): Promise<void> => {
+    return window.notoWorkspace.manageEntry({
       version: 1,
       requestId: rid('entry'),
       action: 'move-into',

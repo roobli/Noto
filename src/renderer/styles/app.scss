@@ -51,7 +51,13 @@ body {
      caret that flickers is harder to find, not easier. */
   --motion-caret-breath: 1100ms;
   --motion-caret-halo: 420ms;
+  /* The chevron at the file tree's edge while a drag scrolls it: a slow
+     back and forth that says "moving", never a bounce. */
+  --motion-nudge: 700ms;
   --ease-out: cubic-bezier(0.16, 1, 0.3, 1);
+  /* For a line that fills while something waits (a folder about to open
+     under a drag): even, so the time it shows is the time it takes. */
+  --ease-linear: linear;
   --ease-in: cubic-bezier(0.7, 0, 0.84, 0);
   --ease-in-out: cubic-bezier(0.4, 0, 0.2, 1);
 }
@@ -632,8 +638,11 @@ button:disabled { color: var(--muted); opacity: 0.7; }
   overflow: auto;
   overscroll-behavior: contain;
   /* A deep foot, as Typora's tree has, so the last row is never jammed
-     against the bottom of the pane. */
-  padding: 0 12px 60px;
+     against the bottom of the pane. Named, because what sticks to the
+     bottom of the rail (the file tree's drag cues) measures from inside it. */
+  --rail-foot: 60px;
+  --rail-side: 12px;
+  padding: 0 var(--rail-side) var(--rail-foot);
 }
 
 /* The drag target is wider than the line it moves, because a 1px border is not
