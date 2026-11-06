@@ -201,6 +201,13 @@ it; a folder without memory is offered it, with what would be written said
 first, and a folder whose memory runs scripts runs none until they are
 allowed.
 
+Review, a page in the rail beside Changes, is the folder's queue: what agents
+proposed, opened file by file in the diff view to accept or reject, and what
+the tools found (links to notes that moved, fixed all at once; names a note
+uses without linking, gone through one at a time with Y, N and S). What it
+writes shows up in Changes to be committed as usual, Undo takes the last
+write back, and a note with unsaved edits is left alone.
+
 `Cmd+/` opens Source Code Mode: the whole note as the Markdown it is saved as,
 the way Typora's Command-slash does. `Cmd+Alt+/` still toggles source for the
 single block under the caret, which is the escape hatch when you want to fix
@@ -294,7 +301,8 @@ author's Typora plugins. Sidenotes draws `<span class="sidenote">` notes in the
 margin and writes new ones there, Changes lists the notes changed since the
 last commit as a page in the rail, the first plugin to use a slot outside the
 editor, History fills the Note Info pane with a note's commits and
-properties, and Memory adds Related and Activity from the vault's index. Semantic Focus and Fixture Reader are bundled
+properties, and Memory adds Related and Activity from the vault's index and
+the Review page in the rail. Semantic Focus and Fixture Reader are bundled
 examples, one per runtime kind, kept so that a plugin author has a working
 plugin of each shape to read and so the capability broker has something that
 exercises it.

@@ -38,6 +38,7 @@ host object a slot passes in carries only the services the plugin holds.
 | `editor.read`, `editor.decorate`, `editor.transform` | as before |
 | `git.read` | what changed in the open folder since the last commit; a note's commits, following renames, and its text at any of them (trusted plugins) |
 | `vault.read` | what the open folder's memory (`@roobli/vault`) knows about a note: what links to it, what it names, what is read with it, who reads it and who may; and asking to keep memory or to allow a folder's scripts, which main puts to the person in a sheet of its own (trusted plugins) |
+| `vault.review` | the open folder's Review queue (proposals, suggestions, what was said no to) and the writes that settle it: accept, link, take back; main leaves alone any note with unsaved edits (trusted plugins) |
 
 Navigation (open a note by path), the file tree's own menu for a note or
 folder, and where the window is (the folder, the note in front, and when
@@ -87,8 +88,9 @@ about once switching has paused for 250 ms, so walking through tabs runs no
 queries; `noteText()` with `editor.read`; `replaceNoteText(text)` with
 `editor.transform`, one edit that Undo reverses, refused for a read-only
 note, under Source Code Mode, or for any note but the one in front;
-`showDiff(request)`, the diff view over the page with the plugin's buttons
-and keys in its bar; `showTab(id, key)`; and `copy(text)`.
+`showTab(id, key)`; and `copy(text)`. `showDiff(request)`, the diff view
+over the page with the plugin's buttons and keys in its bar, is on every
+slot's host, a rail page's too: Review opens proposals in it.
 
 A track (`registerInfoTrack`, named `track:<id>`) is a row on the timeline:
 marks at moments, drawn as dots, or amounts per day, drawn as bars, all on

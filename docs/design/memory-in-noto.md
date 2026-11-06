@@ -171,49 +171,65 @@ headings, or in a copied reference (`heard`) note.
 
 ### The Review page
 
-A page in the rail, like Changes, with a count on its toggle of what is
-waiting. It is the folder-wide queue: what agents proposed, and what the tools
-found.
+A page in the rail, like Changes, with a count on its toggle of what waits
+on the person: the proposals from agents and the links to moved notes, the
+two kinds that are always worth acting on. It is the folder-wide queue: what
+agents proposed, and what the tools found.
 
 ```
  ┌ Files  Outline         ⌕  Δ3  ✓12 ┐
- │ REVIEW                            │
- │ ▾ From agents                  1  │
- │   claude-code · 2 h ago           │
- │   Point links at where their…  10 │
- │ ▾ Links to add                    │
- │   Stale links          10  Fix all│
- │   Names not linked  2,880  Review │
- │   Read together        12  Review │
- │ ▸ Not this (42)                   │
+ │ FROM AGENTS                    1  │
+ │ Point links at where their…       │
+ │   claude-code · 6 notes           │
+ │ LINKS TO ADD                      │
+ │ Links to moved notes  10 [Fix All]│
+ │ Named, not linked  2,880 [Review] │
+ │ Read together         12 [Review] │
+ │ ▸ NOT THIS                    42  │
  └───────────────────────────────────┘
 ```
 
-A proposal opens in the main area in the diff view Noto already draws for
-unsaved changes (side by side, stacked or inline, the changed words marked),
-one file after another, with **Accept** and **Reject** in its bar. Accepting
+A proposal opens in the diff view Noto already draws for unsaved changes
+(side by side, stacked or inline, the changed words marked), one file after
+another with [ and ], with **Accept** and **Reject…** in its bar. Accepting
 merges each file three ways, as `proposals accept` does; a file that changed
-since is shown as a conflict with both versions, and the proposal stays.
+since in a way that does not merge is named, and the proposal stays for it.
+Reject asks once more in the same bar, since it is final.
 
-**Review** on a group of suggestions opens them one at a time in the main
-area, strongest first, the way `suggest --review` does:
+**Review** on a group of suggestions goes through them one at a time in the
+rail page itself, strongest first, the way `suggest --review` does. It was
+drawn for the main area; in the rail it leaves the note in view and needs no
+new slot, and its name opens the note when the context is wanted.
 
 ```
- ┌ Link suggestion 3 of 40 ─────────────────────────────────────┐
- │ AAA_深度对比xray与sing-box · line 152                          │
- │ "…在 QUIC 系上 … 见 «多内核横向演进对照» 的总结…"                │
- │ → [[多内核横向演进对照]]   in A402_007_core-history             │
- │                                                               │
- │  Link it  Y     Not this  N     Skip  S          Done  Esc     │
- └───────────────────────────────────────────────────────────────┘
+ ┌───────────────────────────────────┐
+ │ ‹ Review                          │
+ │ NAMED, NOT LINKED          3 of 40│
+ │ ┌───────────────────────────────┐ │
+ │ │ AAA_深度对比xray与sing-box · 152│ │
+ │ │ …见 多内核横向演进对照 的总结…   │ │
+ │ │ → 多内核横向演进对照 in A402…   │ │
+ │ │ [Link It Y] [Not This N] [Skip S]│
+ │ └───────────────────────────────┘ │
+ └───────────────────────────────────┘
 ```
 
-Keys and buttons both, and the line shown as it would read after the link.
-Stale links, which are always right (the note moved and git says where),
-offer **Fix all**. Whatever is linked from the queue is written to the notes
-at once and shows up in Changes, to be committed as usual; **Undo** in the
-queue's bar takes back the last batch. **Not this** keeps a list that can be
-opened and emptied.
+Keys and buttons both, and the line shown as it will read linked: the name
+drawn with the link's underline, the one place the page uses its accent.
+Links to moved notes, which are always right (the note moved and git says
+where), offer **Fix All**. Whatever is linked or taken in is written to the
+notes at once and shows up in Changes, to be committed as usual; **Undo**
+takes back the last write, file by file, wherever a file is still as Review
+left it. A note with unsaved edits in the window is left alone and named,
+since a write under it would lose one side. A suggestion made against an
+older version of its note (the words are no longer where it says) is not
+applied and is suggested afresh. **Not this** keeps a list that can be
+opened, and brought back one at a time or all at once.
+
+Review's lists come from a second worker that opens the same index without
+refreshing it: every mention in a folder of eight thousand notes takes
+about four seconds to find, which on the first worker would hold up Note
+Info's answer about the note in front.
 
 ### Agents and privacy
 
@@ -287,7 +303,8 @@ the app's own features use the seams anyone else's would.
    folder's scripts run only once allowed. Done, with `about` and
    `initVault` added to the vault.
 3. The Review page: proposals in the diff view, the suggestion queue, Fix all
-   for stale links.
+   for stale links, Undo. Done, with `proposalFile`, `dismissals`,
+   `undismiss` and `prepare` added to the vault.
 4. Settings → Memory, Privacy in the folder menu, Agents with keys and setup.
 5. Link suggestions in the note in front.
 6. Ask the vault and Copy as context; the folder's info; one passage's
