@@ -2484,7 +2484,7 @@ section.plugin-group > .plugin-market-row.is-set-aside {
    (docs/design/motion.md, amendment of 2026-10-20). `data-input` is the hand
    last used, kept on the root by input-modality.ts. */
 :root[data-input='keyboard'] :is(
-  .vault-menu-list, .guide-scrim, .settings-shell, .command-palette,
+  .vault-menu-list, .guide-scrim, .settings-page, .settings-shell, .command-palette,
   .command-palette-scrim, .quick-scrim, .quick-open, .table-dialog-scrim,
   .table-dialog, .reload-confirm-scrim, .reload-confirm, .shortcuts,
   .noto-git-popover

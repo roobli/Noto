@@ -126,10 +126,11 @@ How releases are made, and what each channel receives, is in
   the lot. Escape clears the choice.
 - **The open folder's own row has a menu**: New Note Here, New Folder Here,
   Get Info for the whole folder, Reveal and Copy Path.
-- **What Noto Can Do is the guide.** The `?` in the title bar opens it, with
-  a dot when something is new since you last looked; each entry says where
-  the feature is and what Noto does, needs or not, and most have a Try It
-  that does it.
+- **What Noto Can Do is the guide.** The `?` in the title bar opens it as a
+  sheet over the window, with a dot when something is new since you last
+  looked; each entry says where the feature is and what Noto does, needs or
+  not, and most have a Show Me or Try It that goes there. One that needs a
+  folder or a note in front, when there is none, says so in its place.
 - **Noto has an icon**: an N on paper whose last stroke is the caret.
 - **Note Info names the agents that wrote a note.** Git keeps every change
   but not who made it, so an agent that edits files with its own tools
