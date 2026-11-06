@@ -34,6 +34,7 @@ import {
   type WorkspaceNotePassageReplyV1,
   type WorkspaceFolderHistoryReplyV1,
   type WorkspaceFolderMemoryReplyV1,
+  type WorkspaceUndoLinksReplyV1,
   type WorkspaceNoteMemoryReplyV1,
   type WorkspaceKeepMemoryReplyV1,
   type WorkspaceTrustMemoryReplyV1,
@@ -94,6 +95,7 @@ import { buildFileIndex } from './file-index';
 import { GitMarks, defaultGitRunner, findGit } from './git-marks';
 import { NoteHistoryReader, systemBatchGit } from './git-history';
 import { MemoryHost, insideFolder, type MemoryWorker, type ReviewRequest } from './memory-host';
+import { applyRelink, linksInto, planRelink, undoRelink, type RelinkNote, type RelinkSources } from './relink-moves';
 import { memoryScripts, type FolderList, type MemoryTrust } from './memory-trust';
 import { sizeWords } from '../../shared/size-words';
 import { addAgent, agentList, folderSensitivity, noteSensitivity, privacyMarks, revokeAgent, setFolderSensitivity } from '@roobli/vault/policy';
@@ -613,6 +615,11 @@ export class WorkspaceSession {
 
   private async adoptFolder(root: string, chosen = true): Promise<WorkspaceFolderEventV1> {
     this.folderRoot = root;
+    // Moves gathered in the last folder are that folder's: none follows into this one.
+    if (this.pendingTimer !== null) clearTimeout(this.pendingTimer);
+    this.pendingTimer = null;
+    this.pendingMoves = [];
+    this.relinked = null;
     this.folderChosen = chosen;
     if (this.memory) {
       const memory = this.memory;
@@ -791,6 +798,11 @@ export class WorkspaceSession {
     // Trashing closes the notes it takes with it, edits and all, so the
     // question says so when any of them has edits nobody saved.
     const losing = this.unsavedPaths.filter((open) => open === target || isInside(target, open)).length;
+    // What would be left leading nowhere, said before it is: links do not follow a note into the trash.
+    const realRoot = this.folderRoot === null ? null : await realpath(this.folderRoot).catch(() => null);
+    const into = realRoot === null ? { notes: 0, links: 0 } : await linksInto(realRoot, target, this.linkSources()).catch(() => ({ notes: 0, links: 0 }));
+    const linked = into.notes === 0 ? ''
+      : ` ${into.notes === 1 ? 'One note links' : `${into.notes} notes link`} to ${kind === 'directory' ? 'what is in it' : 'it'}; ${into.links === 1 ? 'that link' : 'those links'} will lead nowhere until it is put back.`;
     const answer = await dialog.showMessageBox(window, {
       type: 'warning',
       buttons: [trashLabel(process.platform), 'Cancel'],
@@ -819,6 +831,96 @@ export class WorkspaceSession {
     const resolved = path.resolve(target);
     if (!this.documents.has(resolved)) return null;
     return realpath(resolved).catch(() => null);
+  }
+
+  /** The links written after the last move, to take back while nothing has changed them since; `pass` names it to Undo. */
+  private relinked: { root: string; pass: number; notes: readonly RelinkNote[] } | null = null;
+  private relinkPass = 0;
+  /** One move's links after another's, never two at once over the same notes. */
+  private relinking: Promise<void> = Promise.resolve();
+  /** Moves made in a burst (several rows dropped at once), gathered into one pass, one notice and one Undo. */
+  private pendingMoves: { from: string; to: string }[] = [];
+  private pendingTimer: ReturnType<typeof setTimeout> | null = null;
+
+  /** The folder's index, when its memory is open, to name the notes worth reading for a move. */
+  private linkSources(): RelinkSources | undefined {
+    const memory = this.memory;
+    return memory ? (words) => memory.linkSources(words) : undefined;
+  }
+
+  /** Real paths of the notes with unsaved edits in the window: never written under. */
+  private async busyReal(): Promise<Set<string>> {
+    return new Set(await Promise.all(this.unsavedPaths.map((open) => realpath(open).catch(() => open))));
+  }
+
+  /**
+   * Write again the links a move broke (`relink-moves.ts`), and say so with a
+   * way back. Moves that come within `RELINK_SETTLE_MS` of each other are one
+   * pass; a row moved and moved again is one move, from where it was first.
+   */
+  private followLinks(moves: readonly { from: string; to: string }[]): void {
+    for (const move of moves) {
+      // Moved again: one move, from where it was first.
+      const earlier = this.pendingMoves.find((pending) => pending.to === move.from);
+      if (earlier) { earlier.to = move.to; continue; }
+      // Moved from inside a folder that just moved: from where it was before the folder went.
+      const inside = this.pendingMoves.find((pending) => isInside(pending.to, move.from));
+      this.pendingMoves.push(inside ? { from: path.join(inside.from, path.relative(inside.to, move.from)), to: move.to } : { ...move });
+    }
+    if (this.pendingTimer !== null) clearTimeout(this.pendingTimer);
+    this.pendingTimer = setTimeout(() => this.flushMoves(), RELINK_SETTLE_MS);
+  }
+
+  private flushMoves(): void {
+    if (this.pendingTimer !== null) clearTimeout(this.pendingTimer);
+    this.pendingTimer = null;
+    const moves = this.pendingMoves.filter((move) => move.from !== move.to);
+    this.pendingMoves = [];
+    if (moves.length === 0) return;
+    this.relinking = this.relinking.then(async () => {
+      const root = this.folderRoot;
+      if (root === null) return;
+      const realRoot = await realpath(root).catch(() => null);
+      if (realRoot === null) return;
+      const started = Date.now();
+      const plan = await planRelink(realRoot, moves, await this.busyReal(), this.linkSources());
+      const outcome = await applyRelink(realRoot, plan);
+      const pass = ++this.relinkPass;
+      // A pass that wrote nothing leaves the last one's Undo as it was.
+      if (outcome.written.length > 0) this.relinked = { root: realRoot, pass, notes: outcome.written };
+      const links = outcome.written.reduce((sum, note) => sum + note.links, 0);
+      const held = plan.busy.length;
+      const left = outcome.changed.length;
+      this.logger.log('links_followed', { notes: outcome.written.length, links, held, left, ms: Date.now() - started });
+      if (outcome.written.length > 0 || held > 0 || left > 0) {
+        this.send(WORKSPACE_CHANNELS.linksFollowed, {
+          version: NOTO_WORKSPACE_VERSION, pass: outcome.written.length > 0 ? pass : 0, notes: outcome.written.length, links, held, left,
+        });
+      }
+    }).catch((error: unknown) => {
+      this.logger.log('links_follow_failed', { reason: (error as Error).message });
+    });
+  }
+
+  /**
+   * Take back the links pass `pass` wrote, wherever nothing has changed them
+   * since. Only the last pass that wrote anything can be: the notice for an
+   * older one has nothing left to take back. In the same queue as the passes,
+   * so it never writes a note a pass is writing.
+   */
+  async undoLinks(pass: number): Promise<WorkspaceUndoLinksReplyV1> {
+    const nothing = { version: NOTO_WORKSPACE_VERSION, restored: 0, kept: 0 } as const;
+    let reply: WorkspaceUndoLinksReplyV1 = nothing;
+    this.relinking = this.relinking.then(async () => {
+      const last = this.relinked;
+      if (last === null || last.pass !== pass || last.root !== await realpath(this.folderRoot ?? '').catch(() => null)) return;
+      this.relinked = null;
+      const { restored, kept } = await undoRelink(last.root, last.notes);
+      this.logger.log('links_follow_undone', { restored, kept });
+      reply = { version: NOTO_WORKSPACE_VERSION, restored, kept };
+    }).catch(() => {});
+    await this.relinking;
+    return reply;
   }
 
   /** A folder whose info may be read: the open one, or one inside it, by its real path. Null for anything else. */
@@ -888,6 +990,8 @@ export class WorkspaceSession {
     if (this.busyUnder(real)) return this.refuse('busy');
 
     try {
+      // A pass still writing the last move's links reads the folder as it was: let it finish first.
+      await this.relinking;
       await rename(real, destination);
     } catch {
       return this.refuse('failed');
@@ -927,6 +1031,8 @@ export class WorkspaceSession {
     if (this.busyUnder(real)) return this.refuse('busy');
 
     try {
+      // A pass still writing the last move's links reads the folder as it was: let it finish first.
+      await this.relinking;
       await rename(real, target);
     } catch {
       return this.refuse('failed');
@@ -958,6 +1064,8 @@ export class WorkspaceSession {
     if (this.busyUnder(real)) return this.refuse('busy');
 
     try {
+      // A pass still writing the last move's links reads the folder as it was: let it finish first.
+      await this.relinking;
       await rename(real, target);
     } catch {
       return this.refuse('failed');
@@ -1069,6 +1177,8 @@ export class WorkspaceSession {
    * the old path kept a renamed note called by its old name in the title bar.
    */
   private async followMove(from: string, to: string): Promise<void> {
+    // The links that reached it by its old place follow it, after the move has answered.
+    this.followLinks([{ from, to }]);
     const moved = [...this.documents.keys()].filter((openPath) => openPath === from || isInside(from, openPath));
     if (moved.length === 0) return;
 

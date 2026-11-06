@@ -36,6 +36,8 @@ export type MemoryRequest =
   | { readonly id: number; readonly kind: 'about'; readonly rel: string }
   /** What the index knows about a folder, `''` for the whole of it. */
   | { readonly id: number; readonly kind: 'folder'; readonly rel: string }
+  /** The notes whose links name any of these words: those a move may have broken a link in. */
+  | { readonly id: number; readonly kind: 'link-sources'; readonly words: readonly string[] }
   | { readonly id: number; readonly kind: 'refresh'; readonly paths: readonly string[] | null }
   | { readonly id: number; readonly kind: 'close' }
   /** What the index holds, for Settings → Memory. */
@@ -92,6 +94,8 @@ const UNDO_DEPTH = 20;
  */
 const NOTE_MENTION_FLOOR = 0.6;
 const NOTE_MENTION_LIMIT = 8;
+/** The most words one ask for link sources takes; a move names one or two. */
+const LINK_WORDS = 64;
 /** Notes in each of a folder's lists: the pane is narrow. */
 const FOLDER_LIST = 8;
 
@@ -210,6 +214,15 @@ async function handle(request: MemoryRequest): Promise<unknown> {
     }
     case 'about':
       return about(open(), request.rel);
+    case 'link-sources': {
+      // More than one query takes: the caller reads the folder instead, rather than miss some.
+      if (request.words.length > LINK_WORDS) return null;
+      if (request.words.length === 0) return [];
+      // instr, not LIKE, so nothing in a word means anything to it; lower on both sides, as a name is found in any case.
+      const rows = open().store.db.prepare(`SELECT DISTINCT src FROM links WHERE ${request.words.map(() => 'instr(lower(target), lower(?)) > 0').join(' OR ')}`)
+        .all(...request.words) as { src: string }[];
+      return rows.map((row) => row.src);
+    }
     case 'folder':
     {
       const known = folderAbout(open(), request.rel, { limit: FOLDER_LIST });

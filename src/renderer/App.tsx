@@ -60,6 +60,7 @@ import type { WorkspaceEntryRefusalV1, WorkspaceExportKindV1, WorkspaceExportRef
 import { LockGlyph } from './FileTree';
 import { EXPORT_PALETTE_COMMANDS } from '../shared/export/targets';
 import { EMPTY_TRAIL, forget as forgetTrail, record as recordTrail, stepBack, stepForward, type Trail } from './trail';
+import { followedWords, undoneWords } from './relink-words';
 import { wikiCandidates, wikiTargetFor } from './wiki-target';
 import { seedOutboundLinks } from './seed-links';
 import { wikiLinkText } from './editor/noto/wiki-trigger';
@@ -600,6 +601,18 @@ function NotoWorkspace({ platform }: { platform: NotoPlatform }) {
       if (timer) clearTimeout(timer);
     };
   }, []);
+  // A move's links, written again in main, are said in the status line with a way back.
+  useEffect(() => window.notoWorkspace.onLinksFollowed((event) => {
+    const undo = {
+      label: 'Undo',
+      run: () => {
+        void window.notoWorkspace.undoLinks({ version: 1, requestId: rid('undo-links'), pass: event.pass }).then((result) => {
+          if (result.ok) window.dispatchEvent(new CustomEvent('noto:notice', { detail: undoneWords(result.value) }));
+        });
+      },
+    };
+    window.dispatchEvent(new CustomEvent('noto:notice', { detail: { message: followedWords(event), ...(event.pass > 0 ? { action: undo } : {}) } }));
+  }), []);
   // A notice's action is about the note on screen when it was raised: once
   // another note, or Source Code Mode, is in front, the button would act on
   // a note the reader is not looking at.
@@ -3464,6 +3477,19 @@ function NotoWorkspace({ platform }: { platform: NotoPlatform }) {
           repeating it in the corner spends the only other line the window has
           on something the reader has already read. The containing folder is
           what the title bar cannot tell them, and the full path is on hover. */}
+      {/* With no note open there is no status line, but what the folder did
+          (a move whose links followed, say) still has to be said, and undone. */}
+      {!opened && notice && (
+        <footer className="operational-status is-bare">
+          <span key={notice} className="status-message is-notice" data-testid="status-notice" aria-live="polite">{notice}</span>
+          {noticeAction && (
+            <button type="button" className="status-notice-action" data-testid="status-notice-action"
+              onClick={() => { const action = noticeAction; setNotice(null); setNoticeAction(null); action.run(); }}>
+              {noticeAction.label}
+            </button>
+          )}
+        </footer>
+      )}
       {opened && (
         <footer className={readOnly ? 'operational-status has-flag' : 'operational-status'}>
           <RecentStrip tabs={tabs} dirty={dirtyDocumentIds} onActivate={activateTab} />

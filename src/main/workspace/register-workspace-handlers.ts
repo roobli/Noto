@@ -22,6 +22,7 @@ import {
   type RecentFileV1,
   type WorkspaceOpenExternalRequestV1,
   type WorkspaceTreeMenuRequestV1,
+  type WorkspaceUndoLinksRequestV1,
   type WorkspaceRevealRequestV1,
   type WorkspaceContentRequestV1,
   type WorkspaceNotesByTagRequestV1,
@@ -43,6 +44,7 @@ import {
   isWorkspaceMemoryPrivacyRequestV1,
   isWorkspaceOpenExternalRequestV1,
   isWorkspaceTreeMenuRequestV1,
+  isWorkspaceUndoLinksRequestV1,
   isWorkspaceRevealRequestV1,
   isWorkspaceContentRequestV1,
   isWorkspaceNotesByTagRequestV1,
@@ -159,6 +161,8 @@ export function registerWorkspaceHandlers(deps: {
 
   // Read-only: git log and cat-file on one note in the open folder, and only
   // a commit and path from that note's own history.
+  register(WORKSPACE_CHANNELS.undoLinks, isWorkspaceUndoLinksRequestV1,
+    (request: WorkspaceUndoLinksRequestV1) => deps.session.undoLinks(request.pass));
   register(WORKSPACE_CHANNELS.folderHistory, isWorkspaceFolderRequestV1,
     (request: WorkspaceFolderRequestV1) => deps.session.folderHistory(request.path));
   register(WORKSPACE_CHANNELS.folderMemory, isWorkspaceFolderRequestV1,

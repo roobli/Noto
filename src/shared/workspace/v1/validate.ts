@@ -53,6 +53,9 @@ import {
   WorkspaceFolderMemoryReplyV1,
   WorkspaceFolderHistoryReplyV1,
   WorkspaceShowFolderInfoEventV1,
+  WorkspaceLinksFollowedV1,
+  WorkspaceUndoLinksReplyV1,
+  WorkspaceUndoLinksRequestV1,
   FolderNoteV1,
   WorkspaceNoteHistoryReplyV1,
   WorkspaceNoteHistoryRequestV1,
@@ -700,6 +703,26 @@ export function isWorkspaceShowFolderInfoEventV1(value: unknown): value is Works
   return record(value) && exact(value, ['version', 'path']) && value.version === 1
     && typeof value.path === 'string' && value.path.length > 0 && value.path.length <= 4096;
 }
+
+export function isWorkspaceLinksFollowedV1(value: unknown): value is WorkspaceLinksFollowedV1 {
+  return record(value) && exact(value, ['version', 'pass', 'notes', 'links', 'held', 'left']) && value.version === 1
+    && whole(value.pass) && whole(value.notes) && whole(value.links) && whole(value.held) && whole(value.left)
+    && (value.links as number) >= (value.notes as number) && ((value.pass as number) > 0) === ((value.notes as number) > 0);
+}
+
+export function isWorkspaceUndoLinksRequestV1(value: unknown): value is WorkspaceUndoLinksRequestV1 {
+  return record(value) && exact(value, ['version', 'requestId', 'pass']) && value.version === 1
+    && typeof value.requestId === 'string' && requestId.test(value.requestId) && whole(value.pass) && (value.pass as number) > 0;
+}
+
+export function isWorkspaceUndoLinksReplyV1(value: unknown): value is WorkspaceUndoLinksReplyV1 {
+  return record(value) && exact(value, ['version', 'restored', 'kept']) && value.version === 1
+    && whole(value.restored) && whole(value.kept);
+}
+
+export const isWorkspaceUndoLinksResultV1 = (
+  value: unknown, id: string,
+): value is WorkspaceResultV1<WorkspaceUndoLinksReplyV1> => isResult(value, id, isWorkspaceUndoLinksReplyV1);
 
 const isFolderNoteV1 = (value: unknown): value is FolderNoteV1 => record(value)
   && exact(value, ['path', 'title', 'heat', 'reads', 'lastRead'])

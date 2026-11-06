@@ -2030,6 +2030,9 @@ section.plugin-group > .plugin-market-row.is-set-aside {
 /* Status line
    ------------------------------------------------------------------------- */
 
+/* The line with nothing open but a notice: the message and its action, at the start. */
+.operational-status.is-bare { grid-template-columns: minmax(0, auto) auto 1fr; }
+
 .operational-status {
   display: grid;
   /* One column for each thing on the line: the recent notes, the folder, the

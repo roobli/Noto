@@ -167,6 +167,9 @@ import type {
   WorkspaceExportRequestV1,
   WorkspaceRenameRowEventV1,
   WorkspaceShowFolderInfoEventV1,
+  WorkspaceLinksFollowedV1,
+  WorkspaceUndoLinksReplyV1,
+  WorkspaceUndoLinksRequestV1,
   WorkspaceFolderHistoryReplyV1,
   WorkspaceFolderMemoryReplyV1,
   WorkspaceGitMarksV1,
@@ -234,6 +237,9 @@ import {
   isWorkspaceExportResultV1,
   isWorkspaceRenameRowEventV1,
   isWorkspaceShowFolderInfoEventV1,
+  isWorkspaceLinksFollowedV1,
+  isWorkspaceUndoLinksResultV1,
+  isWorkspaceUndoLinksRequestV1,
   isWorkspaceFolderHistoryResultV1,
   isWorkspaceFolderMemoryResultV1,
   isWorkspaceGitMarksV1,
@@ -644,6 +650,11 @@ const workspaceApi: NotoWorkspaceApiV1 = Object.freeze({
     subscribe(WORKSPACE_CHANNELS.renameRow, isWorkspaceRenameRowEventV1, listener),
   onShowFolderInfo: (listener: (event: WorkspaceShowFolderInfoEventV1) => void) =>
     subscribe(WORKSPACE_CHANNELS.showFolderInfo, isWorkspaceShowFolderInfoEventV1, listener),
+  onLinksFollowed: (listener: (event: WorkspaceLinksFollowedV1) => void) =>
+    subscribe(WORKSPACE_CHANNELS.linksFollowed, isWorkspaceLinksFollowedV1, listener),
+  undoLinks: (request: WorkspaceUndoLinksRequestV1) => isWorkspaceUndoLinksRequestV1(request)
+    ? invokeWorkspace<WorkspaceUndoLinksReplyV1>(WORKSPACE_CHANNELS.undoLinks, request, request.requestId, isWorkspaceUndoLinksResultV1)
+    : Promise.resolve(rejectedWorkspace<WorkspaceUndoLinksReplyV1>('invalid', 'Invalid undo links request')),
   gitMarks: (request: WorkspaceRequestV1) => isWorkspaceRequestV1(request)
     ? invokeWorkspace<WorkspaceGitMarksV1>(WORKSPACE_CHANNELS.gitMarks, request, request.requestId, isWorkspaceGitMarksResultV1)
     : Promise.resolve(rejectedWorkspace<WorkspaceGitMarksV1>('invalid', 'Invalid git marks request')),

@@ -85,6 +85,10 @@ export const WORKSPACE_CHANNELS = {
   notePassage: 'noto:v1:workspace:note-passage',
   /** The newest commits that changed anything under a folder. See `WorkspaceFolderHistoryReplyV1`. */
   folderHistory: 'noto:v1:workspace:folder-history',
+  /** Push: after a move, the links that named the old place were written again. See `WorkspaceLinksFollowedV1`. */
+  linksFollowed: 'noto:v1:workspace:links-followed',
+  /** Take back the links written after the last move. See `WorkspaceUndoLinksReplyV1`. */
+  undoLinks: 'noto:v1:workspace:undo-links',
   /** Push: Get Info was chosen on a folder in the tree, so the info pane turns to it. */
   showFolderInfo: 'noto:v1:workspace:show-folder-info',
   /** One note's text as one of its commits had it. */
@@ -991,6 +995,37 @@ export interface WorkspaceFolderHistoryReplyV1 {
   readonly commits: readonly FolderCommitV1[];
 }
 
+/**
+ * Push: a note or folder was renamed or moved, and the links that reached it
+ * by its old place (and its own relative links to the neighbours it left)
+ * were written again to reach the same notes.
+ */
+export interface WorkspaceLinksFollowedV1 {
+  readonly version: typeof NOTO_WORKSPACE_VERSION;
+  /** What Undo names to take this back; 0 when nothing was written. */
+  readonly pass: number;
+  /** Notes written again, and the links in them. */
+  readonly notes: number;
+  readonly links: number;
+  /** Notes with links to write that have unsaved edits in the window, left alone. */
+  readonly held: number;
+  /** Notes changed while they were read, or that could not be written, left as they are. */
+  readonly left: number;
+}
+
+export interface WorkspaceUndoLinksRequestV1 extends WorkspaceRequestV1 {
+  /** The pass the notice was for. */
+  readonly pass: number;
+}
+
+export interface WorkspaceUndoLinksReplyV1 {
+  readonly version: typeof NOTO_WORKSPACE_VERSION;
+  /** Notes put back as they were before the move. */
+  readonly restored: number;
+  /** Notes changed since, and kept as they are. */
+  readonly kept: number;
+}
+
 /** Push: the folder the info pane should be about, a real path inside the open folder. */
 export interface WorkspaceShowFolderInfoEventV1 {
   readonly version: typeof NOTO_WORKSPACE_VERSION;
@@ -1479,4 +1514,6 @@ export interface NotoWorkspaceApiV1 {
   onMemoryChanged(listener: (event: WorkspaceMemoryChangedV1) => void): () => void;
   onRenameRow(listener: (event: WorkspaceRenameRowEventV1) => void): () => void;
   onShowFolderInfo(listener: (event: WorkspaceShowFolderInfoEventV1) => void): () => void;
+  onLinksFollowed(listener: (event: WorkspaceLinksFollowedV1) => void): () => void;
+  undoLinks(request: WorkspaceUndoLinksRequestV1): Promise<WorkspaceResultV1<WorkspaceUndoLinksReplyV1>>;
 }

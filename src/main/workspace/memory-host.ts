@@ -302,6 +302,21 @@ export class MemoryHost {
     }
   }
 
+  /**
+   * The notes whose links name any of `words`, vault-relative, from the index:
+   * where a move may have broken a link. Null unless the memory is open now,
+   * and the caller reads the folder instead; never opens it, since a move is
+   * no reason to begin.
+   */
+  async linkSources(words: readonly string[]): Promise<readonly string[] | null> {
+    if (this.state !== 'open' || this.link === null) return null;
+    try {
+      return await this.link.ask({ kind: 'link-sources', words }, ABOUT_TIMEOUT_MS) as string[] | null;
+    } catch {
+      return null;
+    }
+  }
+
   /** Who has read the folder's notes, from the read record: null unless the memory is open now. */
   async readers(): Promise<readonly { actor: string; count: number; last: string }[] | null> {
     if (this.state !== 'open' || this.link === null) return null;
