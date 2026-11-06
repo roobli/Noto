@@ -6,7 +6,9 @@
   "runtime": "trusted-renderer",
   "activation": {
     "startup": false,
-    "events": [],
+    "events": [
+      "editor.ready"
+    ],
     "hotkeys": []
   },
   "capabilities": [
@@ -17,7 +19,12 @@
     "activate",
     "deactivate"
   ],
-  "commands": [],
+  "commands": [
+    {
+      "id": "memory.ask",
+      "title": "Memory: ask the folder a question"
+    }
+  ],
   "settings": [],
   "hotkeys": [],
   "editorExtensions": [],

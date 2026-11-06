@@ -4303,6 +4303,47 @@ section.plugin-group > .plugin-market-row.is-set-aside {
 /* Related and Activity: notes worth having in mind, each with why. */
 .memory-group { padding: 8px 8px 4px; }
 
+/* Ask the vault: a field like the rail's search, at the top of Related, and
+   what it answered as one more group, each note with why and two lines of it. */
+.memory-ask { padding: 10px 16px 2px; }
+.memory-ask-field {
+  box-sizing: border-box;
+  width: 100%;
+  border: 1px solid var(--hairline);
+  border-radius: 7px;
+  background: var(--paper);
+  padding: 5px 9px;
+  color: var(--ink);
+  font: 400 12.5px/17px tokens.$ui;
+  outline: none;
+  appearance: none;
+
+  &::placeholder { color: var(--muted); opacity: 0.8; }
+  &::-webkit-search-cancel-button { appearance: none; }
+  &:focus { border-color: var(--focus); }
+}
+.memory-ask .info-status { margin: 6px 2px 0; }
+.memory-asked { padding-right: 0; padding-left: 0; }
+.memory-asked .memory-why {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  white-space: normal;
+}
+.memory-asked .memory-why > span:first-child { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.memory-excerpt {
+  display: -webkit-box;
+  overflow: hidden;
+  color: var(--ink);
+  font-size: 11.5px;
+  line-height: 16px;
+  -webkit-box-orient: vertical;
+  -webkit-line-clamp: 2;
+  line-clamp: 2;
+}
+.memory-asked .memory-heading { align-items: center; }
+.memory-copy { font: 500 10.5px/14px tokens.$ui; letter-spacing: 0; }
+
 .memory-heading {
   display: flex;
   justify-content: space-between;

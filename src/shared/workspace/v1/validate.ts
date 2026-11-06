@@ -43,6 +43,8 @@ import {
   WorkspaceAgentActionV1,
   WorkspaceAgentRequestV1,
   WorkspaceAgentsReplyV1,
+  WorkspaceMemoryAskReplyV1,
+  WorkspaceMemoryAskRequestV1,
   WorkspaceMemoryFolderReplyV1,
   WorkspaceMemoryFolderRequestV1,
   WorkspaceMemoryPrivacyReplyV1,
@@ -515,6 +517,31 @@ export function isWorkspaceMemoryFolderReplyV1(value: unknown): value is Workspa
 export const isWorkspaceMemoryFolderResultV1 = (
   value: unknown, id: string,
 ): value is WorkspaceResultV1<WorkspaceMemoryFolderReplyV1> => isResult(value, id, isWorkspaceMemoryFolderReplyV1);
+
+export function isWorkspaceMemoryAskRequestV1(value: unknown): value is WorkspaceMemoryAskRequestV1 {
+  return record(value) && exact(value, ['version', 'requestId', 'cue', 'note']) && value.version === 1
+    && typeof value.requestId === 'string' && requestId.test(value.requestId)
+    && typeof value.cue === 'string' && value.cue.trim().length > 0 && value.cue.length <= 500
+    && (value.note === null || (text(value.note, 4096) && !(value.note as string).includes('\0')));
+}
+
+const ASK_STATES = new Set(['ok', 'no-memory', 'untrusted', 'opening', 'unavailable', 'outside']);
+
+export function isWorkspaceMemoryAskReplyV1(value: unknown): value is WorkspaceMemoryAskReplyV1 {
+  if (!record(value) || !exact(value, ['version', 'state', 'value']) || value.version !== 1) return false;
+  if (typeof value.state !== 'string' || !ASK_STATES.has(value.state)) return false;
+  if (value.state !== 'ok') return value.value === null;
+  const pack = value.value;
+  return record(pack) && exact(pack, ['cue', 'items', 'omitted', 'markdown']) && text(pack.cue, 500) && whole(pack.omitted)
+    && text(pack.markdown, 1024 * 1024)
+    && listOf(pack.items, 100, (item) => exact(item, ['path', 'title', 'kind', 'why', 'excerpt'])
+      && notePath(item.path) && text(item.title, 512) && text(item.kind, 64)
+      && Array.isArray(item.why) && item.why.length <= 20 && item.why.every((why) => text(why, 512)) && text(item.excerpt, 64 * 1024));
+}
+
+export const isWorkspaceMemoryAskResultV1 = (
+  value: unknown, id: string,
+): value is WorkspaceResultV1<WorkspaceMemoryAskReplyV1> => isResult(value, id, isWorkspaceMemoryAskReplyV1);
 
 export const isWorkspaceAgentsResultV1 = (
   value: unknown, id: string,

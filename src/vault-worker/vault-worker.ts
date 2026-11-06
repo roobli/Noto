@@ -21,7 +21,7 @@ import { readFileSync, statSync, unlinkSync, writeFileSync, mkdirSync } from 'no
 import path from 'node:path';
 import { parentPort } from 'node:worker_threads';
 import {
-  about, dismiss, dismissals, indexPath, initVault, prepare, suggest, undismiss, Vault,
+  about, dismiss, dismissals, formatRecall, indexPath, initVault, prepare, recall, suggest, undismiss, Vault,
   type FileChange, type Suggestion, type SuggestionType,
 } from '@roobli/vault';
 import { PROPOSAL_ID } from '../shared/workspace/v1/contracts';
@@ -53,7 +53,9 @@ export type MemoryRequest =
   | { readonly id: number; readonly kind: 'undismiss'; readonly ids: readonly string[] | 'all' }
   | { readonly id: number; readonly kind: 'undo'; readonly busy: readonly string[] }
   /** The likeliest unlinked mentions in one note, to mark in it while it is in front. */
-  | { readonly id: number; readonly kind: 'mentions'; readonly rel: string };
+  | { readonly id: number; readonly kind: 'mentions'; readonly rel: string }
+  /** A question in words, answered with the context pack, near `rel` when there is one. */
+  | { readonly id: number; readonly kind: 'recall'; readonly cue: string; readonly rel: string | null };
 
 export type MemoryAnswer =
   | { readonly id: number; readonly ok: true; readonly value: unknown }
@@ -308,6 +310,16 @@ async function handle(request: MemoryRequest): Promise<unknown> {
         .sort((left, right) => right.score - left.score)
         .slice(0, NOTE_MENTION_LIMIT)
         .map((item) => ({ id: item.id, to: item.to, toTitle: item.toTitle, score: item.score, around: item.around!, replacement: item.splice!.replacement }));
+    case 'recall': {
+      // Recorded as the owner's recall, as an agent's ask through MCP is recorded as its own.
+      const pack = recall(open(), request.cue, request.rel ? { from: request.rel } : {});
+      return {
+        cue: pack.cue,
+        items: pack.items.map((item) => ({ path: item.path, title: item.title, kind: item.kind, why: [...item.why], excerpt: item.excerpt })),
+        omitted: pack.omitted,
+        markdown: formatRecall(pack),
+      };
+    }
     case 'undo': {
       const memory = open();
       const batch = batches.pop();

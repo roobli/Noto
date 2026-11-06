@@ -38,6 +38,7 @@ import {
   type WorkspaceReviewReplyV1,
   type WorkspaceAgentActionV1,
   type WorkspaceAgentsReplyV1,
+  type WorkspaceMemoryAskReplyV1,
   type WorkspaceMemoryFolderActionV1,
   type WorkspaceMemoryFolderReplyV1,
   type WorkspaceMemoryPrivacyReplyV1,
@@ -1759,6 +1760,18 @@ export class WorkspaceSession {
     if (outcome === 'done' && action.kind === 'record') this.send(WORKSPACE_CHANNELS.memoryChanged, { version: NOTO_WORKSPACE_VERSION });
     const status = await memory.status();
     return reply({ state: status.state, index: status.index, outcome, error });
+  }
+
+  /** A question of the folder's memory in words; see `memory-host.ts`. `note` is the note in front, on disk, or null. */
+  async memoryAsk(cue: string, note: string | null): Promise<WorkspaceMemoryAskReplyV1> {
+    const memory = this.memory;
+    if (!memory) return { version: NOTO_WORKSPACE_VERSION, state: 'unavailable', value: null };
+    const root = memory.folder();
+    const real = note === null ? null : await realpath(note).catch(() => null);
+    const rel = real === null || root === null ? null : insideFolder(root, real);
+    const outcome = await memory.recall(cue.trim(), rel);
+    this.logger.log('memory_ask', { state: outcome.state, items: outcome.value?.items.length ?? 0 });
+    return { version: NOTO_WORKSPACE_VERSION, ...outcome };
   }
 
   /**

@@ -5,14 +5,17 @@
  * Related is the notes worth having in mind while writing this one, in four
  * groups, each row saying why it is there so the reader can judge it: what
  * links here, notes this one names without linking, notes read or changed
- * together with it, and notes about the same thing. Activity is how the note
+ * together with it, and notes about the same thing. Above them, Ask the
+ * Vault takes a question in words and answers with the folder's context
+ * pack, which Copy as Context puts on the clipboard exactly as an agent
+ * asking through MCP is given it. Activity is how the note
  * is used: who read it and how often, what led there, what was written to it,
  * its heat in a sentence, and which agents may not read it and why.
  */
 
-import { useState, type CSSProperties, type ReactNode } from 'react';
+import { useEffect, useRef, useState, type CSSProperties, type ReactNode } from 'react';
 import { createRoot } from 'react-dom/client';
-import type { InfoTabHost, InfoTabView, NoteMemory, NoteMemoryAnswer } from '../../slots';
+import type { InfoTabHost, InfoTabView, MemoryAskAnswer, NoteMemory, NoteMemoryAnswer } from '../../slots';
 import { absolute, actorName, agentName, heatWords, nameOf, times, togetherWhy, useMemory } from './model';
 
 /** Rows a group shows before it says how many more there are. */
@@ -109,6 +112,79 @@ const more = (count: number, shown: number) => (count > shown
   ? <li className="memory-more">{(count - shown).toLocaleString('en')} more not shown</li>
   : null);
 
+/** The tab's field, for a command that leads to it ("Ask the folder…"). */
+const ASK_FOCUS = 'noto:memory-ask-focus';
+
+/**
+ * A question in words, and the folder's answer: the notes most likely to
+ * matter, each with why it came up and an excerpt, within the memory's
+ * budget. Copy as Context puts the same pack on the clipboard as Markdown.
+ * Escape clears the answer; the question stays to be asked again.
+ */
+function Ask({ host, note }: { readonly host: InfoTabHost; readonly note: string }) {
+  const [cue, setCue] = useState('');
+  const [answer, setAnswer] = useState<MemoryAskAnswer | null>(null);
+  const [busy, setBusy] = useState(false);
+  const [copied, setCopied] = useState(false);
+  const field = useRef<HTMLInputElement>(null);
+  const asked = useRef(0);
+  useEffect(() => {
+    const focus = () => { field.current?.focus(); field.current?.select(); };
+    window.addEventListener(ASK_FOCUS, focus);
+    return () => window.removeEventListener(ASK_FOCUS, focus);
+  }, []);
+  // A new note is a new conversation: what was asked from the last one is not about this one.
+  useEffect(() => { setAnswer(null); setCopied(false); }, [note]);
+  const ask = () => {
+    const question = cue.trim();
+    if (!question || !host.vault) return;
+    const mine = ++asked.current;
+    setBusy(true);
+    setCopied(false);
+    void host.vault.ask(question, note).then((reply) => {
+      if (mine !== asked.current) return;
+      setBusy(false);
+      setAnswer(reply ?? { state: 'unavailable', value: null });
+    }, () => { if (mine === asked.current) { setBusy(false); setAnswer({ state: 'unavailable', value: null }); } });
+  };
+  const pack = answer?.state === 'ok' ? answer.value : null;
+  return (
+    <div className="memory-ask" data-testid="memory-ask">
+      <form role="search" onSubmit={(event) => { event.preventDefault(); ask(); }}>
+        <input ref={field} type="search" className="memory-ask-field" data-testid="memory-ask-field" value={cue}
+          placeholder="Ask the vault…" aria-label="Ask the vault" spellCheck={false} maxLength={500}
+          onChange={(event) => setCue(event.target.value)}
+          onKeyDown={(event) => { if (event.key === 'Escape' && answer) { event.preventDefault(); setAnswer(null); } }} />
+      </form>
+      {busy && <p className="info-status" role="status">Asking…</p>}
+      {answer && !busy && !pack && <p className="info-status" role="status">The folder's memory could not be asked just now.</p>}
+      {pack && !busy && (
+        <section className="memory-group memory-asked" aria-label={`Asked: ${pack.cue}`} data-testid="memory-asked">
+          <h3 className="memory-heading">
+            <span>Asked</span>
+            <button type="button" className="memory-link memory-copy" data-testid="memory-copy-context"
+              disabled={pack.items.length === 0}
+              onClick={() => { host.copy(pack.markdown); setCopied(true); }}>
+              {copied ? 'Copied' : 'Copy as Context'}
+            </button>
+          </h3>
+          {pack.items.length === 0
+            ? <p className="info-note">Nothing in the folder came up for that.</p>
+            : (
+              <ul className="memory-list">
+                {pack.items.map((item) => (
+                  <Row key={item.path} host={host} rel={item.path} title={item.title} testId="memory-asked-row"
+                    why={<><span>{item.why.join(' · ')}</span><span className="memory-excerpt">{item.excerpt}</span></>} />
+                ))}
+                {pack.omitted > 0 && <li className="memory-more">{pack.omitted.toLocaleString('en')} more did not fit</li>}
+              </ul>
+            )}
+        </section>
+      )}
+    </div>
+  );
+}
+
 function Related({ host }: { readonly host: InfoTabHost }) {
   const { note, answer } = useMemory(host);
   const [brokenOpen, setBrokenOpen] = useState(false);
@@ -127,6 +203,7 @@ function Related({ host }: { readonly host: InfoTabHost }) {
   const listed = memory.linksHere.length + memory.namedHere.length + memory.together.length + memory.aboutSame.length;
   return (
     <div className="memory-tab" data-testid="related-tab">
+      <Ask host={host} note={note} />
       {memory.supersededBy && (
         <p className="memory-superseded" data-testid="memory-superseded">
           Superseded by{' '}
@@ -245,7 +322,16 @@ function mount(Component: typeof Related, element: HTMLElement, host: InfoTabHos
   const root = createRoot(element);
   root.render(<Component host={host} />);
   return {
-    reveal: () => element.querySelector<HTMLElement>('[data-key="reads"]')?.scrollIntoView({ block: 'nearest' }),
+    reveal: (key) => {
+      // `ask`: the field, for a command that leads here; it may mount a moment after.
+      if (key === 'ask') {
+        const focus = () => window.dispatchEvent(new Event(ASK_FOCUS));
+        if (element.querySelector('[data-testid="memory-ask-field"]')) focus();
+        else setTimeout(focus, 120);
+        return;
+      }
+      element.querySelector<HTMLElement>('[data-key="reads"]')?.scrollIntoView({ block: 'nearest' });
+    },
     dispose: () => root.unmount(),
   };
 }

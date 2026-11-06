@@ -21,6 +21,7 @@ import path from 'node:path';
 import {
   NOTO_WORKSPACE_VERSION,
   type NoteMemoryV1,
+  type WorkspaceMemoryAskReplyV1,
   type WorkspaceNoteMemoryReplyV1,
   type WorkspaceReviewReplyV1,
 } from '../../shared/workspace/v1/contracts';
@@ -75,6 +76,9 @@ const WRITES = new Set(['accept', 'reject', 'link', 'dismiss', 'undismiss', 'und
 
 /** A Review request as the worker takes it, main having added what has unsaved edits. */
 export type ReviewRequest = Extract<Unnumbered, { kind: 'summary' | 'suggestions' | 'proposal-file' | 'accept' | 'reject' | 'link' | 'dismiss' | 'dismissals' | 'undismiss' | 'undo' | 'mentions' }>;
+
+/** What the folder's memory answers a question with; see `WorkspaceMemoryAskReplyV1`. */
+export type AskOutcome = Omit<WorkspaceMemoryAskReplyV1, 'version'>;
 
 /** What the index holds, for Settings → Memory. */
 export interface MemoryIndexStatus {
@@ -253,6 +257,24 @@ export class MemoryHost {
     } finally {
       if (this.generation === generation && this.root === root && this.link === null) this.state = 'closed';
       this.options.onChanged();
+    }
+  }
+
+  /**
+   * A question in words, answered with the context pack, on Review's worker,
+   * so a question never holds up an answer about the note in front. `rel` is
+   * the note whose neighbours count for more, or null.
+   */
+  async recall(cue: string, rel: string | null): Promise<AskOutcome> {
+    const root = this.root;
+    if (root === null) return { state: 'outside', value: null };
+    const closed = this.gate(root);
+    if (closed !== null) return { state: closed, value: null };
+    try {
+      const reader = await this.startReader(root);
+      return { state: 'ok', value: await reader.ask({ kind: 'recall', cue, rel }, REVIEW_TIMEOUT_MS) as AskOutcome['value'] };
+    } catch {
+      return { state: 'unavailable', value: null };
     }
   }
 

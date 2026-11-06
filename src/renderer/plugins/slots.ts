@@ -55,6 +55,8 @@ export interface GitService {
 
 /** What the folder's memory says about a note: see `WorkspaceNoteMemoryReplyV1`. */
 export type NoteMemoryAnswer = Omit<WorkspaceNoteMemoryReplyV1, 'version'>;
+/** What the memory answered a question with: see `WorkspaceMemoryAskReplyV1`. */
+export type MemoryAskAnswer = Omit<WorkspaceMemoryAskReplyV1, 'version'>;
 export type { NoteMemoryV1 as NoteMemory } from '../../shared/workspace/v1/contracts';
 
 /** The `vault.read` capability: the open folder's memory, `@roobli/vault`'s index of it. */
@@ -63,6 +65,13 @@ export interface VaultService {
   about(path: string): Promise<NoteMemoryAnswer | null>;
   /** Called when the memory opened or changed, so what was asked may be asked again. */
   subscribe(listener: () => void): Disposer;
+  /**
+   * A question in words, answered with the folder's context pack: the notes
+   * most likely to matter, why, and an excerpt of each, and the same as
+   * Markdown, as an agent asking through MCP gets it. `note` is the note in
+   * front, whose neighbours count for more. Null when main could not be asked.
+   */
+  ask(cue: string, note: string | null): Promise<MemoryAskAnswer | null>;
   /**
    * Begin keeping memory for the open folder: the files `noto-vault init`
    * makes, then the index. Main first asks the person, saying what will be
@@ -356,6 +365,8 @@ export interface ShellContext {
   registerInfoTrack(track: InfoTrackContribution): Disposer;
   /** Needs `marks:<id>` among the manifest's `uiExtensions`. */
   registerNoteMarks(marks: NoteMarksContribution): Disposer;
+  /** Open Note Info on one of this plugin's tabs, and reveal a key in it: for a command that leads there. */
+  showInfoTab(id: string, key?: string): void;
 }
 
 type Listener = () => void;
@@ -522,6 +533,7 @@ export class ShellState {
   private memoryAbout: VaultService['about'] = async () => null;
   private memoryKeep: VaultService['keep'] = async () => 'failed';
   private memoryTrust: VaultService['trust'] = async () => false;
+  private memoryAsk: VaultService['ask'] = async () => null;
   private readonly memoryChanged = new Signal();
 
   /** How long the note in front must stay before the info pane follows it. */
@@ -547,7 +559,12 @@ export class ShellState {
     subscribe: (listener) => this.memoryChanged.subscribe(listener),
     keep: () => this.memoryKeep(),
     trust: () => this.memoryTrust(),
+    ask: (cue, note) => this.memoryAsk(cue, note),
   };
+
+  setMemoryAsker(ask: VaultService['ask']): void {
+    this.memoryAsk = ask;
+  }
 
   private reviewAsk: (action: WorkspaceReviewActionV1) => Promise<ReviewAnswer> = async () => ({ state: 'unavailable', value: null, error: null });
 
@@ -690,6 +707,9 @@ export function shellContext(
       const remove = info.addTrack(manifest.id, track);
       removals.add(remove);
       return () => { removals.delete(remove); remove(); };
+    },
+    showInfoTab(id, key) {
+      state.showTab(`${manifest.id}:${id}`, key);
     },
     registerNoteMarks(marks) {
       if (!manifest.uiExtensions.includes(`marks:${marks.id}`)) {

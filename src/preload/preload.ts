@@ -133,6 +133,8 @@ import type {
   WorkspaceReviewRequestV1,
   WorkspaceAgentRequestV1,
   WorkspaceAgentsReplyV1,
+  WorkspaceMemoryAskReplyV1,
+  WorkspaceMemoryAskRequestV1,
   WorkspaceMemoryFolderReplyV1,
   WorkspaceMemoryFolderRequestV1,
   WorkspaceMemoryPrivacyReplyV1,
@@ -197,6 +199,8 @@ import {
   isWorkspaceReviewResultV1,
   isWorkspaceAgentRequestV1,
   isWorkspaceAgentsResultV1,
+  isWorkspaceMemoryAskRequestV1,
+  isWorkspaceMemoryAskResultV1,
   isWorkspaceMemoryFolderRequestV1,
   isWorkspaceMemoryFolderResultV1,
   isWorkspaceMemoryPrivacyRequestV1,
@@ -583,6 +587,9 @@ const workspaceApi: NotoWorkspaceApiV1 = Object.freeze({
   memoryFolder: (request: WorkspaceMemoryFolderRequestV1) => isWorkspaceMemoryFolderRequestV1(request)
     ? invokeWorkspace<WorkspaceMemoryFolderReplyV1>(WORKSPACE_CHANNELS.memoryFolder, request, request.requestId, isWorkspaceMemoryFolderResultV1)
     : Promise.resolve(rejectedWorkspace<WorkspaceMemoryFolderReplyV1>('invalid', 'Invalid memory request')),
+  memoryAsk: (request: WorkspaceMemoryAskRequestV1) => isWorkspaceMemoryAskRequestV1(request)
+    ? invokeWorkspace<WorkspaceMemoryAskReplyV1>(WORKSPACE_CHANNELS.memoryAsk, request, request.requestId, isWorkspaceMemoryAskResultV1)
+    : Promise.resolve(rejectedWorkspace<WorkspaceMemoryAskReplyV1>('invalid', 'Invalid ask request')),
   trustMemory: (request: WorkspaceRequestV1) => isWorkspaceRequestV1(request)
     ? invokeWorkspace<WorkspaceTrustMemoryReplyV1>(WORKSPACE_CHANNELS.trustMemory, request, request.requestId, isWorkspaceTrustMemoryResultV1)
     : Promise.resolve(rejectedWorkspace<WorkspaceTrustMemoryReplyV1>('invalid', 'Invalid trust memory request')),

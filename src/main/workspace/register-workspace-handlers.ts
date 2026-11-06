@@ -16,6 +16,7 @@ import {
   type WorkspaceFolderRequestV1,
   type WorkspaceReviewRequestV1,
   type WorkspaceAgentRequestV1,
+  type WorkspaceMemoryAskRequestV1,
   type WorkspaceMemoryFolderRequestV1,
   type WorkspaceMemoryPrivacyRequestV1,
   type RecentFileV1,
@@ -36,6 +37,7 @@ import {
   isWorkspaceFolderRequestV1,
   isWorkspaceReviewRequestV1,
   isWorkspaceAgentRequestV1,
+  isWorkspaceMemoryAskRequestV1,
   isWorkspaceMemoryFolderRequestV1,
   isWorkspaceMemoryPrivacyRequestV1,
   isWorkspaceOpenExternalRequestV1,
@@ -172,6 +174,8 @@ export function registerWorkspaceHandlers(deps: {
     (request: WorkspaceMemoryPrivacyRequestV1) => deps.session.memoryPrivacy(request.note));
   register(WORKSPACE_CHANNELS.memoryFolder, isWorkspaceMemoryFolderRequestV1,
     (request: WorkspaceMemoryFolderRequestV1) => deps.session.memoryFolder(request.action));
+  register(WORKSPACE_CHANNELS.memoryAsk, isWorkspaceMemoryAskRequestV1,
+    (request: WorkspaceMemoryAskRequestV1) => deps.session.memoryAsk(request.cue, request.note));
   // Review: reads, and the writes the person asked for (accept, link, take back), each refusing notes with unsaved edits.
   register(WORKSPACE_CHANNELS.memoryReview, isWorkspaceReviewRequestV1,
     (request: WorkspaceReviewRequestV1) => deps.session.memoryReview(request.action));

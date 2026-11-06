@@ -95,6 +95,8 @@ export const WORKSPACE_CHANNELS = {
   memoryPrivacy: 'noto:v1:workspace:memory-privacy',
   /** The open folder's memory itself: its index, the read record, and turning it off. See `WorkspaceMemoryFolderActionV1`. */
   memoryFolder: 'noto:v1:workspace:memory-folder',
+  /** A question of the folder's memory in words, answered with its context pack. See `WorkspaceMemoryAskReplyV1`. */
+  memoryAsk: 'noto:v1:workspace:memory-ask',
   /** Review: the folder-wide queue of what agents proposed and what the tools found. See `WorkspaceReviewActionV1`. */
   memoryReview: 'noto:v1:workspace:memory-review',
   /** Push: the folder's memory opened or changed, so what was asked of it may be asked again. */
@@ -1072,6 +1074,41 @@ export interface WorkspaceAgentsReplyV1 {
 
 export type SensitivityV1 = 'open' | 'private' | 'sealed';
 
+export interface WorkspaceMemoryAskRequestV1 {
+  readonly version: typeof NOTO_WORKSPACE_VERSION;
+  readonly requestId: string;
+  /** The question, in words. */
+  readonly cue: string;
+  /** The note in front, by its path on disk, whose neighbours count for more; null for none. */
+  readonly note: string | null;
+}
+
+/** One note of the context pack: why it came up, and the part of it worth reading. */
+export interface MemoryAskItemV1 {
+  readonly path: string;
+  readonly title: string;
+  readonly kind: string;
+  readonly why: readonly string[];
+  readonly excerpt: string;
+}
+
+/**
+ * What the folder's memory answers a question with: the notes most likely to
+ * matter, each with why and an excerpt, within its budget, and the same pack
+ * as Markdown, exactly as an agent asking through MCP is given it.
+ */
+export interface WorkspaceMemoryAskReplyV1 {
+  readonly version: typeof NOTO_WORKSPACE_VERSION;
+  readonly state: 'ok' | 'no-memory' | 'untrusted' | 'opening' | 'unavailable' | 'outside';
+  readonly value: {
+    readonly cue: string;
+    readonly items: readonly MemoryAskItemV1[];
+    /** Notes that scored but did not fit the budget. */
+    readonly omitted: number;
+    readonly markdown: string;
+  } | null;
+}
+
 export interface WorkspaceMemoryPrivacyRequestV1 {
   readonly version: typeof NOTO_WORKSPACE_VERSION;
   readonly requestId: string;
@@ -1328,6 +1365,7 @@ export interface NotoWorkspaceApiV1 {
   memoryAgents(request: WorkspaceAgentRequestV1): Promise<WorkspaceResultV1<WorkspaceAgentsReplyV1>>;
   memoryPrivacy(request: WorkspaceMemoryPrivacyRequestV1): Promise<WorkspaceResultV1<WorkspaceMemoryPrivacyReplyV1>>;
   memoryFolder(request: WorkspaceMemoryFolderRequestV1): Promise<WorkspaceResultV1<WorkspaceMemoryFolderReplyV1>>;
+  memoryAsk(request: WorkspaceMemoryAskRequestV1): Promise<WorkspaceResultV1<WorkspaceMemoryAskReplyV1>>;
   /** Ask Review's question of the folder's memory. */
   memoryReview<K extends WorkspaceReviewActionV1['kind']>(request: WorkspaceReviewRequestV1 & { readonly action: { readonly kind: K } }): Promise<WorkspaceResultV1<WorkspaceReviewReplyV1<K>>>;
   tagIndex(request: WorkspaceRequestV1): Promise<WorkspaceResultV1<WorkspaceTagIndexReplyV1>>;

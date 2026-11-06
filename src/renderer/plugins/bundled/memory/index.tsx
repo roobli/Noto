@@ -10,7 +10,7 @@
  */
 
 import { createRoot } from 'react-dom/client';
-import type { TrustedPlugin } from '../index';
+import type { TrustedPlugin, TrustedPluginContext } from '../index';
 import type { InfoTrack, ShellContext } from '../../slots';
 import { mountActivity, mountRelated } from './MemoryTabs';
 import { readMarks, times } from './model';
@@ -22,12 +22,23 @@ const REVIEW_ICON = 'M2.75 4.25h7.5M2.75 8h5M2.75 11.75h3.5M9.25 11l1.75 1.75 3.
 /** How long after the window opens the badge is first counted, so a memory folder opening does not compete with it. */
 const FIRST_COUNT_MS = 2_000;
 
+/** The palette's way to the Ask field: Note Info on Related, the field in focus. */
+export const ASK_COMMAND = 'memory.ask';
+
 export class MemoryPlugin implements TrustedPlugin {
-  activate(): () => void {
+  /** Set while the shell has the plugin: a command reaches the pane through it. */
+  private showAsk: (() => void) | null = null;
+
+  activate(context: TrustedPluginContext): () => void {
+    context.registerCommand(ASK_COMMAND, () => {
+      if (this.showAsk) this.showAsk();
+      else context.notice('Open a folder that keeps memory to ask it.');
+    });
     return () => {};
   }
 
   shell(context: ShellContext): () => void {
+    this.showAsk = context.host.vault ? () => context.showInfoTab('related', 'ask') : null;
     const vault = context.host.vault;
     const stops = [
       context.registerInfoTab({ id: 'related', title: 'Related', order: 10, mount: mountRelated }),
@@ -110,6 +121,9 @@ export class MemoryPlugin implements TrustedPlugin {
         changes: (listener) => review.subscribe(listener),
       }));
     }
-    return () => { for (const stop of stops) stop(); };
+    return () => {
+      this.showAsk = null;
+      for (const stop of stops) stop();
+    };
   }
 }
