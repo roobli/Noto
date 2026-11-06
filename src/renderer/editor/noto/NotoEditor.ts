@@ -78,7 +78,7 @@ import { documentDomToHtml, sliceToHtml, sliceToPlainText } from './clipboard';
 import { alertPlugin } from './alert-plugin';
 import { imageLinePlugin } from './image-line';
 import { RESCAN, typoraMarksKey, typoraMarksPlugin } from './typora-marks-plugin';
-import { editorExtensions } from './editor-extensions';
+import { editorExtensions, type EditorContextItem } from './editor-extensions';
 import { ALL_MARK_KINDS, type TyporaMarkKinds } from './typora-marks';
 import { typewriterPlugin } from './typewriter-plugin';
 import { autoPairPlugin } from './auto-pair';
@@ -863,9 +863,31 @@ export class NotoEditor implements NotoEditorPort {
    * keep in step. False when the command has nothing to do where the caret
    * is, which is what lets the caller say so rather than pretending.
    */
+  /** What the editor's plugins add to a right click at a point in the page. */
+  contextItemsAt(x: number, y: number): EditorContextItem[] {
+    const view = this.view;
+    if (!view || this.readOnly) return [];
+    // A click outside the note (a rename field, a search box) or in a field
+    // drawn inside it is not about the note: no plugin has anything there.
+    const hit = globalThis.document.elementFromPoint(x, y);
+    if (!hit || !view.dom.contains(hit) || this.fieldFocused(view)) return [];
+    const pos = view.posAtCoords({ left: x, top: y })?.pos ?? null;
+    return editorExtensions.contextItems(view, { pos, element: hit });
+  }
+
+  /** Whether the keys belong to a text field drawn inside the note rather than to the note. */
+  private fieldFocused(view: EditorView): boolean {
+    const active = globalThis.document.activeElement;
+    return active instanceof HTMLElement && active !== view.dom && view.dom.contains(active)
+      && (active instanceof HTMLTextAreaElement || active instanceof HTMLInputElement);
+  }
+
   runCommand(name: string): boolean {
     const view = this.view;
     if (!view) return false;
+    // Bold from the menu while a sidenote is being written would bold the
+    // note's words behind the field, not anything in it.
+    if (this.fieldFocused(view)) return false;
     // Every editor command changes the document, so read-only refuses them all
     // rather than each one having to remember to check.
     if (this.readOnly) return false;
@@ -983,6 +1005,9 @@ export class NotoEditor implements NotoEditorPort {
   history(direction: 'undo' | 'redo'): boolean {
     const view = this.view;
     if (!view) return false;
+    // A field inside the note (a sidenote being written, a code block's
+    // language) has its own undo; the menu's Undo is for what is typed there.
+    if (this.fieldFocused(view)) return globalThis.document.execCommand(direction);
     const command = direction === 'undo' ? undo : redo;
     return command(view.state, view.dispatch);
   }

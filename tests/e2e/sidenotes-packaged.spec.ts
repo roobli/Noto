@@ -34,8 +34,50 @@ async function launch(
   return { app, page };
 }
 
+/** The plugin's keys and menu items reach it once it runs; on a loaded machine a press could land first. */
+async function pluginRunning(page: Page): Promise<void> {
+  await expect.poll(() => page.evaluate(async () => {
+    const result = await window.notoDesktop.plugins.getSnapshots({ version: 1, requestId: `snapshots-${Date.now()}` });
+    return result.ok ? result.value.snapshots.find((plugin) => plugin.id === 'dev.lr00rl.noto.sidenotes')?.lifecycle : null;
+  }), { timeout: 15_000 }).toBe('active');
+}
+
+/**
+ * Select `word` after `before` in the first paragraph from the keyboard, and
+ * wait until the editor holds that selection: a range set straight on the DOM
+ * could still be unread when the next key arrived. A double click is no
+ * better, since Windows takes the space after the word with it.
+ */
+async function selectWord(page: Page, before: string, word: string): Promise<void> {
+  const paragraph = page.locator('.ProseMirror p').first();
+  await paragraph.click();
+  await expect(paragraph).toHaveClass(/noto-active-block/);
+  await page.keyboard.press(process.platform === 'darwin' ? 'Meta+ArrowLeft' : 'Home');
+  for (let step = 0; step < before.length; step += 1) await page.keyboard.press('ArrowRight');
+  for (let step = 0; step < word.length; step += 1) await page.keyboard.press('Shift+ArrowRight');
+  await expect.poll(() => page.evaluate(() => window.getSelection()?.toString())).toBe(word);
+  // The editor reads the selection on the browser's selectionchange, which is
+  // queued after the selection moves; two frames let the last one land.
+  await page.evaluate(() => new Promise((resolve) => requestAnimationFrame(() => requestAnimationFrame(resolve))));
+}
+
+/** Save from the menu: keys sent from here never reach the native menu. */
+async function save(app: ElectronApplication): Promise<void> {
+  await app.evaluate(({ Menu }) => {
+    const find = (items: Electron.MenuItem[]): Electron.MenuItem | null => {
+      for (const item of items) {
+        if (item.id === 'save') return item;
+        const nested = item.submenu ? find(item.submenu.items) : null;
+        if (nested) return nested;
+      }
+      return null;
+    };
+    find(Menu.getApplicationMenu()!.items)!.click();
+  });
+}
+
 test.describe('sidenotes', () => {
-  test('number the notes and hide the tags until the caret enters', async () => {
+  test('number the notes and keep the tags hidden, even with the caret in a note', async () => {
     const { app, page } = await launch();
     try {
       const markers = page.locator('.ProseMirror .noto-sidenote-num');
@@ -53,6 +95,25 @@ test.describe('sidenotes', () => {
         useInnerText: true,
       });
       await expect(page.locator('.ProseMirror .noto-sidenote-tag').first()).toBeHidden();
+
+      // In a note, the note stays in the margin and its tags stay hidden: it
+      // is edited where it is drawn.
+      await notes.nth(0).click();
+      await expect(notes.nth(0)).toHaveClass(/is-active/);
+      await expect(page.locator('.ProseMirror .noto-sidenote-tag').first()).toBeHidden();
+      expect(await notes.nth(0).evaluate((element) => getComputedStyle(element).float)).toBe('right');
+      // Typed there, the words go into the note, which stays where it is.
+      await page.keyboard.type('!');
+      await expect(notes.nth(0)).toContainText('!');
+      expect(await notes.nth(0).evaluate((element) => getComputedStyle(element).float)).toBe('right');
+      await expect(page.locator('.ProseMirror .noto-sidenote-tag').first()).toBeHidden();
+      // Enter in a note leaves it whole, the caret after it, rather than
+      // splitting it across two paragraphs.
+      const typed = await notes.nth(0).innerText();
+      await page.keyboard.press('Enter');
+      await expect(page.locator('.ProseMirror > p')).toHaveCount(1);
+      await expect(notes).toHaveCount(2);
+      await expect(notes.nth(0)).toHaveText(typed);
 
       // Off in Plugin Center: the plugin's editor extension leaves the open
       // note, the decorations go and the tags return as source.
@@ -74,32 +135,106 @@ test.describe('sidenotes', () => {
     }
   });
 
-  test('wrap the selection in a note with the plugin\u2019s key', async () => {
-    const { app, page } = await launch(['# Notes', '', 'Plain words here.', ''].join('\n'), 'wrap');
+  test('write a note on the selected words from the plugin\u2019s key, and take it out with Backspace', async () => {
+    const { app, page } = await launch(['# Notes', '', 'Plain words here.', ''].join('\n'), 'compose');
     try {
-      // The plugin's key reaches it once it is running; on a loaded machine the
-      // press could otherwise land before the plugin snapshots do.
-      await expect.poll(() => page.evaluate(async () => {
-        const result = await window.notoDesktop.plugins.getSnapshots({ version: 1, requestId: `snapshots-${Date.now()}` });
-        return result.ok ? result.value.snapshots.find((plugin) => plugin.id === 'dev.lr00rl.noto.sidenotes')?.lifecycle : null;
-      }), { timeout: 15_000 }).toBe('active');
-      // Select "words" from the keyboard, and wait until the editor holds that
-      // selection: a range set straight on the DOM could still be unread when
-      // the key arrived, and the note went in empty at the top of the
-      // document. A double click is no better, since Windows takes the space
-      // after the word with it.
-      const paragraph = page.locator('.ProseMirror p').first();
-      await paragraph.click();
-      await expect(paragraph).toHaveClass(/noto-active-block/);
-      await page.keyboard.press(process.platform === 'darwin' ? 'Meta+ArrowLeft' : 'Home');
-      for (let step = 0; step < 'Plain '.length; step += 1) await page.keyboard.press('ArrowRight');
-      for (let step = 0; step < 'words'.length; step += 1) await page.keyboard.press('Shift+ArrowRight');
-      await expect.poll(() => page.evaluate(() => window.getSelection()?.toString())).toBe('words');
-      // The editor reads the selection on the browser's selectionchange, which
-      // is queued after the selection moves; two frames let the last one land.
-      await page.evaluate(() => new Promise((resolve) => requestAnimationFrame(() => requestAnimationFrame(resolve))));
+      await pluginRunning(page);
+      await selectWord(page, 'Plain ', 'words');
       await page.keyboard.press(process.platform === 'darwin' ? 'Meta+Alt+KeyS' : 'Control+Alt+KeyS');
-      await expect(page.locator('.ProseMirror .noto-sidenote')).toHaveText('words');
+
+      // The card opens in the margin with the keys in it; nothing is written yet.
+      const field = page.locator('.ProseMirror .noto-sidenote-composer textarea');
+      await expect(field).toBeFocused();
+      await expect(page.locator('.ProseMirror .noto-sidenote-target')).toHaveText('words');
+      await page.keyboard.type('Why these words?');
+      await page.keyboard.press('Enter');
+
+      await expect(field).toHaveCount(0);
+      await expect(page.locator('.ProseMirror .noto-sidenote')).toHaveText('Why these words?');
+      await expect(page.locator('.ProseMirror .noto-sidenote-target')).toHaveText('words');
+      await save(app);
+      const file = path.join(resultRoot, 'compose', 'note.md');
+      await expect.poll(() => readFile(file, 'utf8')).toBe(
+        '# Notes\n\nPlain <span class="sidenote-target">words</span><span class="sidenote">Why these words?</span> here.\n',
+      );
+
+      // The caret is after the note: Backspace selects it, a second takes it
+      // out and leaves the words as they were.
+      await page.keyboard.press('Backspace');
+      await expect(page.locator('.ProseMirror .noto-sidenote')).toHaveCount(1);
+      await page.keyboard.press('Backspace');
+      await expect(page.locator('.ProseMirror .noto-sidenote')).toHaveCount(0);
+      await expect(page.locator('.ProseMirror .noto-sidenote-target')).toHaveCount(0);
+      await expect(page.locator('.ProseMirror p').first()).toHaveText('Plain words here.');
+    } finally {
+      await app.close();
+    }
+  });
+
+  test('write nothing when the card is left with Escape', async () => {
+    const { app, page } = await launch(['# Notes', '', 'Plain words here.', ''].join('\n'), 'escape');
+    try {
+      await pluginRunning(page);
+      await selectWord(page, 'Plain ', 'words');
+      await page.keyboard.press(process.platform === 'darwin' ? 'Meta+Alt+KeyS' : 'Control+Alt+KeyS');
+      await expect(page.locator('.ProseMirror .noto-sidenote-composer textarea')).toBeFocused();
+      await page.keyboard.type('Second thoughts');
+      await page.keyboard.press('Escape');
+      await expect(page.locator('.ProseMirror .noto-sidenote-composer')).toHaveCount(0);
+      await expect(page.locator('.ProseMirror .noto-sidenote-target')).toHaveCount(0);
+      await expect(page.locator('.ProseMirror p').first()).toHaveText('Plain words here.');
+      // The selection comes back to the words, in the note.
+      await expect.poll(() => page.evaluate(() => window.getSelection()?.toString())).toBe('words');
+    } finally {
+      await app.close();
+    }
+  });
+
+  test('add and remove a note from the right-click menu', async () => {
+    const { app, page } = await launch(['# Notes', '', 'Plain words here.', ''].join('\n'), 'context');
+    try {
+      await pluginRunning(page);
+      // The native menu cannot be clicked from here: record what it would show
+      // and choose the item named in `__choose`.
+      await app.evaluate(({ Menu }) => {
+        const state = globalThis as unknown as { __shown: string[][]; __choose: string };
+        state.__shown = [];
+        Menu.prototype.popup = function popup(this: Electron.Menu) {
+          state.__shown.push(this.items.map((item) => item.label));
+          this.items.find((item) => item.label === state.__choose)?.click();
+        } as typeof Menu.prototype.popup;
+      });
+      const choose = (label: string) => app.evaluate((_electron, value) => {
+        (globalThis as unknown as { __choose: string }).__choose = value;
+      }, label);
+      const lastMenu = () => app.evaluate(() => {
+        const shown = (globalThis as unknown as { __shown: string[][] }).__shown;
+        return shown[shown.length - 1] ?? [];
+      });
+
+      await selectWord(page, 'Plain ', 'words');
+      const word = await page.evaluate(() => {
+        const box = window.getSelection()!.getRangeAt(0).getBoundingClientRect();
+        return { x: box.left + box.width / 2, y: box.top + box.height / 2 };
+      });
+      await choose('Add Sidenote');
+      await page.mouse.click(word.x, word.y, { button: 'right' });
+      await expect.poll(lastMenu).toContain('Add Sidenote');
+      await expect(page.locator('.ProseMirror .noto-sidenote-composer textarea')).toBeFocused();
+      await page.keyboard.type('From the menu.');
+      await page.keyboard.press('Enter');
+      await expect(page.locator('.ProseMirror .noto-sidenote')).toHaveText('From the menu.');
+
+      // Over the note in the margin, the menu offers to remove it.
+      const note = await page.locator('.ProseMirror .noto-sidenote').evaluate((element) => {
+        const box = element.getBoundingClientRect();
+        return { x: box.left + box.width / 2, y: box.top + box.height / 2 };
+      });
+      await choose('Remove Sidenote');
+      await page.mouse.click(note.x, note.y, { button: 'right' });
+      await expect.poll(lastMenu).toContain('Remove Sidenote');
+      await expect(page.locator('.ProseMirror .noto-sidenote')).toHaveCount(0);
+      await expect(page.locator('.ProseMirror p').first()).toHaveText('Plain words here.');
     } finally {
       await app.close();
     }
@@ -150,17 +285,7 @@ test.describe('sidenotes', () => {
       await page.locator('.ProseMirror > h1').click();
       await expect(page.locator('.ProseMirror .noto-sidenote-num')).toHaveCount(1);
 
-      await app.evaluate(({ Menu }) => {
-        const find = (items: Electron.MenuItem[]): Electron.MenuItem | null => {
-          for (const item of items) {
-            if (item.id === 'save') return item;
-            const nested = item.submenu ? find(item.submenu.items) : null;
-            if (nested) return nested;
-          }
-          return null;
-        };
-        find(Menu.getApplicationMenu()!.items)!.click();
-      });
+      await save(app);
       const file = path.join(resultRoot, 'typed', 'note.md');
       await expect.poll(() => readFile(file, 'utf8')).toContain('Typed by hand.');
       expect(await readFile(file, 'utf8')).toBe('# Notes\n\nA typed claim.<span class="sidenote">Typed by hand.</span>\n');

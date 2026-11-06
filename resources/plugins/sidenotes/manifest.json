@@ -25,7 +25,11 @@
   "commands": [
     {
       "id": "sidenotes.insert",
-      "title": "Sidenote: make the selection a margin note"
+      "title": "Sidenote: add a note to the selected words"
+    },
+    {
+      "id": "sidenotes.remove",
+      "title": "Sidenote: remove the note at the caret"
     }
   ],
   "settings": [],

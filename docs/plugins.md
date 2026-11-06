@@ -138,6 +138,8 @@ interface EditorExtension {
   readonly id: string;                                   // listed in the manifest's editorExtensions
   readonly plugins: () => readonly Plugin[];             // made fresh for each editor
   readonly commands?: Readonly<Record<string, Command>>;
+  readonly contextMenu?: (view: EditorView, at: { pos: number | null; element: Element | null })
+    => readonly { title: string; command: string }[];
 }
 ```
 
@@ -151,12 +153,23 @@ waiting for the next note. `runEditorCommand(name)` runs one of the
 extension's commands, or one of the editor's own, on the note in front, and
 needs `editor.transform`.
 
+`contextMenu` adds lines to the editor's right-click menu. On each right
+click, main asks the window what the extensions offer at the point clicked and
+waits a quarter of a second for the answer; each line names one of the
+extension's `commands`, which runs on the note in front when it is chosen.
+`at.pos` is the document position under the pointer and `at.element` the
+element hit, which is what identifies a widget or anything floated out of the
+text. Offer a line only when the click is about something the plugin owns:
+the menu is drawn fresh on every click, and most clicks are about nothing a
+plugin knows.
+
 This is a trusted surface. A sandboxed plugin's worker has no page to hand a
 ProseMirror plugin from, and its manifest must leave `editorExtensions`
 empty. The bundled Sidenotes plugin
 (`src/renderer/plugins/bundled/sidenotes/`) is the worked example: its
-extension draws `<span class="sidenote">` as margin notes and owns the
-"wrap the selection" command behind `Cmd+Alt+S`.
+extension draws `<span class="sidenote">` as margin notes, opens the card a
+new note is written in from `Cmd+Alt+S` or the right-click menu, and offers
+Remove Sidenote when the click is on a note.
 
 Commands appear in the command palette (`Shift+Cmd+P`) while the plugin is active,
 under the title the manifest gives them. Hotkeys are dispatched by the shell

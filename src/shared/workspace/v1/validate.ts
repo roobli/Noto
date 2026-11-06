@@ -40,6 +40,10 @@ import {
   WorkspaceDirtyEventV1,
   WorkspaceUnsavedEventV1,
   WorkspaceTextRequestV1,
+  WorkspaceContextCommandV1,
+  WorkspaceContextItemV1,
+  WorkspaceContextReplyV1,
+  WorkspaceContextRequestV1,
   WorkspaceTextReplyV1,
 } from './contracts';
 import type {
@@ -312,6 +316,37 @@ export function isWorkspaceTextReplyV1(value: unknown): value is WorkspaceTextRe
   return record(value) && exact(value, ['version', 'requestId', 'markdown']) && value.version === 1
     && typeof value.requestId === 'string' && requestId.test(value.requestId)
     && (value.markdown === null || typeof value.markdown === 'string');
+}
+
+/** A plugin's editor command: lowercase, dotted, as manifests name commands. */
+const contextCommand = /^[a-z0-9][a-z0-9.-]{0,119}$/;
+const MAX_CONTEXT_ITEMS = 8;
+
+const coordinate = (value: unknown): boolean =>
+  typeof value === 'number' && Number.isFinite(value) && value >= -100_000 && value <= 100_000;
+
+function isWorkspaceContextItemV1(value: unknown): value is WorkspaceContextItemV1 {
+  return record(value) && exact(value, ['command', 'title'])
+    && typeof value.command === 'string' && contextCommand.test(value.command)
+    && typeof value.title === 'string' && value.title.trim().length > 0 && value.title.length <= 80;
+}
+
+export function isWorkspaceContextRequestV1(value: unknown): value is WorkspaceContextRequestV1 {
+  return record(value) && exact(value, ['version', 'requestId', 'x', 'y']) && value.version === 1
+    && typeof value.requestId === 'string' && requestId.test(value.requestId)
+    && coordinate(value.x) && coordinate(value.y);
+}
+
+export function isWorkspaceContextReplyV1(value: unknown): value is WorkspaceContextReplyV1 {
+  return record(value) && exact(value, ['version', 'requestId', 'items']) && value.version === 1
+    && typeof value.requestId === 'string' && requestId.test(value.requestId)
+    && Array.isArray(value.items) && value.items.length <= MAX_CONTEXT_ITEMS
+    && value.items.every(isWorkspaceContextItemV1);
+}
+
+export function isWorkspaceContextCommandV1(value: unknown): value is WorkspaceContextCommandV1 {
+  return record(value) && exact(value, ['version', 'command']) && value.version === 1
+    && typeof value.command === 'string' && contextCommand.test(value.command);
 }
 
 export function isWorkspaceDirtyEventV1(value: unknown): value is WorkspaceDirtyEventV1 {

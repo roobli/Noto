@@ -5,10 +5,12 @@ import { buildEditorContextMenu } from '../../src/main/windows/editor-context-me
 vi.mock('electron', () => ({
   Menu: { buildFromTemplate: vi.fn() },
   clipboard: { writeText: vi.fn() },
+  ipcMain: { on: vi.fn(), removeListener: vi.fn() },
 }));
 
+const send = vi.fn();
 const window = {
-  webContents: { replaceMisspelling: vi.fn(), session: { addWordToSpellCheckerDictionary: vi.fn() } },
+  webContents: { replaceMisspelling: vi.fn(), send, session: { addWordToSpellCheckerDictionary: vi.fn() } },
 } as unknown as BrowserWindow;
 
 function params(overrides: Partial<ContextMenuParams> = {}): ContextMenuParams {
@@ -67,5 +69,12 @@ describe('the editor context menu', () => {
     }));
     expect(items.find((item) => item.role === 'cut')?.enabled).toBe(false);
     expect(items.find((item) => item.role === 'paste')?.enabled).toBe(true);
+  });
+
+  it('leads with what the plugins under the click offer, and sends the choice back as its command', () => {
+    const items = buildEditorContextMenu(window, params(), [{ title: 'Add Sidenote', command: 'sidenotes.insert' }]);
+    expect(labels(items).slice(0, 3)).toEqual(['Add Sidenote', 'separator', 'cut']);
+    (items[0]!.click as () => void)();
+    expect(send).toHaveBeenCalledWith('noto:v1:workspace:context-command', { version: 1, command: 'sidenotes.insert' });
   });
 });

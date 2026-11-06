@@ -2074,6 +2074,19 @@ function NotoWorkspace({ platform }: { platform: NotoPlatform }) {
    * Menu commands arrive from main because only the renderer knows the editor's
    * contents. Keep this list aligned with `WorkspaceMenuCommandV1`.
    */
+  // A right click: main asks what the plugins under the pointer offer, then
+  // sends back the one chosen as an editor command for the note in front.
+  useEffect(() => window.notoWorkspace.onContextRequest((event) => {
+    window.notoWorkspace.replyContext({
+      version: 1,
+      requestId: event.requestId,
+      items: editorRef.current?.contextItemsAt(event.x, event.y) ?? [],
+    });
+  }), []);
+  useEffect(() => window.notoWorkspace.onContextCommand((event) => {
+    editorRef.current?.runCommand(event.command);
+  }), []);
+
   // Main asks for the note as the editor holds it, which is the only copy
   // that includes unsaved changes.
   useEffect(() => window.notoWorkspace.onTextRequest((event) => {

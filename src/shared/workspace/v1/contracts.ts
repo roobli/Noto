@@ -47,6 +47,11 @@ export const WORKSPACE_CHANNELS = {
   /** Main asking the window for the note's text as the editor holds it. */
   documentText: 'noto:v1:workspace:document-text',
   documentTextReply: 'noto:v1:workspace:document-text-reply',
+  /** Main asking the window what its plugins add to a right click at a point. */
+  contextItems: 'noto:v1:workspace:context-items',
+  contextItemsReply: 'noto:v1:workspace:context-items-reply',
+  /** One of those items, chosen: the editor command it names. */
+  contextCommand: 'noto:v1:workspace:context-command',
   /** The whole openable file list for the current folder, sent once per
    *  folder so ranking can happen in the renderer without a round trip. */
   fileIndex: 'noto:v1:workspace:file-index',
@@ -754,6 +759,38 @@ export interface WorkspaceTextReplyV1 {
   readonly markdown: string | null;
 }
 
+/**
+ * What a plugin adds to the editor's right-click menu.
+ *
+ * Main builds the menu, since the clipboard roles and the spell checker live
+ * there, but only the window knows what is under the pointer: a sidenote, a
+ * selection, nothing. So main asks, waits briefly, and builds the menu with
+ * whatever came back; a choice comes back as the editor command to run.
+ */
+export interface WorkspaceContextItemV1 {
+  readonly command: string;
+  readonly title: string;
+}
+
+export interface WorkspaceContextRequestV1 {
+  readonly version: typeof NOTO_WORKSPACE_VERSION;
+  readonly requestId: string;
+  /** The click, in the page's CSS pixels. */
+  readonly x: number;
+  readonly y: number;
+}
+
+export interface WorkspaceContextReplyV1 {
+  readonly version: typeof NOTO_WORKSPACE_VERSION;
+  readonly requestId: string;
+  readonly items: readonly WorkspaceContextItemV1[];
+}
+
+export interface WorkspaceContextCommandV1 {
+  readonly version: typeof NOTO_WORKSPACE_VERSION;
+  readonly command: string;
+}
+
 /** Whether the editor can be driven from outside, and where from. */
 export interface WorkspaceRemoteEventV1 {
   readonly version: typeof NOTO_WORKSPACE_VERSION;
@@ -854,6 +891,9 @@ export interface NotoWorkspaceApiV1 {
   reportUnsaved(event: WorkspaceUnsavedEventV1): void;
   onTextRequest(listener: (event: WorkspaceTextRequestV1) => void): () => void;
   replyText(event: WorkspaceTextReplyV1): void;
+  onContextRequest(listener: (event: WorkspaceContextRequestV1) => void): () => void;
+  replyContext(event: WorkspaceContextReplyV1): void;
+  onContextCommand(listener: (event: WorkspaceContextCommandV1) => void): () => void;
   /**
    * The path of a file the reader dropped in, which the renderer may not
    * work out for itself. Empty when the browser has no file behind it.
