@@ -109,6 +109,33 @@ test.describe('taking hold of a table', () => {
     }
   });
 
+  test('carries a column again straight after a move, and after a key typed in a cell', async () => {
+    const { app, page } = await launch('drag-again');
+    try {
+      await hoverTable(page);
+      const columns = () => table(page).locator('th').allInnerTexts();
+      const width = (await table(page).locator('th').first().boundingBox())!.width;
+      const handles = table(page).locator('.noto-table-rail-columns .noto-table-handle');
+      // The handles stay while the pointer is still on the table: they used to
+      // go with the first move and come back only when it left and returned.
+      await dragHandle(page, handles.first(), 0, width * 1.6);
+      await expect.poll(columns).toEqual(['head b', 'head a', 'head c']);
+      await expect(handles.first()).toBeVisible();
+      await dragHandle(page, handles.first(), 0, width * 1.6);
+      await expect.poll(columns).toEqual(['head a', 'head b', 'head c']);
+
+      // A caret moved into a cell and a key typed there do not take them away.
+      await table(page).locator('td').first().click();
+      await page.keyboard.type('!');
+      await table(page).locator('table').hover();
+      await expect(handles.first()).toBeVisible();
+      await dragHandle(page, handles.last(), 0, -width * 1.6);
+      await expect.poll(columns).toEqual(['head a', 'head c', 'head b']);
+    } finally {
+      await app.close();
+    }
+  });
+
   test('leaves everything where it was when the drag is called off', async () => {
     const { app, page } = await launch('escape');
     try {

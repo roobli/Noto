@@ -13,61 +13,40 @@
  * long line scrolls inside the code column while the numbers stay put. Its
  * width follows the block's own line count, two digits at least.
  *
- * Tools (language field + copy) match the CSS contract: visible on hover or
- * while the caret is in the fence. They are mounted on first pointerenter /
- * focusin rather than in the constructor. Binding the shared language
- * datalist (`list=`) waits until the field is focused — resolving that id
- * against a document with tens of thousands of top-level stubs dominated
- * FenceView construction on remount (~18 ms per fence in happy-dom on huge).
+ * Tools (the language label and copy) match the CSS contract: visible on
+ * hover or while the caret is in the fence. They are mounted on first
+ * pointerenter / focusin rather than in the constructor, which keeps them off
+ * the remount path of a document with thousands of fences.
+ *
+ * The label names the fence's language, or, when the fence names none, what
+ * its code reads as (`detect-language.ts`), marked as a guess. A press on it
+ * opens the language list (`language-picker.ts`).
  */
 
 import type { Node as ProseNode } from 'prosemirror-model';
 import { TextSelection } from 'prosemirror-state';
 import type { EditorView, NodeView } from 'prosemirror-view';
 import { digitsForLineCount, gutterText, lineCount } from './fence-gutter';
-import { supportedLanguages } from './highlight';
+import { guessedLanguage } from './highlight';
+import { LanguagePicker } from './language-picker';
+import { languageName, PLAIN_TEXT } from './languages';
 import { DiagramFrame, isDiagramLanguage } from './diagram-frame';
 import { TimelineFrame, isTimelineLanguage } from './timeline';
 import { copyThroughSelection } from './clipboard';
-import { isComposing } from '../../ime';
 
 /** How long "Copied" stays before the button says "Copy" again. */
 const COPIED_MS = 1400;
-
-/** The id of the one datalist every fence's language field shares. */
-const LANGUAGE_LIST_ID = 'noto-fence-languages';
-
-/**
- * The languages offered as you type, made once for the document.
- *
- * A native datalist rather than a menu of our own: it is a real completion
- * control the platform draws, it takes the keyboard, and it costs nothing
- * per fence. The names are what the highlighter answers to, so choosing one
- * is choosing colour, not just a label.
- */
-function languageList(): HTMLDataListElement {
-  const existing = document.getElementById(LANGUAGE_LIST_ID);
-  if (existing instanceof HTMLDataListElement) return existing;
-  const list = document.createElement('datalist');
-  list.id = LANGUAGE_LIST_ID;
-  for (const name of supportedLanguages()) {
-    const option = document.createElement('option');
-    option.value = name;
-    list.append(option);
-  }
-  document.body.append(list);
-  return list;
-}
 
 export class FenceView implements NodeView {
   readonly dom: HTMLElement;
   readonly contentDOM: HTMLElement;
   private readonly gutter: HTMLElement;
   private tools: HTMLElement | null = null;
-  private language: HTMLInputElement | null = null;
+  private language: HTMLButtonElement | null = null;
   private copy: HTMLButtonElement | null = null;
-  /** Whether the language field has been bound to the shared datalist. */
-  private languageListBound = false;
+  /** What the label says now, so a keystroke that changes nothing touches nothing. */
+  private labelKey = '';
+  private picker: LanguagePicker | null = null;
   private lines = 0;
   /** Present while the fence is a diagram, which its language decides. */
   private diagram: DiagramFrame | null = null;
@@ -119,40 +98,24 @@ export class FenceView implements NodeView {
    * for them. Safe to call repeatedly.
    */
   private readonly ensureTools = (): void => {
-    if (this.tools) return;
+    if (this.tools) {
+      // A note can turn read-only without its fences changing.
+      if (this.language) this.language.disabled = !this.view.editable;
+      return;
+    }
 
     this.tools = document.createElement('div');
     this.tools.className = 'noto-fence-tools';
     this.tools.contentEditable = 'false';
-    // The language is a field, not a label: the reader types it here, with
-    // the highlighter's names offered as they type, and the block takes the
-    // colour of what they chose. Typora puts the same field in the same
-    // corner, which is where a hand that just typed a fence expects it.
-    this.language = document.createElement('input');
+    // The language is a label until it is pressed, and then a list to choose
+    // from with a field to search it, so the corner holds a word, not a box.
+    this.language = document.createElement('button');
+    this.language.type = 'button';
     this.language.className = 'noto-fence-lang';
-    this.language.type = 'text';
-    this.language.placeholder = 'language';
-    this.language.spellcheck = false;
-    this.language.autocomplete = 'off';
-    this.language.setAttribute('aria-label', 'Code block language');
-    // Do not set `list=` here. Resolving the shared datalist id against a
-    // document full of stub placeholders dominated FenceView construction on
-    // remount; bind it when the field is actually focused.
-    this.language.addEventListener('focus', this.bindLanguageList);
-    this.language.addEventListener('change', () => this.commitLanguage());
-    this.language.addEventListener('keydown', (event) => {
-      // A press the input method is composing with is the input method's.
-      if (isComposing(event)) return;
-      if (event.key === 'Enter') {
-        event.preventDefault();
-        this.commitLanguage();
-        this.view.focus();
-      } else if (event.key === 'Escape') {
-        event.preventDefault();
-        if (this.language) this.language.value = (this.node.attrs.lang as string) || '';
-        this.view.focus();
-      }
-    });
+    this.language.setAttribute('aria-haspopup', 'dialog');
+    // The press must not move the note's selection; the click opens the list.
+    this.language.addEventListener('mousedown', (event) => event.preventDefault());
+    this.language.addEventListener('click', this.toggleLanguages);
     this.copy = document.createElement('button');
     this.copy.type = 'button';
     this.copy.className = 'noto-fence-copy';
@@ -164,13 +127,31 @@ export class FenceView implements NodeView {
     this.copy.addEventListener('click', () => this.copyCode());
     this.tools.append(this.language, this.copy);
     this.dom.append(this.tools);
-    this.syncLanguageField();
+    this.labelKey = '';
+    this.syncLanguageLabel();
   };
 
-  private readonly bindLanguageList = (): void => {
-    if (this.languageListBound || !this.language) return;
-    this.language.setAttribute('list', languageList().id);
-    this.languageListBound = true;
+  /** Open the language list under the label, or close it when it is open. */
+  private readonly toggleLanguages = (): void => {
+    if (this.picker?.isOpen) {
+      this.picker.close(true);
+      return;
+    }
+    if (!this.language || !this.view.editable) return;
+    const current = String(this.node.attrs.lang ?? '').trim();
+    this.dom.classList.add('is-picking');
+    this.language.setAttribute('aria-expanded', 'true');
+    this.picker = LanguagePicker.show(this.language, {
+      current,
+      guess: guessedLanguage(this.node),
+      onPick: (lang) => this.commitLanguage(lang),
+      onClose: (returnFocus) => {
+        this.picker = null;
+        this.dom.classList.remove('is-picking');
+        this.language?.setAttribute('aria-expanded', 'false');
+        if (returnFocus) this.view.focus();
+      },
+    });
   };
 
   update(node: ProseNode): boolean {
@@ -223,15 +204,14 @@ export class FenceView implements NodeView {
     if (this.copiedTimer !== null) clearTimeout(this.copiedTimer);
     this.dom.removeEventListener('pointerenter', this.ensureTools);
     this.dom.removeEventListener('focusin', this.ensureTools);
-    this.language?.removeEventListener('focus', this.bindLanguageList);
+    this.picker?.close(false);
     this.diagram?.destroy();
     this.timeline?.destroy();
   }
 
-  /** Write the field's value into the node, as one undoable change. */
-  private commitLanguage(): void {
-    if (!this.language) return;
-    const lang = this.language.value.trim().toLowerCase();
+  /** Write the chosen language into the node, as one undoable change. */
+  private commitLanguage(chosen: string): void {
+    const lang = chosen.trim().toLowerCase();
     if (lang === ((this.node.attrs.lang as string) || '')) return;
     const position = this.getPos();
     if (position === undefined) return;
@@ -239,20 +219,49 @@ export class FenceView implements NodeView {
     this.view.dispatch(state.tr.setNodeMarkup(position, undefined, { ...this.node.attrs, lang }));
   }
 
-  private syncLanguageField(): void {
-    if (!this.language) return;
-    const lang = (this.node.attrs.lang as string) || '';
-    // Not while the reader is typing in it: a redraw mid-word would take
-    // the word away.
-    if (document.activeElement !== this.language) this.language.value = lang;
-    this.language.size = Math.max(6, lang.length + 1);
+  /**
+   * The label: the fence's language by its name, or what the code reads as,
+   * marked as a guess, or an invitation to choose when it reads as nothing.
+   */
+  private syncLanguageLabel(): void {
+    const label = this.language;
+    if (!label) return;
+    const lang = String(this.node.attrs.lang ?? '').trim();
+    const guess = lang ? null : guessedLanguage(this.node);
+    const key = `${lang}\u0000${guess ?? ''}`;
+    if (key === this.labelKey) return;
+    this.labelKey = key;
+    const name = document.createElement('span');
+    name.className = 'noto-fence-lang-name';
+    if (lang) {
+      name.textContent = languageName(lang);
+      label.dataset.state = 'set';
+      label.title = lang === PLAIN_TEXT ? 'Plain text. Choose a language' : `\`\`\`${lang}. Choose another language`;
+      label.replaceChildren(name);
+    } else if (guess) {
+      name.textContent = languageName(guess);
+      const auto = document.createElement('span');
+      auto.className = 'noto-fence-lang-auto';
+      auto.textContent = 'auto';
+      label.dataset.state = 'guess';
+      label.title = `Reads as ${languageName(guess)}. Choose a language to write it into the fence`;
+      label.replaceChildren(name, auto);
+    } else {
+      name.textContent = 'Language';
+      label.dataset.state = 'none';
+      label.title = 'Choose a language';
+      label.replaceChildren(name);
+    }
+    label.setAttribute('aria-label', `Code block language: ${label.title}`);
+    // A note that cannot be edited shows its language and offers no list.
+    label.disabled = !this.view.editable;
   }
 
   private render(): void {
     const lang = (this.node.attrs.lang as string) || '';
     if (lang) this.dom.setAttribute('data-lang', lang);
     else this.dom.removeAttribute('data-lang');
-    this.syncLanguageField();
+    this.syncLanguageLabel();
 
     // A diagram fence (mermaid, or Typora's flow and sequence) is drawn as
     // its diagram, beside the source; a press on the drawing puts the caret at

@@ -94,7 +94,19 @@ const nodes: Record<string, NodeSpec> = {
 
   code_block: codeLikeBlock({
     attrs: { lang: { default: '' }, fenced: { default: true } },
-    parseDOM: [{ tag: 'pre', preserveWhitespace: 'full' }],
+    parseDOM: [{
+      tag: 'pre',
+      preserveWhitespace: 'full',
+      // The language Noto writes on its own copies, or a page's `language-` class.
+      getAttrs: (dom) => {
+        const element = dom as HTMLElement;
+        const code = element.querySelector('code');
+        const named = element.getAttribute('data-lang')
+          ?? /(?:^|\s)(?:language|lang)-([A-Za-z0-9+#.-]+)/.exec(`${code?.className ?? ''} ${element.className}`)?.[1]
+          ?? '';
+        return { lang: named, fenced: true };
+      },
+    }],
     toDOM: (node) => ['pre', { 'data-lang': node.attrs.lang || null }, ['code', 0]],
   }),
 

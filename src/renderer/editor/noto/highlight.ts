@@ -24,6 +24,8 @@ import { Decoration, DecorationSet } from 'prosemirror-view';
 import type { Node as ProseNode } from 'prosemirror-model';
 import { guideRanges } from './indent-guides';
 import { TAB_MARKER_CLASS, tabRanges } from './tab-markers';
+import { detectLanguage } from './detect-language';
+import { languageEntry } from './languages';
 import {
   isIndexReal,
   rangesEqual,
@@ -145,8 +147,31 @@ interface TokenRange {
 const cache = new WeakMap<ProseNode, readonly TokenRange[]>();
 
 function grammarFor(lang: string): Prism.Grammar | null {
-  const normalized = ALIASES[lang.toLowerCase()] ?? lang.toLowerCase();
-  return Prism.languages[normalized] ?? null;
+  const key = lang.trim().toLowerCase();
+  const direct = ALIASES[key] ?? key;
+  if (Prism.languages[direct]) return Prism.languages[direct]!;
+  // Any other name the language list knows it by: `python3`, `patch`, `h`.
+  const id = languageEntry(key)?.id;
+  return id ? Prism.languages[ALIASES[id] ?? id] ?? null : null;
+}
+
+/** Whether a fence that says `lang` is drawn in colour. */
+export function canHighlight(lang: string): boolean {
+  return grammarFor(lang) !== null;
+}
+
+const guesses = new WeakMap<ProseNode, string | null>();
+
+/**
+ * What a fence that names no language reads as, or null. Kept with the node,
+ * like its tokens, so a fence is read once per edit to it and never again.
+ */
+export function guessedLanguage(node: ProseNode): string | null {
+  if (String(node.attrs.lang ?? '').trim()) return null;
+  if (guesses.has(node)) return guesses.get(node)!;
+  const guess = detectLanguage(node.textContent);
+  guesses.set(node, guess);
+  return guess;
 }
 
 function classesOf(token: Prism.Token): string {
@@ -186,10 +211,13 @@ export function rangesFor(node: ProseNode): readonly TokenRange[] {
   const cached = cache.get(node);
   if (cached) return cached;
 
-  const lang = String(node.attrs.lang ?? '');
-  const grammar = lang ? grammarFor(lang) : null;
+  const lang = String(node.attrs.lang ?? '').trim();
+  // A fence that names no language is drawn as what it reads as, when it
+  // reads clearly as one; one that names a language the highlighter does not
+  // know stays plain.
+  const guess = lang ? null : guessedLanguage(node);
+  const grammar = lang ? grammarFor(lang) : guess ? grammarFor(guess) : null;
   const ranges: TokenRange[] = [];
-  // An unknown or absent language stays plain rather than being guessed at.
   if (grammar) flatten(Prism.tokenize(node.textContent, grammar), 0, ranges);
 
   cache.set(node, ranges);
@@ -388,10 +416,3 @@ export function syntaxHighlightPlugin(): Plugin<DecorationSet> {
     },
   });
 }
-
-/** Grammars other grammars are built on; nobody fences code as one of these. */
-const SCAFFOLDING = new Set(['clike', 'markup-templating']);
-
-/** The languages the editor can highlight, which is also what a fence's language field offers. */
-export const supportedLanguages = (): readonly string[] =>
-  Object.keys(Prism.languages).filter((name) => typeof Prism.languages[name] === 'object' && !SCAFFOLDING.has(name));

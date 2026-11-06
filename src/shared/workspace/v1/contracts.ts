@@ -252,6 +252,7 @@ export const WORKSPACE_MENU_COMMANDS = [
   'find-previous',
   'toggle-source',
   'source-code-mode',
+  'select-all',
   'select-word',
   'select-line',
   'jump-to-selection',

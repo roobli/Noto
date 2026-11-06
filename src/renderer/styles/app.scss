@@ -46,6 +46,11 @@ body {
   --motion-default: 100ms;
   --motion-medium: 140ms;
   --motion-slow: 200ms;
+  /* The caret (caret-plugin.ts): one breath after it has sat still, and the
+     halo that shows where it landed. Slower than chrome motion on purpose: a
+     caret that flickers is harder to find, not easier. */
+  --motion-caret-breath: 1100ms;
+  --motion-caret-halo: 420ms;
   --ease-out: cubic-bezier(0.16, 1, 0.3, 1);
   --ease-in: cubic-bezier(0.7, 0, 0.84, 0);
   --ease-in-out: cubic-bezier(0.4, 0, 0.2, 1);
@@ -579,7 +584,18 @@ button:disabled { color: var(--muted); opacity: 0.7; }
 }
 
 .rail-resize:hover::after,
-.rail-resize:focus-visible::after { opacity: 0.55; }
+.rail-resize:focus-visible::after,
+.is-resizing-rail .rail-resize::after { opacity: 0.55; }
+
+/* While the rail's edge is dragged the page and the title bar follow the
+   pointer at once, not after the column's transition, and nothing in them
+   takes a selection or shows its own pointer. */
+.app-shell.is-resizing-rail,
+.app-shell.is-resizing-rail > .titlebar { transition: none; }
+.app-shell.is-resizing-rail {
+  cursor: col-resize;
+  user-select: none;
+}
 .rail-resize:focus-visible { outline: none; }
 
 .rail-empty {
@@ -2008,6 +2024,22 @@ section.plugin-group > .plugin-market-row.is-set-aside {
 
   /* A plugin's word, for a moment, in ink rather than the resting grey. */
   &.is-notice { color: var(--ink); animation: noto-rise var(--motion-medium) var(--ease-out); }
+}
+
+/* The one thing a notice offers to do, such as the plain text in place of a
+   tidied paste: a word in the accent, as quiet as the line it sits on. */
+.status-notice-action {
+  margin-left: 8px;
+  padding: 1px 6px;
+  border: 0;
+  border-radius: 4px;
+  background: transparent;
+  color: var(--accent);
+  font: inherit;
+  cursor: pointer;
+  animation: noto-rise var(--motion-medium) var(--ease-out);
+  &:hover { background: color-mix(in srgb, var(--accent) 12%, transparent); }
+  &:focus-visible { outline: 2px solid var(--accent); outline-offset: 1px; }
 }
 
 /* Command palette

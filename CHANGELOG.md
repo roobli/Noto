@@ -21,20 +21,111 @@ How releases are made, and what each channel receives, is in
   carry a dotted rule, and pointing at the words or the note lights both.
   Remove Sidenote in the right-click menu takes a note out and keeps its
   words; so does Backspace after a note, which selects it first.
+- **A code block that names no language is read as one.** Noto reads the
+  code for the marks a language leaves (a `package` line, a `def` ending in a
+  colon, a command at the start of a line) and colours the block as that
+  language when one stands clearly above the rest; code it cannot place stays
+  plain. The guess is shown in the block's corner with an `auto` tag, and the
+  file is not changed until you choose.
 - **Plugins can add to the editor's right-click menu.** An editor extension
   may offer lines for the point clicked, each running one of its commands;
   `docs/plugins.md` says how.
 
 ### Changed
 
+- **Tables ask for less attention.** The table's tools stand in the page's
+  right margin beside the table, and only while the caret is in it and the
+  pointer is on it; they used to sit over the line above the table the whole
+  time a cell was being typed in. Only the row and the column under the
+  pointer show a handle, rather than every one at once, and each handle is
+  easier to grab. Every tool is in the Table menu as well.
+- **A caret you can find.** Noto draws the caret itself: two pixels in the
+  accent where the browser would put its own one-pixel line. It stays solid
+  while you type or move and breathes softly once it sits still, rather than
+  blinking hard on and off. A short move along a line glides and a jump to
+  another line does not, and a click or the note taking the keys shows a
+  brief halo where it landed. Reduce Motion keeps it solid and still. It
+  steps aside for an input method composing, a selection, a field inside the
+  note and the gap cursor.
+- **A click in the page around the text puts the caret in the note**, at the
+  nearest place: the margins, above the first block, below the last. It used
+  to take the keys away from the note, which in a new, empty note looked as
+  if the note would not take any. Naming a new note hands the keys to that
+  note even when its editor is still being built.
+- **Rich text pasted from ChatGPT, GitHub, a documentation site or Google
+  Docs is tidied into what a note holds.** A code block keeps its code and
+  its language, read from the page's class, GitHub's wrapper or ChatGPT's
+  header, and loses the header and the Copy button. A KaTeX formula comes in
+  as its TeX instead of its drawing twice over. A table cell that held
+  paragraphs, breaks or a list is joined onto one line, since a markdown
+  cell is one. Bold, italic and code set by a style, as Google Docs writes
+  them, become marks, and non-breaking and zero-width spaces become spaces
+  or nothing. When the tidy took anything out, turned a formula round or
+  joined a cell, the status line says what, with Paste as text to put the
+  plain text in instead, in one undo step. A code block copied within Noto
+  keeps its language too; it used to lose it.
+- **Copying inside one block copies what was selected, and nothing around
+  it.** Ten words out of a table cell came out as a one-cell table with a
+  header rule, part of a list item with its bullet, and the command inside
+  backticks with the backticks. Now the plain text is the words selected:
+  a mark the selection holds whole, with more beside it, keeps its markdown
+  (`the **bold** word`), and one the selection is inside or cuts does not, so
+  the text in backticks copies as the bare command. Part of a code block
+  copies as the code, without its fence, also when the drag runs onto the
+  very start of the next line. Rich-text targets get the words with their formatting
+  and no table, list or heading around them. A selection across blocks
+  copies as markdown, as before.
+- **A code block's language is chosen from a list.** The box in the corner,
+  with the system's grey completion list under it, is now the language's name
+  and a chevron; a press opens a list with a search field. It filters by a
+  language's name, its fence name or the other names people type (`py`,
+  `sh`, `yml`), marks the letters that matched, and takes the arrows, Enter,
+  Tab and Escape. With nothing typed it starts with the guess, so Enter keeps
+  it, and with Detect automatically when the block names a language. What you
+  typed is what the fence says: `ts` chosen is `ts`. A name the list does not
+  know can still be used as written.
+- **Select All inside a code block selects its code first**, and the whole
+  note on the next press, as Typora does.
 - **A sidenote is edited where it is drawn.** With the caret in a note, the
   note stays in the margin and its tags stay hidden; they used to appear and
   pull the note back into the paragraph. Source Code Mode shows the tags.
   Cmd-Alt-S opens the card for the selected words instead of turning them
   into a note's text.
 
+### Removed
+
+- **Dragging a column's edge to set its width.** Markdown has no way to keep
+  a column's width, so the width was lost on save, and the drag rewrote the
+  table's rows behind the editor's back. Columns size to their text.
+
 ### Fixed
 
+- **Moving a row or column by its handle works more than once.** The
+  handles went away with the first move, with the caret moving between cells
+  and with every key typed, and came back only when the pointer left the
+  table and returned.
+- **Undo works in Source Code Mode, and leaving it shows what it says.**
+  Cmd+Z there undid a change in the hidden rendered note instead of the
+  text, so the text and the note drifted apart and leaving showed the note's
+  version. Undo and Redo now step through the text, a typed run at a time,
+  and leaving always hands the note what the text says. A save no longer
+  starts the view over, so keys typed just after it are kept.
+- **Undo in the find bar and other text boxes undoes what was typed there**,
+  not the last change to the note.
+- **The page follows the rail's edge while you drag it.** Only the rail grew
+  until the pointer was let go, so mid-drag it spilled over a page that had
+  not moved, and the page's line marks and highlights showed through it in a
+  band. The page and the title bar now move with the edge, a frame at a time.
+- **Input methods have a caret while they compose.** The drawn caret steps
+  aside then, and the browser's own was hidden too, so Chinese and Japanese
+  input showed none until the text was committed. A click that puts the caret
+  in the note no longer shows it for a moment at the old place first.
+- **Paste as text acts only on the note it was offered for.** The button is
+  dropped when another note or Source Code Mode comes to the front, and a
+  paste that lost any words, in navigation, hidden text or a long button,
+  always says so. Code keeps its non-breaking and zero-width spaces.
+- **A press in the page around the text can drag to select**, as it can
+  inside the text.
 - **Undo in a field inside a note undoes what was typed there.** In a code
   block's language field or a sidenote's card, Edit > Undo undid the last
   change to the note behind it, and the Format menu's commands reached the

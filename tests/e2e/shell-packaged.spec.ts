@@ -257,7 +257,7 @@ test.describe('Noto product shell', () => {
       // editor reports where the caret actually is, so waiting on it removes
       // the race between the click landing and the selection moving.
       await editor.locator('td').first().click();
-      // `columnResizing` wraps tables in a node view, so the active-block
+      // The table's node view wraps it in a frame, so the active-block
       // decoration lands on that wrapper rather than on the table element.
       await expect(editor.locator('.noto-active-block table')).toHaveCount(1);
 

@@ -122,11 +122,16 @@ test.describe('parity with Typora', () => {
       const fence = page.locator('.ProseMirror pre').first();
       await expect(fence).not.toHaveAttribute('data-lang');
       await fence.hover();
-      const field = fence.locator('.noto-fence-lang');
-      await expect(field).toHaveAttribute('placeholder', 'language');
-      await field.click();
-      await field.fill('ts');
+      const label = fence.locator('.noto-fence-lang');
+      await expect(label).toHaveAttribute('data-state', 'none');
+      await label.click();
+      const picker = page.getByTestId('language-picker');
+      await expect(picker).toBeVisible();
+      await page.keyboard.type('ts');
+      // The row says what is written: the name typed, for the language it names.
+      await expect(picker.locator('.noto-lang-option[aria-selected="true"]')).toContainText('TypeScript');
       await page.keyboard.press('Enter');
+      await expect(picker).toHaveCount(0);
       await expect(fence).toHaveAttribute('data-lang', 'ts');
       await expect(fence.locator('.token.keyword').first()).toBeVisible();
 
