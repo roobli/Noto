@@ -12,8 +12,9 @@
  * live inside the editor's lease and go when the note does.
  */
 
+import { copyThroughSelection } from '../editor/noto/clipboard';
 import type {
-  WorkspaceNoteHistoryReplyV1, WorkspaceNoteMemoryReplyV1, WorkspaceReviewActionV1, WorkspaceReviewReplyV1,
+  WorkspaceNoteHistoryReplyV1, WorkspaceMemoryAskReplyV1, WorkspaceNoteMemoryReplyV1, WorkspaceReviewActionV1, WorkspaceReviewReplyV1,
 } from '../../shared/workspace/v1/contracts';
 
 export type Disposer = () => void;
@@ -665,7 +666,9 @@ export function shellContext(
     noteText: () => (reads ? state.noteText() : null),
     replaceNoteText: (text) => writes && state.replaceNoteText(text),
     showTab: (id, key) => state.showTab(`${manifest.id}:${id}`, key),
-    copy: (text) => { void navigator.clipboard?.writeText(text).catch(() => {}); },
+    // Through a selection and the copy command, as the editor's own copies go: the async
+    // clipboard refuses a page without focus, and says so only in a promise nobody reads.
+    copy: (text) => { copyThroughSelection(text); },
   };
   const declared = (kind: 'info' | 'track', id: string) => {
     if (!manifest.uiExtensions.includes(`${kind}:${id}`)) {
