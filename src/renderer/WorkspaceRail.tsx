@@ -316,6 +316,8 @@ export function WorkspaceRail({
           '--rail-indicator-left': ruleFor(view).left,
           // The rule is drawn 100px wide and scaled to the label's width.
           '--rail-indicator-scale': String(parseFloat(ruleFor(view).width) / 100),
+          // Scaled to nothing, the rule still left a speck at the left edge on a fine screen: with a page in front it fades too.
+          '--rail-indicator-shown': ruleFor(view) === NO_RULE ? '0' : '1',
         } as CSSProperties}
       >
         <Tab id="files" current={view} onSelect={onView} testId="rail-files">Files</Tab>

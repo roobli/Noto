@@ -593,7 +593,8 @@ button:disabled { color: var(--muted); opacity: 0.7; }
   background: var(--ink);
   transform-origin: 0 50%;
   transform: translateX(var(--rail-indicator-left, 0)) scaleX(var(--rail-indicator-scale, 0));
-  transition-property: transform;
+  opacity: var(--rail-indicator-shown, 1);
+  transition-property: transform, opacity;
   transition-duration: var(--motion-medium);
   transition-timing-function: var(--ease-out);
 }

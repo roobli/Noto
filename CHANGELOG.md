@@ -175,6 +175,9 @@ How releases are made, and what each channel receives, is in
 
 ### Fixed
 
+- **No speck under the rail's tabs with a page in front.** With Changes (or
+  any page) showing, the tab underline was scaled to nothing but still left
+  a faint mark at the rail's left edge on a fine screen; it now fades out.
 - **The rail no longer lies over the page while a window grows.** With a
   wide rail, widening the window raised the rail's limit and the rail took
   its new width at once while its column eased after it, so for a moment it
