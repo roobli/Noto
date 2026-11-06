@@ -1,5 +1,5 @@
 import { describe, expect, it, vi } from 'vitest';
-import { buildSelectionMenu, buildTreeRowMenu, revealLabel, trashLabel } from '../../src/main/workspace/tree-row-menu';
+import { buildSelectionMenu, buildVaultRowMenu, buildTreeRowMenu, revealLabel, trashLabel } from '../../src/main/workspace/tree-row-menu';
 
 /**
  * A native menu holds the input loop until it is dismissed and no automated
@@ -68,6 +68,11 @@ describe('the menu on a row of the tree', () => {
     (items.find((item) => item.id === 'tree-many-trash')?.click as () => void)();
     expect(run.trash).toHaveBeenCalledTimes(1);
     expect(labels(buildSelectionMenu(2, run, 'win32')).at(-1)).toBe('Move 2 Items to Recycle Bin');
+  });
+
+  it('offers the open folder its info and what can be made in it, and nothing that removes it', () => {
+    const items = buildVaultRowMenu('/vault', actions(), 'darwin');
+    expect(labels(items)).toEqual(['New Note Here', 'New Folder Here', 'Get Info', '---', 'Reveal in Finder', 'Copy Path']);
   });
 
   it('calls the trash what each system calls it', () => {

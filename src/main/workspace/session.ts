@@ -71,7 +71,7 @@ import { inlineImages } from './inline-images';
 import { resolveAssetPath } from '../protocol/asset-guard';
 import { readResolvedAsset } from '../protocol/asset-read';
 import { CopyDestinations } from '../file-truth/v1/copy-destinations';
-import { buildSelectionMenu, buildTreeRowMenu, type TreeRowActions, trashLabel } from './tree-row-menu';
+import { buildSelectionMenu, buildTreeRowMenu, buildVaultRowMenu, type TreeRowActions, trashLabel } from './tree-row-menu';
 import {
   findPandoc,
   importDocument,
@@ -664,6 +664,19 @@ export class WorkspaceSession {
     if (!isInside(realRoot, real)) {
       this.logger.log('tree_menu_refused', {});
       return { version: NOTO_WORKSPACE_VERSION, accepted: false };
+    }
+
+    // The open folder's own row: its info and what can be made in it, and nothing that would remove it.
+    if (real === realRoot) {
+      const own = buildVaultRowMenu(real, {
+        newNote: (target) => { void this.newFile(target).catch(() => {}); },
+        newFolder: (target) => this.send(WORKSPACE_CHANNELS.renameRow, { version: NOTO_WORKSPACE_VERSION, path: target, intent: 'new-folder' }),
+        info: () => this.send(WORKSPACE_CHANNELS.showFolderInfo, { version: NOTO_WORKSPACE_VERSION, path: path.resolve(target) }),
+        reveal: (target) => shell.showItemInFolder(target),
+        copyPath: (target) => clipboard.writeText(target),
+      });
+      setImmediate(() => Menu.buildFromTemplate(own).popup({ window }));
+      return { version: NOTO_WORKSPACE_VERSION, accepted: true };
     }
 
     // Several rows chosen together: one menu for all of them, each checked as the one pressed was.

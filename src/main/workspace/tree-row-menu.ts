@@ -35,6 +35,22 @@ export interface TreeRowActions {
   readonly privacy?: { readonly level: 'open' | 'private' | 'sealed'; readonly set: (level: 'open' | 'private' | 'sealed') => void };
 }
 
+/**
+ * The menu for the open folder's own row: what can be made in it, its info,
+ * and where it is. Nothing that renames, moves or trashes the folder the window
+ * is showing, which is not something a row's menu should be able to do.
+ */
+export function buildVaultRowMenu(target: string, actions: Pick<TreeRowActions, 'newNote' | 'newFolder' | 'info' | 'reveal' | 'copyPath'>, platform: NodeJS.Platform = process.platform): MenuItemConstructorOptions[] {
+  return [
+    { id: 'tree-new-note', label: 'New Note Here', click: () => actions.newNote(target) },
+    { id: 'tree-new-folder', label: 'New Folder Here', click: () => actions.newFolder(target) },
+    { id: 'tree-info', label: 'Get Info', click: () => actions.info(target) },
+    { type: 'separator' },
+    { id: 'tree-reveal', label: revealLabel(platform), click: () => actions.reveal(target) },
+    { id: 'tree-copy-path', label: 'Copy Path', click: () => actions.copyPath(target) },
+  ];
+}
+
 /** What a menu for several chosen rows does: one action for all of them. */
 export interface TreeSelectionActions {
   readonly move: () => void;

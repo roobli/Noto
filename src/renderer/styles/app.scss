@@ -2945,6 +2945,21 @@ section.plugin-group > .plugin-market-row.is-set-aside {
 
 /* What Noto can do: one sheet, searchable, on the Help menu. Built out of
    the preferences panel's own furniture so it reads as the same product. */
+/* The title bar's ?: What Noto can do, and an accent dot while it holds something not yet seen. */
+.guide-toggle { position: relative; }
+.guide-toggle .guide-dot-fill { fill: currentcolor; stroke: none; }
+.guide-toggle.has-news::after {
+  content: '';
+  position: absolute;
+  top: 4px;
+  right: 4px;
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  background: var(--accent);
+  box-shadow: 0 0 0 2px var(--titlebar, var(--paper));
+}
+
 .shortcuts {
   animation: noto-arrive var(--motion-default) var(--ease-out);
   display: grid;
@@ -3015,6 +3030,35 @@ section.plugin-group > .plugin-market-row.is-set-aside {
 
   dt { display: flex; flex-wrap: wrap; gap: 4px; }
   dd { margin: 0; color: var(--ink); font-size: 13px; line-height: 1.5; }
+
+  /* What it needs, quieter than what it does, and the way to it at the row's end, so the list stays short. */
+  dd:has(> .shortcuts-try) { display: grid; grid-template-columns: minmax(0, 1fr) auto; column-gap: 14px; }
+  .shortcuts-what { display: block; }
+  .shortcuts-needs { display: block; grid-column: 1; color: var(--muted); font-size: 12px; }
+  .shortcuts-try {
+    grid-column: 2;
+    grid-row: 1 / span 2;
+    align-self: start;
+    padding: 1px 9px;
+    border: 1px solid var(--hairline);
+    border-radius: 999px;
+    background: transparent;
+    color: var(--ink);
+    font: 500 11.5px/18px tokens.$ui;
+    cursor: pointer;
+
+    &:hover { border-color: color-mix(in srgb, var(--accent) 50%, var(--hairline)); color: var(--accent); }
+    &:focus-visible { outline: 2px solid var(--focus); outline-offset: 1px; }
+  }
+  .shortcuts-new {
+    margin-right: 6px;
+    padding: 0 6px;
+    border-radius: 999px;
+    background: color-mix(in srgb, var(--accent) 14%, transparent);
+    color: var(--accent);
+    font: 600 10.5px/16px tokens.$ui;
+    vertical-align: 1px;
+  }
 
   kbd {
     padding: 1px 6px;

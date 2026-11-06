@@ -48,7 +48,7 @@ import { WorkspaceRail, type RailView } from './WorkspaceRail';
 import { SourceMode } from './SourceMode';
 import { TableDialog } from './TableDialog';
 import { ReloadConfirmDialog } from './ReloadConfirmDialog';
-import { Shortcuts } from './Shortcuts';
+import { GUIDE_EDITION, Shortcuts, type GuideTry } from './Shortcuts';
 import { RailFooter } from './RailFooter';
 import { Settings, type SettingsSection } from './Settings';
 import {
@@ -85,6 +85,9 @@ import { createPluginSnapshotStream } from './plugins/plugin-snapshot-stream';
 import { restoreSettingsExitFocus, type PluginSnapshotAvailability } from './plugins/plugin-center-state';
 
 const rid = (prefix: string) => `${prefix}:${crypto.randomUUID()}`;
+
+/** Where the edition of What Noto Can Do last opened is kept: a view of this machine's, nothing to sync. */
+const GUIDE_SEEN_KEY = 'noto.guide-seen';
 
 /**
  * Why a picture was not added, said in words rather than as a code.
@@ -299,6 +302,19 @@ function NotoWorkspace({ platform }: { platform: NotoPlatform }) {
   });
   /** The sheet of what the app can do, on the Help menu. */
   const [shortcuts, setShortcuts] = useState(false);
+  /**
+   * The edition of What Noto Can Do last opened on this machine. Anyone who
+   * has not opened it since the list became the guide saw the first; what
+   * came after is New, and the title bar's ? carries a dot until it is opened.
+   */
+  const [guideSeen, setGuideSeen] = useState<number>(() => {
+    try { return Number(window.localStorage.getItem(GUIDE_SEEN_KEY)) || 1; } catch { return 1; }
+  });
+  const closeGuide = useCallback(() => {
+    setShortcuts(false);
+    setGuideSeen(GUIDE_EDITION);
+    try { window.localStorage.setItem(GUIDE_SEEN_KEY, String(GUIDE_EDITION)); } catch { /* Shown again next time, which is harmless. */ }
+  }, []);
   /** Typora's Insert Table dialog, open or not. */
   const [tableDialog, setTableDialog] = useState(false);
   /** Dirty-buffer confirm before a reload that would discard unsaved edits. */
@@ -2902,6 +2918,31 @@ function NotoWorkspace({ platform }: { platform: NotoPlatform }) {
   const fileManagerName = platform === 'darwin' ? 'Finder'
     : platform === 'win32' ? 'File Explorer' : 'the file manager';
 
+  /** What a Try It in What Noto Can Do leads to: the same as its menu command, or the place it is. */
+  const tryGuide = (action: GuideTry) => {
+    setPrefs((current) => ({ ...current, open: false }));
+    switch (action) {
+      case 'note-info': setInfoFolder(null); changeSettings({ infoOpen: true }); break;
+      case 'note-history': slotState.showTab('dev.lr00rl.noto.history:history'); break;
+      case 'ask': slotState.showTab('dev.lr00rl.noto.memory:related', 'ask'); break;
+      case 'review': setRail({ open: true, view: 'page:dev.lr00rl.noto.memory:review' }); break;
+      case 'changes': setRail({ open: true, view: 'page:dev.lr00rl.noto.changes:changes' }); break;
+      case 'folder-info': {
+        // The folder of the note in front, or the open folder itself.
+        const note = active?.opened.path ?? null;
+        const root = folder.root;
+        const where = note && root && note.startsWith(root) ? note.replace(/[\\/][^\\/]*$/, '') : root;
+        if (where) { setInfoFolder(where); changeSettings({ infoOpen: true }); }
+        break;
+      }
+      case 'settings-memory': openSettings('memory'); break;
+      case 'outline': setRail({ open: true, view: 'outline' }); break;
+      case 'search': setRail({ open: true, view: 'search' }); break;
+      case 'quick-open': void ensureFileIndex(); setQuickOpen({ open: true, mode: 'files' }); break;
+      case 'palette': setPaletteOpen(true); break;
+    }
+  };
+
   return (
     <div className="app-shell"
       // Only macOS puts window controls over the page, so only macOS needs the
@@ -3043,6 +3084,19 @@ function NotoWorkspace({ platform }: { platform: NotoPlatform }) {
         <span className="file-state" data-testid="file-state" aria-live="polite">{state}</span>
 
         <div className="title-actions">
+          {/* What Noto can do, a press away rather than only in the Help menu,
+              with a dot while it holds something not yet seen. */}
+          <button type="button" className={guideSeen < GUIDE_EDITION ? 'icon-button guide-toggle has-news' : 'icon-button guide-toggle'}
+            data-testid="guide-toggle" aria-expanded={shortcuts}
+            aria-label={guideSeen < GUIDE_EDITION ? 'What Noto can do, with new things' : 'What Noto can do'}
+            title={guideSeen < GUIDE_EDITION ? 'What Noto can do: new things since you last looked' : 'What Noto can do'}
+            onClick={() => (shortcuts ? closeGuide() : setShortcuts(true))}>
+            <svg viewBox="0 0 16 16" aria-hidden="true">
+              <circle cx="8" cy="8" r="6.1" />
+              <path d="M6.2 6.3a1.9 1.9 0 0 1 3.7.6c0 1.3-1.9 1.6-1.9 2.9" />
+              <circle cx="8" cy="11.6" r="0.55" className="guide-dot-fill" />
+            </svg>
+          </button>
           <button ref={settingsButtonRef} type="button" className="icon-button" data-testid="settings-toggle"
             aria-expanded={prefs.open}
             aria-controls="settings-panel"
@@ -3103,7 +3157,7 @@ function NotoWorkspace({ platform }: { platform: NotoPlatform }) {
         className={`workspace-layout ${rail.open ? 'has-rail' : ''}`}
         data-source-mode={sourceMode ? 'on' : undefined}
       >
-        {shortcuts && <Shortcuts mac={platform === 'darwin'} onClose={() => setShortcuts(false)} />}
+        {shortcuts && <Shortcuts mac={platform === 'darwin'} seen={guideSeen} onClose={closeGuide} onTry={tryGuide} />}
         {reloadConfirm && (
           <ReloadConfirmDialog
             offerSaveCopy={reloadConfirm.offerSaveCopy}

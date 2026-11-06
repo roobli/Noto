@@ -878,7 +878,8 @@ export function FileTree({
               than from the folder. Dropping the column puts the icon where the
               line starts. */}
           <div className={`tree-row tree-directory tree-vault-row${dropClass(root)}`} data-testid="tree-vault"
-            data-depth={0} title={vaultLock ? `${root}, ${PRIVACY_WORDS[vaultLock]}` : root} {...dropProps(root)}>
+            data-depth={0} title={vaultLock ? `${root}, ${PRIVACY_WORDS[vaultLock]}` : root} {...dropProps(root)}
+            onContextMenu={(event) => { event.preventDefault(); onRowMenu(root, 'directory'); }}>
             <FolderGlyph />
             <span className="tree-name">{vaultName}</span>
             {vaultLock && <PrivacyMark level={vaultLock} />}

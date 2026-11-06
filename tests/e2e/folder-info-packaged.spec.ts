@@ -180,6 +180,17 @@ test.describe('a folder\'s info', () => {
       // Nothing else to say, so the second memory section is not there at all.
       await expect(pane.locator('[data-testid="folder-section"]:visible')).toHaveCount(2);
       await shoot(app, page, 'folder-info-plain.png');
+
+      // The open folder's own row has Get Info too, for the whole of it, and nothing that would remove it.
+      await page.getByTestId('tree-vault').click({ button: 'right' });
+      await expect.poll(() => app.evaluate(() => (globalThis as { shownMenus?: Electron.Menu[] }).shownMenus!.at(-1)?.items.map((item) => item.label) ?? []))
+        .toEqual(['New Note Here', 'New Folder Here', 'Get Info', '', 'Reveal in Finder', 'Copy Path']);
+      await app.evaluate(() => {
+        const menu = (globalThis as { shownMenus?: Electron.Menu[] }).shownMenus!.at(-1)!;
+        menu.items.find((item) => item.id === 'tree-info')!.click();
+      });
+      await expect(pane.getByTestId('info-title')).toHaveText(path.basename(root));
+      await expect(pane.getByTestId('folder-memory-state').getByRole('button')).toHaveText('Keep Memory for This Folder…');
     } finally {
       await app.close();
     }
