@@ -277,6 +277,8 @@ function NotoWorkspace({ platform }: { platform: NotoPlatform }) {
    * it and captured over each other.
    */
   const fileTruthBusyRef = useRef(false);
+  /** The note whose save was asked for while another save was landing. */
+  const saveAgainRef = useRef<string | null>(null);
   const [recoveryBarrier, setRecoveryBarrier] = useState(false);
   const [alertDismissed, setAlertDismissed] = useState(false);
   const recoveryBarrierRef = useRef(false);
@@ -1615,12 +1617,19 @@ function NotoWorkspace({ platform }: { platform: NotoPlatform }) {
     // Text still settling in the source view goes into the document first,
     // so a save a moment after typing there writes what is on screen.
     sourceFlushRef.current?.();
+    if (!editor || !token) return;
     // The editor's own word on being dirty, because the flush above may have
     // just made it so and the state this closure holds is from before.
-    if (!editor || !token || pending || !(editorDirty || editor.isDirty)) return;
-    // Checked and set before anything is captured, so a second trigger in the
-    // same tick finds the first one and leaves.
-    if (fileTruthBusyRef.current) return;
+    const dirty = editorDirty || editor.isDirty;
+    // A save asked for while one is landing is kept, not dropped: it runs once
+    // that one has landed, if there is still something to save. Checked and
+    // set before anything is captured, so a second trigger in the same tick
+    // finds the first one and waits for it.
+    if (pending || fileTruthBusyRef.current) {
+      if (dirty && documentId) saveAgainRef.current = documentId;
+      return;
+    }
+    if (!dirty) return;
     fileTruthBusyRef.current = true;
     let capture: ReturnType<NotoEditor['captureSaveTicket']>;
     let base: NotoDocumentWire;
@@ -1703,6 +1712,18 @@ function NotoWorkspace({ platform }: { platform: NotoPlatform }) {
   };
 
   saveRef.current = save;
+
+  // The save that waited for another to land, now that it has: on the same
+  // note only, and not past a refusal (a conflict, a recovery record, a
+  // failed write), which waits for the person as the first save did.
+  useEffect(() => {
+    if (pending || saveAgainRef.current === null) return;
+    const again = saveAgainRef.current;
+    saveAgainRef.current = null;
+    if (again !== activeIdRef.current) return;
+    if (recoveryBarrier || state === 'External conflict' || state === 'Stale editor revision' || state === 'Save failed') return;
+    void saveRef.current();
+  }, [pending, recoveryBarrier, state]);
 
   const saveCopy = async (): Promise<boolean> => {
     const editor = editorRef.current;
