@@ -89,6 +89,22 @@ async function capture(app: ElectronApplication, file: string): Promise<void> {
 const pane = (page: Page) => page.getByTestId('info-pane');
 const editorText = (page: Page) => page.locator('.ProseMirror').innerText();
 
+/** A note with commits two years apart: one long ago, two this year. */
+function longNote(): { repo: string; note: string } {
+  const repo = scratch('info-long');
+  const at = (days: number) => new Date(Date.now() - days * 86_400_000).toISOString();
+  const commit = (message: string, when: string) => execFileSync('git', ['-c', 'user.email=noto@example.invalid', '-c', 'user.name=Noto', '-c', 'commit.gpgsign=false', 'commit', '-q', '-m', message],
+    { cwd: repo, stdio: 'ignore', env: { ...process.env, GIT_AUTHOR_DATE: when, GIT_COMMITTER_DATE: when } });
+  execFileSync('git', ['init', '-q'], { cwd: repo, stdio: 'ignore' });
+  const note = path.join(repo, 'long.md');
+  for (const [text, message, days] of [['# Long\n', 'begin', 730], ['# Long\n\nMore.\n', 'more', 700], ['# Long\n\nMore.\n\nNow.\n', 'now', 20]] as const) {
+    writeFileSync(note, text);
+    execFileSync('git', ['add', '-A'], { cwd: repo, stdio: 'ignore' });
+    commit(message, at(days));
+  }
+  return { repo, note };
+}
+
 test.describe('the info pane', () => {
   test('lists a note\'s commits through its move, opens one, steps from it, and takes a version back', async () => {
     const { repo, note } = movedNote();
@@ -218,6 +234,27 @@ test.describe('the info pane', () => {
       await expect(pane(page).getByTestId('history-state')).toHaveAttribute('data-state', 'not-git');
       await expect(pane(page).getByTestId('history-state')).toContainText('not in git');
       await expect(pane(page).getByTestId('info-timeline')).toHaveCount(0);
+    } finally {
+      await app.close();
+    }
+  });
+
+  test('draws a long note\'s last year, with what came before as one mark, and all of it when asked', async () => {
+    const { repo, note } = longNote();
+    const { app, page } = await launch(repo, note);
+    try {
+      await menuItem(app, 'toggle-note-info');
+      const marks = pane(page).getByTestId('info-mark');
+      await expect(marks.first()).toHaveAttribute('aria-label', /^2 commits before /, { timeout: 20_000 });
+      await expect(marks.first()).toHaveClass(/is-earlier/);
+      await expect(marks).toHaveCount(2);
+      const span = pane(page).getByTestId('info-axis-span');
+      await expect(span).toHaveText(/^Earlier · /);
+      if (SHOTS) await capture(app, path.join(SHOTS, 'info-timeline-year.png'));
+      await span.click();
+      await expect(span).toHaveAttribute('aria-pressed', 'true');
+      await expect(pane(page).locator('.info-mark.is-earlier')).toHaveCount(0);
+      if (SHOTS) await capture(app, path.join(SHOTS, 'info-timeline-all.png'));
     } finally {
       await app.close();
     }

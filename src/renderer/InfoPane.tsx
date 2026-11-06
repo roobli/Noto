@@ -65,6 +65,13 @@ export function gitStateOf(snapshot: GitSnapshot | null, note: string, committed
 const DAY = 24 * 60 * 60 * 1000;
 /** The shortest stretch the timeline draws, so a note from this week does not stretch one day across it. */
 const MIN_SPAN = 14 * DAY;
+/**
+ * The longest it draws to scale unless asked. A note alive for years drawn
+ * whole puts this year in a column or two; a year at about twelve days a
+ * column still shows whether it is alive now, and everything before is one
+ * mark at the left, said as how many.
+ */
+const YEAR = 365 * DAY;
 
 const dateFormat = new Intl.DateTimeFormat('en', { month: 'short', day: 'numeric' });
 const yearFormat = new Intl.DateTimeFormat('en', { month: 'short', day: 'numeric', year: 'numeric' });
@@ -95,6 +102,26 @@ export function columnsOf(marks: readonly InfoMark[], start: number, end: number
     marks: list.sort((a, b) => b.at - a.at),
     total: list.reduce((sum, mark) => sum + (mark.value ?? 1), 0),
   }));
+}
+
+/** A column, and whether it holds everything before the drawn span rather than a stretch of it. */
+interface BandColumn extends Column {
+  readonly earlier: boolean;
+}
+
+/**
+ * The columns one track draws from `start` to `end`. With `gather`, the
+ * first column holds every mark before `start`, drawn apart, and the rest
+ * share the other columns to scale. Pure, for the test.
+ */
+export function bandColumns(marks: readonly InfoMark[], start: number, end: number, count: number, gather: boolean): BandColumn[] {
+  if (!gather) return columnsOf(marks, start, end, count).map((column) => ({ ...column, earlier: false }));
+  const before = marks.filter((mark) => mark.at < start);
+  const rest = columnsOf(marks.filter((mark) => mark.at >= start), start, end, count - 1)
+    .map((column) => ({ ...column, index: column.index + 1, earlier: false }));
+  if (before.length === 0) return rest;
+  const earlier = { index: 0, marks: [...before].sort((a, b) => b.at - a.at), total: before.reduce((sum, mark) => sum + (mark.value ?? 1), 0), earlier: true };
+  return [earlier, ...rest];
 }
 
 interface Loaded {
@@ -144,14 +171,17 @@ function Timeline({ tracks, width, onPick }: {
 }) {
   const now = Date.now();
   const end = now;
+  const [whole, setWhole] = useState(false);
   const earliest = Math.min(...tracks.flatMap(({ track }) => track.marks.map((mark) => mark.at)), now);
-  const start = Math.min(earliest, end - MIN_SPAN);
+  const long = earliest < end - YEAR;
+  const gathered = long && !whole;
+  const start = gathered ? end - YEAR : Math.min(earliest, end - MIN_SPAN);
   // Nine pixels a column, a dot and its gap, across what the pane's padding
   // and the tracks' names leave. Something not yet committed has the last
   // column to itself, so a commit from today never sits under its ring.
   const count = Math.max(12, Math.floor(Math.max(80, width - 32 - 56) / 9));
   const pending = tracks.some(({ track }) => track.pending);
-  const rows = tracks.map(({ entry, track }) => ({ entry, track, columns: columnsOf(track.marks, start, end, pending ? count - 1 : count) }));
+  const rows = tracks.map(({ entry, track }) => ({ entry, track, columns: bandColumns(track.marks, start, end, pending ? count - 1 : count, gathered) }));
   const buttons = useRef<HTMLButtonElement[]>([]);
   buttons.current = [];
 
@@ -175,7 +205,8 @@ function Timeline({ tracks, width, onPick }: {
     <div className="info-timeline" data-testid="info-timeline">
       <div className="info-tracks" role="group" aria-label="Timeline" onKeyDown={walk}>
         {rows.map(({ entry, track, columns }) => {
-          const most = Math.max(1, ...columns.map((column) => column.total));
+          // What came before is not to scale, so it does not set the scale either.
+          const most = Math.max(1, ...columns.filter((column) => !column.earlier).map((column) => column.total));
           return (
             <div key={entry.key} className={`info-track is-${track.kind}`} data-testid="info-track" data-track={entry.key}>
               <span className="info-track-name">{entry.track.title}</span>
@@ -183,7 +214,9 @@ function Timeline({ tracks, width, onPick }: {
                 {columns.map((column) => {
                   const newest = column.marks[0]!;
                   const many = column.marks.length > 1;
-                  const label = track.kind === 'amounts'
+                  const label = column.earlier
+                    ? `${track.kind === 'amounts' ? column.total : column.marks.length} ${entry.track.title.toLowerCase()} before ${shortDate(start, now)}`
+                    : track.kind === 'amounts'
                     ? `${shortDate(newest.at, now)}: ${column.total} ${entry.track.title.toLowerCase()}`
                     : many
                       ? `${column.marks.length} ${entry.track.title.toLowerCase()}, ${shortDate(column.marks[column.marks.length - 1]!.at, now)} to ${shortDate(newest.at, now)}`
@@ -191,7 +224,7 @@ function Timeline({ tracks, width, onPick }: {
                   const faint = column.marks.every((mark) => mark.faint);
                   const style = {
                     '--x': `${((column.index + 0.5) / count) * 100}%`,
-                    '--h': `${Math.max(0.18, column.total / most)}`,
+                    '--h': `${Math.max(0.18, Math.min(1, column.total / most))}`,
                   } as CSSProperties;
                   const tab = first ? 0 : -1;
                   first = false;
@@ -200,7 +233,7 @@ function Timeline({ tracks, width, onPick }: {
                       key={column.index}
                       ref={(element) => { if (element) buttons.current.push(element); }}
                       type="button"
-                      className={`info-mark${faint ? ' is-faint' : ''}${many ? ' is-many' : ''}`}
+                      className={`info-mark${faint ? ' is-faint' : ''}${many ? ' is-many' : ''}${column.earlier ? ' is-earlier' : ''}`}
                       style={style}
                       tabIndex={tab}
                       aria-label={label}
@@ -228,9 +261,17 @@ function Timeline({ tracks, width, onPick }: {
           );
         })}
       </div>
-      <div className="info-axis" aria-hidden="true">
-        <span>{shortDate(start, now)}</span>
-        <span>Today</span>
+      <div className="info-axis">
+        {long
+          ? (
+            <button type="button" className="info-axis-span" data-testid="info-axis-span" aria-pressed={whole}
+              title={whole ? 'Draw the last year, with everything before it as one mark' : 'Draw all of its time'}
+              onClick={() => setWhole(!whole)}>
+              {whole ? shortDate(start, now) : `Earlier · ${shortDate(start, now)}`}
+            </button>
+          )
+          : <span aria-hidden="true">{shortDate(start, now)}</span>}
+        <span aria-hidden="true">Today</span>
       </div>
       {summary && <p className="info-summary" data-testid="info-summary">{summary}</p>}
     </div>

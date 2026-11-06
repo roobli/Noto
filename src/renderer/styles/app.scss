@@ -4088,17 +4088,20 @@ section.plugin-group > .plugin-market-row.is-set-aside {
   white-space: nowrap;
 }
 
+/* Centred on the track's line, and taller than it so it is easy to hit: a
+   button is otherwise at least 28px, which put each dot 7px below the line. */
 .info-mark {
   position: absolute;
-  top: 0;
-  bottom: 0;
+  top: 50%;
   left: var(--x);
   width: 9px;
+  height: 18px;
+  min-height: 0;
   padding: 0;
   border: 0;
   border-radius: 3px;
   background: transparent;
-  transform: translateX(-50%);
+  transform: translate(-50%, -50%);
   cursor: pointer;
 
   &::before {
@@ -4119,6 +4122,9 @@ section.plugin-group > .plugin-market-row.is-set-aside {
   &.is-many::before { width: 9px; height: 9px; }
   &.is-faint::before { background: var(--muted); opacity: 0.45; }
 
+  /* Everything before the drawn year, gathered: not to scale, so not in the accent. */
+  &.is-earlier::before { background: var(--muted); }
+
   /* Not committed yet: a ring at now. */
   &.is-pending::before {
     border: 1.5px solid var(--accent);
@@ -4127,7 +4133,11 @@ section.plugin-group > .plugin-market-row.is-set-aside {
 }
 
 .info-track.is-amounts .info-mark {
+  top: 0;
+  bottom: 0;
   width: 6px;
+  height: auto;
+  transform: translateX(-50%);
 
   &::before {
     top: auto;
@@ -4144,11 +4154,28 @@ section.plugin-group > .plugin-market-row.is-set-aside {
 
 .info-axis {
   display: flex;
+  align-items: baseline;
   justify-content: space-between;
   margin: 3px 56px 0 0;
   color: var(--muted);
   font: 500 10px/13px tokens.$ui;
   font-variant-numeric: tabular-nums;
+}
+
+/* The axis's left end: a switch between the last year and all of a long note's time. */
+.info-axis-span {
+  padding: 0;
+  border: 0;
+  background: none;
+  color: inherit;
+  font: inherit;
+  text-decoration: underline dotted;
+  text-decoration-color: var(--hairline);
+  text-underline-offset: 2px;
+  cursor: pointer;
+
+  &:hover { color: var(--ink); }
+  &:focus-visible { outline: 2px solid var(--focus); outline-offset: 1px; border-radius: 2px; }
 }
 
 .info-summary {

@@ -7,7 +7,7 @@
 
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { InfoRegistry, RailPageRegistry, ShellState, shellContext, type InfoTabHost } from '../../src/renderer/plugins/slots';
-import { clampInfoWidth, columnsOf, gitStateOf, INFO_MIN } from '../../src/renderer/InfoPane';
+import { bandColumns, clampInfoWidth, columnsOf, gitStateOf, INFO_MIN } from '../../src/renderer/InfoPane';
 import { commitDetail, commitsSummary, frontmatterFields, textCounts, when } from '../../src/renderer/plugins/bundled/history/model';
 import type { NoteCommitV1 } from '../../src/shared/workspace/v1/contracts';
 
@@ -92,6 +92,20 @@ describe('the pane', () => {
     expect(columns.map((column) => [column.index, column.marks.map((mark) => mark.key)])).toEqual([
       [0, ['1', '0']], [5, ['2']], [9, ['3']],
     ]);
+  });
+
+  it('draws a long note\'s last year to scale and everything before it as one mark at the left', () => {
+    const day = 86_400_000;
+    const marks = [0, 10, 400, 700, 729].map((at, index) => ({ at: at * day, label: String(index), key: String(index), value: index + 1 }));
+    const columns = bandColumns(marks, 365 * day, 730 * day, 11, true);
+    expect(columns[0]).toMatchObject({ index: 0, earlier: true, total: 3 });
+    expect(columns[0]!.marks.map((mark) => mark.key)).toEqual(['1', '0']);
+    expect(columns.slice(1).map((column) => [column.index, column.earlier, column.marks.map((mark) => mark.key)])).toEqual([
+      [1, false, ['2']], [10, false, ['4', '3']],
+    ]);
+    // Asked for all of it, nothing is gathered; and a year with nothing before it has no such mark.
+    expect(bandColumns(marks, 0, 730 * day, 10, false).some((column) => column.earlier)).toBe(false);
+    expect(bandColumns(marks.slice(2), 365 * day, 730 * day, 11, true)[0]!.earlier).toBe(false);
   });
 
   it('says what git says about the note, through a link to the folder too', () => {
