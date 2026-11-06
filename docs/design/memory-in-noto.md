@@ -161,13 +161,23 @@ the same memory the agent would get through MCP.
 ### Names that could be links, in the note
 
 In the note in front, a mention of another note by its title or alias that is
-strong enough to show (the same score `suggest` uses, above a threshold, and
-never more than a handful per screen) gets a faint dotted underline, like a
-spelling mark but quieter. Pointing at it shows the note it would link to,
-with its folder; **Link** writes the link in place, as an ordinary edit the
-person can undo, and **Not this** dismisses it for good. View → Show Link
-Suggestions turns the marks off. Nothing is marked in a note's code, links,
-headings, or in a copied reference (`heard`) note.
+strong enough to show gets a faint dotted underline, like a spelling mark but
+quieter. The score is Review's own, for the whole folder: each note's scan is
+kept against its hash, so asking about one note reads only what changed
+since, and counts how many notes use each name across all of them (11 ms for
+one note of the author's eight thousand, once warm). Only the likeliest are
+marked: above 0.6, which three in four of a folder's mentions fall under, and
+no more than eight in a note. Resting the pointer on one, or Option-Return
+with the caret in it, opens a card with the note it would link to and its
+folder; **Link** writes the link in place, as one edit the person can undo,
+and **Not This** dismisses it for good, in Review too. View → Show
+Suggestions in Notes turns the marks off. Nothing is marked in a note's code,
+links, headings, or in a copied reference (`heard`) note.
+
+The marks are a slot of their own (`marks:<id>`, see [the slots
+plan](../architecture/plugin-slots.md)), and link suggestions are the Memory
+plugin's use of it, so a later plugin can underline words for its own
+reasons the same way.
 
 ### The Review page
 
@@ -347,7 +357,8 @@ the app's own features use the seams anyone else's would.
    Rebuild and Stop Keeping Memory. Done; the vault gained the policy
    editors, `readers`, `privacyMarks` and `noteSensitivity`, and its command
    line ships with Noto.
-5. Link suggestions in the note in front.
+5. Link suggestions in the note in front, on a note marks slot any plugin
+   can use. Done; the vault's mention scan is kept per note.
 6. Ask the vault and Copy as context; the folder's info; one passage's
    history from its git mark.
 
