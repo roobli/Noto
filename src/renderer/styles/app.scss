@@ -1290,30 +1290,30 @@ button:disabled { color: var(--muted); opacity: 0.7; }
    with no wrapper to keep in step with the markup. The Updates and Remote
    panes keep their rows in a wrapper of their own, so they are named too. A
    row of buttons is not a setting and stays off the card. */
-:is(.pref-content, .updates-pane, .remote-pane) > .pref-row:not(.pref-actions) {
+:is(.pref-content, .updates-pane, .remote-pane, .memory-pane) > .pref-row:not(.pref-actions) {
   border: 1px solid var(--pref-card-line);
   background: var(--pref-card);
   padding: 11px 16px;
 }
 
-:is(.pref-content, .updates-pane, .remote-pane) > .pref-row + .pref-row {
+:is(.pref-content, .updates-pane, .remote-pane, .memory-pane) > .pref-row + .pref-row {
   margin-top: -1px;
   border-top-color: var(--pref-card-rule);
 }
 
-:is(.pref-content, .updates-pane, .remote-pane) > .pref-row:not(.pref-row + .pref-row) {
+:is(.pref-content, .updates-pane, .remote-pane, .memory-pane) > .pref-row:not(.pref-row + .pref-row) {
   border-top-left-radius: 10px;
   border-top-right-radius: 10px;
 }
 
-:is(.pref-content, .updates-pane, .remote-pane) > .pref-row:not(:has(+ .pref-row)) {
+:is(.pref-content, .updates-pane, .remote-pane, .memory-pane) > .pref-row:not(:has(+ .pref-row)) {
   border-bottom-left-radius: 10px;
   border-bottom-right-radius: 10px;
 }
 
 /* Notes, status lines and buttons between cards sit just off the card's
    edge, at the labels' indent, so they read as said about the card above. */
-:is(.pref-content, .updates-pane) > :is(.pref-note, .pref-status, .pref-problem) { margin: 10px 16px; }
+:is(.pref-content, .updates-pane, .memory-pane) > :is(.pref-note, .pref-status, .pref-problem) { margin: 10px 16px; }
 .pref-row.pref-actions { padding-inline: 16px; }
 .remote-pane > :is(.pref-note, .pref-status, .remote-token) { margin-inline: 16px; }
 .remote-pane > .remote-regenerate { justify-self: start; margin-inline: 16px; }
@@ -1367,6 +1367,212 @@ button:disabled { color: var(--muted); opacity: 0.7; }
   color: var(--ink);
   font-weight: 600;
 }
+
+/* The page as Appearance sets it, at the head of the pane: a window in
+   miniature, the rail's ground at its left and the paper beside it, and on the
+   paper a column of real text in the document's face, size and leading, as
+   wide as the page width makes it. It reads the live tokens, so the theme it
+   shows is the one in force; the controls under it change it as they move.
+   A fixed height with the foot fading out, so a larger text size grows the
+   text and not the pane. */
+.pref-specimen {
+  display: grid;
+  grid-template-columns: 16% minmax(0, 1fr);
+  height: 188px;
+  margin: 0 0 18px;
+  overflow: hidden;
+  border: 1px solid var(--pref-card-line);
+  border-radius: 12px;
+  background: var(--paper);
+  box-shadow: 0 1px 2px color-mix(in srgb, var(--shadow) 6%, transparent),
+    0 10px 28px -18px color-mix(in srgb, var(--shadow) 30%, transparent);
+}
+
+.pref-specimen-rail {
+  display: flex;
+  flex-direction: column;
+  gap: 9px;
+  border-right: 1px solid var(--hairline);
+  background: var(--panel);
+  padding: 22px 14px;
+
+  i {
+    display: block;
+    height: 5px;
+    border-radius: 3px;
+    background: color-mix(in srgb, var(--ink) 13%, transparent);
+  }
+
+  i:nth-child(1) { width: 62%; }
+  i:nth-child(2) { width: 80%; margin-left: 12%; }
+  i:nth-child(3) { width: 58%; margin-left: 12%; background: color-mix(in srgb, var(--accent) 55%, transparent); }
+  i:nth-child(4) { width: 70%; margin-left: 12%; }
+  i:nth-child(5) { width: 48%; }
+}
+
+.pref-specimen-paper {
+  display: flex;
+  justify-content: center;
+  min-width: 0;
+  padding: 22px 18px 0;
+  mask-image: linear-gradient(to bottom, #000 62%, transparent 98%);
+}
+
+/* The column's share of the paper for each page width, about as the window
+   gives it at a laptop's size, so Default reads as a reading column and Full
+   as the paper edge to edge. It snaps rather than slides: the app animates no
+   layout, and the text rewrapping is the change to see. */
+.pref-specimen-page {
+  display: flex;
+  flex-direction: column;
+  gap: 0.55em;
+  width: 58%;
+  min-width: 0;
+  color: var(--ink);
+  font-family: tokens.$prose;
+  font-size: var(--doc-font-size, 15px);
+  line-height: var(--doc-line-height, 1.58);
+}
+
+.pref-specimen[data-width='wide'] .pref-specimen-page { width: 78%; }
+.pref-specimen[data-width='full'] .pref-specimen-page { width: 100%; }
+
+.pref-specimen-title {
+  color: var(--ink-strong);
+  font-size: 1.55em;
+  font-weight: 600;
+  line-height: 1.25;
+}
+
+/* Tiles: the theme, the face and the width as small pictures of themselves,
+   a word under each. One accent ring marks the choice, as a segmented
+   control's raised segment does. */
+.pref-tiles-row { align-items: center; }
+
+.pref-tiles {
+  display: flex;
+  flex: 0 0 auto;
+  gap: 10px;
+}
+
+.pref-tile {
+  display: grid;
+  justify-items: center;
+  gap: 6px;
+  min-height: 0;
+  border: 0;
+  background: transparent;
+  padding: 0;
+  color: var(--muted);
+  font-size: 11.5px;
+
+  &:hover:not(:disabled) { background: transparent; color: var(--ink); }
+  &:focus-visible { outline: none; }
+  &:focus-visible .pref-tile-art { outline: 2px solid var(--focus); outline-offset: 2px; }
+  &.is-on { color: var(--ink); font-weight: 600; }
+}
+
+.pref-tile-art {
+  position: relative;
+  display: flex;
+  width: 66px;
+  height: 44px;
+  overflow: hidden;
+  border: 1px solid var(--hairline);
+  border-radius: 7px;
+  background: var(--paper);
+  transition: border-color var(--motion-fast) var(--ease-out), box-shadow var(--motion-fast) var(--ease-out),
+    translate var(--motion-fast) var(--ease-out);
+}
+
+.pref-tile:hover .pref-tile-art { border-color: color-mix(in srgb, var(--ink) 28%, var(--hairline)); translate: 0 -1px; }
+.pref-tile:active .pref-tile-art { translate: 0; }
+.pref-tile.is-on .pref-tile-art {
+  border-color: var(--accent);
+  box-shadow: 0 0 0 1px var(--accent), 0 4px 10px -6px color-mix(in srgb, var(--accent) 60%, transparent);
+}
+
+/* A theme tile draws its own theme's colours rather than the live tokens,
+   since it shows a theme that may not be the one in force: the paper, rail,
+   ink and accent of each, as _tokens.scss sets them. System draws both,
+   split on the diagonal. */
+$mini-tones: (
+  light: (paper: #FAF9F6, panel: #F3F1EC, ink: #34312E, accent: #A85D3B),
+  dark: (paper: #1F1E1C, panel: #181715, ink: #D7D4CF, accent: #E0A07A),
+);
+
+.pref-mini {
+  position: absolute;
+  inset: 0;
+  display: flex;
+  flex-direction: column;
+  justify-content: center;
+  gap: 5px;
+  padding: 0 9px 0 22px;
+
+  i { display: block; height: 3px; border-radius: 2px; }
+  i:nth-child(1) { width: 58%; height: 4px; }
+  i:nth-child(2) { width: 88%; }
+  i:nth-child(3) { width: 70%; }
+}
+
+@each $tone, $c in $mini-tones {
+  .pref-mini.is-#{$tone} {
+    background: linear-gradient(to right, map-get($c, panel) 14px, map-get($c, paper) 14px);
+
+    i { background: color-mix(in srgb, map-get($c, ink) 34%, transparent); }
+    i:nth-child(1) { background: map-get($c, ink); }
+    i:nth-child(3) { background: color-mix(in srgb, map-get($c, accent) 70%, transparent); }
+  }
+}
+
+.pref-mini + .pref-mini { clip-path: polygon(100% 0, 100% 100%, 0 100%); }
+
+/* A face tile sets its own name in its own stack: the Latin and the Han
+   together, since a face is chosen for both. */
+.pref-face-art {
+  display: grid;
+  place-items: center;
+  width: 100%;
+  color: var(--ink);
+  font-size: 15px;
+  letter-spacing: 0.01em;
+
+  &.is-serif { font-family: tokens.$prose; }
+  &.is-sans { font-family: tokens.$ui; }
+  &.is-mono { font-family: tokens.$mono; font-size: 13px; }
+}
+
+/* A width tile is the window again: the rail, then the text column at that
+   width's share of the paper. */
+.pref-width-art {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 100%;
+  padding-left: 14px;
+  background: linear-gradient(to right, var(--panel) 14px, var(--paper) 14px);
+
+  > span {
+    display: flex;
+    flex-direction: column;
+    gap: 4px;
+  }
+
+  i {
+    display: block;
+    height: 3px;
+    border-radius: 2px;
+    background: color-mix(in srgb, var(--ink) 30%, transparent);
+  }
+
+  i:nth-child(1) { width: 70%; height: 4px; background: var(--ink); }
+  i:nth-child(4) { width: 62%; }
+  &.is-default > span { width: 44%; }
+  &.is-wide > span { width: 66%; }
+  &.is-full > span { width: 88%; }
+}
+
 
 /* Sliders.
    A bare range input paints in the operating system's accent, which is neither
@@ -1797,7 +2003,6 @@ button:disabled { color: var(--muted); opacity: 0.7; }
 .pref-action.is-danger { color: var(--danger); }
 .pref-inline-action.is-danger { color: var(--danger); }
 /* The pane's rows run to its edges, so its group headings do too. */
-.memory-pane > .pref-group { margin-right: 0; margin-left: 0; }
 
 .plugin-source-folder {
   margin-left: auto;
@@ -3160,33 +3365,104 @@ section.plugin-group > .plugin-market-row.is-set-aside {
 }
 
 /* Settings → Memory: the folder's agents, a row each, and adding one. */
-.memory-pane { display: flex; flex-direction: column; gap: 12px; }
+/* Memory draws its settings on the cards every pane uses; its agents are one
+   card of their own, a row per agent with its mark, and the way to add one as
+   the card's last row, where the next agent will appear. */
+.memory-pane { display: flow-root; }
+.memory-pane > .pref-group:first-of-type { margin-top: 22px; }
 
-.memory-agents { display: flex; flex-direction: column; margin: 0; padding: 0; list-style: none; border-top: 1px solid var(--hairline); }
+.memory-agents {
+  margin: 0;
+  padding: 0;
+  overflow: hidden;
+  border: 1px solid var(--pref-card-line);
+  border-radius: 10px;
+  background: var(--pref-card);
+  list-style: none;
+}
 
 .memory-agent {
   display: grid;
-  grid-template-columns: minmax(0, 1fr) auto;
-  grid-template-areas: "name action" "words action";
+  grid-template-columns: 28px minmax(0, 1fr) auto;
+  grid-template-areas: "mark name action" "mark words action";
   align-items: center;
   column-gap: 12px;
-  padding: 8px 0;
-  border-bottom: 1px solid var(--hairline);
+  row-gap: 1px;
+  padding: 11px 16px;
+}
+
+.memory-agents > li + li { border-top: 1px solid var(--pref-card-rule); }
+
+.memory-agent-mark {
+  grid-area: mark;
+  display: grid;
+  place-items: center;
+  width: 28px;
+  height: 28px;
+  border-radius: 50%;
+  background: color-mix(in srgb, var(--accent) 14%, var(--pref-card));
+  color: var(--accent);
+  font-family: tokens.$prose;
+  font-size: 13.5px;
+  font-weight: 600;
+  line-height: 1;
+}
+
+/* The wildcard is a small glyph at the initials' size, so it is set larger. */
+.memory-agent[data-name='default'] .memory-agent-mark { font-family: tokens.$mono; font-size: 17px; padding-top: 4px; }
+
+.memory-agent.is-off .memory-agent-mark {
+  background: color-mix(in srgb, var(--ink) 7%, var(--pref-card));
+  color: var(--muted);
 }
 
 .memory-agent-name { grid-area: name; color: var(--ink); font-size: 13px; font-weight: 500; }
 .memory-agent-words { grid-area: words; color: var(--muted); font-size: 12px; line-height: 1.45; }
 .memory-agent .pref-inline-action { grid-area: action; }
 
+/* The add row reads as the next agent not yet there: the same mark, drawn as
+   an outline, and the words in the accent. */
+.memory-agent-add button {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  width: 100%;
+  min-height: 0;
+  border: 0;
+  border-radius: 0;
+  background: transparent;
+  padding: 9px 16px;
+  color: var(--accent);
+  font-size: 13px;
+  text-align: left;
+
+  &:hover:not(:disabled) { background: color-mix(in srgb, var(--accent) 6%, transparent); }
+  &:focus-visible { outline: 2px solid var(--focus); outline-offset: -2px; }
+
+  .memory-agent-mark {
+    border: 1px dashed color-mix(in srgb, var(--accent) 55%, transparent);
+    background: transparent;
+    font-family: inherit;
+    font-size: 15px;
+    font-weight: 400;
+  }
+}
+
+.memory-pane > :is(.memory-key, .memory-add) { margin-top: 12px; }
+
+/* The key shown once: a card edged in the accent, since it is the one thing
+   on the pane that will not be shown again. */
 .memory-key {
   display: flex;
   flex-direction: column;
   gap: 8px;
-  padding: 12px;
-  border: 1px solid var(--hairline);
-  border-radius: 8px;
-  background: var(--raised);
+  padding: 14px 16px;
+  border: 1px solid color-mix(in srgb, var(--accent) 45%, var(--pref-card-line));
+  border-radius: 10px;
+  background: var(--pref-card);
 }
+
+.memory-key > .pref-note, .memory-key > .pref-status { margin: 0; }
 
 /* The key itself, to be read and copied whole. */
 .memory-key-text {
@@ -3203,7 +3479,15 @@ section.plugin-group > .plugin-market-row.is-set-aside {
 .memory-key-actions { display: flex; flex-wrap: wrap; gap: 6px; }
 .memory-key > .pref-inline-action { align-self: flex-start; }
 
-.memory-add { display: flex; flex-direction: column; gap: 12px; }
+.memory-add {
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+  padding: 14px 16px;
+  border: 1px solid var(--pref-card-line);
+  border-radius: 10px;
+  background: var(--pref-card);
+}
 
 .memory-add-field {
   display: flex;

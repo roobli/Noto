@@ -2988,17 +2988,17 @@
 /* The face the document is set in, from the Appearance pane. The serif is
    the theme's own and needs no rule; the other two name the stacks the
    tokens already carry, so a machine missing one falls back the same way. */
-:root[data-prose-face='sans'] .ProseMirror { font-family: tokens.$ui; }
-:root[data-prose-face='mono'] .ProseMirror { font-family: tokens.$mono; }
+:root[data-prose-face='sans'] :is(.ProseMirror, .pref-specimen-page) { font-family: tokens.$ui; }
+:root[data-prose-face='mono'] :is(.ProseMirror, .pref-specimen-page) { font-family: tokens.$mono; }
 
 /* An installed family leads the preset stack when the reader picks one. */
-:root[data-prose-font='custom'][data-prose-face='serif'] .ProseMirror {
+:root[data-prose-font='custom'][data-prose-face='serif'] :is(.ProseMirror, .pref-specimen-page) {
   font-family: var(--prose-font-family), tokens.$prose;
 }
-:root[data-prose-font='custom'][data-prose-face='sans'] .ProseMirror {
+:root[data-prose-font='custom'][data-prose-face='sans'] :is(.ProseMirror, .pref-specimen-page) {
   font-family: var(--prose-font-family), tokens.$ui;
 }
-:root[data-prose-font='custom'][data-prose-face='mono'] .ProseMirror {
+:root[data-prose-font='custom'][data-prose-face='mono'] :is(.ProseMirror, .pref-specimen-page) {
   font-family: var(--prose-font-family), tokens.$mono;
 }
 

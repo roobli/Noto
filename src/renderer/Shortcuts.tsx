@@ -101,7 +101,7 @@ export function shortcutGroups(mac: boolean): Group[] {
         { keys: ['Get Info on a folder'], what: 'Right-click a folder: how many notes and broken links, the warmest, the newest commits, what is read most and what nothing links to.', since: 2, tryIt: 'folder-info' },
         { keys: ['Privacy'], what: 'Right-click a folder: open, private (only agents allowed private notes) or sealed (no agent, ever). The tree shows a lock.', needs: 'The folder keeps memory.', since: 2 },
         { keys: ['Settings → Memory'], what: 'Who may read this folder: add an agent with a key and copy its setup for Claude Code or Codex, take a key back, rebuild the index.', since: 2, tryIt: 'settings-memory' },
-        { keys: ['Agent hook'], what: 'Copy Hook for Claude Code, in Settings → Memory: Claude Code then says which notes it read and wrote with its own tools, and Activity names it under Written instead of counting it as you.', needs: 'The folder keeps memory, and Node.js 22.13 or later.', since: 3, tryIt: 'settings-memory' },
+        { keys: ['Agent hook'], what: 'Copy Hook, under Edits an agent makes itself in Settings → Memory: Claude Code then says which notes it read and wrote with its own tools, and Activity names it under Written instead of counting it as you.', needs: 'The folder keeps memory, and Node.js 22.13 or later.', since: 3, tryIt: 'settings-memory' },
       ],
     },
     {

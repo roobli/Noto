@@ -105,7 +105,11 @@ export function MemoryPane() {
         {reply.agents.map((agent) => {
           const active = agent.name === 'default' ? agent.verbs.length > 0 : agent.keys > 0;
           return (
-            <li key={agent.name} className="memory-agent" data-testid="memory-agent" data-name={agent.name}>
+            <li key={agent.name} className={active ? 'memory-agent' : 'memory-agent is-off'} data-testid="memory-agent" data-name={agent.name}>
+              {/* A mark per agent, its initial, so a list of keys reads as
+                  who rather than as rows of text; whoever brings no key is
+                  the wildcard. Dimmed while it reads nothing. */}
+              <span className="memory-agent-mark" aria-hidden="true">{agent.name === 'default' ? '*' : agent.name.slice(0, 1).toUpperCase()}</span>
               <span className="memory-agent-name">{agent.name === 'default' ? 'Any agent without a key' : agent.name}</span>
               <span className="memory-agent-words">{describe(agent)}</span>
               {active && (
@@ -117,6 +121,14 @@ export function MemoryPane() {
             </li>
           );
         })}
+        {!adding && !added && (
+          <li className="memory-agent-add">
+            <button type="button" data-testid="memory-add-agent" onClick={() => setAdding(true)}>
+              <span className="memory-agent-mark" aria-hidden="true">+</span>
+              Add an Agent…
+            </button>
+          </li>
+        )}
       </ul>
 
       {added && reply.setup && (
@@ -141,20 +153,19 @@ export function MemoryPane() {
         </div>
       )}
 
-      {!adding && !added && (
-        <button type="button" className="pref-inline-action" data-testid="memory-add-agent" onClick={() => setAdding(true)}>Add an Agent…</button>
-      )}
-
       {reply.setup && (
         <>
           <p className="pref-group">Edits an agent makes itself</p>
-          <p className="pref-note">
-            Git keeps every change to a note but not who made it, so an agent that edits files with its own tools looks like you.
-            With this hook, Claude Code says which notes it read and wrote; Note Info then names it under Activity. Nothing is added to your commits.
-          </p>
-          <div className="memory-key-actions">
+          <div className="pref-row">
+            <span className="pref-label">
+              Claude Code hook
+              <small>
+                Git keeps every change to a note but not who made it, so an agent that edits files with its own tools looks like you.
+                With this hook, Claude Code says which notes it read and wrote, and Note Info names it under Activity. Nothing is added to your commits.
+              </small>
+            </span>
             <button type="button" className="pref-inline-action" data-testid="memory-copy-hook" onClick={() => copy('hook', claudeCodeHook(reply.setup!))}>
-              {copied === 'hook' ? 'Copied' : 'Copy Hook for Claude Code'}
+              {copied === 'hook' ? 'Copied' : 'Copy Hook'}
             </button>
           </div>
           <p className="pref-note">

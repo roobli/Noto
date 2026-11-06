@@ -483,11 +483,12 @@ function DocumentFont({ settings, onChange }: {
 
   return (
     <>
-      <Choices
+      <Tiles
         label="Document font"
         hint="Serif recommended. Presets keep their fallback stacks; a system font leads them."
         options={FACES}
         value={settings.proseFace}
+        art={faceArt}
         onPick={(value) => onChange({ proseFace: value, proseFontFamily: '' })}
         testPrefix="face"
       />
@@ -715,6 +716,87 @@ function Choices<T extends string>({ label, hint, options, value, onPick, testPr
   );
 }
 
+/**
+ * Choices drawn as small pictures of what they do, for the settings whose
+ * result is something you look at: the theme, the face and the page's width.
+ * A word on a segmented control asks you to imagine "Wide"; a tile shows it.
+ * Still one radio group, keyed and named as the segmented control is.
+ */
+function Tiles<T extends string>({ label, hint, options, value, onPick, testPrefix, art }: {
+  label: string;
+  hint?: string;
+  options: readonly { value: T; label: string; hint?: string }[];
+  value: T;
+  onPick: (value: T) => void;
+  testPrefix: string;
+  art: (value: T) => ReactNode;
+}) {
+  return (
+    <div className="pref-row pref-tiles-row">
+      <span className="pref-label">
+        {label}
+        {hint && <small>{hint}</small>}
+      </span>
+      <div className="pref-tiles" role="radiogroup" aria-label={label}>
+        {options.map((option) => (
+          <button
+            key={option.value}
+            type="button"
+            role="radio"
+            aria-checked={value === option.value}
+            title={option.hint}
+            data-testid={`${testPrefix}-${option.value}`}
+            className={value === option.value ? 'pref-tile is-on' : 'pref-tile'}
+            onClick={() => onPick(option.value)}
+          >
+            <span className="pref-tile-art" aria-hidden="true">{art(option.value)}</span>
+            <span className="pref-tile-label">{option.label}</span>
+          </button>
+        ))}
+      </div>
+    </div>
+  );
+}
+
+/** A page in miniature: the rail's ground, then three lines of text. */
+function MiniPage({ tone }: { tone: 'light' | 'dark' }) {
+  return <span className={`pref-mini is-${tone}`}><i /><i /><i /></span>;
+}
+
+const themeArt = (theme: NotoTheme) => theme === 'system'
+  ? <><MiniPage tone="light" /><MiniPage tone="dark" /></>
+  : <MiniPage tone={theme} />;
+
+const faceArt = (face: ProseFaceV1) => <span className={`pref-face-art is-${face}`}>Aa 文</span>;
+
+const widthArt = (width: WidthModeV1) => (
+  <span className={`pref-width-art is-${width}`}><span><i /><i /><i /><i /></span></span>
+);
+
+/**
+ * The page as this pane sets it, live: the theme's paper and ink, the
+ * document's face, size and leading, and the width of its column inside the
+ * window. Every control here changes something you would otherwise see only
+ * after closing Settings, so the pane shows it as you change it. Decorative to
+ * a screen reader, which hears the controls' own values instead.
+ */
+function PageSpecimen({ widthMode }: { widthMode: WidthModeV1 }) {
+  return (
+    <figure className="pref-specimen" data-testid="pref-specimen" data-width={widthMode} aria-hidden="true">
+      <span className="pref-specimen-rail"><i /><i /><i /><i /><i /></span>
+      <span className="pref-specimen-paper">
+        <span className="pref-specimen-page">
+          <span className="pref-specimen-title">On keeping notes</span>
+          <span className="pref-specimen-text">
+            A note is a plain file on your own disk, and the page is where you read it.
+            笔记就是你磁盘上的一个普通文件，Noto 只负责把它好好地摆在你面前，排版、行距和宽度都在这里定。
+          </span>
+        </span>
+      </span>
+    </figure>
+  );
+}
+
 export function Settings({
   open, mac = false, pluginHotkeys = [], section, onSection, settings, onChange, onClose, plugins,
   pluginDetailId, onPluginDetailClear, pluginDetailName,
@@ -871,7 +953,9 @@ export function Settings({
               <>
                 {/* Glance surface: theme, type, width, then the CSS escape hatch.
                     Colour theming is the stylesheet path — not independent dials. */}
-                <Choices label="Theme" options={THEMES} value={settings.theme}
+                <PageSpecimen widthMode={settings.widthMode} />
+                <Tiles label="Theme" hint="System follows the computer between light and dark."
+                  options={THEMES} value={settings.theme} art={themeArt}
                   onPick={(value) => onChange({ theme: value })} testPrefix="theme" />
                 <Slider label="Text size" setting="fontSize" value={settings.fontSize}
                   format={(value) => `${value} px`} testId="setting-font-size"
@@ -880,8 +964,8 @@ export function Settings({
                   format={(value) => value.toFixed(2)} testId="setting-line-height"
                   onChange={(value) => onChange({ lineHeight: Number(value.toFixed(2)) })} />
                 <DocumentFont settings={settings} onChange={onChange} />
-                <Choices label="Page width" hint="Also on the View menu."
-                  options={WIDTHS} value={settings.widthMode}
+                <Tiles label="Page width" hint="Also on the View menu."
+                  options={WIDTHS} value={settings.widthMode} art={widthArt}
                   onPick={(value) => onChange({ widthMode: value })} testPrefix="width" />
                 <ThemeFile settings={settings} onChange={onChange}
                   problem={themeProblem} onReload={onReloadCss} />
