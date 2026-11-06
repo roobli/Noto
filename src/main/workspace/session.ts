@@ -32,6 +32,8 @@ import {
   type WorkspaceLinksReplyV1,
   type WorkspaceNoteHistoryReplyV1,
   type WorkspaceNotePassageReplyV1,
+  type WorkspaceFolderHistoryReplyV1,
+  type WorkspaceFolderMemoryReplyV1,
   type WorkspaceNoteMemoryReplyV1,
   type WorkspaceKeepMemoryReplyV1,
   type WorkspaceTrustMemoryReplyV1,
@@ -636,8 +638,14 @@ export class WorkspaceSession {
     const items = buildTreeRowMenu(real, kind, {
       open: (target) => { void this.openPath(target).catch(() => {}); },
       // Opened first, so the pane has the note to be about; then the window shows it.
-      info: (target) => {
-        void this.openPath(target).then(() => {
+      info: (chosen) => {
+        // A folder is not opened: the pane turns to it, and turns back when a note is chosen.
+        // It is named as the window named it, which may reach the folder through a link.
+        if (kind === 'directory') {
+          this.send(WORKSPACE_CHANNELS.showFolderInfo, { version: NOTO_WORKSPACE_VERSION, path: path.resolve(target) });
+          return;
+        }
+        void this.openPath(chosen).then(() => {
           this.send(WORKSPACE_CHANNELS.menuCommand, { version: NOTO_WORKSPACE_VERSION, command: 'show-note-info' });
         }).catch(() => {});
       },
@@ -787,6 +795,13 @@ export class WorkspaceSession {
     const resolved = path.resolve(target);
     if (!this.documents.has(resolved)) return null;
     return realpath(resolved).catch(() => null);
+  }
+
+  /** A folder whose info may be read: the open one, or one inside it, by its real path. Null for anything else. */
+  private async readableFolder(target: string): Promise<string | null> {
+    const real = await this.inRoot(target, true);
+    if (real === null) return null;
+    return (await stat(real).catch(() => null))?.isDirectory() ? real : null;
   }
 
   /** The real path, if it is inside the open folder. Null for anything else. */
@@ -1816,6 +1831,25 @@ export class WorkspaceSession {
       return { version: NOTO_WORKSPACE_VERSION, state: real === null ? 'outside' : 'unavailable', memory: null };
     }
     return this.memory.about(real);
+  }
+
+  /** The newest commits under a folder; see `git-history.ts`. */
+  async folderHistory(target: string): Promise<WorkspaceFolderHistoryReplyV1> {
+    const real = await this.readableFolder(target);
+    if (real === null) return { version: NOTO_WORKSPACE_VERSION, state: 'outside', commits: [] };
+    const started = Date.now();
+    const reply = await this.history.folder(real);
+    this.logger.log('folder_history', { outcome: reply.state, commits: reply.commits.length, ms: Date.now() - started });
+    return reply;
+  }
+
+  /** What the folder's memory knows about a folder in it; see `memory-host.ts`. */
+  async folderMemory(target: string): Promise<WorkspaceFolderMemoryReplyV1> {
+    const real = await this.readableFolder(target);
+    if (real === null || this.memory === null) {
+      return { version: NOTO_WORKSPACE_VERSION, state: real === null ? 'outside' : 'unavailable', memory: null };
+    }
+    return this.memory.aboutFolder(real);
   }
 
   /** Which of a note's commits changed one passage of it; see `git-history.ts`. */

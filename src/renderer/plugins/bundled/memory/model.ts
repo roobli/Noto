@@ -53,6 +53,28 @@ export function heatWords(memory: NoteMemory, now = Date.now()): string {
 }
 
 /** A note's name from its path, as the tree shows it. */
+/** A folder in a line: "42 notes · 3 broken links", or that the memory holds none of it yet. */
+export function folderSummary(memory: { readonly notes: number; readonly broken: number }): string {
+  if (memory.notes === 0) return 'The memory holds no note here yet.';
+  const parts = [`${memory.notes.toLocaleString('en')} ${memory.notes === 1 ? 'note' : 'notes'}`];
+  if (memory.broken > 0) parts.push(`${memory.broken.toLocaleString('en')} ${memory.broken === 1 ? 'broken link' : 'broken links'}`);
+  return parts.join(' · ');
+}
+
+/** How often a note was read, and when last: "read 12 times, last yesterday". */
+export function readWhy(note: { readonly reads: number; readonly lastRead: string | null }, now = Date.now()): string {
+  return `read ${times(note.reads)}${note.lastRead ? `, last ${ago(note.lastRead, now)}` : ''}`;
+}
+
+/**
+ * A note's warmth as a share of the warmest's, for its bar. Never quite
+ * empty: a note on the list is warm, and a bar of nothing would say it is not.
+ */
+export function warmthShare(heat: number, warmest: number): number {
+  if (!(warmest > 0) || !(heat > 0)) return 0;
+  return Math.max(0.04, Math.min(1, heat / warmest));
+}
+
 export const nameOf = (rel: string) => rel.split('/').pop()!.replace(/\.(md|markdown|mdown|mkd)$/i, '');
 
 /** The folder-relative path as an absolute one, under the folder the window shows. */

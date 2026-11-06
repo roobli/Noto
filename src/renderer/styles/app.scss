@@ -4137,6 +4137,119 @@ section.plugin-group > .plugin-market-row.is-set-aside {
 
 .info-panels { position: relative; flex: 1 1 auto; min-height: 0; }
 
+/* A folder's info: the pane turned to a folder, its name at the head and the
+   plugins' sections in one column, rules between them. The warmth meters
+   are the accent, as heat is everywhere in the pane. */
+.info-title-glyph {
+  width: 14px;
+  height: 14px;
+  margin: 0 5px -2px 0;
+  fill: none;
+  stroke: var(--muted);
+  stroke-width: 1.25;
+  stroke-linejoin: round;
+}
+
+.info-back {
+  display: inline-flex;
+  flex: 0 0 auto;
+  align-items: center;
+  align-self: flex-start;
+  gap: 2px;
+  max-width: calc(100% - 24px);
+  margin: -2px 12px 4px;
+  padding: 2px 7px 2px 3px;
+  border: 0;
+  border-radius: 5px;
+  background: transparent;
+  color: var(--muted);
+  font: 500 11.5px/16px tokens.$ui;
+  cursor: pointer;
+
+  svg { flex: 0 0 auto; width: 12px; height: 12px; fill: none; stroke: currentColor; stroke-width: 1.5; stroke-linecap: round; stroke-linejoin: round; }
+  span { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  &:hover { background: var(--raised); color: var(--ink); }
+  &:focus-visible { outline: 2px solid var(--focus); outline-offset: -2px; }
+}
+
+.folder-sections { flex: 1 1 auto; min-height: 0; overflow: auto; padding: 2px 0 16px; }
+/* A section with nothing to say is not there at all, heading and rule too. */
+.folder-section:has(> .folder-section-body:empty) { display: none; }
+/* A rule between two shown sections only: one still loading has rendered nothing. */
+.folder-section:has(> .folder-section-body:not(:empty)) ~ .folder-section:has(> .folder-section-body:not(:empty)) {
+  border-top: 1px solid var(--hairline);
+}
+.folder-group { padding: 8px 8px 6px; }
+
+.folder-summary {
+  margin: 10px 16px 0;
+  color: var(--ink);
+  font: 500 12px/17px tokens.$ui;
+  font-variant-numeric: tabular-nums;
+}
+
+.folder-plain {
+  margin: 0 8px 4px;
+  color: var(--muted);
+  font: 400 12px/18px tokens.$ui;
+}
+
+.folder-act { margin: 4px 8px 4px; }
+
+/* How warm, against the warmest here: a short meter at the row's end, so it
+   is read as an amount and never as an underline. */
+.memory-row.folder-row { padding-right: 64px; }
+
+.folder-bar {
+  position: absolute;
+  top: 50%;
+  right: 8px;
+  width: 44px;
+  height: 3px;
+  border-radius: 1.5px;
+  background: linear-gradient(to right, var(--accent) calc(var(--share) * 100%), var(--hairline) 0);
+  transform: translateY(-50%);
+}
+
+.folder-commits { margin: 0; padding: 0; list-style: none; }
+
+.folder-commit {
+  display: flex;
+  flex-direction: column;
+  gap: 1px;
+  min-width: 0;
+  padding: 4px 8px 5px;
+}
+
+.folder-commit-notes {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0 8px;
+  min-width: 0;
+  font: 400 11px/16px tokens.$ui;
+}
+
+.folder-note-link {
+  max-width: 100%;
+  overflow: hidden;
+  padding: 0;
+  border: 0;
+  background: none;
+  color: var(--ink);
+  font: inherit;
+  text-decoration: underline;
+  text-decoration-color: var(--hairline);
+  text-overflow: ellipsis;
+  text-underline-offset: 2px;
+  white-space: nowrap;
+  cursor: pointer;
+
+  &:hover { text-decoration-color: currentColor; }
+  &:focus-visible { border-radius: 3px; outline: 2px solid var(--focus); outline-offset: 1px; }
+}
+
+.folder-more { color: var(--muted); }
+
 .info-panel {
   position: absolute;
   inset: 0;
@@ -4357,7 +4470,8 @@ section.plugin-group > .plugin-market-row.is-set-aside {
 .memory-asked .memory-heading { align-items: center; }
 .memory-copy { font: 500 10.5px/14px tokens.$ui; letter-spacing: 0; }
 
-.memory-heading {
+.memory-heading,
+.folder-heading {
   display: flex;
   justify-content: space-between;
   margin: 0 8px 3px;

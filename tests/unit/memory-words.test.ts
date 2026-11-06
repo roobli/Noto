@@ -4,7 +4,8 @@
  */
 
 import { describe, expect, it } from 'vitest';
-import { ago, agentName, heatWords } from '../../src/renderer/plugins/bundled/memory/model';
+import { ago, agentName, folderSummary, heatWords, readWhy, warmthShare } from '../../src/renderer/plugins/bundled/memory/model';
+import { moreFiles } from '../../src/renderer/plugins/bundled/history/FolderCommits';
 import { MEMORY } from './memory-fixture';
 
 const NOW = new Date(2026, 10, 5, 15, 0).getTime();
@@ -34,5 +35,32 @@ describe('how warm a note is', () => {
   it('calls the policy for an agent with no key what it is', () => {
     expect(agentName('default')).toBe('Without a key');
     expect(agentName('claude-code')).toBe('claude-code');
+  });
+});
+
+describe('a folder in words', () => {
+  const now = new Date('2026-11-05T12:00:00Z').getTime();
+  it('says what it holds, and broken links only when there are some', () => {
+    expect(folderSummary({ notes: 42, broken: 0 })).toBe('42 notes');
+    expect(folderSummary({ notes: 1, broken: 1 })).toBe('1 note · 1 broken link');
+    expect(folderSummary({ notes: 1200, broken: 3 })).toBe('1,200 notes · 3 broken links');
+    expect(folderSummary({ notes: 0, broken: 0 })).toBe('The memory holds no note here yet.');
+  });
+  it('says how often a note was read and when last', () => {
+    expect(readWhy({ reads: 12, lastRead: '2026-11-04T09:00:00Z' }, now)).toBe('read 12 times, last yesterday');
+    expect(readWhy({ reads: 1, lastRead: null }, now)).toBe('read once');
+  });
+  it('draws each bar against the warmest, never quite empty', () => {
+    expect(warmthShare(4, 4)).toBe(1);
+    expect(warmthShare(1, 4)).toBe(0.25);
+    expect(warmthShare(0.001, 4)).toBe(0.04);
+    expect(warmthShare(0, 4)).toBe(0);
+    expect(warmthShare(1, 0)).toBe(0);
+  });
+  it('counts what a commit changed beyond the notes it names', () => {
+    expect(moreFiles(2, 2)).toBe('');
+    expect(moreFiles(1, 4)).toBe('and 3 more files');
+    expect(moreFiles(1, 2)).toBe('and 1 more file');
+    expect(moreFiles(0, 2)).toBe('2 files');
   });
 });

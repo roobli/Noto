@@ -18,6 +18,7 @@ import { FolderList, MemoryTrust, memoryScripts } from '../../src/main/workspace
 import {
   isWorkspaceKeepMemoryReplyV1, isWorkspaceMemoryAskReplyV1, isWorkspaceMemoryAskRequestV1, isWorkspaceMemoryFolderReplyV1, isWorkspaceMemoryFolderRequestV1, isWorkspaceMemoryPrivacyReplyV1,
   isWorkspaceMemoryPrivacyRequestV1, isWorkspaceNoteMemoryReplyV1, isWorkspaceTrustMemoryReplyV1,
+  isWorkspaceFolderMemoryReplyV1, isWorkspaceFolderHistoryReplyV1, isWorkspaceShowFolderInfoEventV1,
 } from '../../src/shared/workspace/v1/validate';
 import type { MemoryAnswer, MemoryRequest } from '../../src/vault-worker/vault-worker';
 import { MEMORY } from './memory-fixture';
@@ -99,6 +100,28 @@ describe('the memory in main', () => {
     const answer = await asking;
     expect(answer.state).toBe('ok');
     expect(isWorkspaceNoteMemoryReplyV1(answer)).toBe(true);
+  });
+
+  it('asks about a folder by its path from the open one, the open one itself as empty', async () => {
+    const root = folder(true);
+    host.setFolder(root);
+    expect((await host.aboutFolder(path.join(root, 'Work'))).state).toBe('opening');
+    worker.reply({ id: worker.last('open').id, ok: true, value: null });
+    await flush();
+    const known = { folder: 'Work', notes: 2, warmest: [], mostRead: [], orphans: { count: 0, items: [] }, broken: 1 };
+    const asking = host.aboutFolder(path.join(root, 'Work'));
+    await flush();
+    expect(worker.last('folder')).toMatchObject({ kind: 'folder', rel: 'Work' });
+    worker.reply({ id: worker.last('folder').id, ok: true, value: known });
+    const answer = await asking;
+    expect(answer).toMatchObject({ state: 'ok', memory: known });
+    expect(isWorkspaceFolderMemoryReplyV1(answer)).toBe(true);
+    const whole = host.aboutFolder(root);
+    await flush();
+    expect(worker.last('folder')).toMatchObject({ rel: '' });
+    worker.reply({ id: worker.last('folder').id, ok: true, value: { ...known, folder: '' } });
+    expect((await whole).state).toBe('ok');
+    expect((await host.aboutFolder('/elsewhere')).state).toBe('outside');
   });
 
   it('says a note it does not hold is unknown, and a worker that dies, unavailable', async () => {
@@ -450,6 +473,29 @@ describe('what the window accepts of the memory', () => {
     // Only an answer carries a pack, and a pack names notes inside the folder.
     expect(isWorkspaceMemoryAskReplyV1({ version: 1, state: 'opening', value: pack })).toBe(false);
     expect(isWorkspaceMemoryAskReplyV1({ version: 1, state: 'ok', value: { ...pack, items: [{ ...pack.items[0], path: '../out.md' }] } })).toBe(false);
+  });
+
+  it('takes what a folder\'s info is told only in its shapes', () => {
+    const note = { path: 'Work/plan.md', title: 'Plan', heat: 1.5, reads: 3, lastRead: '2026-11-05T10:00:00.000Z' };
+    const memory = { folder: 'Work', notes: 2, warmest: [note], mostRead: [note], orphans: { count: 9, items: [note] }, broken: 0 };
+    expect(isWorkspaceFolderMemoryReplyV1({ version: 1, state: 'ok', memory })).toBe(true);
+    expect(isWorkspaceFolderMemoryReplyV1({ version: 1, state: 'ok', memory: { ...memory, folder: '' } })).toBe(true);
+    expect(isWorkspaceFolderMemoryReplyV1({ version: 1, state: 'no-memory', memory: null })).toBe(true);
+    // A folder has no "unknown": the memory answers for any, with nothing in it.
+    expect(isWorkspaceFolderMemoryReplyV1({ version: 1, state: 'unknown', memory: null })).toBe(false);
+    expect(isWorkspaceFolderMemoryReplyV1({ version: 1, state: 'ok', memory: { ...memory, warmest: [{ ...note, path: '../out.md' }] } })).toBe(false);
+    expect(isWorkspaceFolderMemoryReplyV1({ version: 1, state: 'ok', memory: { ...memory, warmest: [{ ...note, heat: Number.NaN }] } })).toBe(false);
+    expect(isWorkspaceFolderMemoryReplyV1({ version: 1, state: 'ok', memory: { ...memory, mostRead: Array(13).fill(note) } })).toBe(false);
+
+    const commit = { hash: 'a'.repeat(40), time: 1_762_300_000_000, author: 'Noto', subject: 'longer plan', notes: ['plan.md'], files: 2 };
+    expect(isWorkspaceFolderHistoryReplyV1({ version: 1, state: 'ok', commits: [commit] })).toBe(true);
+    expect(isWorkspaceFolderHistoryReplyV1({ version: 1, state: 'not-git', commits: [] })).toBe(true);
+    expect(isWorkspaceFolderHistoryReplyV1({ version: 1, state: 'not-git', commits: [commit] })).toBe(false);
+    // More notes named than files changed is not a commit git describes.
+    expect(isWorkspaceFolderHistoryReplyV1({ version: 1, state: 'ok', commits: [{ ...commit, files: 0 }] })).toBe(false);
+    expect(isWorkspaceFolderHistoryReplyV1({ version: 1, state: 'ok', commits: [{ ...commit, notes: ['/abs.md'] }] })).toBe(false);
+    expect(isWorkspaceShowFolderInfoEventV1({ version: 1, path: '/x/Work' })).toBe(true);
+    expect(isWorkspaceShowFolderInfoEventV1({ version: 1, path: '' })).toBe(false);
   });
 
   it('takes a whole answer and refuses a malformed one', () => {

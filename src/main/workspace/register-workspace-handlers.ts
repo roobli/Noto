@@ -159,6 +159,10 @@ export function registerWorkspaceHandlers(deps: {
 
   // Read-only: git log and cat-file on one note in the open folder, and only
   // a commit and path from that note's own history.
+  register(WORKSPACE_CHANNELS.folderHistory, isWorkspaceFolderRequestV1,
+    (request: WorkspaceFolderRequestV1) => deps.session.folderHistory(request.path));
+  register(WORKSPACE_CHANNELS.folderMemory, isWorkspaceFolderRequestV1,
+    (request: WorkspaceFolderRequestV1) => deps.session.folderMemory(request.path));
   register(WORKSPACE_CHANNELS.notePassage, isWorkspaceNotePassageRequestV1,
     (request: WorkspaceNotePassageRequestV1) => deps.session.notePassage(request.path, request.text));
   register(WORKSPACE_CHANNELS.noteHistory, isWorkspaceNoteHistoryRequestV1,

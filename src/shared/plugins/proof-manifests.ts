@@ -122,7 +122,7 @@ export const historyManifest = {
   settings: [],
   hotkeys: [],
   editorExtensions: [],
-  uiExtensions: ['info:history', 'info:properties', 'track:commits'],
+  uiExtensions: ['info:history', 'info:properties', 'track:commits', 'folder:commits'],
 } satisfies PluginManifest;
 
 export const memoryManifest = {
@@ -142,7 +142,7 @@ export const memoryManifest = {
   settings: [],
   hotkeys: [],
   editorExtensions: [],
-  uiExtensions: ['info:related', 'info:activity', 'track:reads', 'rail:review', 'marks:links'],
+  uiExtensions: ['info:related', 'info:activity', 'track:reads', 'rail:review', 'marks:links', 'folder:warmth', 'folder:reach'],
 } satisfies PluginManifest;
 
 /** Bundled plugins that start switched on for a reader who never touched them. */

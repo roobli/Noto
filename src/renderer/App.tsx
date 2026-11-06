@@ -1787,9 +1787,16 @@ function NotoWorkspace({ platform }: { platform: NotoPlatform }) {
       setOpenError(actionableFileTruthMessage(error, 'That file could not be opened.'));
     }
   }, []);
+  /**
+   * The folder the info pane is about instead of the note, from Get Info on a
+   * folder in the tree. Choosing a note, opening another folder, closing the
+   * pane or bringing one of its tabs forward turns it back to the note.
+   */
+  const [infoFolder, setInfoFolder] = useState<string | null>(null);
   openPathRef.current = openPath;
   useEffect(() => {
-    slotState.setOpener((filePath) => { void openPathRef.current(filePath); });
+    // A note chosen from a plugin turns a folder's info back to the note, the one in front too.
+    slotState.setOpener((filePath) => { setInfoFolder(null); void openPathRef.current(filePath); });
   }, [slotState]);
   // What the info pane's tabs reach through their host: git's history of a
   // note, the note's text, taking a version back, and the diff view.
@@ -1811,6 +1818,12 @@ function NotoWorkspace({ platform }: { platform: NotoPlatform }) {
         const result = await window.notoWorkspace.noteVersion({ version: 1, requestId: rid('note-version'), path: filePath, commit, at });
         return result.ok ? result.value.text : null;
       },
+      folder: async (folderPath) => {
+        const result = await window.notoWorkspace.folderHistory({ version: 1, requestId: rid('folder-history'), path: folderPath });
+        if (!result.ok) return null;
+        const { version: _version, ...history } = result.value;
+        return history;
+      },
     });
     slotState.setMemoryBackend({
       about: async (filePath) => {
@@ -1829,6 +1842,12 @@ function NotoWorkspace({ platform }: { platform: NotoPlatform }) {
       },
       ask: async (cue, note) => {
         const result = await window.notoWorkspace.memoryAsk({ version: 1, requestId: rid('memory-ask'), cue, note });
+        if (!result.ok) return null;
+        const { version: _version, ...answer } = result.value;
+        return answer;
+      },
+      folder: async (folderPath) => {
+        const result = await window.notoWorkspace.folderMemory({ version: 1, requestId: rid('folder-memory'), path: folderPath });
         if (!result.ok) return null;
         const { version: _version, ...answer } = result.value;
         return answer;
@@ -1871,6 +1890,7 @@ function NotoWorkspace({ platform }: { platform: NotoPlatform }) {
   const infoSerial = useRef(0);
   useEffect(() => {
     slotState.setTabShower((key, reveal) => {
+      setInfoFolder(null);
       changeSettings({ infoOpen: true, infoTab: key });
       infoSerial.current += 1;
       setInfoReveal({ key, reveal, serial: infoSerial.current });
@@ -1879,6 +1899,13 @@ function NotoWorkspace({ platform }: { platform: NotoPlatform }) {
   useEffect(() => {
     slotState.update({ folder: folder.root, active: active?.opened.path ?? null });
   }, [slotState, folder.root, active]);
+  useEffect(() => window.notoWorkspace.onShowFolderInfo((event) => {
+    setInfoFolder(event.path);
+    changeSettings({ infoOpen: true });
+  }), [changeSettings]);
+  useEffect(() => slotState.onSettledNote(() => setInfoFolder(null)), [slotState]);
+  useEffect(() => { setInfoFolder(null); }, [folder.root]);
+  useEffect(() => { if (!settings.infoOpen) setInfoFolder(null); }, [settings.infoOpen]);
 
   /** One step along the trail, replayed as an open so nothing records it. */
   const stepTrail = useCallback((direction: -1 | 1) => {
@@ -2665,6 +2692,7 @@ function NotoWorkspace({ platform }: { platform: NotoPlatform }) {
         changeSettings({ infoOpen: !settings.infoOpen });
         break;
       case 'show-note-info':
+        setInfoFolder(null);
         changeSettings({ infoOpen: true });
         break;
       case 'tree-sort-name': case 'tree-sort-name-desc':
@@ -3333,6 +3361,8 @@ function NotoWorkspace({ platform }: { platform: NotoPlatform }) {
             changeSettings({ infoOpen: false });
             editorRef.current?.focus();
           }}
+          folderInfo={infoFolder}
+          onLeaveFolder={() => setInfoFolder(null)}
         />
       )}
 

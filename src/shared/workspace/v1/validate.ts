@@ -50,6 +50,10 @@ import {
   WorkspaceMemoryPrivacyReplyV1,
   WorkspaceMemoryPrivacyRequestV1,
   WorkspaceNoteMemoryReplyV1,
+  WorkspaceFolderMemoryReplyV1,
+  WorkspaceFolderHistoryReplyV1,
+  WorkspaceShowFolderInfoEventV1,
+  FolderNoteV1,
   WorkspaceNoteHistoryReplyV1,
   WorkspaceNoteHistoryRequestV1,
   WorkspaceNotePassageReplyV1,
@@ -669,6 +673,59 @@ export function isWorkspaceNoteMemoryReplyV1(value: unknown): value is Workspace
     && typeof value.state === 'string' && MEMORY_STATES.has(value.state)
     && (value.state === 'ok' ? isNoteMemoryV1(value.memory) : value.memory === null);
 }
+
+const FOLDER_GIT_STATES = new Set(['ok', 'not-git', 'slow', 'unavailable', 'outside']);
+
+/** At most what main reads of a folder's history. */
+export const FOLDER_COMMITS_MAX = 50;
+
+export function isWorkspaceFolderHistoryReplyV1(value: unknown): value is WorkspaceFolderHistoryReplyV1 {
+  return record(value) && exact(value, ['version', 'state', 'commits']) && value.version === 1
+    && typeof value.state === 'string' && FOLDER_GIT_STATES.has(value.state)
+    && Array.isArray(value.commits) && value.commits.length <= FOLDER_COMMITS_MAX
+    && (value.state === 'ok' || value.commits.length === 0)
+    && value.commits.every((commit) => record(commit)
+      && exact(commit, ['hash', 'time', 'author', 'subject', 'notes', 'files'])
+      && typeof commit.hash === 'string' && /^[0-9a-f]{40,64}$/.test(commit.hash)
+      && whole(commit.time) && text(commit.author, 200) && text(commit.subject, 1000)
+      && Array.isArray(commit.notes) && commit.notes.length <= 8 && commit.notes.every(notePath)
+      && whole(commit.files) && (commit.files as number) >= commit.notes.length);
+}
+
+export const isWorkspaceFolderHistoryResultV1 = (
+  value: unknown, id: string,
+): value is WorkspaceResultV1<WorkspaceFolderHistoryReplyV1> => isResult(value, id, isWorkspaceFolderHistoryReplyV1);
+
+export function isWorkspaceShowFolderInfoEventV1(value: unknown): value is WorkspaceShowFolderInfoEventV1 {
+  return record(value) && exact(value, ['version', 'path']) && value.version === 1
+    && typeof value.path === 'string' && value.path.length > 0 && value.path.length <= 4096;
+}
+
+const isFolderNoteV1 = (value: unknown): value is FolderNoteV1 => record(value)
+  && exact(value, ['path', 'title', 'heat', 'reads', 'lastRead'])
+  && notePath(value.path) && text(value.title, 1024)
+  && typeof value.heat === 'number' && Number.isFinite(value.heat) && value.heat >= 0
+  && whole(value.reads) && textOrNull(value.lastRead, 64);
+
+/** Items per list, as main asks the vault for them. */
+export const FOLDER_LIST_MAX = 12;
+const folderNotes = (value: unknown) => Array.isArray(value) && value.length <= FOLDER_LIST_MAX && value.every(isFolderNoteV1);
+
+export function isWorkspaceFolderMemoryReplyV1(value: unknown): value is WorkspaceFolderMemoryReplyV1 {
+  if (!record(value) || !exact(value, ['version', 'state', 'memory']) || value.version !== 1) return false;
+  if (typeof value.state !== 'string' || value.state === 'unknown' || !MEMORY_STATES.has(value.state)) return false;
+  if (value.state !== 'ok') return value.memory === null;
+  const memory = value.memory;
+  return record(memory) && exact(memory, ['folder', 'notes', 'warmest', 'mostRead', 'orphans', 'broken'])
+    && typeof memory.folder === 'string' && memory.folder.length <= 1024 && (memory.folder === '' || notePath(memory.folder))
+    && whole(memory.notes) && folderNotes(memory.warmest) && folderNotes(memory.mostRead)
+    && record(memory.orphans) && exact(memory.orphans, ['count', 'items']) && whole(memory.orphans.count)
+    && folderNotes(memory.orphans.items) && whole(memory.broken);
+}
+
+export const isWorkspaceFolderMemoryResultV1 = (
+  value: unknown, id: string,
+): value is WorkspaceResultV1<WorkspaceFolderMemoryReplyV1> => isResult(value, id, isWorkspaceFolderMemoryReplyV1);
 
 export const isWorkspaceNoteMemoryResultV1 = (
   value: unknown, id: string,

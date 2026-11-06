@@ -20,7 +20,9 @@ import { existsSync } from 'node:fs';
 import path from 'node:path';
 import {
   NOTO_WORKSPACE_VERSION,
+  type FolderMemoryV1,
   type NoteMemoryV1,
+  type WorkspaceFolderMemoryReplyV1,
   type WorkspaceMemoryAskReplyV1,
   type WorkspaceNoteMemoryReplyV1,
   type WorkspaceReviewReplyV1,
@@ -175,6 +177,28 @@ export class MemoryHost {
       return reply('ok', memory);
     } catch (error) {
       if (error instanceof MemoryError && error.unknown) return reply('unknown');
+      this.owed = true;
+      return reply('unavailable');
+    }
+  }
+
+  /**
+   * What the memory knows about the folder at `real`, a real directory: the
+   * open folder itself or one inside it. Opens the memory as `about` does.
+   */
+  async aboutFolder(real: string): Promise<WorkspaceFolderMemoryReplyV1> {
+    const reply = (state: WorkspaceFolderMemoryReplyV1['state'], memory: FolderMemoryV1 | null = null): WorkspaceFolderMemoryReplyV1 => ({
+      version: NOTO_WORKSPACE_VERSION, state, memory,
+    });
+    const root = this.root;
+    if (root === null) return reply('outside');
+    const rel = path.relative(root, real) === '' ? '' : insideFolder(root, real);
+    if (rel === null) return reply('outside');
+    const closed = this.gate(root);
+    if (closed !== null) return reply(closed);
+    try {
+      return reply('ok', await this.ask({ kind: 'folder', rel }, ABOUT_TIMEOUT_MS) as FolderMemoryV1);
+    } catch {
       this.owed = true;
       return reply('unavailable');
     }

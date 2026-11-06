@@ -1,6 +1,6 @@
 /**
- * The info pane's slot and what its first tabs work out: who may add a tab or
- * a track, the order they come in, how long the pane waits on a switch of
+ * The info pane's slot and what its first tabs work out: who may add a tab,
+ * a track or a folder's section, the order they come in, how long the pane waits on a switch of
  * note, how marks gather on the timeline, and the words History and
  * Properties use.
  */
@@ -28,6 +28,17 @@ describe('the info slot', () => {
     dispose();
     expect(registry.tabs()).toEqual([]);
     expect(registry.tracks()).toEqual([]);
+  });
+
+  it('takes only the folder sections a manifest names, and orders them', () => {
+    const registry = new InfoRegistry();
+    const { context, dispose } = shellContext(manifest(['folder:commits', 'folder:warmth']), new ShellState(), new RailPageRegistry(), registry);
+    context.registerFolderSection({ id: 'commits', title: 'Recent commits', order: 20, mount: () => () => {} });
+    context.registerFolderSection({ id: 'warmth', title: 'Warmest notes', order: 10, mount: () => () => {} });
+    expect(() => context.registerFolderSection({ id: 'reach', title: 'Reach', mount: () => () => {} })).toThrow(/folder:reach/);
+    expect(registry.sections().map((entry) => entry.key)).toEqual(['example.plugin:warmth', 'example.plugin:commits']);
+    dispose();
+    expect(registry.sections()).toEqual([]);
   });
 
   it('gives a tab the note\'s text and the right to replace it only by the manifest', () => {

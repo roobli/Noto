@@ -8,6 +8,10 @@
  * front once switching has paused (`ShellState.SETTLE_MS`), so walking through
  * tabs costs nothing.
  *
+ * Get Info on a folder turns the pane to the folder until a note is chosen:
+ * its name at the head, then a column of sections plugins add (recent
+ * commits, the warmest notes), without the timeline or the tabs.
+ *
  * The timeline is the pane's one ornament and the one place colour carries
  * meaning: the accent marks what happened, a hollow mark what has not been
  * committed yet, and faint marks a script's work. Everything else is the
@@ -16,6 +20,8 @@
 
 import { useCallback, useEffect, useMemo, useRef, useState, useSyncExternalStore, type CSSProperties, type KeyboardEvent } from 'react';
 import type {
+  Disposer,
+  FolderSectionEntry,
   GitSnapshot,
   InfoMark,
   InfoRegistry,
@@ -267,6 +273,30 @@ function TabPanel({ entry, active, views }: {
   );
 }
 
+/** One plugin's section of a folder's info, mounted for that folder alone. */
+function FolderSection({ entry, folder }: { readonly entry: FolderSectionEntry; readonly folder: string }) {
+  const ref = useRef<HTMLDivElement>(null);
+  useEffect(() => {
+    const element = ref.current;
+    if (!element) return undefined;
+    let dispose: Disposer | null = null;
+    try {
+      dispose = entry.section.mount(element, folder, entry.host);
+    } catch (error) {
+      element.textContent = `${entry.section.title} could not open: ${(error as Error).message}`;
+    }
+    return () => {
+      try { dispose?.(); } catch { /* One section's fault is not the pane's. */ }
+      element.replaceChildren();
+    };
+  }, [entry, folder]);
+  return (
+    <section className="folder-section" aria-label={entry.section.title} data-testid="folder-section" data-key={entry.key}>
+      <div ref={ref} className="folder-section-body" />
+    </section>
+  );
+}
+
 export interface InfoPaneProps {
   readonly registry: InfoRegistry;
   readonly state: ShellState;
@@ -277,6 +307,10 @@ export interface InfoPaneProps {
   readonly onTab: (key: string) => void;
   readonly onResize: (width: number) => void;
   readonly onClose: () => void;
+  /** The folder the pane is about instead of the note, by its path on disk, or null. */
+  readonly folderInfo?: string | null;
+  /** Turn back to the note in front. */
+  readonly onLeaveFolder?: () => void;
 }
 
 /**
@@ -305,8 +339,9 @@ function useCommitted(state: InfoPaneProps['state'], note: string | null): boole
   return committed;
 }
 
-export function InfoPane({ registry, state, width, tab, reveal, onTab, onResize, onClose }: InfoPaneProps) {
+export function InfoPane({ registry, state, width, tab, reveal, onTab, onResize, onClose, folderInfo = null, onLeaveFolder }: InfoPaneProps) {
   const tabs = useSyncExternalStore(useCallback((listener: () => void) => registry.subscribe(listener), [registry]), () => registry.tabs());
+  const sections = useSyncExternalStore(useCallback((listener: () => void) => registry.subscribe(listener), [registry]), () => registry.sections());
   const trackEntries = useSyncExternalStore(useCallback((listener: () => void) => registry.subscribe(listener), [registry]), () => registry.tracks());
   const note = useSyncExternalStore(useCallback((listener: () => void) => state.onSettledNote(listener), [state]), () => state.settledNote());
   const snapshot = useSyncExternalStore(useCallback((listener: () => void) => state.git.subscribe(listener), [state]), () => state.git.current());
@@ -389,6 +424,58 @@ export function InfoPane({ registry, state, width, tab, reveal, onTab, onResize,
   const where = note && folder && note.startsWith(folder)
     ? note.slice(folder.length).replace(/^[\\/]+/, '').split(/[\\/]/).slice(0, -1).join(' / ')
     : '';
+  // A folder's place in the open one; the open folder itself is named and has none.
+  const folderName = folderInfo ? folderInfo.replace(/[\\/]+$/, '').split(/[\\/]/).pop()! : '';
+  const folderWhere = folderInfo && folder && folderInfo.startsWith(folder)
+    ? folderInfo.slice(folder.length).replace(/^[\\/]+/, '').split(/[\\/]/).slice(0, -1).join(' / ')
+    : '';
+
+  if (folderInfo !== null) {
+    return (
+      <aside ref={paneRef} className="info-pane is-folder" aria-label="Folder info" data-testid="info-pane" data-folder={folderInfo}>
+        <div
+          className="info-resize"
+          role="separator"
+          aria-orientation="vertical"
+          aria-label="Info pane width"
+          aria-valuenow={width}
+          aria-valuemin={INFO_MIN}
+          aria-valuemax={INFO_MAX}
+          tabIndex={0}
+          data-testid="info-resize"
+          onPointerDown={startResize}
+          onKeyDown={nudge}
+        />
+        <header className="info-head">
+          <div className="info-identity">
+            <h2 className="info-title" data-testid="info-title" title={folderInfo}>
+              <svg className="info-title-glyph" viewBox="0 0 16 16" aria-hidden="true"><path d="M2.5 4.5v7.25c0 .41.34.75.75.75h9.5c.41 0 .75-.34.75-.75V6.25a.75.75 0 0 0-.75-.75H8L6.5 3.75H3.25a.75.75 0 0 0-.75.75Z" /></svg>
+              {folderName}
+            </h2>
+            <p className="info-where" data-testid="info-where">
+              {folderWhere && <span className="info-folder">{folderWhere}</span>}
+              <span className="info-state">Folder</span>
+            </p>
+          </div>
+          <button type="button" className="icon-button info-close" aria-label="Close folder info" title="Close" data-testid="info-close" onClick={onClose}>
+            <svg viewBox="0 0 16 16" aria-hidden="true"><path d="M4.25 4.25 11.75 11.75M11.75 4.25 4.25 11.75" /></svg>
+          </button>
+        </header>
+        {note !== null && onLeaveFolder && (
+          <button type="button" className="info-back" data-testid="info-back" onClick={onLeaveFolder}>
+            <svg viewBox="0 0 16 16" aria-hidden="true"><path d="M9.75 4.25 6 8l3.75 3.75" /></svg>
+            <span>Back to {name}</span>
+          </button>
+        )}
+        {sections.length === 0 && (
+          <p className="info-empty" data-testid="info-empty">Nothing adds to a folder&apos;s info. History and Memory come with Noto and can be turned on in Settings, under Plugins.</p>
+        )}
+        <div className="folder-sections">
+          {sections.map((entry) => <FolderSection key={entry.key} entry={entry} folder={folderInfo} />)}
+        </div>
+      </aside>
+    );
+  }
 
   return (
     <aside ref={paneRef} className="info-pane" aria-label="Note info" data-testid="info-pane">

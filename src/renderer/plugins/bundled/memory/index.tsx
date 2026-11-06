@@ -1,7 +1,7 @@
 /**
  * Memory, as a bundled plugin: Related and Activity in Note Info, the reads
- * on its timeline, the Review page in the rail, and in the note in front a
- * mark on each note it names without linking.
+ * on its timeline, two sections of a folder's info, the Review page in the
+ * rail, and in the note in front a mark on each note it names without linking.
  *
  * Built from the info and rail slots, `vault.read` (the open folder's memory
  * as `@roobli/vault` holds it) and `vault.review` (its queue, and the writes
@@ -12,6 +12,7 @@
 import { createRoot } from 'react-dom/client';
 import type { TrustedPlugin, TrustedPluginContext } from '../index';
 import type { InfoTrack, ShellContext } from '../../slots';
+import { mountFolderReach, mountFolderWarmth } from './FolderMemory';
 import { mountActivity, mountRelated } from './MemoryTabs';
 import { readMarks, times } from './model';
 import { ReviewPage } from './ReviewPage';
@@ -43,6 +44,9 @@ export class MemoryPlugin implements TrustedPlugin {
     const stops = [
       context.registerInfoTab({ id: 'related', title: 'Related', order: 10, mount: mountRelated }),
       context.registerInfoTab({ id: 'activity', title: 'Activity', order: 30, mount: mountActivity }),
+      // A folder's info: its warmest notes above the recent commits, what is read most and linked to nothing below.
+      context.registerFolderSection({ id: 'warmth', title: 'Warmest notes', order: 10, mount: mountFolderWarmth }),
+      context.registerFolderSection({ id: 'reach', title: 'Read most, and linked to nothing', order: 30, mount: mountFolderReach }),
       context.registerInfoTrack({
         id: 'reads',
         title: 'Reads',

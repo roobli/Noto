@@ -15,6 +15,7 @@
 import { copyThroughSelection } from '../editor/noto/clipboard';
 import type {
   WorkspaceNoteHistoryReplyV1, WorkspaceMemoryAskReplyV1, WorkspaceNoteMemoryReplyV1, WorkspaceNotePassageReplyV1, WorkspaceReviewActionV1, WorkspaceReviewReplyV1,
+  WorkspaceFolderHistoryReplyV1, WorkspaceFolderMemoryReplyV1,
 } from '../../shared/workspace/v1/contracts';
 
 export type Disposer = () => void;
@@ -56,7 +57,15 @@ export interface GitService {
    * is the passage as the last commit has it. Null when main could not be asked.
    */
   passage(path: string, text: string): Promise<NotePassage | null>;
+  /**
+   * The newest commits that changed anything under a folder, by its path on
+   * disk, each with the notes it changed there. Null when main could not be asked.
+   */
+  folder(path: string): Promise<FolderHistory | null>;
 }
+
+/** A folder's newest commits: see `WorkspaceFolderHistoryReplyV1`. */
+export type FolderHistory = Omit<WorkspaceFolderHistoryReplyV1, 'version'>;
 
 /** What answers the git service's questions; the marks come with `ShellState.update`. */
 export type GitBackend = Omit<GitService, 'current' | 'subscribe'>;
@@ -69,6 +78,7 @@ export type NoteMemoryAnswer = Omit<WorkspaceNoteMemoryReplyV1, 'version'>;
 /** What the memory answered a question with: see `WorkspaceMemoryAskReplyV1`. */
 export type MemoryAskAnswer = Omit<WorkspaceMemoryAskReplyV1, 'version'>;
 export type { NoteMemoryV1 as NoteMemory } from '../../shared/workspace/v1/contracts';
+export type { FolderNoteV1 as FolderNote } from '../../shared/workspace/v1/contracts';
 
 /** The `vault.read` capability: the open folder's memory, `@roobli/vault`'s index of it. */
 export interface VaultService {
@@ -84,6 +94,12 @@ export interface VaultService {
    */
   ask(cue: string, note: string | null): Promise<MemoryAskAnswer | null>;
   /**
+   * What the memory knows about a folder, by its path on disk: how many notes,
+   * the warmest and the most read, those linked to nothing, and how many of
+   * its links are broken. Null when main could not be asked.
+   */
+  folder(path: string): Promise<FolderMemoryAnswer | null>;
+  /**
    * Begin keeping memory for the open folder: the files `noto-vault init`
    * makes, then the index. Main first asks the person, saying what will be
    * written, in a sheet of its own; `cancelled` when they said no.
@@ -96,6 +112,9 @@ export interface VaultService {
    */
   trust(): Promise<boolean>;
 }
+
+/** What the folder's memory says about a folder: see `WorkspaceFolderMemoryReplyV1`. */
+export type FolderMemoryAnswer = Omit<WorkspaceFolderMemoryReplyV1, 'version'>;
 
 /** What answers the vault service's questions; changes come by `ShellState.memoryMoved`. */
 export type VaultBackend = Omit<VaultService, 'subscribe'>;
@@ -349,6 +368,33 @@ export interface InfoTabHost extends RailPageHost {
   copy(text: string): void;
 }
 
+/**
+ * A section of a folder's info. Get Info on a folder in the file tree turns
+ * the info pane to that folder: its name at the head, then a column of
+ * sections, each a plugin's, in order. A section is mounted for one folder
+ * and disposed when the pane turns away from it, so it asks for what it
+ * shows in `mount`, and again on the changes it follows. It draws its own
+ * headings; one with nothing in it is not shown at all.
+ */
+export interface FolderSectionContribution {
+  /** Unique within the plugin. */
+  readonly id: string;
+  /** What it is about, said to a screen reader. */
+  readonly title: string;
+  /** Where it sits among the sections, lower first; the app's own use 10 to 40. */
+  readonly order?: number;
+  /** `folder` is its path on disk: the open folder itself, or one inside it. */
+  mount(element: HTMLElement, folder: string, host: RailPageHost): Disposer;
+}
+
+export interface FolderSectionEntry {
+  /** `pluginId:sectionId`. */
+  readonly key: string;
+  readonly pluginId: string;
+  readonly section: FolderSectionContribution;
+  readonly host: RailPageHost;
+}
+
 export interface InfoTabEntry {
   /** `pluginId:tabId`. */
   readonly key: string;
@@ -379,6 +425,8 @@ export interface ShellContext {
   registerInfoTrack(track: InfoTrackContribution): Disposer;
   /** Needs `marks:<id>` among the manifest's `uiExtensions`. */
   registerNoteMarks(marks: NoteMarksContribution): Disposer;
+  /** Needs `folder:<id>` among the manifest's `uiExtensions`. */
+  registerFolderSection(section: FolderSectionContribution): Disposer;
   /** Open Note Info on one of this plugin's tabs, and reveal a key in it: for a command that leads there. */
   showInfoTab(id: string, key?: string): void;
 }
@@ -400,10 +448,11 @@ class Signal {
   }
 }
 
-/** The info pane's tabs and tracks, each list in its order. */
+/** The info pane's tabs and tracks, and a folder's sections, each list in its order. */
 export class InfoRegistry {
   private tabList: readonly InfoTabEntry[] = [];
   private trackList: readonly InfoTrackEntry[] = [];
+  private sectionList: readonly FolderSectionEntry[] = [];
   private readonly changed = new Signal();
 
   tabs(): readonly InfoTabEntry[] {
@@ -412,6 +461,21 @@ export class InfoRegistry {
 
   tracks(): readonly InfoTrackEntry[] {
     return this.trackList;
+  }
+
+  sections(): readonly FolderSectionEntry[] {
+    return this.sectionList;
+  }
+
+  addSection(pluginId: string, section: FolderSectionContribution, host: RailPageHost): Disposer {
+    const key = `${pluginId}:${section.id}`;
+    if (this.sectionList.some((entry) => entry.key === key)) throw new Error(`The folder section ${key} is already registered.`);
+    this.sectionList = sortedByOrder([...this.sectionList, { key, pluginId, section, host }], (entry) => entry.section.order);
+    this.changed.emit();
+    return once(() => {
+      this.sectionList = this.sectionList.filter((entry) => entry.key !== key);
+      this.changed.emit();
+    });
   }
 
   subscribe(listener: Listener): Disposer {
@@ -538,6 +602,7 @@ export class ShellState {
     history: async () => null,
     version: async () => null,
     passage: async () => null,
+    folder: async () => null,
   };
   private editorAccess: { text(): string | null; replace(text: string): boolean } = {
     text: () => null,
@@ -550,6 +615,7 @@ export class ShellState {
     keep: async () => 'failed',
     trust: async () => false,
     ask: async () => null,
+    folder: async () => null,
   };
   private readonly memoryChanged = new Signal();
 
@@ -570,6 +636,7 @@ export class ShellState {
     history: (path) => this.reader.history(path),
     version: (path, commit, at) => this.reader.version(path, commit, at),
     passage: (path, text) => this.reader.passage(path, text),
+    folder: (path) => this.reader.folder(path),
   };
 
   readonly vault: VaultService = {
@@ -578,6 +645,7 @@ export class ShellState {
     keep: () => this.memory.keep(),
     trust: () => this.memory.trust(),
     ask: (cue, note) => this.memory.ask(cue, note),
+    folder: (path) => this.memory.folder(path),
   };
 
   private reviewAsk: (action: WorkspaceReviewActionV1) => Promise<ReviewAnswer> = async () => ({ state: 'unavailable', value: null, error: null });
@@ -701,9 +769,10 @@ export function shellContext(
     // clipboard refuses a page without focus, and says so only in a promise nobody reads.
     copy: (text) => { copyThroughSelection(text); },
   };
-  const declared = (kind: 'info' | 'track', id: string) => {
+  const declared = (kind: 'info' | 'track' | 'folder', id: string) => {
     if (!manifest.uiExtensions.includes(`${kind}:${id}`)) {
-      throw new Error(`${manifest.id} does not declare the info ${kind === 'info' ? 'tab' : 'track'} ${id} (${kind}:${id} in uiExtensions).`);
+      const what = { info: 'info tab', track: 'info track', folder: 'folder section' }[kind];
+      throw new Error(`${manifest.id} does not declare the ${what} ${id} (${kind}:${id} in uiExtensions).`);
     }
   };
   const context: ShellContext = {
@@ -719,6 +788,12 @@ export function shellContext(
     registerInfoTrack(track) {
       declared('track', track.id);
       const remove = info.addTrack(manifest.id, track);
+      removals.add(remove);
+      return () => { removals.delete(remove); remove(); };
+    },
+    registerFolderSection(section) {
+      declared('folder', section.id);
+      const remove = info.addSection(manifest.id, section, host);
       removals.add(remove);
       return () => { removals.delete(remove); remove(); };
     },

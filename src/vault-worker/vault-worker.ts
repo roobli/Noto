@@ -21,7 +21,7 @@ import { readFileSync, statSync, unlinkSync, writeFileSync, mkdirSync } from 'no
 import path from 'node:path';
 import { parentPort } from 'node:worker_threads';
 import {
-  about, dismiss, dismissals, formatRecall, indexPath, initVault, prepare, recall, suggest, undismiss, Vault,
+  about, dismiss, dismissals, folderAbout, formatRecall, indexPath, initVault, prepare, recall, suggest, undismiss, Vault,
   type FileChange, type Suggestion, type SuggestionType,
 } from '@roobli/vault';
 import { PROPOSAL_ID } from '../shared/workspace/v1/contracts';
@@ -34,6 +34,8 @@ export type MemoryRequest =
   | { readonly id: number; readonly kind: 'open'; readonly root: string; readonly refresh?: boolean; readonly rebuild?: boolean }
   | { readonly id: number; readonly kind: 'keep'; readonly root: string }
   | { readonly id: number; readonly kind: 'about'; readonly rel: string }
+  /** What the index knows about a folder, `''` for the whole of it. */
+  | { readonly id: number; readonly kind: 'folder'; readonly rel: string }
   | { readonly id: number; readonly kind: 'refresh'; readonly paths: readonly string[] | null }
   | { readonly id: number; readonly kind: 'close' }
   /** What the index holds, for Settings → Memory. */
@@ -90,6 +92,8 @@ const UNDO_DEPTH = 20;
  */
 const NOTE_MENTION_FLOOR = 0.6;
 const NOTE_MENTION_LIMIT = 8;
+/** Notes in each of a folder's lists: the pane is narrow. */
+const FOLDER_LIST = 8;
 
 let vault: Vault | null = null;
 // One request at a time: a refresh in the middle of an answer would read a half-built index.
@@ -206,6 +210,18 @@ async function handle(request: MemoryRequest): Promise<unknown> {
     }
     case 'about':
       return about(open(), request.rel);
+    case 'folder':
+    {
+      const known = folderAbout(open(), request.rel, { limit: FOLDER_LIST });
+      // A title is the note's first heading, as long as the person wrote it: the window takes a line of it.
+      const short = (note: (typeof known.warmest)[number]) => ({ ...note, title: clamp(note.title, 300) });
+      return {
+        ...known,
+        warmest: known.warmest.map(short),
+        mostRead: known.mostRead.map(short),
+        orphans: { count: known.orphans.count, items: known.orphans.items.map(short) },
+      };
+    }
     case 'readers':
       return open().readers();
     case 'refresh':

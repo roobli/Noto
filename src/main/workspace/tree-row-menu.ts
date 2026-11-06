@@ -16,7 +16,7 @@ import type { MenuItemConstructorOptions } from 'electron';
 
 export interface TreeRowActions {
   readonly open: (target: string) => void;
-  /** Open the note and show its info beside it: history, properties. */
+  /** Open the note and show its info beside it: history, properties. For a folder, the pane turns to the folder. */
   readonly info: (target: string) => void;
   readonly newNote: (directory: string) => void;
   readonly newFolder: (directory: string) => void;
@@ -74,6 +74,7 @@ export function buildTreeRowMenu(
   }
   if (kind === 'directory') {
     items.push({ id: 'tree-new-folder', label: 'New Folder Here', click: () => actions.newFolder(target) });
+    items.push({ id: 'tree-info', label: 'Get Info', click: () => actions.info(target) });
   }
   items.push({ type: 'separator' });
   items.push({ id: 'tree-rename', label: 'Rename…', click: () => actions.rename(target) });

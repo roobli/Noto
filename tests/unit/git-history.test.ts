@@ -18,7 +18,7 @@ import {
   systemBatchGit,
   unquotePath,
 } from '../../src/main/workspace/git-history';
-import { systemGit } from '../../src/main/workspace/git-marks';
+import { GitRunError, systemGit } from '../../src/main/workspace/git-marks';
 
 const made: string[] = [];
 afterAll(() => { for (const directory of made) rmSync(directory, { recursive: true, force: true }); });
@@ -144,6 +144,54 @@ describe('a note\'s history', () => {
     expect((await notes.passage(note, 'The second paragraph, edited.')).commits).toEqual([third!.hash, first!.hash]);
     // Written since the last commit: git has no lines of it to follow.
     expect((await notes.passage(note, 'Not committed at all.')).state).toBe('not-found');
+  });
+
+  it('lists a folder\'s newest commits with the notes each changed there, named from the folder', async () => {
+    const { root, git, write } = repository();
+    const empty = reader();
+    // A repository with no commit yet: nothing to list, which is not a failure.
+    mkdirSync(path.join(root, 'Work'));
+    expect(await empty.folder(path.join(root, 'Work'))).toMatchObject({ state: 'ok', commits: [] });
+    write('Work/plan.md', 'plan\n');
+    write('Work/[draft] budget.md', 'budget\n');
+    write('Work/chart.png', 'png');
+    write('Ideas/elsewhere.md', 'elsewhere\n');
+    git('add', '-A'); git('commit', '-q', '-m', 'begin');
+    write('Ideas/elsewhere.md', 'changed only outside Work\n');
+    git('add', '-A'); git('commit', '-q', '-m', 'outside');
+    write('Work/plan.md', 'plan, longer\n');
+    git('add', '-A'); git('commit', '-q', '-m', 'longer plan');
+    const work = await reader().folder(path.join(root, 'Work'));
+    expect(work.state).toBe('ok');
+    expect(work.commits.map((commit) => commit.subject)).toEqual(['longer plan', 'begin']);
+    expect(work.commits[0]).toMatchObject({ notes: ['plan.md'], files: 1, author: 'Noto' });
+    // Literal pathspecs: a name with brackets is itself, and a picture is counted but not named.
+    expect(work.commits[1]!.notes).toEqual(expect.arrayContaining(['[draft] budget.md', 'plan.md']));
+    expect(work.commits[1]!.files).toBe(3);
+    // The repository's top is the whole of it.
+    expect((await reader().folder(root)).commits.map((commit) => commit.subject)).toEqual(['longer plan', 'outside', 'begin']);
+    // A name that begins with two dots is inside the repository, not above it.
+    write('..drafts/x.md', 'x\n');
+    git('add', '-A'); git('commit', '-q', '-m', 'drafts');
+    expect(await reader().folder(path.join(root, '..drafts'))).toMatchObject({ state: 'ok', commits: [{ subject: 'drafts', notes: ['x.md'] }] });
+    const plain = realpathSync(mkdtempSync(path.join(tmpdir(), 'noto-history-plain-')));
+    made.push(plain);
+    expect((await reader().folder(plain)).state).toBe('not-git');
+  });
+
+  it('says a folder\'s history could not be read when git fails, rather than that it has none', async () => {
+    const { root, git, write } = repository();
+    write('Work/plan.md', 'plan\n');
+    git('add', '-A'); git('commit', '-q', '-m', 'begin');
+    // HEAD is there, and the log fails all the same.
+    const failing = new NoteHistoryReader(async () => {
+      const real = systemGit('git');
+      return async (args, cwd, timeout) => {
+        if (args.includes('log')) throw new GitRunError('failed');
+        return real(args, cwd, timeout);
+      };
+    }, async () => systemBatchGit('git'));
+    expect((await failing.folder(path.join(root, 'Work'))).state).toBe('unavailable');
   });
 
   it('says a new note is not committed, and a folder outside git has no history', async () => {

@@ -166,6 +166,9 @@ import type {
   WorkspaceExportReplyV1,
   WorkspaceExportRequestV1,
   WorkspaceRenameRowEventV1,
+  WorkspaceShowFolderInfoEventV1,
+  WorkspaceFolderHistoryReplyV1,
+  WorkspaceFolderMemoryReplyV1,
   WorkspaceGitMarksV1,
   WorkspaceGitBlocksV1,
   WorkspaceRevealReplyV1,
@@ -230,6 +233,9 @@ import {
   isWorkspaceExportRequestV1,
   isWorkspaceExportResultV1,
   isWorkspaceRenameRowEventV1,
+  isWorkspaceShowFolderInfoEventV1,
+  isWorkspaceFolderHistoryResultV1,
+  isWorkspaceFolderMemoryResultV1,
   isWorkspaceGitMarksV1,
   isWorkspaceGitBlocksV1,
   isWorkspaceMemoryChangedV1,
@@ -575,6 +581,9 @@ const workspaceApi: NotoWorkspaceApiV1 = Object.freeze({
   notePassage: (request: WorkspaceNotePassageRequestV1) => isWorkspaceNotePassageRequestV1(request)
     ? invokeWorkspace<WorkspaceNotePassageReplyV1>(WORKSPACE_CHANNELS.notePassage, request, request.requestId, isWorkspaceNotePassageResultV1)
     : Promise.resolve(rejectedWorkspace<WorkspaceNotePassageReplyV1>('invalid', 'Invalid passage history request')),
+  folderHistory: (request: WorkspaceFolderRequestV1) => isWorkspaceFolderRequestV1(request)
+    ? invokeWorkspace<WorkspaceFolderHistoryReplyV1>(WORKSPACE_CHANNELS.folderHistory, request, request.requestId, isWorkspaceFolderHistoryResultV1)
+    : Promise.resolve(rejectedWorkspace<WorkspaceFolderHistoryReplyV1>('invalid', 'Invalid folder history request')),
   noteVersion: (request: WorkspaceNoteVersionRequestV1) => isWorkspaceNoteVersionRequestV1(request)
     ? invokeWorkspace<WorkspaceNoteVersionReplyV1>(WORKSPACE_CHANNELS.noteVersion, request, request.requestId, isWorkspaceNoteVersionResultV1)
     : Promise.resolve(rejectedWorkspace<WorkspaceNoteVersionReplyV1>('invalid', 'Invalid note version request')),
@@ -594,6 +603,9 @@ const workspaceApi: NotoWorkspaceApiV1 = Object.freeze({
   memoryFolder: (request: WorkspaceMemoryFolderRequestV1) => isWorkspaceMemoryFolderRequestV1(request)
     ? invokeWorkspace<WorkspaceMemoryFolderReplyV1>(WORKSPACE_CHANNELS.memoryFolder, request, request.requestId, isWorkspaceMemoryFolderResultV1)
     : Promise.resolve(rejectedWorkspace<WorkspaceMemoryFolderReplyV1>('invalid', 'Invalid memory request')),
+  folderMemory: (request: WorkspaceFolderRequestV1) => isWorkspaceFolderRequestV1(request)
+    ? invokeWorkspace<WorkspaceFolderMemoryReplyV1>(WORKSPACE_CHANNELS.folderMemory, request, request.requestId, isWorkspaceFolderMemoryResultV1)
+    : Promise.resolve(rejectedWorkspace<WorkspaceFolderMemoryReplyV1>('invalid', 'Invalid folder memory request')),
   memoryAsk: (request: WorkspaceMemoryAskRequestV1) => isWorkspaceMemoryAskRequestV1(request)
     ? invokeWorkspace<WorkspaceMemoryAskReplyV1>(WORKSPACE_CHANNELS.memoryAsk, request, request.requestId, isWorkspaceMemoryAskResultV1)
     : Promise.resolve(rejectedWorkspace<WorkspaceMemoryAskReplyV1>('invalid', 'Invalid ask request')),
@@ -627,6 +639,8 @@ const workspaceApi: NotoWorkspaceApiV1 = Object.freeze({
     : Promise.resolve(rejectedWorkspace<WorkspaceExportReplyV1>('invalid', 'Invalid export request')),
   onRenameRow: (listener: (event: WorkspaceRenameRowEventV1) => void) =>
     subscribe(WORKSPACE_CHANNELS.renameRow, isWorkspaceRenameRowEventV1, listener),
+  onShowFolderInfo: (listener: (event: WorkspaceShowFolderInfoEventV1) => void) =>
+    subscribe(WORKSPACE_CHANNELS.showFolderInfo, isWorkspaceShowFolderInfoEventV1, listener),
   gitMarks: (request: WorkspaceRequestV1) => isWorkspaceRequestV1(request)
     ? invokeWorkspace<WorkspaceGitMarksV1>(WORKSPACE_CHANNELS.gitMarks, request, request.requestId, isWorkspaceGitMarksResultV1)
     : Promise.resolve(rejectedWorkspace<WorkspaceGitMarksV1>('invalid', 'Invalid git marks request')),

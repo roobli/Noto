@@ -39,11 +39,18 @@ describe('the menu on a row of the tree', () => {
     // folder's root, which is rarely the folder the reader is looking at.
     const items = buildTreeRowMenu('/vault/sub', 'directory', actions(), 'darwin');
     expect(labels(items)).toEqual([
-      'New Note Here', 'New Folder Here',
+      'New Note Here', 'New Folder Here', 'Get Info',
       '---', 'Rename…', 'Duplicate', 'Move to…',
       '---', 'Reveal in Finder', 'Copy Path',
       '---', 'Move to Trash',
     ]);
+  });
+
+  it('turns the info pane to the folder that was pressed', () => {
+    const spies = actions();
+    const items = buildTreeRowMenu('/vault/sub', 'directory', spies, 'darwin');
+    (items.find((candidate) => candidate.id === 'tree-info')?.click as () => void)();
+    expect(spies.info).toHaveBeenCalledWith('/vault/sub');
   });
 
   it('makes the new note in the folder that was pressed', () => {

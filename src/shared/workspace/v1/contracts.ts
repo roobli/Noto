@@ -83,6 +83,10 @@ export const WORKSPACE_CHANNELS = {
   noteHistory: 'noto:v1:workspace:note-history',
   /** Which of a note's commits changed one passage of it. See `WorkspaceNotePassageReplyV1`. */
   notePassage: 'noto:v1:workspace:note-passage',
+  /** The newest commits that changed anything under a folder. See `WorkspaceFolderHistoryReplyV1`. */
+  folderHistory: 'noto:v1:workspace:folder-history',
+  /** Push: Get Info was chosen on a folder in the tree, so the info pane turns to it. */
+  showFolderInfo: 'noto:v1:workspace:show-folder-info',
   /** One note's text as one of its commits had it. */
   noteVersion: 'noto:v1:workspace:note-version',
   /** What the folder's memory knows about one note. See `WorkspaceNoteMemoryReplyV1`. */
@@ -99,6 +103,8 @@ export const WORKSPACE_CHANNELS = {
   memoryFolder: 'noto:v1:workspace:memory-folder',
   /** A question of the folder's memory in words, answered with its context pack. See `WorkspaceMemoryAskReplyV1`. */
   memoryAsk: 'noto:v1:workspace:memory-ask',
+  /** What the folder's memory knows about one folder in it: warmth, reads, notes linked to nothing, broken links. */
+  folderMemory: 'noto:v1:workspace:folder-memory',
   /** Review: the folder-wide queue of what agents proposed and what the tools found. See `WorkspaceReviewActionV1`. */
   memoryReview: 'noto:v1:workspace:memory-review',
   /** Push: the folder's memory opened or changed, so what was asked of it may be asked again. */
@@ -965,6 +971,32 @@ export interface WorkspaceNotePassageReplyV1 {
   readonly commits: readonly string[];
 }
 
+/** A commit that changed something under a folder. */
+export interface FolderCommitV1 {
+  readonly hash: string;
+  /** When it was authored, in milliseconds. */
+  readonly time: number;
+  readonly author: string;
+  readonly subject: string;
+  /** The first few notes it changed there, from the folder, with forward slashes. */
+  readonly notes: readonly string[];
+  /** How many files it changed there in all, notes or not. */
+  readonly files: number;
+}
+
+export interface WorkspaceFolderHistoryReplyV1 {
+  readonly version: typeof NOTO_WORKSPACE_VERSION;
+  readonly state: 'ok' | 'not-git' | 'slow' | 'unavailable' | 'outside';
+  /** Newest first. */
+  readonly commits: readonly FolderCommitV1[];
+}
+
+/** Push: the folder the info pane should be about, a real path inside the open folder. */
+export interface WorkspaceShowFolderInfoEventV1 {
+  readonly version: typeof NOTO_WORKSPACE_VERSION;
+  readonly path: string;
+}
+
 export interface WorkspaceNoteVersionRequestV1 extends WorkspaceRequestV1 {
   readonly path: string;
   readonly commit: string;
@@ -1322,6 +1354,36 @@ export interface WorkspaceNoteMemoryReplyV1 {
   readonly memory: NoteMemoryV1 | null;
 }
 
+/** A note as the memory counts it for a folder: see `@roobli/vault`'s `folderAbout`. */
+export interface FolderNoteV1 {
+  /** From the open folder, with forward slashes. */
+  readonly path: string;
+  readonly title: string;
+  /** Warmth now: reads and writes, each fading by its kind's half-life. */
+  readonly heat: number;
+  readonly reads: number;
+  readonly lastRead: string | null;
+}
+
+/** What the memory knows about a folder. Notes an agent may never see are counted for the person, as everywhere in Noto. */
+export interface FolderMemoryV1 {
+  /** From the open folder, without a trailing slash; `''` is the open folder itself. */
+  readonly folder: string;
+  readonly notes: number;
+  readonly warmest: readonly FolderNoteV1[];
+  readonly mostRead: readonly FolderNoteV1[];
+  /** Notes no other note links to and that link to no note. */
+  readonly orphans: { readonly count: number; readonly items: readonly FolderNoteV1[] };
+  /** Links in its notes that name nothing in the folder. */
+  readonly broken: number;
+}
+
+export interface WorkspaceFolderMemoryReplyV1 {
+  readonly version: typeof NOTO_WORKSPACE_VERSION;
+  readonly state: Exclude<WorkspaceNoteMemoryReplyV1['state'], 'unknown'>;
+  readonly memory: FolderMemoryV1 | null;
+}
+
 export interface WorkspaceLinksReplyV1 {
   readonly version: typeof NOTO_WORKSPACE_VERSION;
   readonly available: boolean;
@@ -1379,6 +1441,7 @@ export interface NotoWorkspaceApiV1 {
   /** One note's commits, newest first, following renames. */
   noteHistory(request: WorkspaceNoteHistoryRequestV1): Promise<WorkspaceResultV1<WorkspaceNoteHistoryReplyV1>>;
   notePassage(request: WorkspaceNotePassageRequestV1): Promise<WorkspaceResultV1<WorkspaceNotePassageReplyV1>>;
+  folderHistory(request: WorkspaceFolderRequestV1): Promise<WorkspaceResultV1<WorkspaceFolderHistoryReplyV1>>;
   /** One note's text at one of its own commits. */
   noteVersion(request: WorkspaceNoteVersionRequestV1): Promise<WorkspaceResultV1<WorkspaceNoteVersionReplyV1>>;
   /** What the folder's memory knows about one note. */
@@ -1392,6 +1455,7 @@ export interface NotoWorkspaceApiV1 {
   memoryPrivacy(request: WorkspaceMemoryPrivacyRequestV1): Promise<WorkspaceResultV1<WorkspaceMemoryPrivacyReplyV1>>;
   memoryFolder(request: WorkspaceMemoryFolderRequestV1): Promise<WorkspaceResultV1<WorkspaceMemoryFolderReplyV1>>;
   memoryAsk(request: WorkspaceMemoryAskRequestV1): Promise<WorkspaceResultV1<WorkspaceMemoryAskReplyV1>>;
+  folderMemory(request: WorkspaceFolderRequestV1): Promise<WorkspaceResultV1<WorkspaceFolderMemoryReplyV1>>;
   /** Ask Review's question of the folder's memory. */
   memoryReview<K extends WorkspaceReviewActionV1['kind']>(request: WorkspaceReviewRequestV1 & { readonly action: { readonly kind: K } }): Promise<WorkspaceResultV1<WorkspaceReviewReplyV1<K>>>;
   tagIndex(request: WorkspaceRequestV1): Promise<WorkspaceResultV1<WorkspaceTagIndexReplyV1>>;
@@ -1413,4 +1477,5 @@ export interface NotoWorkspaceApiV1 {
   onGitBlocksChanged(listener: (event: WorkspaceGitBlocksV1) => void): () => void;
   onMemoryChanged(listener: (event: WorkspaceMemoryChangedV1) => void): () => void;
   onRenameRow(listener: (event: WorkspaceRenameRowEventV1) => void): () => void;
+  onShowFolderInfo(listener: (event: WorkspaceShowFolderInfoEventV1) => void): () => void;
 }

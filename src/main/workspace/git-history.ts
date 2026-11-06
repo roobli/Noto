@@ -23,7 +23,9 @@ import { readFile, realpath, stat } from 'node:fs/promises';
 import path from 'node:path';
 import { GitRunError, gitEnvironment, locate, type GitRunner } from './git-marks';
 import type {
+  FolderCommitV1,
   NoteCommitV1,
+  WorkspaceFolderHistoryReplyV1,
   WorkspaceNotePassageReplyV1,
   NoteFileFactsV1,
   WorkspaceNoteHistoryReplyV1,
@@ -77,6 +79,45 @@ export function logArguments(fromTop: string): string[] {
     '--no-ext-diff', '--no-textconv', `--format=${RECORD}%H${FIELD}%P${FIELD}%an${FIELD}%at${FIELD}%s`,
     '-n', String(MAX_HISTORY + 1), '--', fromTop,
   ];
+}
+
+/** The newest commits a folder's info lists. */
+export const FOLDER_COMMITS = 20;
+/** The notes named under each of them; the rest are counted. */
+const FOLDER_COMMIT_NOTES = 4;
+const NOTE_FILE = /\.(md|markdown|mdown|mkd)$/i;
+
+/** The `git log` for a folder: its newest commits, each with the files it changed there. */
+export function folderLogArguments(fromTop: string): string[] {
+  return [
+    ...PLUMBING, 'log', '--no-merges', '--name-only', '--no-color', '--no-ext-diff',
+    `--format=${RECORD}%H${FIELD}%an${FIELD}%at${FIELD}%s`, '-n', String(FOLDER_COMMITS),
+    // The repository's top is every file in it: no path to limit to.
+    ...(fromTop === '' ? [] : ['--', fromTop]),
+  ];
+}
+
+/** Read `folderLogArguments`' output, naming files from the folder. Pure, for the test. */
+export function parseFolderLog(output: string, fromTop: string): FolderCommitV1[] {
+  const prefix = fromTop === '' ? '' : `${fromTop}/`;
+  const commits: FolderCommitV1[] = [];
+  for (const record of output.split(RECORD)) {
+    const [head, ...rest] = record.split('\n');
+    const fields = head?.split(FIELD) ?? [];
+    if (fields.length < 4 || !/^[0-9a-f]{40,64}$/.test(fields[0]!)) continue;
+    const [hash, author, at, ...subject] = fields;
+    const files = rest.filter((line) => line !== '').map(unquotePath)
+      .map((file) => (file.startsWith(prefix) ? file.slice(prefix.length) : file));
+    commits.push({
+      hash: hash!,
+      time: Number(at) * 1000,
+      author: author!.slice(0, MAX_AUTHOR),
+      subject: subject.join(FIELD).slice(0, MAX_SUBJECT),
+      notes: files.filter((file) => NOTE_FILE.test(file)).slice(0, FOLDER_COMMIT_NOTES),
+      files: files.length,
+    });
+  }
+  return commits;
 }
 
 /** A commit as the walk reads it, with the blobs that tell what kind of change it was. */
@@ -448,6 +489,33 @@ export class NoteHistoryReader {
       ], placed.toplevel, PASSAGE_TIMEOUT_MS);
       const commits = out.split('\n').map((line) => line.trim()).filter((hash) => /^[0-9a-f]{40,64}$/.test(hash));
       return reply('ok', { lines: { from, to }, commits });
+    } catch (error) {
+      if (error instanceof GitRunError) return reply(error.reason === 'slow' ? 'slow' : 'unavailable');
+      throw error;
+    }
+  }
+
+  /**
+   * The newest commits that changed anything under the folder at `real`, a
+   * real directory the caller has confined to the open folder. Not kept: a
+   * folder's info asks once when shown and again when the marks move.
+   */
+  async folder(real: string): Promise<WorkspaceFolderHistoryReplyV1> {
+    const reply = (state: WorkspaceFolderHistoryReplyV1['state'], commits: FolderCommitV1[] = []): WorkspaceFolderHistoryReplyV1 => ({
+      version: NOTO_WORKSPACE_VERSION, state, commits,
+    });
+    const run = await this.run();
+    if (run === null) return reply('unavailable');
+    try {
+      const location = await locate(run, real);
+      if (!location) return reply('not-git');
+      const toplevel = await realpath(location.toplevel).catch(() => location.toplevel);
+      const fromTop = path.relative(toplevel, real).split(path.sep).join('/');
+      if (fromTop === '..' || fromTop.startsWith('../') || path.isAbsolute(fromTop)) return reply('not-git');
+      // A repository with no commit yet has no HEAD, and git fails rather than list nothing. Any other failure is one.
+      const head = (await run([...PLUMBING, 'rev-parse', '--verify', '-q', 'HEAD'], toplevel, SMALL_TIMEOUT_MS).catch(() => '')).trim();
+      if (head === '') return reply('ok');
+      return reply('ok', parseFolderLog(await run(folderLogArguments(fromTop), toplevel, LOG_TIMEOUT_MS), fromTop));
     } catch (error) {
       if (error instanceof GitRunError) return reply(error.reason === 'slow' ? 'slow' : 'unavailable');
       throw error;

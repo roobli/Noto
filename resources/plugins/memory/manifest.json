@@ -33,6 +33,8 @@
     "info:activity",
     "track:reads",
     "rail:review",
-    "marks:links"
+    "marks:links",
+    "folder:warmth",
+    "folder:reach"
   ]
 }
