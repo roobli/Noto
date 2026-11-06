@@ -16,7 +16,7 @@ import { afterAll, afterEach, beforeEach, describe, expect, it, vi, type Mock } 
 import { MemoryHost, insideFolder, memoryWorkerPath, type MemoryWorker } from '../../src/main/workspace/memory-host';
 import { FolderList, MemoryTrust, memoryScripts } from '../../src/main/workspace/memory-trust';
 import {
-  isWorkspaceKeepMemoryReplyV1, isWorkspaceMemoryFolderReplyV1, isWorkspaceMemoryFolderRequestV1, isWorkspaceMemoryPrivacyReplyV1,
+  isWorkspaceKeepMemoryReplyV1, isWorkspaceMemoryAskReplyV1, isWorkspaceMemoryAskRequestV1, isWorkspaceMemoryFolderReplyV1, isWorkspaceMemoryFolderRequestV1, isWorkspaceMemoryPrivacyReplyV1,
   isWorkspaceMemoryPrivacyRequestV1, isWorkspaceNoteMemoryReplyV1, isWorkspaceTrustMemoryReplyV1,
 } from '../../src/shared/workspace/v1/validate';
 import type { MemoryAnswer, MemoryRequest } from '../../src/vault-worker/vault-worker';
@@ -438,6 +438,18 @@ describe('what the window accepts of the memory', () => {
       index: { notes: 2, links: 1, reads: 0, bytes: 10, refreshed: null } };
     expect(isWorkspaceMemoryFolderReplyV1(folderReply)).toBe(true);
     expect(isWorkspaceMemoryFolderReplyV1({ ...folderReply, state: 'closed' })).toBe(false);
+  });
+
+  it('takes a question and its answer only in their shapes', () => {
+    expect(isWorkspaceMemoryAskRequestV1({ version: 1, requestId: 'r-1', cue: 'audit indexes', note: '/x/a.md' })).toBe(true);
+    expect(isWorkspaceMemoryAskRequestV1({ version: 1, requestId: 'r-1', cue: '   ', note: null })).toBe(false);
+    expect(isWorkspaceMemoryAskRequestV1({ version: 1, requestId: 'r-1', cue: 'x'.repeat(501), note: null })).toBe(false);
+    const pack = { cue: 'audit', items: [{ path: 'a.md', title: 'A', kind: 'note', why: ['matches the cue'], excerpt: '§ A' }], omitted: 0, markdown: '## A' };
+    expect(isWorkspaceMemoryAskReplyV1({ version: 1, state: 'ok', value: pack })).toBe(true);
+    expect(isWorkspaceMemoryAskReplyV1({ version: 1, state: 'opening', value: null })).toBe(true);
+    // Only an answer carries a pack, and a pack names notes inside the folder.
+    expect(isWorkspaceMemoryAskReplyV1({ version: 1, state: 'opening', value: pack })).toBe(false);
+    expect(isWorkspaceMemoryAskReplyV1({ version: 1, state: 'ok', value: { ...pack, items: [{ ...pack.items[0], path: '../out.md' }] } })).toBe(false);
   });
 
   it('takes a whole answer and refuses a malformed one', () => {
