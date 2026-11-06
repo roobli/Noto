@@ -42,8 +42,11 @@ agent; typing slowed by any of this.
 | `init` | **Keep memory for this folder…** in the folder's menu (the ellipsis on the tree's first row) |
 | `index`, `status` | runs by itself; Settings → Memory says what the index holds and offers Rebuild |
 | `visit` | automatic, as now |
-| `read`, `backlinks`, `where` | the **Related** pane beside the note |
-| `recall`, `search` | **Ask the vault** at the top of the Related pane, and in the command palette |
+| `git log`, `git show`, `git diff` on one note | **History** in Note Info, the pane beside the note |
+| `read --meta` | **Properties** in Note Info |
+| `read`, `backlinks`, `where` | **Related** in Note Info |
+| the read record, heat | the timeline at the head of Note Info, and **Activity** |
+| `recall`, `search` | **Ask the vault** at the top of the Related tab, and in the command palette |
 | `suggest` for one note | unlinked mentions marked in the note in front, linked with one press |
 | `suggest --review` | the **Review** page in the rail: one suggestion at a time |
 | `proposals`, `show`, `accept`, `reject` | the Review page's proposals, opened in the diff view Noto already has for unsaved changes |
@@ -58,7 +61,7 @@ agent; typing slowed by any of this.
 ### Turning it on
 
 A folder without `.noto/` shows nothing of any of this, except one line at
-the foot of the Related pane: "This folder does not keep memory. Keep memory
+the foot of the Related tab: "This folder does not keep memory. Keep memory
 for this folder…". Choosing it opens a sheet that says, before anything is
 written, what will be: a `.noto/` folder with the settings and an index
 (listed by name), a line for each note opened, nothing sent anywhere, and
@@ -67,13 +70,45 @@ list or other obvious private folders, the sheet offers them as private, ticked.
 The index then builds in the background, with its progress in the status
 line ("Reading 7,976 notes, 9 s"), and every panel works on what it has so far.
 
-### The Related pane
+### Note Info, the pane beside the note
 
-The side-pane slot's first user (step 2 of
-[the slots plan](../architecture/plugin-slots.md)), replacing the Links tab's
-`graph.json` list. It stands beside the note, opens with View → Related or
-from the palette, and remembers whether it was open; its key is chosen with
+Everything about the note in front in one place, which is the question a
+person brings to the pane: where it came from, what changed in it and when,
+how often it is read, what it is linked to, and who may see it. The shell
+draws the frame ([the slots plan](../architecture/plugin-slots.md), Note
+Info): the note's name, folder and git state at the head; a timeline under
+it, one row per track on one axis, reads as bars and commits as dots, with a
+ring at the right for what is not committed yet; and a row of tabs that
+plugins fill. It opens from View → Note Info, the palette, and Get Info in
+the tree's menu, follows the note in front once switching pauses, and
+remembers whether it was open, its tab and its width. Its key is chosen with
 the others in the Shortcuts board.
+
+The tabs, in order: **Related** and **Activity** from the vault's memory, and
+**History** and **Properties** from git and the note itself, which therefore
+work in any folder, memory or not.
+
+- **History** lists every commit that touched the note, through renames,
+  newest first, with lines added and taken away. A script's commit (only
+  text between tool markers) and a sweep across the folder are drawn
+  quieter, as the vault sets them aside. A press opens the commit in the
+  diff view; its bar steps to the commit before or after, compares the
+  version with the note as it stands, copies it, or takes it back as an edit
+  Undo reverses, saved only when the note is. Shift with a press compares
+  any two. The history of one passage, from a git mark, comes later.
+- **Properties** groups each value by where it comes from: the note's own
+  frontmatter, its text (words, Chinese a character each; tables; code;
+  links), git, and the file. The vault adds the values a folder's policy, a
+  script or `access.yaml` gives a note, under their own headings, which is
+  where a person learns why an agent cannot read a note that says nothing
+  about it.
+- **Activity** says who read the note and how often (the person and each
+  agent apart), which agents cannot and why, what most often leads to it
+  (notes, searches, questions), and its heat in a sentence.
+
+### Related, in Note Info
+
+The first tab, replacing the Links tab's `graph.json` list.
 
 ```
  ┌──────────────── note ──────────────────┬──── Related ───────────────┐
@@ -192,11 +227,11 @@ Rebuild, and Turn Off, which says what it will remove.
 
 | state | what is shown |
 | --- | --- |
-| no `.noto/` | one line in the Related pane offering to keep memory; nothing else |
+| no `.noto/` | one line in the Related tab offering to keep memory; nothing else |
 | indexing | progress in the status line; panels fill in as it goes |
 | index unreadable | "The index could not be opened" with Rebuild; the notes are untouched |
 | nothing related | "Nothing else in the folder is linked to or about this note yet" |
-| note is sealed | the Related pane works for the person; agents never see the note |
+| note is sealed | the Related tab works for the person; agents never see the note |
 | proposal conflicts | the conflicted file shown with both versions; Accept again once fixed |
 | read-only window | everything that reads works; Link, Accept and Fix all are disabled with the reason |
 | agent revoked | its row says Revoked, with when |
@@ -214,7 +249,7 @@ once, so it has the three-way merge.
 
 Memory is a bundled plugin built on the slots, on by default for a folder
 that keeps memory and switchable off like Changes, with `vault.read` for the
-Related pane and `vault.review` for the Review page. That keeps the rule that
+Related tab and `vault.review` for the Review page. That keeps the rule that
 the app's own features use the seams anyone else's would.
 
 ## Rejected
@@ -231,10 +266,14 @@ the app's own features use the seams anyone else's would.
 
 ## Order of work
 
-1. The side-pane slot and the Related pane, with Keep Memory for This Folder.
-   The vault embedded in main behind a handful of workspace channels.
-2. The Review page: proposals in the diff view, the suggestion queue, Fix all
+1. Note Info with its slots, History and Properties, from git alone. Done.
+2. The vault embedded in main behind a handful of workspace channels;
+   Related, Activity and the read track; Keep Memory for This Folder.
+3. The Review page: proposals in the diff view, the suggestion queue, Fix all
    for stale links.
-3. Settings → Memory, Privacy in the folder menu, Agents with keys and setup.
-4. Link suggestions in the note in front.
-5. Ask the vault and Copy as context; then the heat map of the folder.
+4. Settings → Memory, Privacy in the folder menu, Agents with keys and setup.
+5. Link suggestions in the note in front.
+6. Ask the vault and Copy as context; the folder's info; one passage's
+   history from its git mark.
+
+Progress is kept in the author's notes; the changelog says what shipped.

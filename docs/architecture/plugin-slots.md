@@ -18,7 +18,8 @@ matter of which slot and which services, not of a new hook.
 | slot | what a plugin gives it | first user |
 | --- | --- | --- |
 | rail page | a title, an icon, and a mount function for a page in the sidebar | Changes |
-| side pane | a mount function for a pane beside the note | (next) related notes |
+| info tab | a title, an order, and a mount function for a tab of Note Info, the pane beside the note | History, Properties |
+| info track | a title and a loader for a row on Note Info's timeline: marks in time or amounts per day | commits |
 | status item | a short text and an action | (next) |
 | fenced block | a renderer for code blocks with a given info string | (next) diagrams |
 | command, menu item, context item | as today | sidenotes |
@@ -35,7 +36,7 @@ host object a slot passes in carries only the services the plugin holds.
 | capability | gives |
 | --- | --- |
 | `editor.read`, `editor.decorate`, `editor.transform` | as before |
-| `git.read` | what changed in the open folder since the last commit (trusted plugins) |
+| `git.read` | what changed in the open folder since the last commit; a note's commits, following renames, and its text at any of them (trusted plugins) |
 | `vault.read` | (next) the folder's notes and the vault index |
 
 Navigation (open a note by path), the file tree's own menu for a note or
@@ -70,13 +71,45 @@ connector sizing), and the class names they use are part of this contract.
 The code is in `src/renderer/plugins/slots.ts`; Changes
 (`src/renderer/plugins/bundled/changes/`) is the worked example.
 
+### Note Info
+
+The pane beside the note is not a free area but a frame about the note in
+front, and the shell owns the frame: where it is, its width, whether it is
+open and which tab is in front (all remembered), the note's name, folder and
+git state at its head, and a timeline across its top. Plugins fill it in two
+ways.
+
+A tab (`registerInfoTab`, named `info:<id>`) is a page of the pane. It is
+mounted the first time it is shown and kept while the pane is open, so it
+keeps its scroll, and it may answer `reveal(key)` to show one thing in it.
+Its host adds to the slot's: `note()` and `onNote`, the note the pane is
+about once switching has paused for 250 ms, so walking through tabs runs no
+queries; `noteText()` with `editor.read`; `replaceNoteText(text)` with
+`editor.transform`, one edit that Undo reverses, refused for a read-only
+note, under Source Code Mode, or for any note but the one in front;
+`showDiff(request)`, the diff view over the page with the plugin's buttons
+and keys in its bar; `showTab(id, key)`; and `copy(text)`.
+
+A track (`registerInfoTrack`, named `track:<id>`) is a row on the timeline:
+marks at moments, drawn as dots, or amounts per day, drawn as bars, all on
+the one axis, so what was written when and what was read when line up. A
+track names the tab a press on its marks brings forward, and the mark's key
+is handed to that tab's `reveal`. A track may say when to load it again.
+
+History (`src/renderer/plugins/bundled/history/`) is the worked example: a
+History tab, a Properties tab and a track of commits, from the slot alone.
+The vault's memory adds Related and Activity, and a track of reads, the same
+way.
+
 ## Order of work
 
 1. Done: the rail page slot, the `git.read` service, and Changes, a bundled
    plugin that lists only the changed notes as a tree, built from the slot
    alone.
-2. The side pane slot, with related notes from the vault index (`@roobli/vault`)
-   as its first user, replacing the panel that reads `.note-assistant/graph.json`.
+2. Done: Note Info, the pane beside the note, with tabs and timeline tracks
+   as its slots, and History and Properties as its first users. Next on it:
+   Related and Activity from the vault index (`@roobli/vault`), replacing the
+   panel that reads `.note-assistant/graph.json`.
 3. Status items and fenced blocks, each moved out of the shell as its first
    user.
 4. The same slots for sandboxed plugins, through the message protocol the
