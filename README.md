@@ -186,6 +186,15 @@ bring to the front, and the note you followed a link from, one line each in
 `.noto/events/`, for the [vault tools](https://github.com/roobli/vault) to read;
 a folder without `.noto/` is never written to.
 
+View → Note Info, or Get Info in a note's right-click menu in the tree, opens a
+pane beside the page about the note in front: its folder and what git says
+about it, a timeline of its commits, its History (every commit that touched
+it, through renames, each opened in the diff view, where Older and Newer step
+through them, Compare with Now sets one against the note as it stands, and
+Restore This Version takes it back as an edit Undo reverses) and its
+Properties (frontmatter, counts, dates, path). Commits that only rewrote a
+tool's marked region, or changed a hundred files at once, are drawn quieter.
+
 `Cmd+/` opens Source Code Mode: the whole note as the Markdown it is saved as,
 the way Typora's Command-slash does. `Cmd+Alt+/` still toggles source for the
 single block under the caret, which is the escape hatch when you want to fix
@@ -273,12 +282,13 @@ the document only if it asked for that; a service plugin gets a filesystem
 grant scoped to a path, revocable, and denied everywhere else. Nothing is
 ambient.
 
-Six plugins ship in the build. Title Shift promotes and demotes heading
+Seven plugins ship in the build. Title Shift promotes and demotes heading
 levels, and Markdown Padding applies CJK spacing rules; both are ports of the
 author's Typora plugins. Sidenotes draws `<span class="sidenote">` notes in the
-margin and writes new ones there, and Changes lists the notes changed since
-the last commit as a page in the rail, the first plugin to use a slot outside
-the editor. Semantic Focus and Fixture Reader are bundled
+margin and writes new ones there, Changes lists the notes changed since the
+last commit as a page in the rail, the first plugin to use a slot outside the
+editor, and History fills the Note Info pane with a note's commits and
+properties. Semantic Focus and Fixture Reader are bundled
 examples, one per runtime kind, kept so that a plugin author has a working
 plugin of each shape to read and so the capability broker has something that
 exercises it.

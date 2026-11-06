@@ -8,6 +8,7 @@ import { buildTreeRowMenu, revealLabel, trashLabel } from '../../src/main/worksp
  */
 const actions = () => ({
   open: vi.fn(),
+  info: vi.fn(),
   newNote: vi.fn(),
   newFolder: vi.fn(),
   rename: vi.fn(),
@@ -24,7 +25,7 @@ describe('the menu on a row of the tree', () => {
   it('offers a file the three things a file can do', () => {
     const items = buildTreeRowMenu('/vault/note.md', 'file', actions(), 'darwin');
     expect(labels(items)).toEqual([
-      'Open',
+      'Open', 'Get Info',
       '---', 'Rename…', 'Duplicate', 'Move to…',
       '---', 'Reveal in Finder', 'Copy Path',
       // Alone below a rule, furthest from Open: it is the only action here

@@ -51,6 +51,9 @@ export const SETTING_RANGES = Object.freeze({
      persistence and coerce — not the hard drag cap (that used to be a fixed
      520, then 720). */
   railWidth: { min: 190, max: 1800, step: 1 },
+  /* The note's info pane beside the page: narrow enough to leave the page its
+     measure, wide enough for a commit's subject on one line. */
+  infoWidth: { min: 240, max: 640, step: 1 },
 } as const);
 
 /** Share of the window the rail may occupy while dragging or after a resize. */
@@ -387,6 +390,12 @@ export interface NotoSettingsV1 {
    * Settings. The graph reader and seed path stay in the build either way.
    */
   readonly railLinks: boolean;
+  /** Whether the note's info pane is open beside the page. */
+  readonly infoOpen: boolean;
+  /** The info pane's tab in front, as `pluginId:tabId`; empty for the first. */
+  readonly infoTab: string;
+  /** The info pane's width in pixels. */
+  readonly infoWidth: number;
   /**
    * GitHub Releases track: Stable (formal only) or Testing (includes alphas).
    *
@@ -463,6 +472,9 @@ export const DEFAULT_SETTINGS: NotoSettingsV1 = Object.freeze({
   imageEscapeUrl: true,
   fileTags: true,
   railLinks: false,
+  infoOpen: false,
+  infoTab: '',
+  infoWidth: 320,
   updateChannel: 'stable',
   checkUpdatesOnLaunch: false,
   autoDownloadUpdates: false,

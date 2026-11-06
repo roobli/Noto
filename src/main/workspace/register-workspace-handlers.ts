@@ -20,6 +20,8 @@ import {
   type WorkspaceRevealRequestV1,
   type WorkspaceContentRequestV1,
   type WorkspaceNotesByTagRequestV1,
+  type WorkspaceNoteHistoryRequestV1,
+  type WorkspaceNoteVersionRequestV1,
   type WorkspaceEntryRequestV1,
   type WorkspaceExportRequestV1,
 } from '../../shared/workspace/v1/contracts';
@@ -33,6 +35,8 @@ import {
   isWorkspaceRevealRequestV1,
   isWorkspaceContentRequestV1,
   isWorkspaceNotesByTagRequestV1,
+  isWorkspaceNoteHistoryRequestV1,
+  isWorkspaceNoteVersionRequestV1,
   isWorkspaceEntryRequestV1,
   isWorkspaceExportRequestV1,
 } from '../../shared/workspace/v1/validate';
@@ -140,6 +144,14 @@ export function registerWorkspaceHandlers(deps: {
 
   register(WORKSPACE_CHANNELS.notesByTag, isWorkspaceNotesByTagRequestV1,
     (request: WorkspaceNotesByTagRequestV1) => deps.session.notesByTag(request.tag));
+
+  // Read-only: git log and cat-file on one note in the open folder, and only
+  // a commit and path from that note's own history.
+  register(WORKSPACE_CHANNELS.noteHistory, isWorkspaceNoteHistoryRequestV1,
+    (request: WorkspaceNoteHistoryRequestV1) => deps.session.noteHistory(request.path));
+
+  register(WORKSPACE_CHANNELS.noteVersion, isWorkspaceNoteVersionRequestV1,
+    (request: WorkspaceNoteVersionRequestV1) => deps.session.noteVersion(request.path, request.commit, request.at));
 
   // Rename, duplicate, trash and new folder. Main re-resolves the target and
   // checks it against the open folder at the moment it acts, so a row that has

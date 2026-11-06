@@ -56,7 +56,7 @@ const DEBOUNCE_MS = 300;
  * point git at some other repository than the folder's are dropped, so a Noto
  * launched from inside a git hook still reads the folder it shows.
  */
-function gitEnvironment(): NodeJS.ProcessEnv {
+export function gitEnvironment(): NodeJS.ProcessEnv {
   const env: NodeJS.ProcessEnv = { ...process.env, GIT_OPTIONAL_LOCKS: '0', GIT_TERMINAL_PROMPT: '0' };
   for (const name of ['GIT_DIR', 'GIT_WORK_TREE', 'GIT_INDEX_FILE', 'GIT_COMMON_DIR', 'GIT_OBJECT_DIRECTORY']) {
     delete env[name];

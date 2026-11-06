@@ -11,6 +11,26 @@ How releases are made, and what each channel receives, is in
 
 ### Added
 
+- **Note Info: a pane beside the page about the note in front.** View → Note
+  Info, the command palette, or Get Info in the tree's menu opens it. Its
+  head says where the note is and what git says about it, a timeline lays
+  out its commits (a ring at the right for changes not yet committed), and
+  its tabs come from plugins. History lists every commit that touched the
+  note, through renames and moves, newest first; a press opens the commit in
+  the diff view, whose bar steps to the commit before or after (`[` and
+  `]`), compares the version with the note as it stands, copies it, or takes
+  it back as one edit that Undo reverses and that is saved only when the
+  note is. Shift with a press compares any two. A commit that only rewrote
+  text between a tool's markers, or one that changed more than a hundred
+  files, is drawn quieter. Properties shows the note's frontmatter, its
+  words (Chinese a character each), tables, code blocks and links, its
+  first and last commit, and the file's dates, size and path. The pane
+  remembers whether it was open, its tab and its width. A folder outside
+  git says so and gives the file's dates instead.
+- **Plugins can add to Note Info.** A tab (`info:<id>`) and a timeline track
+  (`track:<id>`) are slots like the rail's pages, and `git.read` now gives a
+  note's history and its text at any of its commits. History and Properties
+  are built from them alone.
 - **Table rows and columns come out from the right-click menu.** A right
   click in a table offers Insert Row Above and Below, Insert Column Left and
   Right, Delete Row, Delete Column and Delete Table. A row's or column's

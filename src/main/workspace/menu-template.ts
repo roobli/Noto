@@ -398,6 +398,8 @@ export function buildMenuTemplate(options: MenuTemplateOptions): MenuItemConstru
     submenu: [
       command('Toggle Sidebar', 'CmdOrCtrl+Shift+L', 'toggle-sidebar'),
       command('Toggle Outline', 'CmdOrCtrl+Shift+O', 'toggle-outline'),
+      // No key of its own yet: one is chosen with the rest in the Shortcuts board.
+      command('Note Info', undefined, 'toggle-note-info'),
       {
         // Typora sorts its sidebar the same three ways, each reversible.
         label: 'Sort Files By',

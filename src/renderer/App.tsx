@@ -41,6 +41,7 @@ import { FindBar } from './FindBar';
 import { RecentStrip } from './RecentStrip';
 import { TagStrip } from './TagStrip';
 import { UnsavedDiff } from './UnsavedDiff';
+import { InfoPane, clampInfoWidth } from './InfoPane';
 import { TagBrowser, type TagBrowserView } from './TagBrowser';
 import { parseTagsFromMarkdown } from '../shared/tags/parse';
 import { WorkspaceRail, type RailView } from './WorkspaceRail';
@@ -74,7 +75,7 @@ import {
 import { RendererPluginHost } from './plugins/RendererPluginHost';
 import { sandboxedPlugin, trustedModulePlugin } from './plugins/sandbox/installed-plugin';
 import { createRendererPluginHosts, shellPlugins } from './plugins/bundled/hosts';
-import { railPages, shellContext, ShellState, type Disposer } from './plugins/slots';
+import { infoPane, railPages, shellContext, ShellState, type DiffRequest, type Disposer } from './plugins/slots';
 import { RendererPluginClient } from './plugins/RendererPluginClient';
 import { PluginCenter } from './plugins/PluginCenter';
 import { createPluginSnapshotStream } from './plugins/plugin-snapshot-stream';
@@ -303,6 +304,8 @@ function NotoWorkspace({ platform }: { platform: NotoPlatform }) {
   >(null);
   /** Source Code Mode, Typora's Command-slash: the note as text, for every tab. */
   const [sourceMode, setSourceMode] = useState(false);
+  const sourceModeRef = useRef(sourceMode);
+  sourceModeRef.current = sourceMode;
   /** Pushes the source view's pending text into the document, before a save. */
   const sourceFlushRef = useRef<(() => void) | null>(null);
   /** A note that should take the keys as soon as its editor is built: a new one just named. */
@@ -577,29 +580,54 @@ function NotoWorkspace({ platform }: { platform: NotoPlatform }) {
    */
   const [unsavedDiffView, setUnsavedDiffView] = useState<{ serial: number; documentId: string; saved: string; current: string } | null>(null);
   const unsavedDiffSerial = useRef(0);
-  const openUnsavedDiff = useCallback(() => {
+  /** The note in front as the editor holds it, unsaved edits and Source Code Mode's draft included. */
+  const currentNoteText = useCallback((): string | null => {
     const id = activeIdRef.current;
     const entry = id ? docsRef.current.get(id) : undefined;
     const editor = id ? editorsRef.current.get(id) : undefined;
-    if (!id || !entry || !editor) return;
+    if (!entry || !editor) return null;
+    return sourceModeText({
+      dirty: editor.isDirty,
+      fileText: entry.document.text,
+      reconstructed: editor.getMarkdown(),
+      hasFinalNewline: editor.envelope.hasFinalNewline,
+      pendingSource: editor.pendingSourceMarkdown,
+    });
+  }, []);
+  /**
+   * Two versions of the note in front, opened by a plugin (History, from the
+   * info pane), in the same view as the unsaved changes. One view at a time:
+   * opening either closes the other.
+   */
+  const [versionDiff, setVersionDiff] = useState<{ serial: number; pluginId: string; documentId: string | null; request: DiffRequest } | null>(null);
+  const versionDiffRef = useRef(versionDiff);
+  versionDiffRef.current = versionDiff;
+  const focusAfterDiffRef = useRef(false);
+  const closeVersionDiff = useCallback((byReader: boolean) => {
+    const open = versionDiffRef.current;
+    if (!open) return;
+    setVersionDiff(null);
+    if (byReader) open.request.onClose?.();
+  }, []);
+  const openUnsavedDiff = useCallback(() => {
+    const id = activeIdRef.current;
+    const entry = id ? docsRef.current.get(id) : undefined;
+    const current = currentNoteText();
+    if (!id || !entry || current === null) return;
+    closeVersionDiff(true);
     unsavedDiffSerial.current += 1;
     setUnsavedDiffView({
       serial: unsavedDiffSerial.current,
       documentId: id,
       saved: entry.document.text,
-      current: sourceModeText({
-        dirty: editor.isDirty,
-        fileText: entry.document.text,
-        reconstructed: editor.getMarkdown(),
-        hasFinalNewline: editor.envelope.hasFinalNewline,
-        pendingSource: editor.pendingSourceMarkdown,
-      }),
+      current,
     });
-  }, []);
+  }, [currentNoteText, closeVersionDiff]);
   // A view of one note's changes does not outlive a switch to another note.
   useEffect(() => {
     setUnsavedDiffView((view) => (view && view.documentId !== activeId ? null : view));
-  }, [activeId]);
+    if (versionDiffRef.current && versionDiffRef.current.documentId !== activeId) closeVersionDiff(false);
+  }, [activeId, closeVersionDiff]);
   // Saved while on view, by Save or by autosave: nothing is unsaved any more,
   // and what the view shows is stale.
   useEffect(() => {
@@ -610,9 +638,15 @@ function NotoWorkspace({ platform }: { platform: NotoPlatform }) {
   useEffect(() => {
     const canvas = globalThis.document.getElementById('document-canvas');
     if (!canvas) return undefined;
-    canvas.inert = unsavedDiffView !== null;
+    canvas.inert = unsavedDiffView !== null || versionDiff !== null;
+    // A version taken back while the diff was up: the note has the keys once
+    // the page can take them again, so Undo is the note's.
+    if (!canvas.inert && focusAfterDiffRef.current) {
+      focusAfterDiffRef.current = false;
+      editorRef.current?.focus();
+    }
     return () => { canvas.inert = false; };
-  }, [unsavedDiffView]);
+  }, [unsavedDiffView, versionDiff]);
   /** The last git gutter per document, for an editor that mounts after it arrived. */
   const gitBlocksRef = useRef<Map<string, WorkspaceGitBlocksV1>>(new Map());
   /** Bumped when a gutter arrives, so the palette offers its command only where there is one. */
@@ -869,6 +903,7 @@ function NotoWorkspace({ platform }: { platform: NotoPlatform }) {
   }, []);
   /** Applied rail width: clamp a stored value that outgrew a narrower window. */
   const appliedRailWidth = clampRailWidth(settings.railWidth, viewportWidth);
+  const appliedInfoWidth = clampInfoWidth(settings.infoWidth, viewportWidth);
 
   const changeSettings = useCallback((
     patch: Partial<NotoSettingsV1> | ((current: NotoSettingsV1) => Partial<NotoSettingsV1>),
@@ -1647,6 +1682,57 @@ function NotoWorkspace({ platform }: { platform: NotoPlatform }) {
   useEffect(() => {
     slotState.setOpener((filePath) => { void openPathRef.current(filePath); });
   }, [slotState]);
+  // What the info pane's tabs reach through their host: git's history of a
+  // note, the note's text, taking a version back, and the diff view.
+  useEffect(() => {
+    slotState.setGitReader({
+      history: async (filePath) => {
+        const result = await window.notoWorkspace.noteHistory({ version: 1, requestId: rid('note-history'), path: filePath });
+        if (!result.ok) return null;
+        const { version: _version, ...history } = result.value;
+        return history;
+      },
+      version: async (filePath, commit, at) => {
+        const result = await window.notoWorkspace.noteVersion({ version: 1, requestId: rid('note-version'), path: filePath, commit, at });
+        return result.ok ? result.value.text : null;
+      },
+    });
+    slotState.setEditorAccess({
+      text: () => (slotState.settledNote() === slotState.host.activeNote() ? currentNoteText() : null),
+      replace: (text) => {
+        const editor = editorRef.current;
+        // Only the note the pane is about, and not under Source Code Mode, whose text would win on its way out.
+        if (!editor || sourceModeRef.current || slotState.settledNote() !== slotState.host.activeNote()) return false;
+        const open = versionDiffRef.current;
+        if (open && open.documentId !== activeIdRef.current) return false;
+        if (currentNoteText() === text) return true;
+        const done = editor.applySourceBuffer(text);
+        // Under an open diff the page is inert and cannot take focus; it is given once the view goes.
+        if (done && versionDiffRef.current) focusAfterDiffRef.current = true;
+        else if (done) editor.focus();
+        return done;
+      },
+    });
+    slotState.setDiffPresenter((request, pluginId) => {
+      const open = versionDiffRef.current;
+      if (request === null) {
+        if (open && open.pluginId === pluginId) closeVersionDiff(false);
+        return;
+      }
+      setUnsavedDiffView(null);
+      setVersionDiff({ serial: (open?.serial ?? 0) + 1, pluginId, documentId: activeIdRef.current, request });
+    });
+  }, [slotState, currentNoteText, closeVersionDiff]);
+  /** A tab of the info pane to bring forward, and what to show in it. */
+  const [infoReveal, setInfoReveal] = useState<{ key: string; reveal?: string; serial: number } | null>(null);
+  const infoSerial = useRef(0);
+  useEffect(() => {
+    slotState.setTabShower((key, reveal) => {
+      changeSettings({ infoOpen: true, infoTab: key });
+      infoSerial.current += 1;
+      setInfoReveal({ key, reveal, serial: infoSerial.current });
+    });
+  }, [slotState, changeSettings]);
   useEffect(() => {
     slotState.update({ folder: folder.root, active: active?.opened.path ?? null });
   }, [slotState, folder.root, active]);
@@ -2429,6 +2515,12 @@ function NotoWorkspace({ platform }: { platform: NotoPlatform }) {
       case 'toggle-outline':
         toggleRail('outline');
         break;
+      case 'toggle-note-info':
+        changeSettings({ infoOpen: !settings.infoOpen });
+        break;
+      case 'show-note-info':
+        changeSettings({ infoOpen: true });
+        break;
       case 'tree-sort-name': case 'tree-sort-name-desc':
       case 'tree-sort-modified': case 'tree-sort-modified-old':
         changeSettings({ treeSort: event.command.slice('tree-sort-'.length) as TreeSortV1 });
@@ -2578,8 +2670,12 @@ function NotoWorkspace({ platform }: { platform: NotoPlatform }) {
     const unsaved = editorDirty
       ? [{ key: 'diff:unsaved', testId: 'palette-unsaved-diff', kind: 'diff' as const, title: 'Show Unsaved Changes', source: 'File' }]
       : [];
-    return [...builtin, ...unsaved, ...git, ...plugins];
-  }, [pluginSnapshots, activeId, gitBlocksVersion, editorDirty]);
+    const info = [{
+      key: 'info:toggle', testId: 'palette-note-info', kind: 'info' as const,
+      title: settings.infoOpen ? 'Hide Note Info' : 'Show Note Info', source: 'View',
+    }];
+    return [...builtin, ...unsaved, ...info, ...git, ...plugins];
+  }, [pluginSnapshots, activeId, gitBlocksVersion, editorDirty, settings.infoOpen]);
   const paletteCommandByKey = useMemo(
     () => new Map(paletteCommands.map((command) => [command.key, command])),
     [paletteCommands],
@@ -2627,7 +2723,10 @@ function NotoWorkspace({ platform }: { platform: NotoPlatform }) {
       data-testid="noto-app" data-file-state={state}
       /* The open rail's width: the shell's first column, and the title bar's,
          so the filename can be centred over the page. */
-      style={{ '--shell-rail': rail.open ? `${appliedRailWidth}px` : '0px' } as CSSProperties}
+      style={{
+        '--shell-rail': rail.open ? `${appliedRailWidth}px` : '0px',
+        '--shell-info': settings.infoOpen ? `${appliedInfoWidth}px` : '0px',
+      } as CSSProperties}
       data-plugin-lifecycle={pluginSnapshot?.lifecycle ?? 'disabled'}
       data-plugin-registrations={pluginSnapshot?.rendererRegistrations ?? 0}>
       <a className="skip-link" href="#document-canvas">Skip to document</a>
@@ -3042,11 +3141,49 @@ function NotoWorkspace({ platform }: { platform: NotoPlatform }) {
             onLayout={(diffLayout) => changeSettings({ diffLayout })}
             onClose={() => {
               setUnsavedDiffView(null);
-              editorRef.current?.focus();
+              focusAfterDiffRef.current = true;
+            }}
+          />
+        )}
+        {versionDiff && (
+          <UnsavedDiff
+            key={`version-${versionDiff.serial}`}
+            fileName={filename}
+            saved={versionDiff.request.before.text}
+            current={versionDiff.request.after.text}
+            layout={settings.diffLayout}
+            onLayout={(diffLayout) => changeSettings({ diffLayout })}
+            versions={{
+              title: versionDiff.request.title,
+              detail: versionDiff.request.detail,
+              beforeLabel: versionDiff.request.before.label,
+              afterLabel: versionDiff.request.after.label,
+              actions: versionDiff.request.actions,
+              keys: versionDiff.request.keys,
+            }}
+            onClose={() => {
+              closeVersionDiff(true);
+              focusAfterDiffRef.current = true;
             }}
           />
         )}
       </div>
+
+      {settings.infoOpen && (
+        <InfoPane
+          registry={infoPane}
+          state={slotState}
+          width={appliedInfoWidth}
+          tab={settings.infoTab}
+          reveal={infoReveal}
+          onTab={(infoTab) => changeSettings({ infoTab })}
+          onResize={(infoWidth) => changeSettings({ infoWidth: clampInfoWidth(infoWidth, window.innerWidth) })}
+          onClose={() => {
+            changeSettings({ infoOpen: false });
+            editorRef.current?.focus();
+          }}
+        />
+      )}
 
       <TagBrowser
         open={tagBrowser.open}
@@ -3096,6 +3233,7 @@ function NotoWorkspace({ platform }: { platform: NotoPlatform }) {
             if (!chosen) return;
             if (chosen.kind === 'export') exportNote(chosen.target);
             else if (chosen.kind === 'diff') openUnsavedDiff();
+            else if (chosen.kind === 'info') changeSettings({ infoOpen: !settings.infoOpen });
             else if (chosen.kind === 'git') {
               const done = chosen.key === 'git:revert'
                 ? editorRef.current?.revertGitAtSelection()

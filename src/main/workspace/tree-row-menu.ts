@@ -16,6 +16,8 @@ import type { MenuItemConstructorOptions } from 'electron';
 
 export interface TreeRowActions {
   readonly open: (target: string) => void;
+  /** Open the note and show its info beside it: history, properties. */
+  readonly info: (target: string) => void;
   readonly newNote: (directory: string) => void;
   readonly newFolder: (directory: string) => void;
   /** Asks the renderer for a name, which is where the row and the caret are. */
@@ -52,6 +54,7 @@ export function buildTreeRowMenu(
   // A folder opens by being expanded, which the row already does on a click.
   if (kind === 'file') {
     items.push({ id: 'tree-open', label: 'Open', click: () => actions.open(target) });
+    items.push({ id: 'tree-info', label: 'Get Info', click: () => actions.info(target) });
   } else {
     // Where the reader pressed. The File menu's New Note goes beside the note
     // in front, which is not always the folder they are pointing at.

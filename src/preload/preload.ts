@@ -124,6 +124,10 @@ import type {
   WorkspaceContextRequestV1,
   WorkspaceTextReplyV1,
   WorkspaceLinksReplyV1,
+  WorkspaceNoteHistoryReplyV1,
+  WorkspaceNoteHistoryRequestV1,
+  WorkspaceNoteVersionReplyV1,
+  WorkspaceNoteVersionRequestV1,
   WorkspaceOpenPathRequestV1,
   WorkspaceTabRequestV1,
   WorkspaceTabsEventV1,
@@ -172,6 +176,10 @@ import {
   isWorkspaceContextRequestV1,
   isWorkspaceTextReplyV1,
   isWorkspaceLinksResultV1,
+  isWorkspaceNoteHistoryRequestV1,
+  isWorkspaceNoteHistoryResultV1,
+  isWorkspaceNoteVersionRequestV1,
+  isWorkspaceNoteVersionResultV1,
   isWorkspaceOpenPathRequestV1,
   isWorkspaceTabRequestV1,
   isWorkspaceTabsEventV1,
@@ -529,6 +537,12 @@ const workspaceApi: NotoWorkspaceApiV1 = Object.freeze({
   noteLinks: (request: WorkspaceFolderRequestV1) => isWorkspaceFolderRequestV1(request)
     ? invokeWorkspace<WorkspaceLinksReplyV1>(WORKSPACE_CHANNELS.noteLinks, request, request.requestId, isWorkspaceLinksResultV1)
     : Promise.resolve(rejectedWorkspace<WorkspaceLinksReplyV1>('invalid', 'Invalid note links request')),
+  noteHistory: (request: WorkspaceNoteHistoryRequestV1) => isWorkspaceNoteHistoryRequestV1(request)
+    ? invokeWorkspace<WorkspaceNoteHistoryReplyV1>(WORKSPACE_CHANNELS.noteHistory, request, request.requestId, isWorkspaceNoteHistoryResultV1)
+    : Promise.resolve(rejectedWorkspace<WorkspaceNoteHistoryReplyV1>('invalid', 'Invalid note history request')),
+  noteVersion: (request: WorkspaceNoteVersionRequestV1) => isWorkspaceNoteVersionRequestV1(request)
+    ? invokeWorkspace<WorkspaceNoteVersionReplyV1>(WORKSPACE_CHANNELS.noteVersion, request, request.requestId, isWorkspaceNoteVersionResultV1)
+    : Promise.resolve(rejectedWorkspace<WorkspaceNoteVersionReplyV1>('invalid', 'Invalid note version request')),
   tagIndex: (request: WorkspaceRequestV1) => isWorkspaceRequestV1(request)
     ? invokeWorkspace<WorkspaceTagIndexReplyV1>(WORKSPACE_CHANNELS.tagIndex, request, request.requestId, isWorkspaceTagIndexResultV1)
     : Promise.resolve(rejectedWorkspace<WorkspaceTagIndexReplyV1>('invalid', 'Invalid tag index request')),

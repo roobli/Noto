@@ -106,6 +106,10 @@ const record = (value: unknown): value is Record<string, unknown> =>
 
 const SETTING_KEYS = Object.keys(DEFAULT_SETTINGS) as (keyof NotoSettingsV1)[];
 
+/** A tab of the info pane, as `pluginId:tabId`, or empty for whichever comes first. */
+const isInfoTab = (value: unknown): value is string =>
+  typeof value === 'string' && (value === '' || /^[A-Za-z0-9._-]{1,128}:[A-Za-z0-9._-]{1,64}$/.test(value));
+
 /** One of the three substitutions, falling back to the switch they used to share. */
 function substitution(value: Record<string, unknown>, key: 'smartQuotes' | 'smartDashes' | 'smartEllipsis'): boolean {
   if (typeof value[key] === 'boolean') return value[key];
@@ -184,6 +188,7 @@ export function coerceSettings(value: unknown): NotoSettingsV1 {
       ? value.sidebarOnLaunch
       : DEFAULT_SETTINGS.sidebarOnLaunch,
     railWidth: numeric(value, 'railWidth'),
+    infoWidth: numeric(value, 'infoWidth'),
     autoSave: typeof value.autoSave === 'boolean' ? value.autoSave : DEFAULT_SETTINGS.autoSave,
     autoSaveDelayMs: numeric(value, 'autoSaveDelayMs'),
     customCssPath: isCssPath(value.customCssPath)
@@ -210,6 +215,8 @@ export function coerceSettings(value: unknown): NotoSettingsV1 {
     railLinks: typeof value.railLinks === 'boolean'
       ? value.railLinks
       : DEFAULT_SETTINGS.railLinks,
+    infoOpen: typeof value.infoOpen === 'boolean' ? value.infoOpen : DEFAULT_SETTINGS.infoOpen,
+    infoTab: isInfoTab(value.infoTab) ? value.infoTab : DEFAULT_SETTINGS.infoTab,
     updateChannel: UPDATE_CHANNEL_SETTINGS.includes(value.updateChannel as UpdateChannelSettingV1)
       ? value.updateChannel as UpdateChannelSettingV1
       : DEFAULT_SETTINGS.updateChannel,
@@ -242,6 +249,7 @@ export function isSettingsWriteRequestV1(value: unknown): value is SettingsWrite
     if (key === 'theme') return themes.includes(patch.theme as NotoTheme);
     if (key === 'widthMode') return isWidthMode(patch.widthMode);
     if (key === 'diffLayout') return isDiffLayout(patch.diffLayout);
+    if (key === 'infoTab') return isInfoTab(patch.infoTab);
     if (key === 'disabledShortcuts') return isDisabledShortcuts(patch.disabledShortcuts);
     if (key === 'pluginMarketplace') return isMarketplaceRepo(patch.pluginMarketplace);
     if (key === 'proseFace') return PROSE_FACES.includes(patch.proseFace as ProseFaceV1);
@@ -315,6 +323,8 @@ export function isSettingsReplyV1(value: unknown): value is SettingsReplyV1 {
     && typeof settings.sidenotes === 'boolean'
     && typeof settings.fileTags === 'boolean'
     && typeof settings.railLinks === 'boolean'
+    && typeof settings.infoOpen === 'boolean'
+    && isInfoTab(settings.infoTab)
     && UPDATE_CHANNEL_SETTINGS.includes(settings.updateChannel as UpdateChannelSettingV1)
     && typeof settings.checkUpdatesOnLaunch === 'boolean'
     && typeof settings.autoDownloadUpdates === 'boolean'

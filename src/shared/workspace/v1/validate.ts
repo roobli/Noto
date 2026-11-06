@@ -31,6 +31,11 @@ import {
   MAX_PASTE_TEXT,
   WorkspaceLinkV1,
   WorkspaceLinksReplyV1,
+  NoteCommitV1,
+  WorkspaceNoteHistoryReplyV1,
+  WorkspaceNoteHistoryRequestV1,
+  WorkspaceNoteVersionReplyV1,
+  WorkspaceNoteVersionRequestV1,
   WorkspaceTagIndexReplyV1,
   WorkspaceTagSummaryV1,
   WorkspaceNotesByTagRequestV1,
@@ -263,6 +268,64 @@ export function isWorkspaceLinksReplyV1(value: unknown): value is WorkspaceLinks
     && Array.isArray(value.links) && value.links.every(isWorkspaceLinkV1)
     && Array.isArray(value.related) && value.related.every(isWorkspaceLinkV1);
 }
+
+export function isWorkspaceNoteHistoryRequestV1(value: unknown): value is WorkspaceNoteHistoryRequestV1 {
+  return isWorkspaceFolderRequestV1(value);
+}
+
+export function isWorkspaceNoteVersionRequestV1(value: unknown): value is WorkspaceNoteVersionRequestV1 {
+  return record(value) && exact(value, ['version', 'requestId', 'path', 'commit', 'at'])
+    && value.version === 1 && typeof value.requestId === 'string' && requestId.test(value.requestId)
+    && typeof value.path === 'string' && value.path.length > 0 && value.path.length <= 4096
+    && typeof value.commit === 'string' && /^[0-9a-f]{40,64}$/.test(value.commit)
+    && typeof value.at === 'string' && value.at.length > 0 && value.at.length <= 4096;
+}
+
+const NOTE_CHANGES = new Set(['added', 'modified', 'renamed', 'copied', 'deleted', 'merge']);
+const count = (value: unknown) => value === null || (typeof value === 'number' && Number.isSafeInteger(value) && value >= 0);
+const time = (value: unknown) => typeof value === 'number' && Number.isFinite(value) && value >= 0;
+
+function isNoteCommitV1(value: unknown): value is NoteCommitV1 {
+  return record(value)
+    && exact(value, ['hash', 'time', 'author', 'subject', 'change', 'path', 'from', 'added', 'removed', 'tooling', 'sweeping'])
+    && typeof value.hash === 'string' && /^[0-9a-f]{40,64}$/.test(value.hash)
+    && time(value.time)
+    && typeof value.author === 'string' && value.author.length <= 512
+    && typeof value.subject === 'string' && value.subject.length <= 4096
+    && typeof value.change === 'string' && NOTE_CHANGES.has(value.change)
+    && typeof value.path === 'string' && value.path.length <= 4096
+    && (value.from === null || (typeof value.from === 'string' && value.from.length <= 4096))
+    && count(value.added) && count(value.removed)
+    && typeof value.tooling === 'boolean' && typeof value.sweeping === 'boolean';
+}
+
+const HISTORY_STATES = new Set(['ok', 'untracked', 'not-git', 'slow', 'unavailable', 'outside']);
+
+export function isWorkspaceNoteHistoryReplyV1(value: unknown): value is WorkspaceNoteHistoryReplyV1 {
+  if (!record(value) || !exact(value, ['version', 'state', 'commits', 'more', 'uncommitted', 'file'])) return false;
+  const { uncommitted, file } = value;
+  return value.version === 1
+    && typeof value.state === 'string' && HISTORY_STATES.has(value.state)
+    && Array.isArray(value.commits) && value.commits.length <= 1000 && value.commits.every(isNoteCommitV1)
+    && typeof value.more === 'boolean'
+    && (uncommitted === null || (record(uncommitted) && exact(uncommitted, ['added', 'removed'])
+      && count(uncommitted.added) && count(uncommitted.removed)))
+    && (file === null || (record(file) && exact(file, ['created', 'modified', 'bytes'])
+      && time(file.created) && time(file.modified) && count(file.bytes)));
+}
+
+export const isWorkspaceNoteHistoryResultV1 = (
+  value: unknown, id: string,
+): value is WorkspaceResultV1<WorkspaceNoteHistoryReplyV1> => isResult(value, id, isWorkspaceNoteHistoryReplyV1);
+
+export function isWorkspaceNoteVersionReplyV1(value: unknown): value is WorkspaceNoteVersionReplyV1 {
+  return record(value) && exact(value, ['version', 'text'])
+    && value.version === 1 && (value.text === null || typeof value.text === 'string');
+}
+
+export const isWorkspaceNoteVersionResultV1 = (
+  value: unknown, id: string,
+): value is WorkspaceResultV1<WorkspaceNoteVersionReplyV1> => isResult(value, id, isWorkspaceNoteVersionReplyV1);
 
 export const isWorkspaceLinksResultV1 = (
   value: unknown, id: string,

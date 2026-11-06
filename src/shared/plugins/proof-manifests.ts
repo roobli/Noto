@@ -105,8 +105,28 @@ export const changesManifest = {
   uiExtensions: ['rail:changes'],
 } satisfies PluginManifest;
 
+export const historyManifest = {
+  schemaVersion: 2,
+  id: 'dev.lr00rl.noto.history',
+  name: 'History',
+  version: '1.0.0',
+  runtime: 'trusted-renderer',
+  activation: {
+    startup: false,
+    events: [],
+    hotkeys: [],
+  },
+  capabilities: ['git.read', 'editor.read', 'editor.transform'],
+  lifecycle: ['activate', 'deactivate'],
+  commands: [],
+  settings: [],
+  hotkeys: [],
+  editorExtensions: [],
+  uiExtensions: ['info:history', 'info:properties', 'track:commits'],
+} satisfies PluginManifest;
+
 /** Bundled plugins that start switched on for a reader who never touched them. */
-export const BUNDLED_ON_BY_DEFAULT: ReadonlySet<string> = new Set([sidenotesManifest.id, changesManifest.id]);
+export const BUNDLED_ON_BY_DEFAULT: ReadonlySet<string> = new Set([sidenotesManifest.id, changesManifest.id, historyManifest.id]);
 
 export const markdownPaddingManifest = {
   schemaVersion: 2,

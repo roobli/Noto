@@ -30,6 +30,8 @@ import {
   type WorkspaceTreeMenuReplyV1,
   type WorkspaceOpenExternalReplyV1,
   type WorkspaceLinksReplyV1,
+  type WorkspaceNoteHistoryReplyV1,
+  type WorkspaceNoteVersionReplyV1,
   type WorkspaceTagIndexReplyV1,
   type WorkspaceNotesByTagReplyV1,
   type WorkspaceCodeViewV1,
@@ -75,7 +77,8 @@ import {
   renamedFileName,
 } from '../../shared/workspace/v1/entry-names';
 import { buildFileIndex } from './file-index';
-import { GitMarks, defaultGitRunner } from './git-marks';
+import { GitMarks, defaultGitRunner, findGit } from './git-marks';
+import { NoteHistoryReader, systemBatchGit } from './git-history';
 import { VaultWatcher, classifyTouched, inspectTouched } from './vault-watcher';
 import { gitBlockDiff } from './git-blocks';
 import type { WorkspaceGitBlocksV1 } from '../../shared/workspace/v1/contracts';
@@ -128,6 +131,11 @@ export class WorkspaceSession {
 
   /** The vault's graph, read once per version of its file. */
   private readonly graphCache = new GraphCache();
+  /** One reader for the window, so a note's history is walked once until HEAD moves. */
+  private readonly history = new NoteHistoryReader(
+    defaultGitRunner,
+    async () => { const binary = await findGit(); return binary === null ? null : systemBatchGit(binary); },
+  );
 
   /**
    * Whether the reader asked for the current folder.
@@ -588,6 +596,12 @@ export class WorkspaceSession {
 
     const items = buildTreeRowMenu(real, kind, {
       open: (target) => { void this.openPath(target).catch(() => {}); },
+      // Opened first, so the pane has the note to be about; then the window shows it.
+      info: (target) => {
+        void this.openPath(target).then(() => {
+          this.send(WORKSPACE_CHANNELS.menuCommand, { version: NOTO_WORKSPACE_VERSION, command: 'show-note-info' });
+        }).catch(() => {});
+      },
       // The directory has already been resolved and checked against the open
       // folder above, so the note goes where the reader pressed and nowhere
       // else.
@@ -682,6 +696,18 @@ export class WorkspaceSession {
     });
     if (answer.response !== 0) return;
     await this.manageEntry({ action: 'trash', target, name: null });
+  }
+
+  /**
+   * A note whose history may be read: one inside the open folder, or one the
+   * reader opened on its own, with no folder around it. Null for anything else.
+   */
+  private async readableNote(target: string): Promise<string | null> {
+    const inside = await this.inRoot(target);
+    if (inside !== null) return inside;
+    const resolved = path.resolve(target);
+    if (!this.documents.has(resolved)) return null;
+    return realpath(resolved).catch(() => null);
   }
 
   /** The real path, if it is inside the open folder. Null for anything else. */
@@ -1348,6 +1374,25 @@ export class WorkspaceSession {
     const index = await buildTagIndex(files.entries);
     if (this.folderRoot) this.tagIndexCache = { root: this.folderRoot, index };
     return index;
+  }
+
+  /** A note's commits, following renames; see `git-history.ts`. */
+  async noteHistory(target: string): Promise<WorkspaceNoteHistoryReplyV1> {
+    const real = await this.readableNote(target);
+    if (real === null) {
+      return { version: NOTO_WORKSPACE_VERSION, state: 'outside', commits: [], more: false, uncommitted: null, file: null };
+    }
+    const started = Date.now();
+    const reply = await this.history.history(real);
+    this.logger.log('note_history', { outcome: reply.state, commits: reply.commits.length, ms: Date.now() - started });
+    return reply;
+  }
+
+  /** A note's text at one of its own commits. */
+  async noteVersion(target: string, commit: string, at: string): Promise<WorkspaceNoteVersionReplyV1> {
+    const real = await this.readableNote(target);
+    const text = real === null ? null : await this.history.version(real, commit, at);
+    return { version: NOTO_WORKSPACE_VERSION, text };
   }
 
   async noteLinks(target: string): Promise<WorkspaceLinksReplyV1> {

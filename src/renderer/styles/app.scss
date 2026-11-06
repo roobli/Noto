@@ -146,7 +146,7 @@ button:disabled { color: var(--muted); opacity: 0.7; }
      floor to ceiling. A bar painted across both (2026-09) put the lights on a
      band that belonged to neither column, and the left edge read as two
      stacked grounds. */
-  grid-template-columns: var(--shell-rail, auto) minmax(0, 1fr);
+  grid-template-columns: var(--shell-rail, auto) minmax(0, 1fr) var(--shell-info, 0px);
   --titlebar-height: 32px;
   /* The rail is clipped by the shell as its column grows, so the document
      moves with the surface instead of jumping before it appears. */
@@ -170,6 +170,9 @@ button:disabled { color: var(--muted); opacity: 0.7; }
 .app-shell > .file-truth-alert { grid-row: 4; grid-column: 2; }
 .app-shell > .operational-status { grid-row: 5; grid-column: 2; }
 .app-shell > .workspace-rail { grid-row: 1 / -1; grid-column: 1; }
+/* Under the title bar, as an inspector hangs under a toolbar: the title
+   bar's buttons on the right stay clear of it. */
+.app-shell > .info-pane { grid-row: 2 / -1; grid-column: 3; }
 
 /* Title bar
    -------------------------------------------------------------------------
@@ -3777,4 +3780,437 @@ section.plugin-group > .plugin-market-row.is-set-aside {
   overflow: hidden;
   clip-path: inset(50%);
   white-space: nowrap;
+}
+
+
+/* The info pane
+   -------------------------------------------------------------------------
+   Everything about the note in front, beside the page. The rail's ground,
+   rules and type, so the window reads as rail, page, pane; the timeline is
+   its one ornament and the one place the accent carries meaning. */
+
+@keyframes noto-info-in {
+  from { opacity: 0; }
+  to { opacity: 1; }
+}
+
+.info-pane {
+  position: relative;
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+  min-height: 0;
+  overflow: hidden;
+  border-left: 1px solid var(--hairline);
+  background: var(--panel);
+  color: var(--ink);
+  font-family: tokens.$ui;
+  animation: noto-info-in var(--motion-medium) var(--ease-out);
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .info-pane { animation: none; }
+}
+
+.info-resize {
+  position: absolute;
+  z-index: 5;
+  top: 0;
+  bottom: 0;
+  left: -3px;
+  width: 7px;
+  cursor: col-resize;
+  touch-action: none;
+}
+
+.info-resize::after {
+  content: '';
+  position: absolute;
+  inset: 0 3px;
+  background: var(--accent);
+  opacity: 0;
+  transition: opacity var(--motion-micro) var(--ease-out);
+}
+
+.info-resize:hover::after,
+.info-resize:focus-visible::after,
+.is-resizing-rail .info-resize::after { opacity: 0.55; }
+
+.info-head {
+  display: flex;
+  flex: 0 0 auto;
+  align-items: flex-start;
+  gap: 8px;
+  padding: 12px 10px 8px 16px;
+}
+
+.info-identity { flex: 1 1 auto; min-width: 0; }
+
+.info-title {
+  margin: 0;
+  overflow: hidden;
+  color: var(--ink);
+  font: 600 13px/18px tokens.$ui;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.info-where {
+  display: flex;
+  min-width: 0;
+  gap: 6px;
+  margin: 2px 0 0;
+  color: var(--muted);
+  font: 500 11px/15px tokens.$ui;
+}
+
+.info-folder {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.info-folder::after { content: '\00b7'; margin-left: 6px; }
+.info-state { flex: 0 0 auto; white-space: nowrap; }
+.info-close { flex: 0 0 auto; margin-top: -3px; }
+
+.info-empty,
+.info-note {
+  margin: 10px 16px;
+  color: var(--muted);
+  font: 400 12px/18px tokens.$ui;
+
+  p { margin: 0 0 8px; }
+}
+
+.info-status {
+  margin: 4px 16px 6px;
+  color: var(--ink);
+  font: 400 11.5px/16px tokens.$ui;
+}
+
+.info-button {
+  min-height: 22px;
+  padding: 1px 9px;
+  border: 1px solid var(--hairline);
+  border-radius: 5px;
+  background: var(--paper);
+  color: var(--ink);
+  font: 500 11.5px/18px tokens.$ui;
+  cursor: pointer;
+
+  &:hover { background: var(--raised); }
+  &:focus-visible { outline: 2px solid var(--focus); outline-offset: 1px; }
+}
+
+/* The timeline: a row per track, today at the right edge. */
+.info-timeline {
+  flex: 0 0 auto;
+  padding: 2px 16px 10px;
+}
+
+.info-tracks { display: flex; flex-direction: column; gap: 3px; }
+
+.info-track {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.info-track-marks {
+  position: relative;
+  flex: 1 1 auto;
+  height: 14px;
+}
+
+.info-track.is-amounts .info-track-marks { height: 20px; }
+
+/* The axis a track's marks sit on. */
+.info-track.is-events .info-track-marks::before {
+  content: '';
+  position: absolute;
+  top: 50%;
+  right: 0;
+  left: 0;
+  height: 1px;
+  background: var(--hairline);
+}
+
+.info-track-name {
+  flex: 0 0 48px;
+  order: 2;
+  overflow: hidden;
+  color: var(--muted);
+  font: 500 10px/13px tokens.$ui;
+  text-align: right;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.info-mark {
+  position: absolute;
+  top: 0;
+  bottom: 0;
+  left: var(--x);
+  width: 9px;
+  padding: 0;
+  border: 0;
+  border-radius: 3px;
+  background: transparent;
+  transform: translateX(-50%);
+  cursor: pointer;
+
+  &::before {
+    content: '';
+    position: absolute;
+    top: 50%;
+    left: 50%;
+    width: 7px;
+    height: 7px;
+    border-radius: 50%;
+    background: var(--accent);
+    transform: translate(-50%, -50%);
+    transition: transform var(--motion-micro) var(--ease-out);
+  }
+
+  &:hover::before { transform: translate(-50%, -50%) scale(1.3); }
+  &:focus-visible { outline: 2px solid var(--focus); outline-offset: 0; }
+  &.is-many::before { width: 9px; height: 9px; }
+  &.is-faint::before { background: var(--muted); opacity: 0.45; }
+
+  /* Not committed yet: a ring at now. */
+  &.is-pending::before {
+    border: 1.5px solid var(--accent);
+    background: var(--panel);
+  }
+}
+
+.info-track.is-amounts .info-mark {
+  width: 6px;
+
+  &::before {
+    top: auto;
+    bottom: 0;
+    width: 4px;
+    height: calc(var(--h) * 100%);
+    border-radius: 1px;
+    opacity: 0.6;
+    transform: translateX(-50%);
+  }
+
+  &:hover::before { opacity: 1; transform: translateX(-50%); }
+}
+
+.info-axis {
+  display: flex;
+  justify-content: space-between;
+  margin: 3px 56px 0 0;
+  color: var(--muted);
+  font: 500 10px/13px tokens.$ui;
+  font-variant-numeric: tabular-nums;
+}
+
+.info-summary {
+  margin: 6px 0 0;
+  color: var(--muted);
+  font: 500 11px/15px tokens.$ui;
+  font-variant-numeric: tabular-nums;
+}
+
+.info-tabs {
+  display: flex;
+  flex: 0 0 auto;
+  gap: 16px;
+  padding: 0 16px;
+  border-bottom: 1px solid var(--hairline);
+}
+
+.info-tab {
+  position: relative;
+  padding: 7px 0 7px;
+  border: 0;
+  background: none;
+  color: var(--muted);
+  font: 500 12px/16px tokens.$ui;
+  cursor: pointer;
+
+  &:hover { color: var(--ink); }
+  &:focus-visible { outline: 2px solid var(--focus); outline-offset: 2px; border-radius: 3px; }
+
+  &[aria-selected='true'] { color: var(--ink); }
+  &[aria-selected='true']::after {
+    content: '';
+    position: absolute;
+    right: 0;
+    bottom: -1px;
+    left: 0;
+    height: 1.5px;
+    border-radius: 1px;
+    background: var(--ink);
+  }
+}
+
+.info-panels { position: relative; flex: 1 1 auto; min-height: 0; }
+
+.info-panel {
+  position: absolute;
+  inset: 0;
+  overflow: auto;
+  padding: 6px 0 16px;
+
+  &[hidden] { display: none; }
+}
+
+/* History: a commit a row, its words on top and its when and who below. */
+.history-list {
+  margin: 0;
+  padding: 0 8px;
+  list-style: none;
+}
+
+.history-row {
+  display: flex;
+  flex-direction: column;
+  gap: 1px;
+  width: 100%;
+  min-width: 0;
+  padding: 5px 8px;
+  border: 0;
+  border-radius: 6px;
+  background: transparent;
+  color: var(--ink);
+  font-family: tokens.$ui;
+  text-align: left;
+  cursor: pointer;
+
+  &:hover { background: var(--raised); }
+  &:focus-visible { outline: 2px solid var(--focus); outline-offset: -2px; }
+  /* The commit on view in the diff, marked as the tree marks the note in front. */
+  &[aria-current='true'] { border-radius: 0 6px 6px 0; background: var(--surface-active); box-shadow: inset 2px 0 0 var(--accent); }
+  &.is-located { background: var(--surface-active); }
+}
+
+.history-subject {
+  overflow: hidden;
+  font: 500 12.5px/17px tokens.$ui;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.history-meta,
+.history-moved {
+  overflow: hidden;
+  color: var(--muted);
+  font: 400 11px/15px tokens.$ui;
+  font-variant-numeric: tabular-nums;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+/* A script's commit or a sweep: there, and quieter than the person's own. */
+.history-row.is-faint .history-subject { color: var(--muted); font-weight: 400; }
+
+.history-row.is-pending .history-subject::before {
+  content: '';
+  display: inline-block;
+  width: 6px;
+  height: 6px;
+  margin: 0 6px 1px 0;
+  border: 1.5px solid var(--accent);
+  border-radius: 50%;
+  vertical-align: middle;
+}
+
+.history-more { margin: 6px 16px 0; }
+
+/* Properties: groups named by where their values come from. */
+.properties-group { padding: 8px 16px 6px; }
+
+.properties-heading {
+  margin: 0 0 5px;
+  color: var(--muted);
+  font: 600 10.5px/14px tokens.$ui;
+  letter-spacing: 0.02em;
+}
+
+.properties-list {
+  display: grid;
+  grid-template-columns: minmax(64px, 36%) minmax(0, 1fr);
+  gap: 3px 12px;
+  margin: 0;
+}
+
+.properties-row { display: contents; }
+
+.properties-row dt {
+  overflow: hidden;
+  color: var(--muted);
+  font: 400 12px/18px tokens.$ui;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.properties-row dd {
+  min-width: 0;
+  margin: 0;
+  color: var(--ink);
+  font: 400 12px/18px tokens.$ui;
+  font-variant-numeric: tabular-nums;
+  overflow-wrap: anywhere;
+}
+
+.properties-empty { color: var(--muted); }
+.properties-path { margin-right: 6px; word-break: break-all; }
+.properties-copy { min-height: 18px; padding: 0 7px; font-size: 11px; line-height: 16px; vertical-align: 1px; }
+
+/* The diff view, opened on two versions: what they are, and what can be done with them. */
+.diff-detail {
+  overflow: hidden;
+  color: var(--muted);
+  font-size: 12px;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+/* The title gives way last: the detail and the summary shorten first. */
+.unsaved-diff.is-versions .diff-title {
+  flex: 1 1 auto;
+
+  strong {
+    flex: 0 0 auto;
+    max-width: 55%;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+
+  .diff-detail { flex: 0 1 auto; min-width: 40px; }
+  .diff-summary { flex: 0 100 auto; min-width: 0; }
+}
+
+.diff-layouts .diff-layout { white-space: nowrap; }
+
+.diff-actions {
+  display: flex;
+  flex: 0 0 auto;
+  flex-wrap: wrap;
+  gap: 6px;
+  padding: 6px 10px 7px 20px;
+  border-bottom: 1px solid var(--hairline);
+}
+
+.diff-action {
+  min-height: 24px;
+  padding: 2px 9px;
+  border: 1px solid var(--hairline);
+  border-radius: 5px;
+  background: var(--paper);
+  color: var(--ink);
+  font: 500 12px tokens.$ui;
+  white-space: nowrap;
+  cursor: pointer;
+
+  &:hover:not(:disabled) { background: var(--raised); }
+  &:disabled { color: var(--muted); cursor: default; opacity: 0.6; }
+  &:focus-visible { outline: 2px solid var(--focus); outline-offset: 1px; }
 }

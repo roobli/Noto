@@ -79,6 +79,10 @@ export const WORKSPACE_CHANNELS = {
   gitMarksChanged: 'noto:v1:workspace:git-marks-changed',
   /** Push: the note in front's blocks against HEAD. See `WorkspaceGitBlocksV1`. */
   gitBlocksChanged: 'noto:v1:workspace:git-blocks-changed',
+  /** One note's commits, following renames. See `WorkspaceNoteHistoryReplyV1`. */
+  noteHistory: 'noto:v1:workspace:note-history',
+  /** One note's text as one of its commits had it. */
+  noteVersion: 'noto:v1:workspace:note-version',
 } as const;
 
 /** One entry in the workspace tree. */
@@ -352,6 +356,8 @@ export const WORKSPACE_MENU_COMMANDS = [
   'toggle-git-marks',
   'toggle-typewriter',
   'toggle-outline',
+  'toggle-note-info',
+  'show-note-info',
   'command-palette',
   'toggle-sidebar',
   'widen',
@@ -863,6 +869,71 @@ export interface WorkspaceNotesByTagReplyV1 {
   readonly notes: readonly WorkspaceTagNoteV1[];
 }
 
+/** One commit in a note's history. */
+export interface NoteCommitV1 {
+  readonly hash: string;
+  /** When it was authored, in milliseconds. */
+  readonly time: number;
+  readonly author: string;
+  readonly subject: string;
+  /** What the commit did to the note; a merge shows no change of its own. */
+  readonly change: 'added' | 'modified' | 'renamed' | 'copied' | 'deleted' | 'merge';
+  /** Where the note was after the commit, from the repository's top, with forward slashes. */
+  readonly path: string;
+  /** Where it was before, when the commit moved it. */
+  readonly from: string | null;
+  /** Lines added and taken away; null for a binary file or a merge. */
+  readonly added: number | null;
+  readonly removed: number | null;
+  /** Only text between a tool's markers changed: a script's work, not the person's. */
+  readonly tooling: boolean;
+  /** The commit changed more than a hundred files: a sweep across the folder. */
+  readonly sweeping: boolean;
+}
+
+/** The note as the file system has it. Times in milliseconds. */
+export interface NoteFileFactsV1 {
+  readonly created: number;
+  readonly modified: number;
+  readonly bytes: number;
+}
+
+export interface WorkspaceNoteHistoryRequestV1 extends WorkspaceRequestV1 {
+  /** The note. Main confines it to the open folder. */
+  readonly path: string;
+}
+
+/**
+ * A note's history, newest first.
+ *
+ * `ok` has commits; `untracked` is a note git has never committed; `not-git`
+ * a note outside any repository; `slow` and `unavailable` mean git did not
+ * answer, in time or at all; `outside` a path that is not in the open folder.
+ */
+export interface WorkspaceNoteHistoryReplyV1 {
+  readonly version: typeof NOTO_WORKSPACE_VERSION;
+  readonly state: 'ok' | 'untracked' | 'not-git' | 'slow' | 'unavailable' | 'outside';
+  readonly commits: readonly NoteCommitV1[];
+  /** The note has more commits than were read. */
+  readonly more: boolean;
+  /** Lines on disk since the last commit; null when nothing differs. */
+  readonly uncommitted: { readonly added: number; readonly removed: number } | null;
+  readonly file: NoteFileFactsV1 | null;
+}
+
+export interface WorkspaceNoteVersionRequestV1 extends WorkspaceRequestV1 {
+  readonly path: string;
+  readonly commit: string;
+  /** The note's path at that commit, as its history gave it. */
+  readonly at: string;
+}
+
+export interface WorkspaceNoteVersionReplyV1 {
+  readonly version: typeof NOTO_WORKSPACE_VERSION;
+  /** Null when the commit is not one of the note's, or the text is too big to show. */
+  readonly text: string | null;
+}
+
 export interface WorkspaceLinksReplyV1 {
   readonly version: typeof NOTO_WORKSPACE_VERSION;
   readonly available: boolean;
@@ -917,6 +988,10 @@ export interface NotoWorkspaceApiV1 {
   pathForFile(file: File): string;
   /** The graph's lists for the note at `path`; the request is the folder request, a path. */
   noteLinks(request: WorkspaceFolderRequestV1): Promise<WorkspaceResultV1<WorkspaceLinksReplyV1>>;
+  /** One note's commits, newest first, following renames. */
+  noteHistory(request: WorkspaceNoteHistoryRequestV1): Promise<WorkspaceResultV1<WorkspaceNoteHistoryReplyV1>>;
+  /** One note's text at one of its own commits. */
+  noteVersion(request: WorkspaceNoteVersionRequestV1): Promise<WorkspaceResultV1<WorkspaceNoteVersionReplyV1>>;
   tagIndex(request: WorkspaceRequestV1): Promise<WorkspaceResultV1<WorkspaceTagIndexReplyV1>>;
   notesByTag(request: WorkspaceNotesByTagRequestV1): Promise<WorkspaceResultV1<WorkspaceNotesByTagReplyV1>>;
   fileIndex(request: WorkspaceRequestV1): Promise<WorkspaceResultV1<WorkspaceIndexReplyV1>>;
