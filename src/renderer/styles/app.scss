@@ -914,7 +914,17 @@ button:disabled { color: var(--muted); opacity: 0.7; }
    that lived on opposite sides of the window. */
 
 /* Cursor-style Settings: full-page shell, left categories / right content. */
-.settings-page,
+.settings-page {
+  animation: noto-fade var(--motion-micro) var(--ease-out);
+  position: fixed;
+  z-index: 60;
+  inset: 0;
+  display: grid;
+  place-items: stretch;
+  background: var(--paper);
+  padding: 0;
+}
+
 /* The same frame as the window under it: a title-bar row across the top, the
    categories' ground from floor to ceiling down the left with the traffic
    lights on its head, the pane on paper to its right. Drawn as a column that
@@ -2420,7 +2430,7 @@ section.plugin-group > .plugin-market-row.is-set-aside {
   .app-shell { grid-template-rows: auto auto minmax(0, 1fr) auto 24px; }
   .operational-status { height: 24px; grid-template-columns: minmax(0, 1fr); }
   .status-message, .recent-strip { display: none; }
-  .settings-page,
+  .settings-page { padding: 0; }
   /* One column: the title bar, the categories as a strip under it, then the
      pane. The title moves past the lights, as the main bar's controls do. */
   .pref-dialog,
