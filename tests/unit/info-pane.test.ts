@@ -7,7 +7,7 @@
 
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { InfoRegistry, RailPageRegistry, ShellState, shellContext, type InfoTabHost } from '../../src/renderer/plugins/slots';
-import { bandColumns, clampInfoWidth, columnsOf, gitStateOf, INFO_MIN } from '../../src/renderer/InfoPane';
+import { bandColumns, clampInfoWidth, columnsOf, gitStateOf, INFO_MIN, nearest } from '../../src/renderer/InfoPane';
 import { commitDetail, commitsSummary, frontmatterFields, textCounts, when } from '../../src/renderer/plugins/bundled/history/model';
 import type { NoteCommitV1 } from '../../src/shared/workspace/v1/contracts';
 
@@ -106,6 +106,11 @@ describe('the pane', () => {
     // Asked for all of it, nothing is gathered; and a year with nothing before it has no such mark.
     expect(bandColumns(marks, 0, 730 * day, 10, false).some((column) => column.earlier)).toBe(false);
     expect(bandColumns(marks.slice(2), 365 * day, 730 * day, 11, true)[0]!.earlier).toBe(false);
+  });
+
+  it('names a deep note\'s folder by the one it is in, not by the start of its path', () => {
+    expect(nearest('C000_roobli_cdxx0 / C001_RoobLi_NiceWorks / Noto')).toBe('Noto');
+    expect(nearest('Ideas')).toBe('Ideas');
   });
 
   it('says what git says about the note, through a link to the folder too', () => {

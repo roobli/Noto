@@ -84,6 +84,8 @@ interface Batch {
 }
 
 /** How many writes can be taken back, the latest first. */
+/** Rows of each list Note Info is given: the eight it shows, and Show More's. */
+const ABOUT_LIMIT = 24;
 const UNDO_DEPTH = 20;
 
 /**
@@ -213,7 +215,8 @@ async function handle(request: MemoryRequest): Promise<unknown> {
       return { made };
     }
     case 'about':
-      return about(open(), request.rel);
+      // Three screens of each group, for Show More, and the reads of as many days for the timeline.
+      return about(open(), request.rel, { limit: ABOUT_LIMIT });
     case 'link-sources': {
       // More than one query takes: the caller reads the folder instead, rather than miss some.
       if (request.words.length > LINK_WORDS) return null;

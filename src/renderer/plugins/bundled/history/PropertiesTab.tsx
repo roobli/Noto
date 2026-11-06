@@ -153,7 +153,12 @@ function PropertiesTab({ host }: { readonly host: InfoTabHost }) {
           </>
         )}
         <Row name="Path" testId="properties-path">
-          <span className="properties-path" title={note}>{relative}</span>
+          {/* Broken after each folder, so a long path wraps at its slashes rather than mid-name. */}
+          <span className="properties-path" title={note}>
+            {relative.split('/').map((part, index, parts) => (
+              <span key={index}>{part}{index < parts.length - 1 ? <>/<wbr /></> : null}</span>
+            ))}
+          </span>
           <button type="button" className="info-button properties-copy" data-testid="properties-copy-path"
             onClick={() => { host.copy(note); setCopied(true); setTimeout(() => setCopied(false), 1200); }}>
             {copied ? 'Copied' : 'Copy'}

@@ -16,10 +16,12 @@
 import { useEffect, useRef, useState, type CSSProperties, type ReactNode } from 'react';
 import { createRoot } from 'react-dom/client';
 import type { InfoTabHost, InfoTabView, MemoryAskAnswer, NoteMemory, NoteMemoryAnswer } from '../../slots';
-import { absolute, actorName, agentName, heatWords, nameOf, times, togetherWhy, useMemory } from './model';
+import { absolute, actorName, agentName, heatLevel, heatWords, nameOf, plainWhy, times, togetherWhy, useMemory } from './model';
 
 /** Rows a group shows before it says how many more there are. */
 const SHOWN = 8;
+/** About the Same is a ranking, not a count: past a dozen its matches are weak, so it stops there. */
+const ABOUT_SAME = 12;
 
 function NotHere({ answer }: { readonly answer: NoteMemoryAnswer | null }) {
   if (answer === null) return null;
@@ -63,12 +65,31 @@ function AskMain({ answer, label, testId, run }: {
   );
 }
 
-function Group({ title, count, children, testId }: { readonly title: string; readonly count: number; readonly children: ReactNode; readonly testId: string }) {
+/**
+ * One kind of relation: its name and how many, the first eight, and Show N
+ * More for the rest the memory gave; past those, how many more the folder
+ * holds, which are a search away rather than a scroll.
+ */
+function Group({ title, count, rows, testId }: { readonly title: string; readonly count: number; readonly rows: readonly ReactNode[]; readonly testId: string }) {
+  const [open, setOpen] = useState(false);
   if (count === 0) return null;
+  const shown = open ? rows : rows.slice(0, SHOWN);
+  const hidden = rows.length - shown.length;
+  const unlisted = Math.max(0, count - rows.length);
   return (
     <section className="memory-group" aria-label={title} data-testid={testId}>
       <h3 className="memory-heading"><span>{title}</span><span className="memory-count">{count.toLocaleString('en')}</span></h3>
-      <ul className="memory-list">{children}</ul>
+      <ul className="memory-list">
+        {shown}
+        {hidden > 0 && (
+          <li>
+            <button type="button" className="memory-more" data-testid="memory-show-more" onClick={() => setOpen(true)}>
+              Show {hidden.toLocaleString('en')} more
+            </button>
+          </li>
+        )}
+        {hidden === 0 && unlisted > 0 && <li className="memory-more is-quiet">{unlisted.toLocaleString('en')} more in the folder</li>}
+      </ul>
     </section>
   );
 }
@@ -77,15 +98,15 @@ function Row({ host, rel, title, why, heat, testId }: {
   readonly host: InfoTabHost; readonly rel: string; readonly title: string; readonly why: ReactNode; readonly heat?: number; readonly testId: string;
 }) {
   const target = absolute(host.folder(), rel);
+  const level = heatLevel(heat);
   return (
     <li>
       <button type="button" className="memory-row" data-testid={testId} data-path={rel} title={rel}
         disabled={target === null} onClick={() => { if (target) host.openNote(target); }}>
         <span className="memory-title">{title || nameOf(rel)}</span>
         <span className="memory-why">{why}</span>
-        {heat !== undefined && heat > 0 && (
-          <span className="memory-heat" aria-hidden="true" style={{ '--heat': `${Math.min(1, heat)}` } as CSSProperties} />
-        )}
+        {/* How warm it is, in three steps of ink: the accent marks only where you are. */}
+        {level > 0 && <span className="memory-heat" data-level={level} aria-hidden="true"><i /><i /><i /></span>}
       </button>
     </li>
   );
@@ -107,10 +128,6 @@ function Mention({ around }: { readonly around: readonly [string, string, string
     </span>
   );
 }
-
-const more = (count: number, shown: number) => (count > shown
-  ? <li className="memory-more">{(count - shown).toLocaleString('en')} more not shown</li>
-  : null);
 
 /** The tab's field, for a command that leads to it ("Ask the folder…"). */
 const ASK_FOCUS = 'noto:memory-ask-focus';
@@ -150,11 +167,13 @@ function Ask({ host, note }: { readonly host: InfoTabHost; readonly note: string
   const pack = answer?.state === 'ok' ? answer.value : null;
   return (
     <div className="memory-ask" data-testid="memory-ask">
-      <form role="search" onSubmit={(event) => { event.preventDefault(); ask(); }}>
+      <form role="search" className="memory-ask-form" onSubmit={(event) => { event.preventDefault(); ask(); }}>
+        <svg className="memory-ask-glyph" viewBox="0 0 16 16" aria-hidden="true"><circle cx="7" cy="7" r="4.25" /><path d="m10.25 10.25 3 3" /></svg>
         <input ref={field} type="search" className="memory-ask-field" data-testid="memory-ask-field" value={cue}
           placeholder="Ask the vault…" aria-label="Ask the vault" spellCheck={false} maxLength={500}
           onChange={(event) => setCue(event.target.value)}
           onKeyDown={(event) => { if (event.key === 'Escape' && answer) { event.preventDefault(); setAnswer(null); } }} />
+        {cue.trim() !== '' && !busy && <kbd className="memory-ask-enter" aria-hidden="true">↩</kbd>}
       </form>
       {busy && <p className="info-status" role="status">Asking…</p>}
       {answer && !busy && !pack && <p className="info-status" role="status">The folder's memory could not be asked just now.</p>}
@@ -168,13 +187,14 @@ function Ask({ host, note }: { readonly host: InfoTabHost; readonly note: string
               {copied ? 'Copied' : 'Copy as Context'}
             </button>
           </h3>
+          <p className="memory-question" data-testid="memory-question">{pack.cue}</p>
           {pack.items.length === 0
             ? <p className="info-note">Nothing in the folder came up for that.</p>
             : (
               <ul className="memory-list">
                 {pack.items.map((item) => (
                   <Row key={item.path} host={host} rel={item.path} title={item.title} testId="memory-asked-row"
-                    why={<><span>{item.why.join(' · ')}</span><span className="memory-excerpt">{item.excerpt}</span></>} />
+                    why={<><span>{plainWhy(item.why, 'question')}</span><span className="memory-excerpt">{item.excerpt}</span></>} />
                 ))}
                 {pack.omitted > 0 && <li className="memory-more">{pack.omitted.toLocaleString('en')} more did not fit</li>}
               </ul>
@@ -213,33 +233,26 @@ function Related({ host }: { readonly host: InfoTabHost }) {
           }}>{memory.supersededBy.title || nameOf(memory.supersededBy.path)}</button>
         </p>
       )}
-      <Group title="Links here" count={memory.linksHereCount} testId="related-links-here">
-        {memory.linksHere.slice(0, SHOWN).map((item) => (
+      <Group title="Links here" count={memory.linksHereCount} testId="related-links-here"
+        rows={memory.linksHere.map((item) => (
           <Row key={item.path} host={host} rel={item.path} title={item.title} heat={item.heat} testId="related-row"
             why={[item.relation ? item.relation.replace(/_/g, ' ') : 'links here', item.reads > 0 ? `read ${times(item.reads)}` : ''].filter(Boolean).join(' · ')} />
-        ))}
-        {more(memory.linksHereCount, Math.min(SHOWN, memory.linksHere.length))}
-      </Group>
-      <Group title="Named here, not linked" count={memory.namedHereCount} testId="related-named-here">
-        {memory.namedHere.slice(0, SHOWN).map((item) => (
+        ))} />
+      <Group title="Named here, not linked" count={memory.namedHereCount} testId="related-named-here"
+        rows={memory.namedHere.map((item) => (
           <Row key={item.id} host={host} rel={item.to} title={item.title} testId="related-row"
             why={<Mention around={item.around} />} />
-        ))}
-        {more(memory.namedHereCount, Math.min(SHOWN, memory.namedHere.length))}
-      </Group>
-      <Group title="Read together" count={memory.togetherCount} testId="related-together">
-        {memory.together.slice(0, SHOWN).map((item) => (
+        ))} />
+      <Group title="Read together" count={memory.togetherCount} testId="related-together"
+        rows={memory.together.map((item) => (
           <Row key={`${item.path}:${item.type}`} host={host} rel={item.path} title={item.title} testId="related-row"
             why={togetherWhy(item.type, item.count)} />
-        ))}
-        {more(memory.togetherCount, Math.min(SHOWN, memory.together.length))}
-      </Group>
-      <Group title="About the same" count={memory.aboutSame.length} testId="related-about-same">
-        {memory.aboutSame.slice(0, SHOWN).map((item) => (
+        ))} />
+      <Group title="About the same" count={Math.min(memory.aboutSame.length, ABOUT_SAME)} testId="related-about-same"
+        rows={memory.aboutSame.slice(0, ABOUT_SAME).map((item) => (
           <Row key={item.path} host={host} rel={item.path} title={item.title} testId="related-row"
-            why={item.why.join(' · ') || item.excerpt} />
-        ))}
-      </Group>
+            why={plainWhy(item.why, 'title') || item.excerpt} />
+        ))} />
       {listed === 0 && <p className="info-note" data-testid="related-nothing">Nothing else in the folder links to this note or is about the same thing yet.</p>}
       <div className="memory-outgoing" data-testid="related-outgoing">
         {memory.outgoing.count === 0 ? 'Links to no other note.' : `Links to ${memory.outgoing.count.toLocaleString('en')} ${memory.outgoing.count === 1 ? 'note' : 'notes'}`}
@@ -271,7 +284,7 @@ function Activity({ host }: { readonly host: InfoTabHost }) {
     <div className="memory-tab" data-testid="activity-tab">
       <section className="memory-group" aria-label="Read" data-testid="activity-reads" data-key="reads">
         <h3 className="memory-heading"><span>Read</span></h3>
-        {memory.readers.length === 0 && <p className="memory-why">No one has opened it since the folder began keeping memory.</p>}
+        {memory.readers.length === 0 && <p className="memory-note">No one has opened it since the folder began keeping memory.</p>}
         <dl className="properties-list">
           {memory.readers.map((reader) => (
             <div key={reader.actor} className="properties-row" data-testid="activity-reader">

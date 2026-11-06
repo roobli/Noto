@@ -24,6 +24,43 @@ export function togetherWhy(type: string, count: number): string {
   return `${type.replace(/[_-]/g, ' ')} ${times(count)}`;
 }
 
+/** A title quoted inside a reason, short enough that the reason still fits a line. */
+function quoted(title: string, room = 18): string {
+  const chars = Array.from(title);
+  return `"${chars.length > room ? `${chars.slice(0, room - 1).join('')}…` : title}"`;
+}
+
+/**
+ * Why the memory offered a note, in the words of the place it is shown. The
+ * vault says it the way an agent asks: the "cue" is what was asked, which in
+ * About the Same is this note's own title, and in Ask the Vault is the
+ * question. The most telling reasons come first (a link, a note read or
+ * changed with it, then the words it shares), at most two of them, and a
+ * title inside one is cut short.
+ */
+export function plainWhy(reasons: readonly string[], cue: 'title' | 'question'): string {
+  const words = (reason: string): { rank: number; text: string } => {
+    const title = /"(.*)"/.exec(reason)?.[1] ?? '';
+    if (/^linked from "/.test(reason)) return { rank: 0, text: `linked from ${quoted(title)}` };
+    if (/^links to "/.test(reason)) return { rank: 0, text: `links to ${quoted(title)}` };
+    if (/^often opened with "/.test(reason)) return { rank: 1, text: `read with ${quoted(title)}` };
+    if (/^often changed with "/.test(reason)) return { rank: 1, text: `changed with ${quoted(title)}` };
+    if (reason === 'named by the cue') return { rank: 2, text: cue === 'title' ? 'named in this title' : 'named in your question' };
+    if (reason === 'the title answers the cue') return { rank: 2, text: cue === 'title' ? 'a title like this one' : 'its title answers it' };
+    if (reason === 'matches every word of the cue') return { rank: 3, text: cue === 'title' ? 'has every word of this title' : 'has every word you asked' };
+    if (reason === 'matches the cue') return { rank: 4, text: cue === 'title' ? 'shares words with this title' : 'shares words with your question' };
+    if (reason === 'the note you are in') return { rank: 5, text: 'the note you are in' };
+    return { rank: 2, text: title ? reason.replace(/"(.*)"/, quoted(title)) : reason };
+  };
+  return reasons.map(words).sort((left, right) => left.rank - right.rank).slice(0, 2).map((item) => item.text).join(' · ');
+}
+
+/** How warm a note is, in three steps, for the small meter beside it. */
+export function heatLevel(heat: number | undefined): 0 | 1 | 2 | 3 {
+  if (heat === undefined || !(heat > 0)) return 0;
+  return heat >= 0.66 ? 3 : heat >= 0.33 ? 2 : 1;
+}
+
 /** The heat in a sentence, without the words a person would have to look up. */
 /** When, in the words a person uses for it: today, yesterday, 3 days ago, Oct 12. */
 export function ago(at: string, now = Date.now()): string {

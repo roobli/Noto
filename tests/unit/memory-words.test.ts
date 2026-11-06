@@ -64,3 +64,18 @@ describe('a folder in words', () => {
     expect(moreFiles(0, 2)).toBe('2 files');
   });
 });
+
+describe('why a note is offered, in plain words', () => {
+  it('says the vault\'s reasons in the words of where they are shown, the telling ones first, two at most', async () => {
+    const { plainWhy, heatLevel } = await import('../../src/renderer/plugins/bundled/memory/model');
+    expect(plainWhy(['matches the cue', 'often opened with "记忆界面与笔记档案：设计与进度"'], 'title'))
+      .toBe('read with "记忆界面与笔记档案：设计与进度" · shares words with this title');
+    // A title too long for the line is cut inside its quotes.
+    expect(plainWhy(['often opened with "Noto 项目交接文档（供新同事全量审阅代码）"'], 'title')).toBe('read with "Noto 项目交接文档（供新同事全…"');
+    expect(plainWhy(['the title answers the cue'], 'title')).toBe('a title like this one');
+    expect(plainWhy(['the title answers the cue', 'matches every word of the cue'], 'question')).toBe('its title answers it · has every word you asked');
+    expect(plainWhy(['matches the cue', 'linked from "Noto 索引"', 'often changed with "Noto 系列修复记录"'], 'title'))
+      .toBe('linked from "Noto 索引" · changed with "Noto 系列修复记录"');
+    expect([heatLevel(undefined), heatLevel(0), heatLevel(0.1), heatLevel(0.5), heatLevel(2)]).toEqual([0, 0, 1, 2, 3]);
+  });
+});

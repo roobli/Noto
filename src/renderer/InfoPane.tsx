@@ -62,6 +62,29 @@ export function gitStateOf(snapshot: GitSnapshot | null, note: string, committed
   return 'Committed';
 }
 
+/**
+ * A folder path as the head says it: the folder the note is in, which the
+ * glyph beside it says is a folder, and the whole path in the tooltip. Cut
+ * at the end instead, a deep note's path lost exactly the part that names
+ * where it is, and in a pane a third of the window wide even two folders
+ * did not fit beside the git state.
+ */
+export function nearest(where: string): string {
+  return where.split(' / ').pop() ?? where;
+}
+
+const FolderGlyph = () => (
+  <svg className="info-folder-glyph" viewBox="0 0 16 16" aria-hidden="true">
+    <path d="M2.5 4.5v7.25c0 .41.34.75.75.75h9.5c.41 0 .75-.34.75-.75V6.25a.75.75 0 0 0-.75-.75H8L6.5 3.75H3.25a.75.75 0 0 0-.75.75Z" />
+  </svg>
+);
+
+/** What git says, as the tree marks it: a note that differs from the last commit carries the changed dot. */
+function stateKind(words: string): 'changed' | 'clean' | 'none' {
+  if (words === 'Uncommitted changes' || words === 'Not committed yet') return 'changed';
+  return words === 'Committed' ? 'clean' : 'none';
+}
+
 const DAY = 24 * 60 * 60 * 1000;
 /** The shortest stretch the timeline draws, so a note from this week does not stretch one day across it. */
 const MIN_SPAN = 14 * DAY;
@@ -494,7 +517,7 @@ export function InfoPane({ registry, state, width, tab, reveal, onTab, onResize,
               {folderName}
             </h2>
             <p className="info-where" data-testid="info-where">
-              {folderWhere && <span className="info-folder">{folderWhere}</span>}
+              {folderWhere && <span className="info-folder" title={folderWhere}><FolderGlyph />{nearest(folderWhere)}</span>}
               <span className="info-state">Folder</span>
             </p>
           </div>
@@ -538,8 +561,10 @@ export function InfoPane({ registry, state, width, tab, reveal, onTab, onResize,
           <h2 className="info-title" data-testid="info-title" title={note ?? undefined}>{note ? name : 'Note info'}</h2>
           {note && (
             <p className="info-where" data-testid="info-where">
-              {where && <span className="info-folder">{where}</span>}
-              <span className="info-state" data-testid="info-state">{gitStateOf(snapshot, note, committed)}</span>
+              {where && <span className="info-folder" title={where}><FolderGlyph />{nearest(where)}</span>}
+              <span className="info-state" data-testid="info-state" data-state={stateKind(gitStateOf(snapshot, note, committed))}>
+                {gitStateOf(snapshot, note, committed)}
+              </span>
             </p>
           )}
         </div>
