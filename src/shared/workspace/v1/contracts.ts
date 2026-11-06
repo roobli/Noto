@@ -370,6 +370,7 @@ export const WORKSPACE_MENU_COMMANDS = [
   'block-alert-caution',
   'toggle-focus-mode',
   'toggle-git-marks',
+  'toggle-note-marks',
   'toggle-typewriter',
   'toggle-outline',
   'toggle-note-info',

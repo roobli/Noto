@@ -76,7 +76,8 @@ import {
 import { RendererPluginHost } from './plugins/RendererPluginHost';
 import { sandboxedPlugin, trustedModulePlugin } from './plugins/sandbox/installed-plugin';
 import { createRendererPluginHosts, shellPlugins } from './plugins/bundled/hosts';
-import { infoPane, railPages, shellContext, ShellState, type DiffRequest, type Disposer } from './plugins/slots';
+import { infoPane, noteMarks, railPages, shellContext, ShellState, type DiffRequest, type Disposer, type NoteMark, type NoteMarksEntry } from './plugins/slots';
+import { closeNoteMarkCard, type NoteMarkView } from './editor/noto/note-marks-plugin';
 import { RendererPluginClient } from './plugins/RendererPluginClient';
 import { PluginCenter } from './plugins/PluginCenter';
 import { createPluginSnapshotStream } from './plugins/plugin-snapshot-stream';
@@ -470,6 +471,74 @@ function NotoWorkspace({ platform }: { platform: NotoPlatform }) {
     return { vault: privacy.vault, folders: new Map(privacy.folders.map((item) => [item.path, item.level])) };
   }, [privacy, folder.root]);
   const notePrivacy = privacy && privacy.root !== null && privacy.root === folder.root ? privacy.note : null;
+
+  // The marks plugins put on the note in front (`note-marks-plugin.ts`): loaded once it has
+  // stayed in front a moment, again when it is saved or a plugin says its marks moved.
+  const [marksEntries, setMarksEntries] = useState<readonly NoteMarksEntry[]>(() => noteMarks.list());
+  useEffect(() => noteMarks.subscribe(() => setMarksEntries(noteMarks.list())), []);
+  const [marksVersion, setMarksVersion] = useState(0);
+  useEffect(() => {
+    const stops = marksEntries.map((entry) => entry.marks.changes?.(() => setMarksVersion((current) => current + 1)) ?? (() => {}));
+    return () => { for (const stop of stops) stop(); };
+  }, [marksEntries]);
+  // Per document: a tab in the back keeps its marks drawn, and their actions must still find them.
+  const shownMarksRef = useRef(new Map<string, ReadonlyMap<string, { readonly entry: NoteMarksEntry; readonly mark: NoteMark }>>());
+  const noteMarkActionRef = useRef<(documentId: string, key: string, action: string) => void>(() => {});
+  // A card belongs to the note it was opened on.
+  useEffect(() => { closeNoteMarkCard(); }, [activeId]);
+  useEffect(() => {
+    const editor = activeId ? editorsRef.current.get(activeId) : undefined;
+    if (!editor) return;
+    if (!settings.noteMarks || notePath === null || marksEntries.length === 0) {
+      shownMarksRef.current.delete(activeId!);
+      editor.setNoteMarks([]);
+      return;
+    }
+    const controller = new AbortController();
+    const timer = window.setTimeout(() => {
+      void Promise.all(marksEntries.map(async (entry) => {
+        try {
+          return { entry, marks: await entry.marks.load(notePath, controller.signal) };
+        } catch {
+          // One plugin's marks failing is no reason to lose the others'.
+          return { entry, marks: [] as readonly NoteMark[] };
+        }
+      })).then((results) => {
+        if (controller.signal.aborted) return;
+        const shown = new Map<string, { readonly entry: NoteMarksEntry; readonly mark: NoteMark }>();
+        const views: NoteMarkView[] = [];
+        for (const { entry, marks } of results) {
+          for (const mark of marks) {
+            const key = `${entry.key}#${mark.key}`;
+            shown.set(key, { entry, mark });
+            views.push({
+              key, text: mark.text, before: mark.before, after: mark.after, kind: entry.marks.title, title: mark.title,
+              ...(mark.detail !== undefined ? { detail: mark.detail } : {}),
+              actions: mark.actions.map((action) => ({ id: action.id, label: action.label, ...(action.replace !== undefined ? { replace: action.replace } : {}) })),
+            });
+          }
+        }
+        shownMarksRef.current.set(activeId!, shown);
+        editorsRef.current.get(activeId!)?.setNoteMarks(views);
+      });
+    }, 400);
+    return () => {
+      controller.abort();
+      window.clearTimeout(timer);
+    };
+    // On save as well as when the memory moves: a save can bring words back that the memory never saw
+    // change (Undo after Link, saved before it read the link in), so it has nothing to say about them.
+    // One note's marks are a few milliseconds' work once the folder's scans are kept.
+  }, [activeId, notePath, token, settings.noteMarks, marksEntries, marksVersion, editorsReady]);
+  noteMarkActionRef.current = (documentId, key, actionId) => {
+    const shown = shownMarksRef.current.get(documentId)?.get(key);
+    const action = shown?.mark.actions.find((item) => item.id === actionId);
+    if (!shown || !action?.run) return;
+    void Promise.resolve().then(() => action.run!()).catch((error: unknown) => {
+      // The mark has left the page; say why nothing came of it, and it comes back with the next load.
+      setLocalMessage(`${shown.entry.marks.title}: ${error instanceof Error ? error.message : 'that did not work'}`);
+    });
+  };
   const treeGitMarks = useMemo(() => {
     if (!gitMarks || gitMarks.root === null || gitMarks.root !== folder.root || gitMarks.files.length === 0) return null;
     return { files: new Map(gitMarks.files), folders: new Set(gitMarks.folders) };
@@ -2561,6 +2630,9 @@ function NotoWorkspace({ platform }: { platform: NotoPlatform }) {
       case 'toggle-focus-mode':
         changeSettings({ focusMode: !settings.focusMode });
         break;
+      case 'toggle-note-marks':
+        changeSettings({ noteMarks: !settings.noteMarks });
+        break;
       case 'toggle-git-marks':
         changeSettings({ gitMarks: !settings.gitMarks });
         break;
@@ -3103,6 +3175,7 @@ function NotoWorkspace({ platform }: { platform: NotoPlatform }) {
                   }
                 }}
                 onFollowWikiLink={(target) => followWikiLinkRef.current(target)}
+                onNoteMarkAction={(key, action) => noteMarkActionRef.current(doc.document.documentId, key, action)}
                 onWikiTrigger={() => {
                   // Only where there is something to choose from: an empty
                   // index would open a palette with nothing in it.

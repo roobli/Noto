@@ -515,6 +515,7 @@ async function run(): Promise<void> {
     readOnly: false,
     alwaysOnTop: windowAlwaysOnTop,
     gitMarks: settings.current().gitMarks,
+    noteMarks: settings.current().noteMarks,
     treeSort: settings.current().treeSort,
     themes,
     themePath: settings.current().customCssPath,
@@ -942,6 +943,10 @@ async function run(): Promise<void> {
       }
       if (reply.settings.gitMarks !== menuState.gitMarks) {
         menuState.gitMarks = reply.settings.gitMarks;
+        refreshMenu();
+      }
+      if (reply.settings.noteMarks !== menuState.noteMarks) {
+        menuState.noteMarks = reply.settings.noteMarks;
         refreshMenu();
       }
       // The tree's order shows as a tick in the View menu, and the tree

@@ -68,6 +68,7 @@ export interface MenuTemplateOptions {
     readonly alwaysOnTop: boolean;
     /** Whether git's changes are drawn, which is a setting. */
     readonly gitMarks?: boolean;
+    readonly noteMarks?: boolean;
     /** What the note in front will be written with. Per document, not a setting. */
     readonly lineEnding?: 'lf' | 'crlf' | 'mixed';
     readonly finalNewline?: boolean;
@@ -461,6 +462,13 @@ export function buildMenuTemplate(options: MenuTemplateOptions): MenuItemConstru
         type: 'checkbox',
         checked: state.gitMarks ?? true,
         click: () => sendCommand('toggle-git-marks'),
+      },
+      {
+        id: 'toggle-note-marks',
+        label: 'Show Suggestions in Notes',
+        type: 'checkbox',
+        checked: state.noteMarks ?? true,
+        click: () => sendCommand('toggle-note-marks'),
       },
       { type: 'separator' },
       // Typora's two writing modes. It gives neither a shortcut, and neither

@@ -965,6 +965,13 @@ export function Settings({
                   onChange={(value) => onChange({ gitMarks: value })}
                   testId="setting-git-marks"
                 />
+                <Switch
+                  label="Suggestions in notes"
+                  hint="A faint dotted line under a few words a plugin has something to say about, such as a note named but not linked; rest the pointer on them for what to do. View > Show Suggestions in Notes flips it too."
+                  checked={settings.noteMarks}
+                  onChange={(value) => onChange({ noteMarks: value })}
+                  testId="setting-note-marks"
+                />
                 <p className="pref-group">Code blocks</p>
                 <Switch
                   label="Line numbers"

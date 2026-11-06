@@ -218,6 +218,63 @@ export interface InfoMark {
   readonly faint?: boolean;
 }
 
+/**
+ * Marks on the note in front: a few words underlined in the page, each with
+ * a card that a pointer resting on them, or a key with the caret in them,
+ * opens, and the actions on it there. A plugin says where by the words and
+ * what is around them on their line, as the saved note has them; the editor
+ * finds them in the note as it stands, unsaved edits and all, and marks
+ * nothing where they no longer are. Never in code, headings or links.
+ *
+ * Link suggestions are one kind. Anything that wants a few words of the note
+ * to say more, and offer to change them, is another: a reviewer's comment, a
+ * term to check, a date to confirm.
+ */
+export interface NoteMarksContribution {
+  /** Unique within the plugin. */
+  readonly id: string;
+  /** What these marks are, for the card and a screen reader: "Link suggestion". */
+  readonly title: string;
+  /** The marks for a note, by its path on disk. Aborted when the note changes first. */
+  load(note: string, signal: AbortSignal): Promise<readonly NoteMark[]>;
+  /** Called when the marks should be loaded again for the same note. */
+  changes?(listener: () => void): Disposer;
+}
+
+export interface NoteMark {
+  /** Unique among this contribution's marks for the note. */
+  readonly key: string;
+  /** The words marked, as written. */
+  readonly text: string;
+  /** What comes before them on their line; a leading `…` says it was cut short. */
+  readonly before: string;
+  /** What comes after them on their line; a trailing `…` says it was cut short. */
+  readonly after: string;
+  /** The card's first line: "Link to Argus". */
+  readonly title: string;
+  /** A quieter line under it: where the note it names is. */
+  readonly detail?: string;
+  /** In order; the first is the one Return chooses. */
+  readonly actions: readonly NoteMarkAction[];
+}
+
+export interface NoteMarkAction {
+  /** Unique within the mark. */
+  readonly id: string;
+  readonly label: string;
+  /** Text to put in place of the marked words, as one edit Undo takes back. */
+  readonly replace?: string;
+  /** Run when chosen, after any replacement. The mark leaves the page either way. */
+  run?(): void | Promise<void>;
+}
+
+export interface NoteMarksEntry {
+  /** `pluginId:marksId`. */
+  readonly key: string;
+  readonly pluginId: string;
+  readonly marks: NoteMarksContribution;
+}
+
 /** Two texts to read against each other in the diff view, over the page. */
 export interface DiffRequest {
   readonly title: string;
@@ -296,6 +353,8 @@ export interface ShellContext {
   registerInfoTab(tab: InfoTabContribution): Disposer;
   /** Needs `track:<id>` among the manifest's `uiExtensions`. */
   registerInfoTrack(track: InfoTrackContribution): Disposer;
+  /** Needs `marks:<id>` among the manifest's `uiExtensions`. */
+  registerNoteMarks(marks: NoteMarksContribution): Disposer;
 }
 
 type Listener = () => void;
@@ -352,6 +411,31 @@ export class InfoRegistry {
     this.changed.emit();
     return once(() => {
       this.trackList = this.trackList.filter((entry) => entry.key !== key);
+      this.changed.emit();
+    });
+  }
+}
+
+/** The marks plugins put on the note in front, in registration order. */
+export class NoteMarksRegistry {
+  private entries: readonly NoteMarksEntry[] = [];
+  private readonly changed = new Signal();
+
+  list(): readonly NoteMarksEntry[] {
+    return this.entries;
+  }
+
+  subscribe(listener: Listener): Disposer {
+    return this.changed.subscribe(listener);
+  }
+
+  add(pluginId: string, marks: NoteMarksContribution): Disposer {
+    const key = `${pluginId}:${marks.id}`;
+    if (this.entries.some((entry) => entry.key === key)) throw new Error(`The note marks ${key} are already registered.`);
+    this.entries = [...this.entries, { key, pluginId, marks }];
+    this.changed.emit();
+    return once(() => {
+      this.entries = this.entries.filter((entry) => entry.key !== key);
       this.changed.emit();
     });
   }
@@ -564,6 +648,7 @@ export function shellContext(
   state: ShellState,
   registry: RailPageRegistry,
   info: InfoRegistry = infoPane,
+  marksRegistry: NoteMarksRegistry = noteMarks,
 ): { context: ShellContext; dispose: Disposer } {
   const git = manifest.capabilities.includes('git.read') ? state.git : null;
   const vault = manifest.capabilities.includes('vault.read') ? state.vault : null;
@@ -603,6 +688,14 @@ export function shellContext(
       removals.add(remove);
       return () => { removals.delete(remove); remove(); };
     },
+    registerNoteMarks(marks) {
+      if (!manifest.uiExtensions.includes(`marks:${marks.id}`)) {
+        throw new Error(`${manifest.id} does not declare the note marks ${marks.id} (marks:${marks.id} in uiExtensions).`);
+      }
+      const remove = marksRegistry.add(manifest.id, marks);
+      removals.add(remove);
+      return () => { removals.delete(remove); remove(); };
+    },
     registerRailPage(page) {
       if (!manifest.uiExtensions.includes(`rail:${page.id}`)) {
         throw new Error(`${manifest.id} does not declare the rail page ${page.id} (rail:${page.id} in uiExtensions).`);
@@ -633,3 +726,6 @@ export const railPages = new RailPageRegistry();
 
 /** The one registry the info pane draws. */
 export const infoPane = new InfoRegistry();
+
+/** The one registry the editor draws marks from. */
+export const noteMarks = new NoteMarksRegistry();

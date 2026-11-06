@@ -328,6 +328,12 @@ export interface NotoSettingsV1 {
    */
   readonly gitMarks: boolean;
   /**
+   * The marks plugins put on the note in front: a faint dotted underline
+   * under a few words, with a card of what can be done about them (a note
+   * named but not linked, say). On by default; off draws none, and loads none.
+   */
+  readonly noteMarks: boolean;
+  /**
    * Keep the line being typed at the middle of the window.
    *
    * Typora calls this typewriter mode. Off by default for the same reason,
@@ -457,6 +463,7 @@ export const DEFAULT_SETTINGS: NotoSettingsV1 = Object.freeze({
   todoCheckTime: true,
   focusMode: false,
   gitMarks: true,
+  noteMarks: true,
   typewriterMode: false,
   sidebarOnLaunch: false,
   railWidth: 272,

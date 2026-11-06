@@ -20,6 +20,7 @@ matter of which slot and which services, not of a new hook.
 | rail page | a title, an icon, and a mount function for a page in the sidebar | Changes |
 | info tab | a title, an order, and a mount function for a tab of Note Info, the pane beside the note | History, Properties |
 | info track | a title and a loader for a row on Note Info's timeline: marks in time or amounts per day | commits |
+| note marks | a title and a loader for marks on a few words of the note in front, each with a card of actions | link suggestions |
 | status item | a short text and an action | (next) |
 | fenced block | a renderer for code blocks with a given info string | (next) diagrams |
 | command, menu item, context item | as today | sidenotes |
@@ -97,6 +98,24 @@ marks at moments, drawn as dots, or amounts per day, drawn as bars, all on
 the one axis, so what was written when and what was read when line up. A
 track names the tab a press on its marks brings forward, and the mark's key
 is handed to that tab's `reveal`. A track may say when to load it again.
+
+### Marks on the note
+
+Note marks (`registerNoteMarks`, named `marks:<id>`) are a few words of the
+note in front underlined, each with a card that opens when the pointer rests
+on them or on Option-Return with the caret in them. The loader is given the
+note's path and answers marks that name their words by the text and what is
+around it on its line, as the saved file has them, never by offset: the
+editor finds them in the note as it stands, unsaved edits and all, follows
+them through typing, and drops one whose words were edited. Code, headings
+and links are never marked. A mark's actions are buttons on its card; one may
+carry text to put in place of the words, which the editor does as a single
+edit Undo takes back, and any may run the plugin's own code after. View →
+Show Suggestions in Notes turns every plugin's marks off at once.
+
+The Memory plugin's link suggestions are the first user. The slot is meant
+for anything that wants a few words of the note to say more and offer to
+change them: a reviewer's comment, a term to check, a date to confirm.
 
 History (`src/renderer/plugins/bundled/history/`) is the worked example: a
 History tab, a Properties tab and a track of commits, from the slot alone.

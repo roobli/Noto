@@ -19,6 +19,7 @@ import { triggerRange, wikiLinkText } from './wiki-trigger';
 import { droppedNote } from './dropped-note';
 import { tocBlockPlugin } from './toc-block';
 import { footnoteHoverPlugin } from './footnote-hover';
+import { closeNoteMarkCard, noteMarksPlugin, setNoteMarks, type NoteMarkView } from './note-marks-plugin';
 import { sliceFromText } from './paste-text';
 import { EditorState, Selection, type Plugin, type Transaction, TextSelection } from 'prosemirror-state';
 import { EditorView } from 'prosemirror-view';
@@ -150,6 +151,8 @@ export interface NotoEditorOptions extends Omit<InputRuleOptions, 'smartQuotes' 
   readonly onCountChanged?: (count: DocumentCount) => void;
   /** Cmd or Ctrl clicking a `[[wiki link]]`. Absent means links stay inert. */
   readonly onFollowWikiLink?: (target: string) => void;
+  /** An action was chosen on a plugin's mark (`setNoteMarks`), after any text it replaces was replaced. */
+  readonly onNoteMarkAction?: (key: string, action: string) => void;
   /** Two brackets were typed, which is a reader asking which note they mean. */
   readonly onWikiTrigger?: () => void;
   /** Where relative images resolve from, and whether web images load. */
@@ -472,6 +475,7 @@ export class NotoEditor implements NotoEditorPort {
       wikiLinkPlugin({ onFollow: (target) => this.options.onFollowWikiLink?.(target) }),
       indexBlockPlugin({ onFollow: (target) => this.options.onFollowWikiLink?.(target) }),
       footnoteHoverPlugin(),
+      noteMarksPlugin({ onAction: (key, action) => this.options.onNoteMarkAction?.(key, action) }),
       tocBlockPlugin({ onGo: (blockIndex) => this.focusBlock(blockIndex) }),
       linkEditorPlugin(),
       followLinkPlugin({ onFollow: (href) => this.options.onFollowLink?.(href) }),
@@ -1209,6 +1213,18 @@ export class NotoEditor implements NotoEditorPort {
     const view = this.view;
     if (!view) return;
     view.dispatch(setGitBlocks(view.state.tr, event));
+  }
+
+  /**
+   * The marks plugins put on the note, in place of the ones it had: found by
+   * their words in the note as it stands, and drawn over it. A view change
+   * only: no history, no save.
+   */
+  setNoteMarks(marks: readonly NoteMarkView[]): void {
+    const view = this.view;
+    if (!view) return;
+    if (marks.length === 0) closeNoteMarkCard();
+    view.dispatch(setNoteMarks(view.state.tr, marks));
   }
 
   /** The block at the caret as committed, for the keyboard. False when there is nothing to show. */
