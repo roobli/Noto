@@ -449,6 +449,8 @@ async function run(): Promise<void> {
   session.useMemory(
     systemMemoryWorker(memoryWorkerPath(app.isPackaged, process.resourcesPath, __dirname)),
     new MemoryTrust(path.join(app.getPath('userData'), 'memory-trust.json'), (event, fields) => logger.log(event, fields)),
+    // The vault's command line, which an agent's copied setup runs with Node.
+    memoryWorkerPath(app.isPackaged, process.resourcesPath, __dirname, 'noto-vault.js'),
   );
   // Registered first of the quit listeners. Node runs every listener even
   // when one prevents the quit, so the others check the same hold.

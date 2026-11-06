@@ -13,6 +13,7 @@
  * file.
  */
 
+import { MemoryPane } from './MemoryPane';
 import { copyThroughSelection } from './editor/noto/clipboard';
 import { useCallback, useEffect, useRef, useState, type ReactNode } from 'react';
 import {
@@ -31,7 +32,7 @@ import { isComposing } from './ime';
 import { ShortcutsBoard } from './ShortcutsBoard';
 import type { PluginHotkeySource } from './shortcuts/catalog';
 
-export type SettingsSection = 'appearance' | 'editor' | 'markdown' | 'images' | 'updates' | 'shortcuts' | 'remote' | 'plugins';
+export type SettingsSection = 'appearance' | 'editor' | 'markdown' | 'images' | 'updates' | 'memory' | 'shortcuts' | 'remote' | 'plugins';
 
 export interface SettingsProps {
   readonly open: boolean;
@@ -75,6 +76,7 @@ function SectionGlyph({ name }: { name: SettingsSection }) {
     markdown: 'M2.5 4.5h11v7h-11z M4.5 10V6.5l2 2 2-2V10 M11 6.5V10 M9.8 8.6 11 10l1.2-1.4',
     images: 'M2.5 3.5h11v9h-11z M2.5 10.2 5.9 7.4l2.4 2 2-1.7 3.2 2.7 M10.4 5.9h.01',
     updates: 'M8 2.5v6.2 M5.2 6.5 8 9.3l2.8-2.8 M3 11.5h10v2H3z',
+    memory: 'M3.2 6a2.8 2.8 0 1 0 5.6 0 2.8 2.8 0 1 0-5.6 0 M8 8l5.5 5.5 M11 11l1.4-1.4 M12.7 12.7l1.2-1.2',
     remote: 'M2.5 4.5h11v7h-11z M5.5 13.5h5 M8 11.5v2',
     plugins: 'M6 2.5v2.2a1.3 1.3 0 1 1-2.6 0V2.5 M2.5 6h11v7.5h-11z M2.5 6V3.4h1',
     shortcuts: 'M2 4.5h12v7H2z M4.3 6.8h.01 M6.4 6.8h.01 M8.5 6.8h.01 M10.6 6.8h.01 M5 9.3h6',
@@ -93,6 +95,7 @@ const SECTIONS: readonly { value: SettingsSection; label: string; keywords: stri
   { value: 'markdown', label: 'Markdown', keywords: 'smart quotes dashes ellipsis punctuation typography syntax' },
   { value: 'images', label: 'Images', keywords: 'image picture paste drop screenshot assets folder copy relative path escape url upload picgo bucket web remote iframe embed page video' },
   { value: 'updates', label: 'Updates', keywords: 'update upgrade release version github alpha stable testing channel download auto check launch' },
+  { value: 'memory', label: 'Memory', keywords: 'memory vault agent agents key keys mcp claude code codex access read private sealed privacy revoke' },
   { value: 'shortcuts', label: 'Shortcuts', keywords: 'shortcut shortcuts keyboard key keys hotkey chord accelerator binding command menu disable conflict', buried: true },
   { value: 'remote', label: 'Remote', keywords: 'remote control api token port script agent automation', buried: true },
   { value: 'plugins', label: 'Plugins', keywords: 'plugin extension enable disable palette', buried: true },
@@ -105,6 +108,7 @@ const LEADS: Readonly<Partial<Record<SettingsSection, string>>> = {
   markdown: 'How the punctuation you type is set.',
   images: 'Where pasted pictures go, and what loads from the web.',
   updates: 'Which builds this copy follows, and when it looks for them.',
+  memory: 'Which agents may read this folder, and what they may do.',
   shortcuts: 'Every key the app answers to, where it comes from, and a switch to turn it off.',
   remote: 'Let a script on this machine drive the editor.',
   plugins: 'What extends the editor, and where it comes from.',
@@ -1136,6 +1140,8 @@ export function Settings({
               <ShortcutsBoard mac={mac} disabled={settings.disabledShortcuts} plugins={pluginHotkeys}
                 onChange={(change) => onChange((current) => ({ disabledShortcuts: change(current.disabledShortcuts) }))} />
             )}
+
+            {section === 'memory' && <MemoryPane />}
 
             {section === 'remote' && (
               <RemotePane on={settings.remoteControl} onChange={(value) => onChange({ remoteControl: value })} />

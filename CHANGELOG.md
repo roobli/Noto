@@ -59,6 +59,19 @@ How releases are made, and what each channel receives, is in
   was said no to can be brought back. The lists come from a second memory
   worker, so finding every mention in a big folder never holds up Note
   Info.
+- **Agents and privacy, without a terminal.** Settings → Memory lists the
+  agents a folder's memory knows, what each may read and do, and when it
+  last read anything, along with what any agent without a key gets, which
+  can be turned off. Add an Agent asks its name, whether it reads private
+  notes, and whether it only reads, also proposes changes, or also writes
+  in one folder; Noto asks once more in a sheet of its own, then shows the
+  key once with a setup to copy for Claude Code or Codex. Take Key Back
+  stops the agent at its next request. A folder's right-click menu has
+  Privacy: Open, Private or Sealed. `.noto/access.yaml` keeps its comments
+  and its own indent through all of it, and every change is read back before
+  it is saved: one that would alter anything else in the policy is not made,
+  and says which part to change by hand. The MCP server the setups start is the vault's command
+  line, shipped with Noto and run by Node 22.13 or later.
 - **Plugins can add to Note Info.** A tab (`info:<id>`) and a timeline track
   (`track:<id>`) are slots like the rail's pages, and `git.read` now gives a
   note's history and its text at any of its commits. History and Properties

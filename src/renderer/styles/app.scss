@@ -3055,6 +3055,74 @@ section.plugin-group > .plugin-market-row.is-set-aside {
   }
 }
 
+/* Settings → Memory: the folder's agents, a row each, and adding one. */
+.memory-pane { display: flex; flex-direction: column; gap: 12px; }
+
+.memory-agents { display: flex; flex-direction: column; margin: 0; padding: 0; list-style: none; border-top: 1px solid var(--hairline); }
+
+.memory-agent {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  grid-template-areas: "name action" "words action";
+  align-items: center;
+  column-gap: 12px;
+  padding: 8px 0;
+  border-bottom: 1px solid var(--hairline);
+}
+
+.memory-agent-name { grid-area: name; color: var(--ink); font-size: 13px; font-weight: 500; }
+.memory-agent-words { grid-area: words; color: var(--muted); font-size: 12px; line-height: 1.45; }
+.memory-agent .pref-inline-action { grid-area: action; }
+
+.memory-key {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  padding: 12px;
+  border: 1px solid var(--hairline);
+  border-radius: 8px;
+  background: var(--raised);
+}
+
+/* The key itself, to be read and copied whole. */
+.memory-key-text {
+  padding: 6px 8px;
+  border: 1px solid var(--hairline);
+  border-radius: 5px;
+  background: var(--paper);
+  color: var(--ink);
+  font: 500 12.5px/18px tokens.$mono;
+  overflow-wrap: anywhere;
+  user-select: all;
+}
+
+.memory-key-actions { display: flex; flex-wrap: wrap; gap: 6px; }
+.memory-key > .pref-inline-action { align-self: flex-start; }
+
+.memory-add { display: flex; flex-direction: column; gap: 12px; }
+
+.memory-add-field {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  margin: 0;
+  padding: 0;
+  border: 0;
+
+  label { display: flex; align-items: center; gap: 6px; color: var(--ink); font-size: 12.5px; }
+  input[type="radio"] { accent-color: var(--accent); }
+
+  input[type="text"], input:not([type]) {
+    max-width: 280px;
+    padding: 4px 8px;
+    border: 1px solid var(--hairline);
+    border-radius: 5px;
+    background: var(--paper);
+    color: var(--ink);
+    font: 400 12.5px/18px tokens.$ui;
+  }
+}
+
 .remote-token {
   display: grid;
   grid-template-columns: auto minmax(0, 1fr) auto auto;

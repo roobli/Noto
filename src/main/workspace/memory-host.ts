@@ -50,10 +50,10 @@ export interface MemoryHostOptions {
 }
 
 /** Where the bundled worker is, packaged or not. */
-export function memoryWorkerPath(packaged: boolean, resourcesPath: string, here: string): string {
+export function memoryWorkerPath(packaged: boolean, resourcesPath: string, here: string, file = 'vault-worker.js'): string {
   return packaged
-    ? path.join(resourcesPath, 'app.asar.unpacked', '.vite', 'build', 'vault-worker.js')
-    : path.join(here, 'vault-worker.js');
+    ? path.join(resourcesPath, 'app.asar.unpacked', '.vite', 'build', file)
+    : path.join(here, file);
 }
 
 /** A path inside the folder, as the vault names notes, or null. */
@@ -155,6 +155,16 @@ export class MemoryHost {
       if (error instanceof MemoryError && error.unknown) return reply('unknown');
       this.owed = true;
       return reply('unavailable');
+    }
+  }
+
+  /** Who has read the folder's notes, from the read record: null unless the memory is open now. */
+  async readers(): Promise<readonly { actor: string; count: number; last: string }[] | null> {
+    if (this.state !== 'open' || this.link === null) return null;
+    try {
+      return await this.link.ask({ kind: 'readers' }, ABOUT_TIMEOUT_MS) as { actor: string; count: number; last: string }[];
+    } catch {
+      return null;
     }
   }
 

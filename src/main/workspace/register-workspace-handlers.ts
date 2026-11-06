@@ -15,6 +15,7 @@ import {
   type WorkspaceTabRequestV1,
   type WorkspaceFolderRequestV1,
   type WorkspaceReviewRequestV1,
+  type WorkspaceAgentRequestV1,
   type RecentFileV1,
   type WorkspaceOpenExternalRequestV1,
   type WorkspaceTreeMenuRequestV1,
@@ -32,6 +33,7 @@ import {
   isWorkspaceTabRequestV1,
   isWorkspaceFolderRequestV1,
   isWorkspaceReviewRequestV1,
+  isWorkspaceAgentRequestV1,
   isWorkspaceOpenExternalRequestV1,
   isWorkspaceTreeMenuRequestV1,
   isWorkspaceRevealRequestV1,
@@ -159,6 +161,9 @@ export function registerWorkspaceHandlers(deps: {
     () => deps.session.keepMemory());
   register(WORKSPACE_CHANNELS.trustMemory, isWorkspaceRequestV1,
     () => deps.session.trustMemory());
+  // Agents: listing them, and adding one or taking a key back after main has asked the person.
+  register(WORKSPACE_CHANNELS.memoryAgents, isWorkspaceAgentRequestV1,
+    (request: WorkspaceAgentRequestV1) => deps.session.memoryAgents(request.action));
   // Review: reads, and the writes the person asked for (accept, link, take back), each refusing notes with unsaved edits.
   register(WORKSPACE_CHANNELS.memoryReview, isWorkspaceReviewRequestV1,
     (request: WorkspaceReviewRequestV1) => deps.session.memoryReview(request.action));

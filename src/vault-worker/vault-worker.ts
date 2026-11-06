@@ -35,6 +35,8 @@ export type MemoryRequest =
   | { readonly id: number; readonly kind: 'about'; readonly rel: string }
   | { readonly id: number; readonly kind: 'refresh'; readonly paths: readonly string[] | null }
   | { readonly id: number; readonly kind: 'close' }
+  /** Who has read the folder's notes, how often and when last. */
+  | { readonly id: number; readonly kind: 'readers' }
   /** The notes changed on disk: what was worked out from them is worked out again when next asked. */
   | { readonly id: number; readonly kind: 'stale' }
   | { readonly id: number; readonly kind: 'summary'; readonly counted: readonly ReviewKind[] }
@@ -187,6 +189,8 @@ async function handle(request: MemoryRequest): Promise<unknown> {
     }
     case 'about':
       return about(open(), request.rel);
+    case 'readers':
+      return open().readers();
     case 'refresh':
       if (!vault) return null;
       return vault.refresh(request.paths ? { paths: request.paths } : {});

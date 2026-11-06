@@ -36,6 +36,8 @@ import {
   type WorkspaceTrustMemoryReplyV1,
   type WorkspaceReviewActionV1,
   type WorkspaceReviewReplyV1,
+  type WorkspaceAgentActionV1,
+  type WorkspaceAgentsReplyV1,
   type WorkspaceNoteVersionReplyV1,
   type WorkspaceTagIndexReplyV1,
   type WorkspaceNotesByTagReplyV1,
@@ -61,7 +63,7 @@ import { inlineImages } from './inline-images';
 import { resolveAssetPath } from '../protocol/asset-guard';
 import { readResolvedAsset } from '../protocol/asset-read';
 import { CopyDestinations } from '../file-truth/v1/copy-destinations';
-import { buildTreeRowMenu, trashLabel } from './tree-row-menu';
+import { buildTreeRowMenu, type TreeRowActions, trashLabel } from './tree-row-menu';
 import {
   findPandoc,
   importDocument,
@@ -86,6 +88,7 @@ import { GitMarks, defaultGitRunner, findGit } from './git-marks';
 import { NoteHistoryReader, systemBatchGit } from './git-history';
 import { MemoryHost, insideFolder, type MemoryWorker, type ReviewRequest } from './memory-host';
 import { memoryScripts, type MemoryTrust } from './memory-trust';
+import { addAgent, agentList, folderSensitivity, revokeAgent, setFolderSensitivity } from '@roobli/vault/policy';
 import { VaultWatcher, classifyTouched, inspectTouched } from './vault-watcher';
 import { gitBlockDiff } from './git-blocks';
 import type { WorkspaceGitBlocksV1 } from '../../shared/workspace/v1/contracts';
@@ -150,6 +153,8 @@ export class WorkspaceSession {
   /** The folder's memory, once main is given a way to start it; see `useMemory`. */
   private memory: MemoryHost | null = null;
   private memoryTrust: MemoryTrust | null = null;
+  /** The vault's command line shipped with Noto, for an agent's MCP setup. */
+  private memoryCli: string | null = null;
   /** One reader for the window, so a note's history is walked once until HEAD moves. */
   private readonly history = new NoteHistoryReader(
     defaultGitRunner,
@@ -643,11 +648,42 @@ export class WorkspaceSession {
       trash: (target, kind) => { void this.confirmTrash(target, kind); },
       reveal: (target) => shell.showItemInFolder(target),
       copyPath: (target) => clipboard.writeText(target),
+      ...(kind === 'directory' ? { privacy: await this.folderPrivacy(real) } : {}),
     });
     setImmediate(() => Menu.buildFromTemplate(items).popup({ window }));
     return { version: NOTO_WORKSPACE_VERSION, accepted: true };
   }
 
+
+  /**
+   * A folder's privacy in a folder that keeps memory, for its menu: the level
+   * it has now, and a way to set it in `.noto/access.yaml`. Undefined for the
+   * folder itself, outside memory, or when the file cannot be read.
+   */
+  private async folderPrivacy(real: string): Promise<TreeRowActions['privacy']> {
+    const root = this.memory?.folder() ?? null;
+    if (root === null || !(await stat(path.join(root, '.noto')).then(() => true, () => false))) return undefined;
+    const rel = insideFolder(root, real);
+    if (rel === null) return undefined;
+    try {
+      const { level } = folderSensitivity(root, rel);
+      return {
+        level,
+        set: (next) => {
+          try {
+            setFolderSensitivity(root, rel, next);
+            this.logger.log('memory_privacy_set', { level: next });
+            this.send(WORKSPACE_CHANNELS.memoryChanged, { version: NOTO_WORKSPACE_VERSION });
+          } catch (error) {
+            this.logger.log('memory_privacy_not_set', { reason: (error as Error).message });
+          }
+        },
+      };
+    } catch {
+      // A dot folder, or a name the policy cannot hold: no Privacy for it.
+      return undefined;
+    }
+  }
 
   /**
    * Rename, duplicate, trash, or make a folder.
@@ -1404,9 +1440,10 @@ export class WorkspaceSession {
    * Give the session a way to start the memory's worker, and the record of
    * which folders may run their memory's scripts. Main does, once, at startup.
    */
-  useMemory(startWorker: () => MemoryWorker, trust: MemoryTrust): void {
+  useMemory(startWorker: () => MemoryWorker, trust: MemoryTrust, cli: string | null = null): void {
     this.memory?.dispose();
     this.memoryTrust = trust;
+    this.memoryCli = cli;
     this.memory = new MemoryHost({
       startWorker,
       mayOpen: (root) => trust.mayOpen(root),
@@ -1492,6 +1529,90 @@ export class WorkspaceSession {
     this.logger.log('memory_trusted', { scripts: scripts.length });
     this.send(WORKSPACE_CHANNELS.memoryChanged, { version: NOTO_WORKSPACE_VERSION });
     return reply(true);
+  }
+
+  /**
+   * The folder's agents (Settings → Memory → Agents), and adding one or
+   * taking a key back. Both change who may read the folder, so main asks the
+   * person in a sheet of its own, saying what the agent will be able to do,
+   * before anything is written; a plugin that calls this cannot say yes.
+   * `.noto/access.yaml` is changed line by line, keeping its comments, and a
+   * running MCP server reads it again before its next answer.
+   */
+  async memoryAgents(action: WorkspaceAgentActionV1): Promise<WorkspaceAgentsReplyV1> {
+    const root = this.memory?.folder() ?? null;
+    const reply = (fields: Partial<WorkspaceAgentsReplyV1>): WorkspaceAgentsReplyV1 => ({
+      version: NOTO_WORKSPACE_VERSION, state: 'ok', outcome: 'done', error: null, agents: [], key: null,
+      setup: root && this.memoryCli ? { script: this.memoryCli, root } : null, ...fields,
+    });
+    if (root === null) return reply({ state: 'outside', setup: null });
+    if (!(await stat(path.join(root, '.noto')).then(() => true, () => false))) return reply({ state: 'no-memory', setup: null });
+    const window = this.getWindow();
+    let key: string | null = null;
+    let outcome: WorkspaceAgentsReplyV1['outcome'] = 'done';
+    let error: string | null = null;
+    try {
+      if (action.kind === 'add') {
+        if (!window) return reply({ outcome: 'failed', error: 'There is no window to ask in.' });
+        // The agent's server opens this memory as Noto does, scripts and all, but with no one there to ask.
+        const scripts = memoryScripts(root);
+        if (scripts.length > 0 && !this.memoryTrust?.mayOpen(root)) {
+          return reply({ outcome: 'failed', error: `This folder's memory runs scripts you have not allowed yet (${scripts.join(', ')}), and an agent's server would run them too. Allow them from Note Info first.` });
+        }
+        const writeIn = action.writeIn?.replace(/\/+$/, '') ?? null;
+        const answer = await dialog.showMessageBox(window, {
+          type: 'question',
+          buttons: ['Add Agent', 'Cancel'],
+          // A held or second press of Return after the form must not be the yes.
+          defaultId: 1,
+          cancelId: 1,
+          message: `Give "${action.name}" a key to "${path.basename(root)}"?`,
+          detail: [
+            action.reads === 'private' ? 'It may read open and private notes, never sealed ones.' : 'It may read open notes only.',
+            action.may === 'read' ? 'It may read and search.'
+              : action.may === 'propose' ? 'It may also propose changes, which wait in Review for you.'
+                : `It may also write directly in the folder "${writeIn}"; everywhere else it proposes.`,
+            ...(scripts.length > 0 ? [`Its server runs this folder's scripts, as Noto does: ${scripts.join(', ')}.`] : []),
+            '',
+            'The key is shown once. You can take it back at any time in Settings → Memory.',
+          ].join('\n'),
+        });
+        if (answer.response !== 0) outcome = 'cancelled';
+        else {
+          key = addAgent(root, { name: action.name, reads: action.reads, may: action.may, ...(action.writeIn ? { writeIn: action.writeIn } : {}) }).key;
+          this.logger.log('memory_agent_added', { reads: action.reads, may: action.may });
+        }
+      } else if (action.kind === 'revoke') {
+        if (!window) return reply({ outcome: 'failed', error: 'There is no window to ask in.' });
+        const anyone = action.name === 'default';
+        const answer = await dialog.showMessageBox(window, {
+          type: 'warning',
+          buttons: [anyone ? 'Turn Off' : 'Take Key Back', 'Cancel'],
+          defaultId: 1,
+          cancelId: 1,
+          message: anyone ? `Let no agent without a key read "${path.basename(root)}"?` : `Take "${action.name}"'s key back?`,
+          detail: anyone
+            ? 'Only agents you gave a key will read the folder.'
+            : 'It stops reading the folder at its next request. You can add it again with a new key.',
+        });
+        if (answer.response !== 0) outcome = 'cancelled';
+        else {
+          if (!revokeAgent(root, action.name)) throw new Error(`There is no agent named "${action.name}" in .noto/access.yaml.`);
+          this.logger.log('memory_agent_revoked', { anyone });
+        }
+      }
+    } catch (failure) {
+      outcome = 'failed';
+      error = (failure as Error).message;
+    }
+    if (outcome === 'done' && action.kind !== 'list') this.send(WORKSPACE_CHANNELS.memoryChanged, { version: NOTO_WORKSPACE_VERSION });
+    const readers = new Map((await this.memory!.readers() ?? []).map((row) => [row.actor, row]));
+    const agents = agentList(root).map((agent) => ({
+      name: agent.name, keys: agent.keys, reads: agent.reads, verbs: [...agent.verbs], writes: [...agent.writes],
+      revoked: agent.revoked, implicit: agent.implicit,
+      lastRead: readers.get(agent.name)?.last ?? null, readCount: readers.get(agent.name)?.count ?? 0,
+    }));
+    return reply({ outcome, error, agents, key });
   }
 
   /**

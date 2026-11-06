@@ -24,7 +24,7 @@
     "compat:node22": "tsc --ignoreConfig --noEmit --strict --target ES2024 --module NodeNext --moduleResolution NodeNext --types node tests/compatibility-probe.ts",
     "typecheck": "tsc --noEmit",
     "test": "vitest run",
-    "build:vite": "vite build --config vite.main.config.mts && vite build --config vite.preload.config.mts && vite build --config vite.service.config.mts && vite build --config vite.vault.config.mts && vite build --config vite.plugin-preload.config.mts && vite build --config vite.plugin-runtime.config.mts && vite build --config vite.renderer.config.mts",
+    "build:vite": "vite build --config vite.main.config.mts && vite build --config vite.preload.config.mts && vite build --config vite.service.config.mts && vite build --config vite.vault.config.mts && vite build --config vite.vault-cli.config.mts && vite build --config vite.plugin-preload.config.mts && vite build --config vite.plugin-runtime.config.mts && vite build --config vite.renderer.config.mts",
     "build": "node scripts/package-variant.mjs release",
     "package:e2e": "node scripts/package-variant.mjs e2e",
     "package:release": "node scripts/package-variant.mjs release",

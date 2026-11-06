@@ -28,7 +28,19 @@ export interface TreeRowActions {
   readonly trash: (target: string, kind: 'file' | 'directory') => void;
   readonly reveal: (target: string) => void;
   readonly copyPath: (target: string) => void;
+  /**
+   * For a folder of a folder that keeps memory: how private it is now, and
+   * how to change it. Absent elsewhere, and the menu has no Privacy.
+   */
+  readonly privacy?: { readonly level: 'open' | 'private' | 'sealed'; readonly set: (level: 'open' | 'private' | 'sealed') => void };
 }
+
+/** What each level means, said where it is chosen. */
+const PRIVACY: readonly { readonly level: 'open' | 'private' | 'sealed'; readonly label: string }[] = [
+  { level: 'open', label: 'Open: agents with a key may read it' },
+  { level: 'private', label: 'Private: only agents allowed private notes' },
+  { level: 'sealed', label: 'Sealed: no agent, ever' },
+];
 
 /** What the system calls the file manager, which differs on each of them. */
 export function revealLabel(platform: NodeJS.Platform): string {
@@ -70,6 +82,17 @@ export function buildTreeRowMenu(
   items.push({ type: 'separator' });
   items.push({ id: 'tree-reveal', label: revealLabel(platform), click: () => actions.reveal(target) });
   items.push({ id: 'tree-copy-path', label: 'Copy Path', click: () => actions.copyPath(target) });
+  if (kind === 'directory' && actions.privacy) {
+    const { level, set } = actions.privacy;
+    items.push({
+      id: 'tree-privacy',
+      label: 'Privacy',
+      submenu: PRIVACY.map((entry) => ({
+        id: `tree-privacy-${entry.level}`, label: entry.label, type: 'radio' as const, checked: entry.level === level,
+        click: () => { if (entry.level !== level) set(entry.level); },
+      })),
+    });
+  }
   items.push({ type: 'separator' });
   // Last, and alone below a rule. It is the one action here with no undo, so
   // it is the hardest to hit by accident and the furthest from Open.

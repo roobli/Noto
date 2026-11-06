@@ -40,6 +40,9 @@ import {
   WorkspaceReviewActionV1,
   WorkspaceReviewReplyV1,
   WorkspaceReviewRequestV1,
+  WorkspaceAgentActionV1,
+  WorkspaceAgentRequestV1,
+  WorkspaceAgentsReplyV1,
   WorkspaceNoteMemoryReplyV1,
   WorkspaceNoteHistoryReplyV1,
   WorkspaceNoteHistoryRequestV1,
@@ -416,6 +419,57 @@ const proposalId = (value: unknown) => typeof value === 'string' && PROPOSAL_ID.
 const notePath = (value: unknown) => typeof value === 'string' && value.length > 0 && value.length <= 1024
   && !value.startsWith('/') && !value.split('/').includes('..') && !value.includes('\0');
 const paths = (value: unknown, max = 2000) => Array.isArray(value) && value.length <= max && value.every(notePath);
+
+const AGENT_NAME = /^[A-Za-z0-9._-]{1,64}$/;
+/** Names a policy reserves, or that a parsed map treats as its own machinery. */
+const RESERVED_AGENTS = new Set(['owner', 'default', '__proto__', 'constructor', 'prototype']);
+/**
+ * The one folder an agent may write in: a vault path that a policy pattern
+ * can name as itself. `*` and `?` would make it a wildcard ("write in **"
+ * reads as a folder and means everywhere), and a control character would put
+ * lines of its own into the sheet that asks the person.
+ */
+// eslint-disable-next-line no-control-regex
+const writeFolder = (value: unknown) => notePath(value) && !/[*?\u0000-\u001f\u007f]/.test(value as string);
+const SENSITIVITY_LEVELS = new Set(['open', 'private', 'sealed']);
+
+export function isWorkspaceAgentActionV1(value: unknown): value is WorkspaceAgentActionV1 {
+  if (!record(value) || typeof value.kind !== 'string') return false;
+  if (value.kind === 'list') return exact(value, ['kind']);
+  if (value.kind === 'revoke') return exact(value, ['kind', 'name']) && typeof value.name === 'string' && AGENT_NAME.test(value.name);
+  if (value.kind !== 'add') return false;
+  return exact(value, ['kind', 'name', 'reads', 'may', 'writeIn'])
+    && typeof value.name === 'string' && AGENT_NAME.test(value.name) && !RESERVED_AGENTS.has(value.name)
+    && (value.reads === 'open' || value.reads === 'private')
+    && (value.may === 'read' || value.may === 'propose' || value.may === 'write')
+    && (value.may === 'write' ? writeFolder(value.writeIn) : value.writeIn === null);
+}
+
+export function isWorkspaceAgentRequestV1(value: unknown): value is WorkspaceAgentRequestV1 {
+  return record(value) && exact(value, ['version', 'requestId', 'action']) && value.version === 1
+    && typeof value.requestId === 'string' && requestId.test(value.requestId) && isWorkspaceAgentActionV1(value.action);
+}
+
+const agentRow = (item: Record<string, unknown>) => exact(item, ['name', 'keys', 'reads', 'verbs', 'writes', 'revoked', 'implicit', 'lastRead', 'readCount'])
+  && typeof item.name === 'string' && AGENT_NAME.test(item.name) && whole(item.keys)
+  && typeof item.reads === 'string' && SENSITIVITY_LEVELS.has(item.reads)
+  && Array.isArray(item.verbs) && item.verbs.length <= 16 && item.verbs.every((verb) => text(verb, 32))
+  && Array.isArray(item.writes) && item.writes.length <= 64 && item.writes.every((pattern) => text(pattern, 512))
+  && textOrNull(item.revoked, 64) && typeof item.implicit === 'boolean' && textOrNull(item.lastRead, 64) && whole(item.readCount);
+
+export function isWorkspaceAgentsReplyV1(value: unknown): value is WorkspaceAgentsReplyV1 {
+  return record(value) && exact(value, ['version', 'state', 'outcome', 'error', 'agents', 'key', 'setup']) && value.version === 1
+    && (value.state === 'ok' || value.state === 'no-memory' || value.state === 'outside')
+    && (value.outcome === 'done' || value.outcome === 'cancelled' || value.outcome === 'failed')
+    && textOrNull(value.error, 4096) && listOf(value.agents, 200, agentRow)
+    && (value.key === null || (typeof value.key === 'string' && /^[A-Za-z0-9_-]{16,128}$/.test(value.key)))
+    && (value.setup === null || (record(value.setup) && exact(value.setup, ['script', 'root'])
+      && text(value.setup.script, 4096) && text(value.setup.root, 4096)));
+}
+
+export const isWorkspaceAgentsResultV1 = (
+  value: unknown, id: string,
+): value is WorkspaceResultV1<WorkspaceAgentsReplyV1> => isResult(value, id, isWorkspaceAgentsReplyV1);
 
 export function isWorkspaceReviewActionV1(value: unknown): value is WorkspaceReviewActionV1 {
   if (!record(value) || typeof value.kind !== 'string') return false;

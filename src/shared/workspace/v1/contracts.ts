@@ -89,6 +89,8 @@ export const WORKSPACE_CHANNELS = {
   keepMemory: 'noto:v1:workspace:keep-memory',
   /** Let the open folder's memory run its scripts, once main has asked the person, naming them. */
   trustMemory: 'noto:v1:workspace:trust-memory',
+  /** The agents the open folder's memory names, and adding one or taking its key back. See `WorkspaceAgentActionV1`. */
+  memoryAgents: 'noto:v1:workspace:memory-agents',
   /** Review: the folder-wide queue of what agents proposed and what the tools found. See `WorkspaceReviewActionV1`. */
   memoryReview: 'noto:v1:workspace:memory-review',
   /** Push: the folder's memory opened or changed, so what was asked of it may be asked again. */
@@ -1011,6 +1013,58 @@ export interface WorkspaceTrustMemoryReplyV1 {
   readonly trusted: boolean;
 }
 
+/**
+ * Settings → Memory → Agents. Adding an agent and taking a key back are
+ * asked of the person by main, in a sheet of its own, before anything is
+ * written; every answer carries the list as it is then.
+ */
+export type WorkspaceAgentActionV1 =
+  | { readonly kind: 'list' }
+  | {
+    readonly kind: 'add';
+    readonly name: string;
+    /** The most private notes it reads; sealed ones never. */
+    readonly reads: 'open' | 'private';
+    /** Read and search; also propose changes; also write directly in `writeIn`. */
+    readonly may: 'read' | 'propose' | 'write';
+    readonly writeIn: string | null;
+  }
+  | { readonly kind: 'revoke'; readonly name: string };
+
+export interface WorkspaceAgentRequestV1 {
+  readonly version: typeof NOTO_WORKSPACE_VERSION;
+  readonly requestId: string;
+  readonly action: WorkspaceAgentActionV1;
+}
+
+export interface AgentRowV1 {
+  readonly name: string;
+  /** 0 for `default`, whoever brings no key, and for an agent whose keys were taken back. */
+  readonly keys: number;
+  readonly reads: 'open' | 'private' | 'sealed';
+  readonly verbs: readonly string[];
+  readonly writes: readonly string[];
+  readonly revoked: string | null;
+  /** `default` when the file does not name it: what any agent without a key gets. */
+  readonly implicit: boolean;
+  /** From the read record, once the memory is open; null when it has not read anything, or is not known. */
+  readonly lastRead: string | null;
+  readonly readCount: number;
+}
+
+export interface WorkspaceAgentsReplyV1 {
+  readonly version: typeof NOTO_WORKSPACE_VERSION;
+  readonly state: 'ok' | 'no-memory' | 'outside';
+  /** What the action did: `cancelled` when the person said no in main's sheet. */
+  readonly outcome: 'done' | 'cancelled' | 'failed';
+  readonly error: string | null;
+  readonly agents: readonly AgentRowV1[];
+  /** The key just made, shown once and kept nowhere but its hash. */
+  readonly key: string | null;
+  /** How an agent starts this folder's MCP server: the command line shipped with Noto, run by Node. */
+  readonly setup: { readonly script: string; readonly root: string } | null;
+}
+
 /** The kinds of suggestion Review lists. */
 export type ReviewKindV1 = 'stale' | 'mention' | 'together';
 
@@ -1183,6 +1237,8 @@ export interface NotoWorkspaceApiV1 {
   keepMemory(request: WorkspaceRequestV1): Promise<WorkspaceResultV1<WorkspaceKeepMemoryReplyV1>>;
   /** Let the open folder's memory run its scripts. */
   trustMemory(request: WorkspaceRequestV1): Promise<WorkspaceResultV1<WorkspaceTrustMemoryReplyV1>>;
+  /** List the folder's agents, add one, or take a key back. */
+  memoryAgents(request: WorkspaceAgentRequestV1): Promise<WorkspaceResultV1<WorkspaceAgentsReplyV1>>;
   /** Ask Review's question of the folder's memory. */
   memoryReview<K extends WorkspaceReviewActionV1['kind']>(request: WorkspaceReviewRequestV1 & { readonly action: { readonly kind: K } }): Promise<WorkspaceResultV1<WorkspaceReviewReplyV1<K>>>;
   tagIndex(request: WorkspaceRequestV1): Promise<WorkspaceResultV1<WorkspaceTagIndexReplyV1>>;
