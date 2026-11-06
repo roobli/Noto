@@ -10,7 +10,8 @@
     "hotkeys": []
   },
   "capabilities": [
-    "vault.read"
+    "vault.read",
+    "vault.review"
   ],
   "lifecycle": [
     "activate",
@@ -23,6 +24,7 @@
   "uiExtensions": [
     "info:related",
     "info:activity",
-    "track:reads"
+    "track:reads",
+    "rail:review"
   ]
 }

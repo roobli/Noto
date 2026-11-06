@@ -136,13 +136,13 @@ export const memoryManifest = {
     events: [],
     hotkeys: [],
   },
-  capabilities: ['vault.read'],
+  capabilities: ['vault.read', 'vault.review'],
   lifecycle: ['activate', 'deactivate'],
   commands: [],
   settings: [],
   hotkeys: [],
   editorExtensions: [],
-  uiExtensions: ['info:related', 'info:activity', 'track:reads'],
+  uiExtensions: ['info:related', 'info:activity', 'track:reads', 'rail:review'],
 } satisfies PluginManifest;
 
 /** Bundled plugins that start switched on for a reader who never touched them. */

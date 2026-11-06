@@ -4336,6 +4336,129 @@ section.plugin-group > .plugin-market-row.is-set-aside {
 /* A mention: the name it is about in ink, the words around it muted. */
 .memory-name { color: var(--ink); }
 
+/* Review: the rail page of what waits on the person. Rows, headings and
+   buttons are the memory tabs' own; what is new is a kind's row (its name,
+   its count, what to do), the queue's card, and one accent: the name a
+   suggestion would link, drawn as the link it will become. */
+.review-page { padding-bottom: 12px; }
+.review-page:focus { outline: none; }
+.review-quiet { margin: 0 8px 4px; color: var(--muted); font: 400 12px/18px tokens.$ui; }
+.review-start { margin: 0 8px; }
+
+.review-kind {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto auto;
+  align-items: center;
+  gap: 8px;
+  min-height: 28px;
+  padding: 0 8px;
+  color: var(--ink);
+  font: 400 12px/18px tokens.$ui;
+}
+
+.review-kind-title { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.review-kind-action { min-width: 58px; }
+.review-kind-action:disabled,
+.review-queue .info-button:disabled { opacity: 0.45; cursor: default; }
+
+.review-dismissed-toggle {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  width: 100%;
+  padding: 2px 8px;
+  border: 0;
+  background: none;
+  color: var(--muted);
+  font: 600 10.5px/18px tokens.$ui;
+  letter-spacing: 0.02em;
+  text-align: left;
+  cursor: pointer;
+
+  &:disabled { cursor: default; }
+  .memory-count { margin-left: auto; }
+}
+
+.review-dismissal {
+  display: flex;
+  align-items: baseline;
+  gap: 8px;
+  padding: 2px 8px 2px 22px;
+  color: var(--muted);
+  font: 400 12px/18px tokens.$ui;
+}
+
+.review-dismissal-words { min-width: 0; flex: 1; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+
+/* A quiet action inside a line of text: Undo, Done, Bring Back. */
+.review-text-button {
+  flex: 0 0 auto;
+  padding: 0;
+  border: 0;
+  background: none;
+  color: var(--ink);
+  font: 500 11.5px/18px tokens.$ui;
+  text-decoration: underline;
+  text-decoration-color: var(--hairline);
+  text-underline-offset: 2px;
+  cursor: pointer;
+
+  &:hover { text-decoration-color: currentColor; }
+  &:focus-visible { outline: 2px solid var(--focus); outline-offset: 1px; border-radius: 3px; }
+  &:disabled { color: var(--muted); cursor: default; }
+}
+
+.review-status { margin: 10px 16px 0; }
+
+.review-queue-head { padding: 10px 16px 6px; }
+
+/* The kind and where in it, on the edge every other heading of the rail keeps. */
+.review-queue-title { margin: 0 16px 6px; }
+
+.review-card {
+  margin: 0 8px;
+  padding: 10px 10px 12px;
+  border: 1px solid var(--hairline);
+  border-radius: 8px;
+  background: var(--paper);
+  font: 400 12px/18px tokens.$ui;
+}
+
+.review-where { margin: 0 0 6px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+
+.review-line {
+  margin: 0 0 8px;
+  color: var(--muted);
+  font-size: 12.5px;
+  line-height: 20px;
+  overflow-wrap: anywhere;
+}
+
+/* The signature: the name drawn as the link it will become. */
+.review-linked {
+  color: var(--ink);
+  text-decoration: underline;
+  text-decoration-color: var(--accent);
+  text-decoration-thickness: 1.5px;
+  text-underline-offset: 3px;
+}
+
+.review-to { margin: 0 0 10px; color: var(--ink); }
+
+.review-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+
+  kbd {
+    margin-left: 4px;
+    color: var(--muted);
+    font: 500 10.5px/16px tokens.$ui;
+  }
+
+  .is-primary kbd { color: inherit; opacity: 0.8; }
+}
+
 /* Why an agent may not read the note: muted, and wrapped rather than cut, since it is the answer. */
 .properties-row dd.memory-reason { color: var(--muted); }
 

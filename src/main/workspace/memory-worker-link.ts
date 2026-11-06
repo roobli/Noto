@@ -15,7 +15,12 @@ import type { MemoryAnswer, MemoryRequest } from '../../vault-worker/vault-worke
 const CLOSE_TIMEOUT_MS = 3_000;
 
 export class MemoryError extends Error {
-  constructor(message: string, readonly unknown = false) {
+  /**
+   * `unknown`: the vault holds no note by that name. `answered`: the worker
+   * answered with this error (no such proposal, a note it may not write),
+   * rather than the memory being out of reach.
+   */
+  constructor(message: string, readonly unknown = false, readonly answered = false) {
     super(message);
   }
 }
@@ -98,7 +103,7 @@ export class WorkerLink {
     this.pending.delete(answer.id);
     clearTimeout(waiting.timer);
     if (answer.ok) waiting.resolve(answer.value);
-    else waiting.reject(new MemoryError(answer.error, answer.unknown === true));
+    else waiting.reject(new MemoryError(answer.error, answer.unknown === true, true));
   }
 
   private failAll(error: MemoryError): void {

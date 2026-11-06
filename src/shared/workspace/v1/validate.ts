@@ -7,6 +7,7 @@
  */
 
 import { isEntryName } from './entry-names';
+import { PROPOSAL_ID } from './contracts';
 import {
   WORKSPACE_EXPORT_REFUSALS,
   ENTRY_ACTIONS,
@@ -36,6 +37,9 @@ import {
   WorkspaceMemoryChangedV1,
   WorkspaceKeepMemoryReplyV1,
   WorkspaceTrustMemoryReplyV1,
+  WorkspaceReviewActionV1,
+  WorkspaceReviewReplyV1,
+  WorkspaceReviewRequestV1,
   WorkspaceNoteMemoryReplyV1,
   WorkspaceNoteHistoryReplyV1,
   WorkspaceNoteHistoryRequestV1,
@@ -399,6 +403,93 @@ export function isWorkspaceTrustMemoryReplyV1(value: unknown): value is Workspac
 export const isWorkspaceTrustMemoryResultV1 = (
   value: unknown, id: string,
 ): value is WorkspaceResultV1<WorkspaceTrustMemoryReplyV1> => isResult(value, id, isWorkspaceTrustMemoryReplyV1);
+
+const REVIEW_KINDS = new Set(['stale', 'mention', 'together']);
+const REVIEW_STATES = new Set(['ok', 'failed', 'no-memory', 'untrusted', 'opening', 'unavailable', 'outside']);
+/** A suggestion's id: seven hex digits, as the vault makes them. */
+const suggestionIdPattern = /^[0-9a-f]{7}$/;
+/** As many as a Fix All in a folder that was reorganized may name. */
+const ids = (value: unknown, max = 5000) => Array.isArray(value) && value.length <= max
+  && value.every((id) => typeof id === 'string' && suggestionIdPattern.test(id));
+const proposalId = (value: unknown) => typeof value === 'string' && PROPOSAL_ID.test(value) && !value.includes('..');
+/** A folder-relative path, as the vault names notes: forward slashes, never up and out. */
+const notePath = (value: unknown) => typeof value === 'string' && value.length > 0 && value.length <= 1024
+  && !value.startsWith('/') && !value.split('/').includes('..') && !value.includes('\0');
+const paths = (value: unknown, max = 2000) => Array.isArray(value) && value.length <= max && value.every(notePath);
+
+export function isWorkspaceReviewActionV1(value: unknown): value is WorkspaceReviewActionV1 {
+  if (!record(value) || typeof value.kind !== 'string') return false;
+  switch (value.kind) {
+    case 'summary':
+      return exact(value, ['kind', 'counted']) && Array.isArray(value.counted) && value.counted.length <= 3
+        && value.counted.every((kind) => typeof kind === 'string' && REVIEW_KINDS.has(kind));
+    case 'suggestions':
+      return exact(value, ['kind', 'type', 'offset', 'limit']) && typeof value.type === 'string' && REVIEW_KINDS.has(value.type)
+        && whole(value.offset) && whole(value.limit) && (value.limit as number) <= 200;
+    case 'proposal-file':
+      return exact(value, ['kind', 'proposal', 'path']) && proposalId(value.proposal) && notePath(value.path);
+    case 'accept':
+    case 'reject':
+      return exact(value, ['kind', 'proposal']) && proposalId(value.proposal);
+    case 'link':
+    case 'dismiss':
+      return exact(value, ['kind', 'type', 'ids']) && typeof value.type === 'string' && REVIEW_KINDS.has(value.type)
+        && ids(value.ids) && (value.ids as unknown[]).length > 0;
+    case 'undismiss':
+      return exact(value, ['kind', 'ids']) && (value.ids === 'all' || ids(value.ids));
+    case 'dismissals':
+    case 'undo':
+      return exact(value, ['kind']);
+    default:
+      return false;
+  }
+}
+
+export function isWorkspaceReviewRequestV1(value: unknown): value is WorkspaceReviewRequestV1 {
+  return record(value) && exact(value, ['version', 'requestId', 'action']) && value.version === 1
+    && typeof value.requestId === 'string' && requestId.test(value.requestId) && isWorkspaceReviewActionV1(value.action);
+}
+
+const reviewProposal = (item: Record<string, unknown>) => exact(item, ['id', 'subject', 'author', 'time', 'files'])
+  && proposalId(item.id) && text(item.subject, 1024) && text(item.author, 256) && text(item.time, 64)
+  && listOf(item.files, 2000, (file) => exact(file, ['status', 'path']) && text(file.status, 8) && notePath(file.path));
+const countOrNull = (value: unknown) => value === null || whole(value);
+const reviewSuggestion = (item: Record<string, unknown>) => exact(item, ['id', 'type', 'from', 'to', 'toTitle', 'score', 'reason', 'line', 'around'])
+  && ids([item.id]) && typeof item.type === 'string' && REVIEW_KINDS.has(item.type) && notePath(item.from) && notePath(item.to)
+  && text(item.toTitle, 512) && number(item.score) && text(item.reason, 1024) && (item.line === null || whole(item.line))
+  && (item.around === null || (Array.isArray(item.around) && item.around.length === 3 && item.around.every((part) => text(part, 1024))));
+
+/** Whether a reply's value is what its action answers. */
+const REVIEW_VALUES: { readonly [K in WorkspaceReviewActionV1['kind']]: (value: unknown) => boolean } = {
+  summary: (value) => record(value) && exact(value, ['proposals', 'counts', 'dismissed'])
+    && listOf(value.proposals, 500, reviewProposal) && whole(value.dismissed)
+    && record(value.counts) && exact(value.counts, ['stale', 'mention', 'together'])
+    && countOrNull(value.counts.stale) && countOrNull(value.counts.mention) && countOrNull(value.counts.together),
+  suggestions: (value) => record(value) && exact(value, ['total', 'items']) && whole(value.total) && listOf(value.items, 200, reviewSuggestion),
+  'proposal-file': (value) => record(value) && exact(value, ['base', 'proposed'])
+    && textOrNull(value.base, 16 * 1024 * 1024) && textOrNull(value.proposed, 16 * 1024 * 1024),
+  accept: (value) => record(value) && exact(value, ['applied', 'unchanged', 'conflicts', 'busy'])
+    && paths(value.applied) && paths(value.unchanged) && paths(value.conflicts) && paths(value.busy),
+  reject: (value) => value === null,
+  link: (value) => record(value) && exact(value, ['linked', 'outdated', 'busy']) && ids(value.linked) && ids(value.outdated) && ids(value.busy),
+  dismiss: (value) => record(value) && exact(value, ['count', 'missing']) && whole(value.count) && ids(value.missing),
+  dismissals: (value) => listOf(value, 20_000, (item) => exact(item, ['id', 'type', 'from', 'to', 'time'])
+    && ids([item.id]) && text(item.type, 32) && notePath(item.from) && notePath(item.to) && textOrNull(item.time, 64)),
+  undismiss: (value) => record(value) && exact(value, ['count']) && whole(value.count),
+  undo: (value) => value === null || (record(value) && exact(value, ['restored', 'changed', 'busy'])
+    && paths(value.restored) && paths(value.changed) && paths(value.busy)),
+};
+
+export function isWorkspaceReviewReplyV1(value: unknown, kind: WorkspaceReviewActionV1['kind']): value is WorkspaceReviewReplyV1 {
+  if (!record(value) || !exact(value, ['version', 'state', 'value', 'error']) || value.version !== 1) return false;
+  if (typeof value.state !== 'string' || !REVIEW_STATES.has(value.state) || !textOrNull(value.error, 4096)) return false;
+  // Only an answer carries a value (null for `reject`, and for `undo` with nothing to take back).
+  return value.state === 'ok' ? REVIEW_VALUES[kind](value.value) : value.value === null;
+}
+
+export const isWorkspaceReviewResultV1 = (
+  value: unknown, id: string, kind: WorkspaceReviewActionV1['kind'],
+): value is WorkspaceResultV1<WorkspaceReviewReplyV1> => isResult(value, id, (candidate): candidate is WorkspaceReviewReplyV1 => isWorkspaceReviewReplyV1(candidate, kind));
 
 export const isWorkspaceKeepMemoryResultV1 = (
   value: unknown, id: string,

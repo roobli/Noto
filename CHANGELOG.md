@@ -45,6 +45,20 @@ How releases are made, and what each channel receives, is in
   seen them named and allowed them, once per folder; History and Properties
   work meanwhile. A memory that could not be opened is tried again after a
   pause.
+- **Review, the folder's queue, in the rail.** In a folder that keeps
+  memory, a page beside Changes lists what agents proposed and what the
+  tools found, with a count on its toggle of the proposals and the links to
+  moved notes. A proposal opens in the diff view, one file at a time with [
+  and ], to Accept (merged three ways with what is there now) or Reject.
+  Links to notes that moved are fixed all at once; names a note uses
+  without linking, and notes read together with no link, are gone through
+  one at a time by key: Y links, N says not this for good, S skips. Each
+  line is shown as it will read linked. What Review writes shows up in
+  Changes, Undo takes the last write back where the files are still as it
+  left them, a note with unsaved edits is left alone and named, and what
+  was said no to can be brought back. The lists come from a second memory
+  worker, so finding every mention in a big folder never holds up Note
+  Info.
 - **Plugins can add to Note Info.** A tab (`info:<id>`) and a timeline track
   (`track:<id>`) are slots like the rail's pages, and `git.read` now gives a
   note's history and its text at any of its commits. History and Properties

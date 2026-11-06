@@ -22,6 +22,7 @@ import {
   NOTO_WORKSPACE_VERSION,
   type NoteMemoryV1,
   type WorkspaceNoteMemoryReplyV1,
+  type WorkspaceReviewReplyV1,
 } from '../../shared/workspace/v1/contracts';
 import { memoryScripts } from './memory-trust';
 import { MemoryError, WorkerLink, type MemoryWorker, type Unnumbered } from './memory-worker-link';
@@ -62,6 +63,25 @@ export function insideFolder(root: string, file: string): string | null {
   return rel.split(path.sep).join('/');
 }
 
+/** Review's lists can take seconds (every mention in a big folder), on their own worker. */
+const REVIEW_TIMEOUT_MS = 60_000;
+/**
+ * A write is never cut off: the worker finishes it whether or not anyone
+ * waits, so waiting long beats telling the person it failed when it did not.
+ * Linking a few thousand notes runs git for each.
+ */
+const REVIEW_WRITE_TIMEOUT_MS = 10 * 60_000;
+const WRITES = new Set(['accept', 'reject', 'link', 'dismiss', 'undismiss', 'undo']);
+
+/** A Review request as the worker takes it, main having added what has unsaved edits. */
+export type ReviewRequest = Extract<Unnumbered, { kind: 'summary' | 'suggestions' | 'proposal-file' | 'accept' | 'reject' | 'link' | 'dismiss' | 'dismissals' | 'undismiss' | 'undo' }>;
+
+export interface ReviewOutcome {
+  readonly state: WorkspaceReviewReplyV1['state'];
+  readonly value: unknown;
+  readonly error: string | null;
+}
+
 /** Without a way to ask, only a folder whose memory runs no scripts is opened. */
 const runsNoScripts = (root: string): boolean => memoryScripts(root).length === 0;
 
@@ -69,6 +89,9 @@ export class MemoryHost {
   private root: string | null = null;
   private state: State = 'closed';
   private link: WorkerLink | null = null;
+  /** The second worker, for Review: reads the first one's index, never refreshes it. */
+  private reader: WorkerLink | null = null;
+  private readerReady: Promise<WorkerLink> | null = null;
   private refreshTimer: ReturnType<typeof setTimeout> | null = null;
   private everyTimer: ReturnType<typeof setInterval> | null = null;
   private retryTimer: ReturnType<typeof setTimeout> | null = null;
@@ -97,6 +120,23 @@ export class MemoryHost {
     return this.root;
   }
 
+  /**
+   * Whether the memory can answer now, opening it if it may be: null when it
+   * is open, or the state to answer with. Note Info and Review both pass here,
+   * so the scripts are asked about once, and the index built once.
+   */
+  private gate(root: string): Exclude<WorkspaceNoteMemoryReplyV1['state'], 'ok' | 'unknown'> | null {
+    if (!existsSync(path.join(root, '.noto'))) return 'no-memory';
+    if (this.state === 'failed' && Date.now() >= this.retryAt) this.state = 'closed';
+    if (this.state === 'closed') {
+      if (!(this.options.mayOpen ?? runsNoScripts)(root)) return 'untrusted';
+      this.open(root);
+    }
+    if (this.state === 'opening') return 'opening';
+    if (this.state === 'failed') return 'unavailable';
+    return null;
+  }
+
   /** What the memory knows about the note at `real`, a real path inside the folder. */
   async about(real: string): Promise<WorkspaceNoteMemoryReplyV1> {
     const reply = (state: WorkspaceNoteMemoryReplyV1['state'], memory: NoteMemoryV1 | null = null): WorkspaceNoteMemoryReplyV1 => ({
@@ -106,14 +146,8 @@ export class MemoryHost {
     if (root === null) return reply('outside');
     const rel = insideFolder(root, real);
     if (rel === null) return reply('outside');
-    if (!existsSync(path.join(root, '.noto'))) return reply('no-memory');
-    if (this.state === 'failed' && Date.now() >= this.retryAt) this.state = 'closed';
-    if (this.state === 'closed') {
-      if (!(this.options.mayOpen ?? runsNoScripts)(root)) return reply('untrusted');
-      this.open(root);
-    }
-    if (this.state === 'opening') return reply('opening');
-    if (this.state === 'failed') return reply('unavailable');
+    const closed = this.gate(root);
+    if (closed !== null) return reply(closed);
     try {
       const memory = await this.ask({ kind: 'about', rel }, ABOUT_TIMEOUT_MS) as NoteMemoryV1;
       return reply('ok', memory);
@@ -121,6 +155,31 @@ export class MemoryHost {
       if (error instanceof MemoryError && error.unknown) return reply('unknown');
       this.owed = true;
       return reply('unavailable');
+    }
+  }
+
+  /**
+   * Ask Review's question. It goes to a second worker that opens the same
+   * index once the first has it open, without refreshing it, so a list that
+   * takes seconds never holds up an answer about the note in front.
+   */
+  async review(request: ReviewRequest): Promise<ReviewOutcome> {
+    const outcome = (state: ReviewOutcome['state'], value: unknown = null, error: string | null = null): ReviewOutcome => ({ state, value, error });
+    const root = this.root;
+    if (root === null) return outcome('outside');
+    const closed = this.gate(root);
+    if (closed !== null) return outcome(closed);
+    let reader: WorkerLink;
+    try {
+      reader = await this.startReader(root);
+    } catch {
+      return outcome('unavailable');
+    }
+    try {
+      return outcome('ok', await reader.ask(request, WRITES.has(request.kind) ? REVIEW_WRITE_TIMEOUT_MS : REVIEW_TIMEOUT_MS));
+    } catch (error) {
+      // The memory said why not (no such proposal, a note it may not write), or could not be reached.
+      return error instanceof MemoryError && error.answered ? outcome('failed', null, error.message) : outcome('unavailable');
     }
   }
 
@@ -174,6 +233,26 @@ export class MemoryHost {
     return link;
   }
 
+  private startReader(root: string): Promise<WorkerLink> {
+    if (this.readerReady) return this.readerReady;
+    const link: WorkerLink = new WorkerLink(this.options.startWorker(), () => {
+      if (this.reader !== link) return;
+      this.reader = null;
+      this.readerReady = null;
+    });
+    this.reader = link;
+    const ready = link.ask({ kind: 'open', root, refresh: false }, OPEN_TIMEOUT_MS).then(() => link, (error: unknown) => {
+      if (this.reader === link) {
+        this.reader = null;
+        this.readerReady = null;
+        link.close();
+      }
+      throw error;
+    });
+    this.readerReady = ready;
+    return ready;
+  }
+
   private opened(): void {
     this.state = 'open';
     this.failures = 0;
@@ -219,7 +298,10 @@ export class MemoryHost {
       const stats = await this.ask({ kind: 'refresh', paths }, OPEN_TIMEOUT_MS) as { parsed?: number; events?: number; removed?: number; moved?: number } | null;
       if (this.link !== link) return;
       // Only news when something the window shows may differ, or an answer was missed meanwhile.
-      const news = stats !== null && ((stats.parsed ?? 0) > 0 || (stats.events ?? 0) > 0 || (stats.removed ?? 0) > 0 || (stats.moved ?? 0) > 0);
+      const content = stats !== null && ((stats.parsed ?? 0) > 0 || (stats.removed ?? 0) > 0 || (stats.moved ?? 0) > 0);
+      const news = content || (stats !== null && (stats.events ?? 0) > 0);
+      // Review's lists come from the notes, not from what was read: only a change to them makes them stale.
+      if (content) void this.reader?.ask({ kind: 'stale' }, ABOUT_TIMEOUT_MS).catch(() => {});
       if (news || this.owed) {
         this.owed = false;
         this.options.onChanged();
@@ -258,8 +340,12 @@ export class MemoryHost {
     this.again = false;
     this.owed = false;
     const link = this.link;
+    const reader = this.reader;
     this.link = null;
+    this.reader = null;
+    this.readerReady = null;
     link?.close();
+    reader?.close();
   }
 
   private stop(): void {

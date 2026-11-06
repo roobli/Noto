@@ -1725,6 +1725,12 @@ function NotoWorkspace({ platform }: { platform: NotoPlatform }) {
       const result = await window.notoWorkspace.trustMemory({ version: 1, requestId: rid('trust-memory') });
       return result.ok && result.value.trusted;
     });
+    slotState.setReviewer(async (action) => {
+      const result = await window.notoWorkspace.memoryReview({ version: 1, requestId: rid('memory-review'), action });
+      if (!result.ok) return { state: 'unavailable', value: null, error: null };
+      const { version: _version, ...answer } = result.value;
+      return answer;
+    });
     slotState.setEditorAccess({
       text: () => (slotState.settledNote() === slotState.host.activeNote() ? currentNoteText() : null),
       replace: (text) => {

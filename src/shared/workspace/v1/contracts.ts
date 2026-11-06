@@ -89,6 +89,8 @@ export const WORKSPACE_CHANNELS = {
   keepMemory: 'noto:v1:workspace:keep-memory',
   /** Let the open folder's memory run its scripts, once main has asked the person, naming them. */
   trustMemory: 'noto:v1:workspace:trust-memory',
+  /** Review: the folder-wide queue of what agents proposed and what the tools found. See `WorkspaceReviewActionV1`. */
+  memoryReview: 'noto:v1:workspace:memory-review',
   /** Push: the folder's memory opened or changed, so what was asked of it may be asked again. */
   memoryChanged: 'noto:v1:workspace:memory-changed',
 } as const;
@@ -1009,6 +1011,103 @@ export interface WorkspaceTrustMemoryReplyV1 {
   readonly trusted: boolean;
 }
 
+/** The kinds of suggestion Review lists. */
+export type ReviewKindV1 = 'stale' | 'mention' | 'together';
+
+/**
+ * A proposal's id as Review names it: the ref's name under
+ * refs/noto/proposals, a timestamp and a slug as `@roobli/vault` makes them.
+ * A ref named otherwise (anyone with git can write one) is left out.
+ */
+export const PROPOSAL_ID = /^[0-9A-Za-z\u4e00-\u9fff][0-9A-Za-z\u4e00-\u9fff._-]{0,160}$/;
+
+/**
+ * What Review asks of the folder's memory. Accepting, linking and taking a
+ * write back skip (and name) any note with unsaved edits in the window, which
+ * main adds; nothing else here writes a note.
+ */
+export type WorkspaceReviewActionV1 =
+  /** The proposals, and how many suggestions of each kind; only `counted` are worked out if not known yet. */
+  | { readonly kind: 'summary'; readonly counted: readonly ReviewKindV1[] }
+  | { readonly kind: 'suggestions'; readonly type: ReviewKindV1; readonly offset: number; readonly limit: number }
+  | { readonly kind: 'proposal-file'; readonly proposal: string; readonly path: string }
+  | { readonly kind: 'accept'; readonly proposal: string }
+  | { readonly kind: 'reject'; readonly proposal: string }
+  /** The kind is named so the memory can work its list out again if the notes changed meanwhile. */
+  | { readonly kind: 'link'; readonly type: ReviewKindV1; readonly ids: readonly string[] }
+  | { readonly kind: 'dismiss'; readonly type: ReviewKindV1; readonly ids: readonly string[] }
+  | { readonly kind: 'dismissals' }
+  | { readonly kind: 'undismiss'; readonly ids: readonly string[] | 'all' }
+  /** Take back the last write Review made (an accept or a link), where the files are still as it left them. */
+  | { readonly kind: 'undo' };
+
+export interface WorkspaceReviewRequestV1 {
+  readonly version: typeof NOTO_WORKSPACE_VERSION;
+  readonly requestId: string;
+  readonly action: WorkspaceReviewActionV1;
+}
+
+export interface ReviewProposalV1 {
+  readonly id: string;
+  readonly subject: string;
+  readonly author: string;
+  readonly time: string;
+  readonly files: readonly { readonly status: string; readonly path: string }[];
+}
+
+export interface ReviewSummaryV1 {
+  readonly proposals: readonly ReviewProposalV1[];
+  /** Null for a kind not worked out yet. */
+  readonly counts: { readonly stale: number | null; readonly mention: number | null; readonly together: number | null };
+  readonly dismissed: number;
+}
+
+export interface ReviewSuggestionV1 {
+  readonly id: string;
+  readonly type: ReviewKindV1;
+  readonly from: string;
+  readonly to: string;
+  readonly toTitle: string;
+  readonly score: number;
+  readonly reason: string;
+  readonly line: number | null;
+  /** Before the mention, the mention, after it. */
+  readonly around: readonly [string, string, string] | null;
+}
+
+export interface ReviewDismissalV1 {
+  readonly id: string;
+  readonly type: string;
+  readonly from: string;
+  readonly to: string;
+  readonly time: string | null;
+}
+
+/** What each action answers, by kind. */
+export interface ReviewValuesV1 {
+  readonly summary: ReviewSummaryV1;
+  readonly suggestions: { readonly total: number; readonly items: readonly ReviewSuggestionV1[] };
+  readonly 'proposal-file': { readonly base: string | null; readonly proposed: string | null };
+  readonly accept: { readonly applied: readonly string[]; readonly unchanged: readonly string[]; readonly conflicts: readonly string[]; readonly busy: readonly string[] };
+  readonly reject: null;
+  /** Suggestion ids: linked, no longer applicable to their note as it is now, and in a note with unsaved edits. */
+  readonly link: { readonly linked: readonly string[]; readonly outdated: readonly string[]; readonly busy: readonly string[] };
+  /** `missing`: ids no longer suggested at all, so there was nothing to say no to. */
+  readonly dismiss: { readonly count: number; readonly missing: readonly string[] };
+  readonly dismissals: readonly ReviewDismissalV1[];
+  readonly undismiss: { readonly count: number };
+  /** Null when there is nothing to take back. Paths: put back, written to since, and with unsaved edits. */
+  readonly undo: { readonly restored: readonly string[]; readonly changed: readonly string[]; readonly busy: readonly string[] } | null;
+}
+
+export interface WorkspaceReviewReplyV1<K extends WorkspaceReviewActionV1['kind'] = WorkspaceReviewActionV1['kind']> {
+  readonly version: typeof NOTO_WORKSPACE_VERSION;
+  /** `failed`: the memory answered with an error, in `error`; the others are those of `WorkspaceNoteMemoryReplyV1`. */
+  readonly state: 'ok' | 'failed' | 'no-memory' | 'untrusted' | 'opening' | 'unavailable' | 'outside';
+  readonly value: ReviewValuesV1[K] | null;
+  readonly error: string | null;
+}
+
 export interface WorkspaceMemoryChangedV1 {
   readonly version: typeof NOTO_WORKSPACE_VERSION;
 }
@@ -1084,6 +1183,8 @@ export interface NotoWorkspaceApiV1 {
   keepMemory(request: WorkspaceRequestV1): Promise<WorkspaceResultV1<WorkspaceKeepMemoryReplyV1>>;
   /** Let the open folder's memory run its scripts. */
   trustMemory(request: WorkspaceRequestV1): Promise<WorkspaceResultV1<WorkspaceTrustMemoryReplyV1>>;
+  /** Ask Review's question of the folder's memory. */
+  memoryReview<K extends WorkspaceReviewActionV1['kind']>(request: WorkspaceReviewRequestV1 & { readonly action: { readonly kind: K } }): Promise<WorkspaceResultV1<WorkspaceReviewReplyV1<K>>>;
   tagIndex(request: WorkspaceRequestV1): Promise<WorkspaceResultV1<WorkspaceTagIndexReplyV1>>;
   notesByTag(request: WorkspaceNotesByTagRequestV1): Promise<WorkspaceResultV1<WorkspaceNotesByTagReplyV1>>;
   fileIndex(request: WorkspaceRequestV1): Promise<WorkspaceResultV1<WorkspaceIndexReplyV1>>;

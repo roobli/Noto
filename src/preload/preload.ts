@@ -129,6 +129,8 @@ import type {
   WorkspaceMemoryChangedV1,
   WorkspaceKeepMemoryReplyV1,
   WorkspaceTrustMemoryReplyV1,
+  WorkspaceReviewReplyV1,
+  WorkspaceReviewRequestV1,
   WorkspaceNoteHistoryRequestV1,
   WorkspaceNoteVersionReplyV1,
   WorkspaceNoteVersionRequestV1,
@@ -185,6 +187,8 @@ import {
   isWorkspaceNoteMemoryResultV1,
   isWorkspaceKeepMemoryResultV1,
   isWorkspaceTrustMemoryResultV1,
+  isWorkspaceReviewRequestV1,
+  isWorkspaceReviewResultV1,
   isWorkspaceNoteVersionRequestV1,
   isWorkspaceNoteVersionResultV1,
   isWorkspaceOpenPathRequestV1,
@@ -554,6 +558,10 @@ const workspaceApi: NotoWorkspaceApiV1 = Object.freeze({
   keepMemory: (request: WorkspaceRequestV1) => isWorkspaceRequestV1(request)
     ? invokeWorkspace<WorkspaceKeepMemoryReplyV1>(WORKSPACE_CHANNELS.keepMemory, request, request.requestId, isWorkspaceKeepMemoryResultV1)
     : Promise.resolve(rejectedWorkspace<WorkspaceKeepMemoryReplyV1>('invalid', 'Invalid keep memory request')),
+  memoryReview: ((request: WorkspaceReviewRequestV1) => (isWorkspaceReviewRequestV1(request)
+    ? invokeWorkspace<WorkspaceReviewReplyV1>(WORKSPACE_CHANNELS.memoryReview, request, request.requestId,
+      (value: unknown, id: string): value is WorkspaceResultV1<WorkspaceReviewReplyV1> => isWorkspaceReviewResultV1(value, id, request.action.kind))
+    : Promise.resolve(rejectedWorkspace<WorkspaceReviewReplyV1>('invalid', 'Invalid review request')))) as NotoWorkspaceApiV1['memoryReview'],
   trustMemory: (request: WorkspaceRequestV1) => isWorkspaceRequestV1(request)
     ? invokeWorkspace<WorkspaceTrustMemoryReplyV1>(WORKSPACE_CHANNELS.trustMemory, request, request.requestId, isWorkspaceTrustMemoryResultV1)
     : Promise.resolve(rejectedWorkspace<WorkspaceTrustMemoryReplyV1>('invalid', 'Invalid trust memory request')),

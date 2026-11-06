@@ -14,6 +14,7 @@ import {
   type WorkspaceResultV1,
   type WorkspaceTabRequestV1,
   type WorkspaceFolderRequestV1,
+  type WorkspaceReviewRequestV1,
   type RecentFileV1,
   type WorkspaceOpenExternalRequestV1,
   type WorkspaceTreeMenuRequestV1,
@@ -30,6 +31,7 @@ import {
   isWorkspaceRequestV1,
   isWorkspaceTabRequestV1,
   isWorkspaceFolderRequestV1,
+  isWorkspaceReviewRequestV1,
   isWorkspaceOpenExternalRequestV1,
   isWorkspaceTreeMenuRequestV1,
   isWorkspaceRevealRequestV1,
@@ -157,6 +159,9 @@ export function registerWorkspaceHandlers(deps: {
     () => deps.session.keepMemory());
   register(WORKSPACE_CHANNELS.trustMemory, isWorkspaceRequestV1,
     () => deps.session.trustMemory());
+  // Review: reads, and the writes the person asked for (accept, link, take back), each refusing notes with unsaved edits.
+  register(WORKSPACE_CHANNELS.memoryReview, isWorkspaceReviewRequestV1,
+    (request: WorkspaceReviewRequestV1) => deps.session.memoryReview(request.action));
 
   // Read-only: what the folder's memory holds about one note in it.
   register(WORKSPACE_CHANNELS.noteMemory, isWorkspaceFolderRequestV1,

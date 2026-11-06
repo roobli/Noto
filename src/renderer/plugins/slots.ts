@@ -12,7 +12,9 @@
  * live inside the editor's lease and go when the note does.
  */
 
-import type { WorkspaceNoteHistoryReplyV1, WorkspaceNoteMemoryReplyV1 } from '../../shared/workspace/v1/contracts';
+import type {
+  WorkspaceNoteHistoryReplyV1, WorkspaceNoteMemoryReplyV1, WorkspaceReviewActionV1, WorkspaceReviewReplyV1,
+} from '../../shared/workspace/v1/contracts';
 
 export type Disposer = () => void;
 
@@ -74,6 +76,25 @@ export interface VaultService {
   trust(): Promise<boolean>;
 }
 
+export type {
+  ReviewDismissalV1 as ReviewDismissal, ReviewKindV1 as ReviewKind, ReviewProposalV1 as ReviewProposal,
+  ReviewSuggestionV1 as ReviewSuggestion, ReviewSummaryV1 as ReviewSummary, WorkspaceReviewActionV1 as ReviewAction,
+} from '../../shared/workspace/v1/contracts';
+
+/** What Review's memory answered: see `WorkspaceReviewReplyV1`. */
+export type ReviewAnswer<K extends WorkspaceReviewActionV1['kind'] = WorkspaceReviewActionV1['kind']> = Omit<WorkspaceReviewReplyV1<K>, 'version'>;
+
+/**
+ * The `vault.review` capability: the open folder's queue of what agents
+ * proposed and what the tools found, and the writes that settle it. Main
+ * leaves alone any note with unsaved edits, and names it.
+ */
+export interface ReviewService {
+  ask<K extends WorkspaceReviewActionV1['kind']>(action: Extract<WorkspaceReviewActionV1, { kind: K }>): Promise<ReviewAnswer<K>>;
+  /** Called when the memory opened or changed, so what was asked may be asked again. */
+  subscribe(listener: () => void): Disposer;
+}
+
 /** What every slot gets: where the window is, and how to go somewhere. */
 export interface ShellHost {
   /** The folder open now, or null. */
@@ -98,6 +119,10 @@ export interface RailPageHost extends ShellHost {
   readonly git: GitService | null;
   /** Present only for a plugin that declares `vault.read`. */
   readonly vault: VaultService | null;
+  /** Present only for a plugin that declares `vault.review`. */
+  readonly review: ReviewService | null;
+  /** Open the diff view over the page; null closes the one this plugin opened. */
+  showDiff(request: DiffRequest | null): void;
 }
 
 export interface RailPageContribution {
@@ -237,8 +262,6 @@ export interface InfoTabHost extends RailPageHost {
    * is read-only, is not the one in front, or the plugin may not.
    */
   replaceNoteText(text: string): boolean;
-  /** Open the diff view over the page; null closes the one this plugin opened. */
-  showDiff(request: DiffRequest | null): void;
   /** Bring one of the plugin's tabs to the front, and reveal a key in it. */
   showTab(id: string, key?: string): void;
   /** Put text on the clipboard. */
@@ -441,6 +464,17 @@ export class ShellState {
     trust: () => this.memoryTrust(),
   };
 
+  private reviewAsk: (action: WorkspaceReviewActionV1) => Promise<ReviewAnswer> = async () => ({ state: 'unavailable', value: null, error: null });
+
+  readonly review: ReviewService = {
+    ask: (action) => this.reviewAsk(action) as never,
+    subscribe: (listener) => this.memoryChanged.subscribe(listener),
+  };
+
+  setReviewer(ask: (action: WorkspaceReviewActionV1) => Promise<ReviewAnswer>): void {
+    this.reviewAsk = ask;
+  }
+
   setMemoryReader(about: VaultService['about'], keep: VaultService['keep'], trust: VaultService['trust']): void {
     this.memoryAbout = about;
     this.memoryKeep = keep;
@@ -533,9 +567,10 @@ export function shellContext(
 ): { context: ShellContext; dispose: Disposer } {
   const git = manifest.capabilities.includes('git.read') ? state.git : null;
   const vault = manifest.capabilities.includes('vault.read') ? state.vault : null;
+  const review = manifest.capabilities.includes('vault.review') ? state.review : null;
   const reads = manifest.capabilities.includes('editor.read');
   const writes = manifest.capabilities.includes('editor.transform');
-  const host: RailPageHost = { ...state.host, git, vault };
+  const host: RailPageHost = { ...state.host, git, vault, review, showDiff: (request) => state.showDiff(request, manifest.id) };
   const handles = new Set<RailPageHandle>();
   const removals = new Set<Disposer>();
   const infoHost: InfoTabHost = {
@@ -544,7 +579,6 @@ export function shellContext(
     onNote: (listener) => state.onSettledNote(listener),
     noteText: () => (reads ? state.noteText() : null),
     replaceNoteText: (text) => writes && state.replaceNoteText(text),
-    showDiff: (request) => state.showDiff(request, manifest.id),
     showTab: (id, key) => state.showTab(`${manifest.id}:${id}`, key),
     copy: (text) => { void navigator.clipboard?.writeText(text).catch(() => {}); },
   };

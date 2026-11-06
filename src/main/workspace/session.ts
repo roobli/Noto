@@ -34,6 +34,8 @@ import {
   type WorkspaceNoteMemoryReplyV1,
   type WorkspaceKeepMemoryReplyV1,
   type WorkspaceTrustMemoryReplyV1,
+  type WorkspaceReviewActionV1,
+  type WorkspaceReviewReplyV1,
   type WorkspaceNoteVersionReplyV1,
   type WorkspaceTagIndexReplyV1,
   type WorkspaceNotesByTagReplyV1,
@@ -82,7 +84,7 @@ import {
 import { buildFileIndex } from './file-index';
 import { GitMarks, defaultGitRunner, findGit } from './git-marks';
 import { NoteHistoryReader, systemBatchGit } from './git-history';
-import { MemoryHost, type MemoryWorker } from './memory-host';
+import { MemoryHost, insideFolder, type MemoryWorker, type ReviewRequest } from './memory-host';
 import { memoryScripts, type MemoryTrust } from './memory-trust';
 import { VaultWatcher, classifyTouched, inspectTouched } from './vault-watcher';
 import { gitBlockDiff } from './git-blocks';
@@ -1490,6 +1492,32 @@ export class WorkspaceSession {
     this.logger.log('memory_trusted', { scripts: scripts.length });
     this.send(WORKSPACE_CHANNELS.memoryChanged, { version: NOTO_WORKSPACE_VERSION });
     return reply(true);
+  }
+
+  /**
+   * Review's question of the folder's memory; see `memory-host.ts`. Accepting,
+   * linking and taking a write back are told which notes have unsaved edits
+   * in the window, and leave those alone: a write under them would be lost
+   * or would lose them. Anything that wrote tells the window to ask again.
+   */
+  async memoryReview(action: WorkspaceReviewActionV1): Promise<WorkspaceReviewReplyV1> {
+    const memory = this.memory;
+    if (!memory) return { version: NOTO_WORKSPACE_VERSION, state: 'unavailable', value: null, error: null };
+    const folder = this.folderRoot;
+    // NFC: macOS may spell a name with its accents apart where git puts them together.
+    const busy = folder === null ? [] : this.unsavedPaths.flatMap((open) => {
+      const rel = insideFolder(folder, open);
+      return rel === null ? [] : [rel.normalize('NFC')];
+    });
+    const request: ReviewRequest = action.kind === 'accept' || action.kind === 'link' || action.kind === 'undo'
+      ? { ...action, busy }
+      : action;
+    const outcome = await memory.review(request);
+    // A write that timed out may still have landed: the window asks again either way.
+    const writes = ['accept', 'reject', 'link', 'dismiss', 'undismiss', 'undo'].includes(action.kind);
+    if (writes) this.send(WORKSPACE_CHANNELS.memoryChanged, { version: NOTO_WORKSPACE_VERSION });
+    this.logger.log('memory_review', { action: action.kind, state: outcome.state });
+    return { version: NOTO_WORKSPACE_VERSION, state: outcome.state, value: outcome.value as WorkspaceReviewReplyV1['value'], error: outcome.error };
   }
 
   /** What the folder's memory knows about a note; see `memory-host.ts`. */
