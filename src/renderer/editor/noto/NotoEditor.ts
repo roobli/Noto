@@ -26,6 +26,7 @@ import { closeHistory, history, redo, undo } from 'prosemirror-history';
 import { dropCursor } from 'prosemirror-dropcursor';
 import { gapCursor } from 'prosemirror-gapcursor';
 import { tableEditing } from 'prosemirror-tables';
+import { tableContextItems, tableContextPress } from './table-context';
 import { Fragment, type Node as ProseNode } from 'prosemirror-model';
 import { notoSchema } from '../../../shared/markdown/v3/pm/schema';
 import { blockFromSpan, blocksFromSpans, docFromSpans } from '../../../shared/markdown/v3/pm/from-mdast';
@@ -458,6 +459,9 @@ export class NotoEditor implements NotoEditorPort {
       typoraMarksPlugin(() => this.markKinds),
       typewriterPlugin(() => this.typewriter),
       autoPairPlugin(() => this.autoPair),
+      // Before the table plugin, which would otherwise take a right press on
+      // selected cells as the start of a new selection.
+      tableContextPress(),
       tableEditing(),
       activeNodePlugin(),
       viewportLayoutPlugin(),
@@ -957,7 +961,7 @@ export class NotoEditor implements NotoEditorPort {
    * keep in step. False when the command has nothing to do where the caret
    * is, which is what lets the caller say so rather than pretending.
    */
-  /** What the editor's plugins add to a right click at a point in the page. */
+  /** What the editor and its plugins add to a right click at a point in the page. */
   contextItemsAt(x: number, y: number): EditorContextItem[] {
     const view = this.view;
     if (!view || this.readOnly) return [];
@@ -966,7 +970,8 @@ export class NotoEditor implements NotoEditorPort {
     const hit = globalThis.document.elementFromPoint(x, y);
     if (!hit || !view.dom.contains(hit) || this.fieldFocused(view)) return [];
     const pos = view.posAtCoords({ left: x, top: y })?.pos ?? null;
-    return editorExtensions.contextItems(view, { pos, element: hit });
+    // The table's own lines first: in a table they are what the click is about.
+    return [...tableContextItems(view.state, pos), ...editorExtensions.contextItems(view, { pos, element: hit })];
   }
 
   /**

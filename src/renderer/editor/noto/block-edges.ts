@@ -14,11 +14,16 @@
  * keyboard. And two typed lines that spell a table's header and its rule
  * become the table when Enter is pressed after the rule, which is what a hand
  * that writes markdown by habit expects to happen.
+ *
+ * At the edges of the note, Down from the last line of a quote, a list, a
+ * table or a code block that ends it makes a plain line below and goes there,
+ * and Up from the first line of one that starts it makes a line above. And
+ * with whole rows or whole columns selected, Delete and Backspace take them out.
  */
 
 import { TextSelection, type Command } from 'prosemirror-state';
 import type { Node as ProseNode } from 'prosemirror-model';
-import { TableMap, isInTable, selectionCell } from 'prosemirror-tables';
+import { CellSelection, TableMap, deleteColumn, deleteRow, isInTable, selectionCell } from 'prosemirror-tables';
 import { notoSchema } from '../../../shared/markdown/v3/pm/schema';
 
 const { nodes } = notoSchema;
@@ -143,4 +148,83 @@ export const tableFromRows: Command = (state, dispatch) => {
   tr.setSelection(TextSelection.near(tr.doc.resolve(from + 1 + header.nodeSize + 1 + 1)));
   dispatch(tr.scrollIntoView());
   return true;
+};
+
+/**
+ * Down from the last line of a note that ends inside something, or Up from
+ * the first line of one that starts inside something, makes a plain line
+ * there and goes to it.
+ *
+ * "Inside something" is a quote, a list, a callout, a table, a code or maths
+ * block: anything that is not a plain paragraph or heading at the top level.
+ * Without this the keyboard had no way past one at the edge of a note. Enter
+ * on an empty line steps out of a quote or a list one level at a time, but a
+ * code block keeps its Enters, a table makes rows, and a note that starts
+ * with a quote had no line above it at all, so the only way was the source.
+ *
+ * Only from the last line (or the first), so Down inside a long last item
+ * still moves down through it first. The new line is empty, and an empty last
+ * line is not written when the note is saved, so going there and coming back
+ * leaves the file as it was.
+ */
+export function exitAtEdge(direction: 1 | -1): Command {
+  return (state, dispatch, view) => {
+    const { selection, doc } = state;
+    if (!(selection instanceof TextSelection) || !selection.empty) return false;
+    const $at = selection.$head;
+    if (!$at.parent.isTextblock || $at.depth < 1) return false;
+    const index = $at.index(0);
+    if (index !== (direction === 1 ? doc.childCount - 1 : 0)) return false;
+    const top = $at.node(1);
+    const codeLike = top.type === nodes.code_block || top.type === nodes.math_block;
+    if ($at.depth === 1 && !codeLike) return false;
+    // Nothing further that way inside the block. In a table that is the row:
+    // the cells beside the caret's are on the same line, not further down.
+    const table = top.type === nodes.table ? top : null;
+    if (table) {
+      const row = $at.index(1);
+      if (row !== (direction === 1 ? table.childCount - 1 : 0)) return false;
+    } else {
+      let further = false;
+      const [from, to] = direction === 1 ? [$at.after(), $at.end(1)] : [$at.start(1), $at.before()];
+      if (from < to) {
+        doc.nodesBetween(from, to, (node) => {
+          if (further) return false;
+          if (node.isTextblock) further = true;
+          return !further;
+        });
+      }
+      if (further) return false;
+    }
+    // From the last visual line of a wrapped paragraph, not from the middle of it.
+    if (view && !view.endOfTextblock(direction === 1 ? 'down' : 'up')) return false;
+    if (dispatch) {
+      const at = direction === 1 ? doc.content.size : 0;
+      const tr = state.tr.insert(at, nodes.paragraph.create());
+      tr.setSelection(TextSelection.create(tr.doc, at + 1));
+      dispatch(tr.scrollIntoView());
+    }
+    return true;
+  };
+}
+
+/**
+ * Delete or Backspace with whole rows or whole columns selected takes them
+ * out, as it does for the lines of a paragraph.
+ *
+ * A press on a row's or a column's handle selects it, and Shift with a press
+ * adds the ones between; dragging across cells to the far edge does the same.
+ * Before this the keys only emptied the cells, so taking a row out meant the
+ * Table menu or the source. All the rows and all the columns at once is the
+ * whole table, which is Delete Table's to do: then the keys empty the cells,
+ * as they did.
+ */
+export const deleteSelectedRowsOrColumns: Command = (state, dispatch) => {
+  const { selection } = state;
+  if (!(selection instanceof CellSelection)) return false;
+  const rows = selection.isRowSelection();
+  const columns = selection.isColSelection();
+  if (rows && !columns) return deleteRow(state, dispatch);
+  if (columns && !rows) return deleteColumn(state, dispatch);
+  return false;
 };
