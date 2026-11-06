@@ -935,6 +935,11 @@ export function Settings({
                 was a caption on the title bar's line, which left the pane a
                 column of rows with nothing saying what they were. */}
             <header className="pref-pane-head">
+              {/* The pane's own mark, the glyph its row carries in the list,
+                  drawn large in a ring of soft light: the one ornament the
+                  settings allow themselves, so each pane opens on something
+                  that says where you are before any of its words do. */}
+              <span className="pref-pane-emblem" aria-hidden="true"><SectionGlyph name={section} /></span>
               <h2 className="settings-title">
                 {section === 'plugins' && pluginDetailId ? (
                   <>

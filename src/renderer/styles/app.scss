@@ -924,7 +924,7 @@ button:disabled { color: var(--muted); opacity: 0.7; }
   inset: 0;
   display: grid;
   place-items: stretch;
-  background: var(--paper);
+  background: var(--panel);
   padding: 0;
 }
 
@@ -935,32 +935,45 @@ button:disabled { color: var(--muted); opacity: 0.7; }
    had no title bar to drag the window by. */
 .pref-dialog,
 .settings-shell {
-  --pref-nav-width: clamp(200px, 17vw, 248px);
+  --pref-nav-width: clamp(214px, 19vw, 262px);
   /* Wide enough for a label, its hint and a control on one line inside a
      group's card; narrow enough that a two-line hint is still read as one
      thought. At 680 the pane was a strip down the middle of a wide window. */
-  --pref-measure: 800px;
+  --pref-measure: 760px;
   /* A group of settings is a card a shade off the paper, as System Settings
      and Typora draw theirs: the rows of one group read as one thing. */
   /* Off the raised tone rather than the panel's: in the dark theme the panel
      is darker than the paper, and the groups read as wells. */
-  --pref-card: color-mix(in srgb, var(--raised) 70%, var(--paper));
+  /* The window's floor is the panel's tone and the groups are lifted off it
+     in the overlay's, the tone every floating surface uses: paper by day,
+     a step above the page by night. Cards a shade darker than the page, as
+     they were, read as wells pressed into it; lifted, the pane reads as
+     things set out on a table. */
+  --pref-ground: var(--panel);
+  --pref-card: var(--overlay);
+  /* The categories float between the two: an inset slab, not a column glued
+     to the window's edge. */
+  --pref-slab: color-mix(in srgb, var(--overlay) 55%, var(--panel));
+  /* Tall enough that Done has air above and below it. */
+  --pref-bar: 52px;
+  /* One inset for everything set inside a card or said about one. */
+  --pref-inset: 20px;
   /* The gutter both sides keep for the pane's scroll bar, which Done allows
      for too, so the cards end under Done whether or not the pane scrolls. */
   --pref-gutter: 6px;
-  --pref-card-line: var(--hairline);
+  --pref-card-line: color-mix(in srgb, var(--hairline) 85%, transparent);
   --pref-card-rule: color-mix(in srgb, var(--hairline) 70%, transparent);
   animation: noto-arrive var(--motion-default) var(--ease-out);
   display: grid;
   grid-template-columns: var(--pref-nav-width) minmax(0, 1fr);
-  grid-template-rows: var(--titlebar-height, 32px) minmax(0, 1fr);
+  grid-template-rows: var(--pref-bar) minmax(0, 1fr);
   width: 100%;
   height: 100%;
   max-height: none;
   overflow: hidden;
   border: 0;
   border-radius: 0;
-  background: var(--paper);
+  background: var(--pref-ground);
   box-shadow: none;
 }
 
@@ -980,10 +993,16 @@ button:disabled { color: var(--muted); opacity: 0.7; }
   min-width: 0;
   min-height: 0;
   overflow-y: auto;
-  border-right: 1px solid var(--hairline);
-  background: var(--panel);
-  /* Its head is the title bar's row, where the lights are. */
-  padding: calc(var(--titlebar-height, 32px) + 10px) 14px 14px;
+  /* Below the traffic lights, which stay where the main window has them, and
+     clear of the window's other edges by the same margin: a slab set on the
+     window's floor rather than a column glued to its edge. */
+  margin: 40px 0 10px 10px;
+  border: 1px solid var(--pref-card-line);
+  border-radius: 14px;
+  background: var(--pref-slab);
+  box-shadow: 0 1px 2px color-mix(in srgb, var(--shadow) 4%, transparent),
+    0 14px 34px -24px color-mix(in srgb, var(--shadow) 32%, transparent);
+  padding: 12px 10px;
 }
 
 /* Said once for every pane, at the foot of the column that names them. */
@@ -1020,7 +1039,7 @@ button:disabled { color: var(--muted); opacity: 0.7; }
   justify-content: flex-end;
   gap: 12px;
   min-width: 0;
-  padding-inline: calc(max(28px, (100% - var(--pref-measure)) / 2) + var(--pref-gutter));
+  padding-inline: calc(max(48px, (100% - var(--pref-measure)) / 2) + var(--pref-gutter));
 
   button { -webkit-app-region: no-drag; }
 }
@@ -1030,7 +1049,7 @@ button:disabled { color: var(--muted); opacity: 0.7; }
 [data-platform='win32'] .pref-heading,
 [data-platform='linux'] .pref-heading {
   padding-right: max(
-    calc(max(28px, (100% - var(--pref-measure)) / 2) + var(--pref-gutter)),
+    calc(max(48px, (100% - var(--pref-measure)) / 2) + var(--pref-gutter)),
     min(180px, max(0px, calc(100vw - env(titlebar-area-width, calc(100vw - 138px)) - env(titlebar-area-x, 0px) - 8px)))
   );
 }
@@ -1043,8 +1062,8 @@ button:disabled { color: var(--muted); opacity: 0.7; }
   gap: 11px;
   margin-bottom: 12px;
   border: 1px solid var(--hairline);
-  border-radius: 8px;
-  background: var(--paper);
+  border-radius: 9px;
+  background: var(--pref-card);
   padding: 0 10px;
   color: var(--muted);
 
@@ -1082,11 +1101,12 @@ button:disabled { color: var(--muted); opacity: 0.7; }
 
 .pref-nav-label {
   display: block;
-  margin: 2px 10px 6px;
+  margin: 4px 10px 6px;
   color: var(--muted);
-  font-size: 11.5px;
+  font-size: 10.5px;
   font-weight: 600;
-  letter-spacing: 0.01em;
+  letter-spacing: 0.07em;
+  text-transform: uppercase;
 }
 
 .pref-nav-sep { margin-top: 18px; }
@@ -1133,7 +1153,7 @@ button:disabled { color: var(--muted); opacity: 0.7; }
    easy to lose when the eye comes back from the pane. */
 .pref-section.is-current,
 .pref-section.is-current:hover:not(:disabled) {
-  background: color-mix(in srgb, var(--accent) 18%, var(--panel));
+  background: color-mix(in srgb, var(--accent) 15%, var(--pref-slab));
   color: var(--ink-strong);
   font-weight: 600;
 }
@@ -1147,13 +1167,49 @@ button:disabled { color: var(--muted); opacity: 0.7; }
   min-height: 0;
 }
 
-.pref-close { min-height: 24px; padding: 2px 14px; font-size: 12px; }
+.pref-close {
+  min-height: 28px;
+  border: 1px solid var(--pref-card-line);
+  border-radius: 999px;
+  background: var(--pref-card);
+  box-shadow: 0 1px 2px color-mix(in srgb, var(--shadow) 6%, transparent);
+  padding: 3px 16px;
+  color: var(--ink);
+  font-size: 12.5px;
+  font-weight: 500;
+}
 
 /* The pane's head: its name in the document's own face, the one place the
    settings borrow the page's type, and a line saying what the pane is for. */
 .pref-pane-head {
-  margin: 0 0 26px;
-  padding: 6px 2px 0;
+  display: grid;
+  grid-template-columns: 52px minmax(0, 1fr);
+  align-items: center;
+  column-gap: 18px;
+  margin: 0 0 36px;
+  padding: 4px 0 0;
+
+  > :not(.pref-pane-emblem) { grid-column: 2; }
+}
+
+/* The pane's mark in a ring of soft light: lit from above-left inside, and a
+   faint aura beyond its edge. The one ornament in the settings. */
+.pref-pane-emblem {
+  grid-row: 1 / span 2;
+  display: grid;
+  place-items: center;
+  width: 52px;
+  height: 52px;
+  border: 1px solid color-mix(in srgb, var(--accent) 24%, transparent);
+  border-radius: 50%;
+  background: radial-gradient(circle at 34% 28%,
+    color-mix(in srgb, var(--accent) 6%, var(--pref-card)) 0%,
+    color-mix(in srgb, var(--accent) 17%, var(--pref-card)) 100%);
+  box-shadow: 0 0 0 5px color-mix(in srgb, var(--accent) 3%, transparent),
+    0 0 28px -4px color-mix(in srgb, var(--accent) 26%, transparent);
+  color: var(--accent);
+
+  .pref-glyph { width: 24px; height: 24px; color: inherit; stroke-width: 1.15; }
 }
 
 .pref-pane-head .settings-title {
@@ -1162,9 +1218,9 @@ button:disabled { color: var(--muted); opacity: 0.7; }
   /* The variable is set only while a font is picked by name; without the
      fallback the declaration fails and the title fell back to the UI sans. */
   font-family: var(--prose-font-family, #{tokens.$prose}), tokens.$prose;
-  font-size: 26px;
+  font-size: 28px;
   font-weight: 600;
-  line-height: 1.25;
+  line-height: 1.2;
   letter-spacing: -0.005em;
 }
 
@@ -1176,7 +1232,7 @@ button:disabled { color: var(--muted); opacity: 0.7; }
 .pref-pane-head .settings-crumb { font-weight: 500; }
 
 .pref-pane-lead {
-  margin: 6px 0 0;
+  margin: 5px 0 0;
   color: var(--muted);
   font-size: 13px;
   line-height: 1.5;
@@ -1271,7 +1327,7 @@ button:disabled { color: var(--muted); opacity: 0.7; }
   min-height: 0;
   overflow: auto;
   overscroll-behavior: contain;
-  padding: 22px max(28px, calc((100% - var(--pref-measure)) / 2)) 64px;
+  padding: 6px max(48px, calc((100% - var(--pref-measure)) / 2)) 80px;
   scrollbar-gutter: stable both-edges;
 }
 
@@ -1296,7 +1352,7 @@ button:disabled { color: var(--muted); opacity: 0.7; }
 :is(.pref-content, .updates-pane, .remote-pane, .memory-pane) > .pref-row:not(.pref-actions) {
   border: 1px solid var(--pref-card-line);
   background: var(--pref-card);
-  padding: 11px 16px;
+  padding: 13px var(--pref-inset);
 }
 
 :is(.pref-content, .updates-pane, .remote-pane, .memory-pane) > .pref-row + .pref-row {
@@ -1305,21 +1361,21 @@ button:disabled { color: var(--muted); opacity: 0.7; }
 }
 
 :is(.pref-content, .updates-pane, .remote-pane, .memory-pane) > .pref-row:not(.pref-row + .pref-row) {
-  border-top-left-radius: 10px;
-  border-top-right-radius: 10px;
+  border-top-left-radius: 12px;
+  border-top-right-radius: 12px;
 }
 
 :is(.pref-content, .updates-pane, .remote-pane, .memory-pane) > .pref-row:not(:has(+ .pref-row)) {
-  border-bottom-left-radius: 10px;
-  border-bottom-right-radius: 10px;
+  border-bottom-left-radius: 12px;
+  border-bottom-right-radius: 12px;
 }
 
 /* Notes, status lines and buttons between cards sit just off the card's
    edge, at the labels' indent, so they read as said about the card above. */
-:is(.pref-content, .updates-pane, .memory-pane) > :is(.pref-note, .pref-status, .pref-problem) { margin: 10px 16px; }
-.pref-row.pref-actions { padding-inline: 16px; }
-.remote-pane > :is(.pref-note, .pref-status, .remote-token) { margin-inline: 16px; }
-.remote-pane > .remote-regenerate { justify-self: start; margin-inline: 16px; }
+:is(.pref-content, .updates-pane, .memory-pane) > :is(.pref-note, .pref-status, .pref-problem) { margin: 10px var(--pref-inset); }
+.pref-row.pref-actions { padding-inline: var(--pref-inset); }
+.remote-pane > :is(.pref-note, .pref-status, .remote-token) { margin-inline: var(--pref-inset); }
+.remote-pane > .remote-regenerate { justify-self: start; margin-inline: var(--pref-inset); }
 
 .pref-label {
   display: grid;
@@ -2872,11 +2928,21 @@ section.plugin-group > .plugin-market-row.is-set-aside {
 /* A heading inside a pane, so a pane of eight switches reads as two groups of
    four rather than as a list somebody stopped writing. */
 .pref-group {
-  margin: 30px 16px 9px;
+  margin: 34px 2px 10px;
   color: var(--muted);
-  font-size: 12px;
+  font-size: 11px;
   font-weight: 600;
-  letter-spacing: 0.01em;
+  letter-spacing: 0.07em;
+  text-transform: uppercase;
+}
+
+/* What a group is for, said once under its name rather than as a paragraph
+   floating over the pane. */
+.pref-lede {
+  margin: -4px 2px 12px;
+  color: var(--muted);
+  font-size: 12.5px;
+  line-height: 1.55;
 }
 
 /* Right under the pane's head the group needs no gap of its own. */
@@ -3376,26 +3442,26 @@ section.plugin-group > .plugin-market-row.is-set-aside {
    card of their own, a row per agent with its mark, and the way to add one as
    the card's last row, where the next agent will appear. */
 .memory-pane { display: flow-root; }
-.memory-pane > .pref-group:first-of-type { margin-top: 22px; }
+.memory-pane > .pref-group:first-child { margin-top: 0; }
 
 .memory-agents {
   margin: 0;
   padding: 0;
   overflow: hidden;
   border: 1px solid var(--pref-card-line);
-  border-radius: 10px;
+  border-radius: 12px;
   background: var(--pref-card);
   list-style: none;
 }
 
 .memory-agent {
   display: grid;
-  grid-template-columns: 28px minmax(0, 1fr) auto;
+  grid-template-columns: 30px minmax(0, 1fr) auto;
   grid-template-areas: "mark name action" "mark words action";
   align-items: center;
-  column-gap: 12px;
+  column-gap: 14px;
   row-gap: 1px;
-  padding: 11px 16px;
+  padding: 13px var(--pref-inset);
 }
 
 .memory-agents > li + li { border-top: 1px solid var(--pref-card-rule); }
@@ -3404,8 +3470,8 @@ section.plugin-group > .plugin-market-row.is-set-aside {
   grid-area: mark;
   display: grid;
   place-items: center;
-  width: 28px;
-  height: 28px;
+  width: 30px;
+  height: 30px;
   border-radius: 50%;
   background: color-mix(in srgb, var(--accent) 14%, var(--pref-card));
   color: var(--accent);
@@ -3414,9 +3480,6 @@ section.plugin-group > .plugin-market-row.is-set-aside {
   font-weight: 600;
   line-height: 1;
 }
-
-/* The wildcard is a small glyph at the initials' size, so it is set larger. */
-.memory-agent[data-name='default'] .memory-agent-mark { font-family: tokens.$mono; font-size: 17px; padding-top: 4px; }
 
 .memory-agent.is-off .memory-agent-mark {
   background: color-mix(in srgb, var(--ink) 7%, var(--pref-card));
@@ -3438,7 +3501,7 @@ section.plugin-group > .plugin-market-row.is-set-aside {
   border: 0;
   border-radius: 0;
   background: transparent;
-  padding: 9px 16px;
+  padding: 10px var(--pref-inset);
   color: var(--accent);
   font-size: 13px;
   text-align: left;
@@ -3463,9 +3526,9 @@ section.plugin-group > .plugin-market-row.is-set-aside {
   display: flex;
   flex-direction: column;
   gap: 8px;
-  padding: 14px 16px;
+  padding: 16px var(--pref-inset);
   border: 1px solid color-mix(in srgb, var(--accent) 45%, var(--pref-card-line));
-  border-radius: 10px;
+  border-radius: 12px;
   background: var(--pref-card);
 }
 
@@ -3490,9 +3553,9 @@ section.plugin-group > .plugin-market-row.is-set-aside {
   display: flex;
   flex-direction: column;
   gap: 14px;
-  padding: 14px 16px;
+  padding: 16px var(--pref-inset);
   border: 1px solid var(--pref-card-line);
-  border-radius: 10px;
+  border-radius: 12px;
   background: var(--pref-card);
 }
 

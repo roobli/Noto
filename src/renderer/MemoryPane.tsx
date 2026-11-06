@@ -25,6 +25,17 @@ import { Switch } from './PrefSwitch';
 
 const rid = () => `memory-agents:${crypto.randomUUID()}`;
 
+/** Whoever brings no key: a lock left open, which is what that row grants. */
+function OpenLock() {
+  return (
+    <svg viewBox="0 0 16 16" width="14" height="14" fill="none" stroke="currentColor" strokeWidth="1.4"
+      strokeLinecap="round" strokeLinejoin="round">
+      <rect x="3.5" y="7.5" width="9" height="6" rx="1.6" />
+      <path d="M5.5 7.5V5.2a2.5 2.5 0 0 1 4.9-.7" />
+    </svg>
+  );
+}
+
 const when = (at: string) => new Date(at).toLocaleDateString('en', { month: 'short', day: 'numeric', year: 'numeric' });
 
 function describe(agent: AgentRowV1): string {
@@ -96,11 +107,11 @@ export function MemoryPane() {
 
   return (
     <div className="memory-pane" data-testid="memory-pane">
-      <p className="pref-note">
+      <p className="pref-group">Agents</p>
+      <p className="pref-lede">
         Agents reach this folder&apos;s memory through its MCP server, each with a key that says what it may read and do.
         Sealed notes are never given to any of them.
       </p>
-      <p className="pref-group">Agents</p>
       <ul className="memory-agents" data-testid="memory-agents">
         {reply.agents.map((agent) => {
           const active = agent.name === 'default' ? agent.verbs.length > 0 : agent.keys > 0;
@@ -109,7 +120,9 @@ export function MemoryPane() {
               {/* A mark per agent, its initial, so a list of keys reads as
                   who rather than as rows of text; whoever brings no key is
                   the wildcard. Dimmed while it reads nothing. */}
-              <span className="memory-agent-mark" aria-hidden="true">{agent.name === 'default' ? '*' : agent.name.slice(0, 1).toUpperCase()}</span>
+              <span className="memory-agent-mark" aria-hidden="true">
+                {agent.name === 'default' ? <OpenLock /> : agent.name.slice(0, 1).toUpperCase()}
+              </span>
               <span className="memory-agent-name">{agent.name === 'default' ? 'Any agent without a key' : agent.name}</span>
               <span className="memory-agent-words">{describe(agent)}</span>
               {active && (
