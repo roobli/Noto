@@ -668,7 +668,9 @@ button:disabled { color: var(--muted); opacity: 0.7; }
    pointer at once, not after the column's transition, and nothing in them
    takes a selection or shows its own pointer. */
 .app-shell.is-resizing-rail,
-.app-shell.is-resizing-rail > .titlebar { transition: none; }
+.app-shell.is-resizing-rail > .titlebar,
+.app-shell.is-resizing-window,
+.app-shell.is-resizing-window > .titlebar { transition: none; }
 .app-shell.is-resizing-rail {
   cursor: col-resize;
   user-select: none;

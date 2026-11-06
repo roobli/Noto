@@ -896,10 +896,23 @@ function NotoWorkspace({ platform }: { platform: NotoPlatform }) {
     typeof window !== 'undefined' ? window.innerWidth : 0
   ));
   useEffect(() => {
-    const sync = () => setViewportWidth(window.innerWidth);
-    sync();
+    // A column the window's width moves (the rail's ceiling, the pane's) goes
+    // there at once, as under a drag: eased, the rail, whose own width is
+    // already the new one, lay over the page until the column caught up.
+    let settle: ReturnType<typeof setTimeout> | null = null;
+    const sync = () => {
+      const shell = window.document.querySelector('.app-shell');
+      shell?.classList.add('is-resizing-window');
+      if (settle !== null) clearTimeout(settle);
+      settle = setTimeout(() => { settle = null; shell?.classList.remove('is-resizing-window'); }, 200);
+      setViewportWidth(window.innerWidth);
+    };
+    setViewportWidth(window.innerWidth);
     window.addEventListener('resize', sync);
-    return () => window.removeEventListener('resize', sync);
+    return () => {
+      window.removeEventListener('resize', sync);
+      if (settle !== null) clearTimeout(settle);
+    };
   }, []);
   /** Applied rail width: clamp a stored value that outgrew a narrower window. */
   const appliedRailWidth = clampRailWidth(settings.railWidth, viewportWidth);

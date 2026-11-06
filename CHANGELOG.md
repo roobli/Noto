@@ -157,6 +157,11 @@ How releases are made, and what each channel receives, is in
 
 ### Fixed
 
+- **The rail no longer lies over the page while a window grows.** With a
+  wide rail, widening the window raised the rail's limit and the rail took
+  its new width at once while its column eased after it, so for a moment it
+  covered the start of the page. A change of window width now moves both at
+  once, as dragging the rail's edge does.
 - **A quote written on a list item's own line is a quote.** `- > a` showed
   as a list item reading "> a", and so did a heading, a code fence or a
   nested list started on the marker's line (`- # h`, `- - a`). They are now
