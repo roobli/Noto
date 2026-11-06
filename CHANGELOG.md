@@ -103,6 +103,39 @@ How releases are made, and what each channel receives, is in
   newest commits that changed anything in it with the notes they changed,
   the notes read most, and those nothing links to or from. Back returns to
   the note in front. Plugins add to it through a `folder:<id>` slot.
+- **Links follow a note when it is renamed or moved.** Moving or renaming a
+  note or a folder in the tree (one at a time or several together) writes
+  again every link that reached it, in the notes that linked to it and in
+  its own relative links, each in the style it was written: a bare name stays
+  a bare name, a path stays a path, an embed, a label, an anchor and `%20`
+  are kept. The status line says how many links in how many notes, with
+  Undo, which takes back each note nothing has changed since. A note with
+  unsaved edits is left alone and counted. Moves made in quick succession
+  are followed as one. Move to Trash says how many links would lead nowhere.
+  In a folder that keeps memory the index names the notes to read;
+  elsewhere each note is read once.
+- **Dragging in the file tree crosses more than a screen.** Holding a
+  dragged row at the top or bottom edge scrolls the tree, slowly where the
+  edge begins and faster deeper in; a closed folder held over opens; the
+  foot of the rail says where the drop would go, and why not when it would
+  not move anything. A note's row is a drop target for the folder it is in.
+  The target folder's row and icon take the accent together.
+- **Several rows at once.** Command-click chooses rows in the tree and
+  Shift-click a run of them; dragging one of them carries them all, and the
+  right-click menu offers Move N Items To…, Copy Paths and Move to Trash for
+  the lot. Escape clears the choice.
+- **The open folder's own row has a menu**: New Note Here, New Folder Here,
+  Get Info for the whole folder, Reveal and Copy Path.
+- **What Noto Can Do is the guide.** The `?` in the title bar opens it, with
+  a dot when something is new since you last looked; each entry says where
+  the feature is and what Noto does, needs or not, and most have a Try It
+  that does it.
+- **Noto has an icon**: an N on paper whose last stroke is the caret.
+- **Note Info names the agents that wrote a note.** Git keeps every change
+  but not who made it, so an agent that edits files with its own tools
+  looked like you. Activity's Written section now lists the agents that said
+  they wrote the note, and Settings → Memory copies a Claude Code hook that
+  says so after each of its reads and edits. Nothing is added to commits.
 - **Plugins can add to Note Info.** A tab (`info:<id>`) and a timeline track
   (`track:<id>`) are slots like the rail's pages, and `git.read` now gives a
   note's history and its text at any of its commits. History and Properties
@@ -166,6 +199,21 @@ How releases are made, and what each channel receives, is in
 
 ### Changed
 
+- **A long note's timeline draws its last year.** When a note's commits or
+  reads span more than a year, the timeline draws the last twelve months to
+  scale and everything before as one muted mark at the left, said as how
+  many; the axis's left end switches to all of its time.
+- **What an agent does is recorded under its name.** The vault's command
+  line records under the agent that runs it (Claude Code and Codex say so in
+  their environment, or `NOTO_ACTOR`), a server started as the owner under
+  the name its client gives, and measuring recall records nothing, so none
+  of it is counted as your reading.
+- **The read record is shorter.** One recall is one line with all the notes
+  it returned, and a note opened again with nothing between, within a
+  minute, is counted on one line instead of written again. On a real folder
+  that is 244 lines where there were 908.
+- **A change on disk reads again only the folders it touched**, not every
+  folder ever opened in the tree.
 - **Tables ask for less attention.** The table's tools stand in the page's
   right margin beside the table, and only while the caret is in it and the
   pointer is on it; they used to sit over the line above the table the whole
@@ -233,6 +281,10 @@ How releases are made, and what each channel receives, is in
 
 ### Fixed
 
+- **Save pressed while a save is landing is no longer ignored.** It waits
+  for that save and then writes what is on screen, so the note no longer
+  stays marked unsaved with the last words unwritten.
+- **The timeline's marks sit on its line**, rather than a little below it.
 - **No speck under the rail's tabs with a page in front.** With Changes (or
   any page) showing, the tab underline was scaled to nothing but still left
   a faint mark at the rail's left edge on a fine screen; it now fades out.

@@ -24,7 +24,7 @@ import { useEffect, useRef, useState } from 'react';
  * new ones marked New, gathered at the top, and the title bar's ? carries a
  * dot until the list is opened again.
  */
-export const GUIDE_EDITION = 2;
+export const GUIDE_EDITION = 3;
 
 /** What a Try It button does: the window leads there, or does it. */
 export type GuideTry =
@@ -85,6 +85,7 @@ export function shortcutGroups(mac: boolean): Group[] {
       title: 'Note Info, beside the page',
       entries: [
         { keys: ['Get Info'], what: 'Right-click a note, or View → Note Info: its timeline of commits and reads, and tabs for History, Properties, Related and Activity.', since: 2, tryIt: 'note-info' },
+        { keys: ['Earlier · date'], what: "A note older than a year draws its last year on the timeline, and everything before as one grey mark. Press the axis's left end for all of its time.", since: 3, tryIt: 'note-info' },
         { keys: ['History'], what: 'Every commit that touched the note, through renames. Press one for the diff; [ and ] step through, Restore This Version takes it back as one edit Undo reverses.', needs: 'The folder is in git.', since: 2, tryIt: 'note-history' },
         { keys: ['Right-click'], what: 'History of This Passage, on a paragraph: only the commits that changed those lines, followed where they moved.', needs: 'The folder is in git.', since: 2 },
         { keys: ['Properties'], what: "The note's frontmatter, its words, links and code, its first and last commit, and what the folder's memory says it is.", since: 2 },
@@ -100,6 +101,7 @@ export function shortcutGroups(mac: boolean): Group[] {
         { keys: ['Get Info on a folder'], what: 'Right-click a folder: how many notes and broken links, the warmest, the newest commits, what is read most and what nothing links to.', since: 2, tryIt: 'folder-info' },
         { keys: ['Privacy'], what: 'Right-click a folder: open, private (only agents allowed private notes) or sealed (no agent, ever). The tree shows a lock.', needs: 'The folder keeps memory.', since: 2 },
         { keys: ['Settings → Memory'], what: 'Who may read this folder: add an agent with a key and copy its setup for Claude Code or Codex, take a key back, rebuild the index.', since: 2, tryIt: 'settings-memory' },
+        { keys: ['Copy Hook for Claude Code'], what: 'In Settings → Memory: Claude Code then says which notes it read and wrote with its own tools, and Activity names it under Written instead of counting it as you.', needs: 'The folder keeps memory, and Node.js 22.13 or later.', since: 3, tryIt: 'settings-memory' },
       ],
     },
     {

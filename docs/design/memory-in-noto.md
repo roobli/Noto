@@ -93,7 +93,13 @@ it, one row per track on one axis, reads as bars and commits as dots, with a
 ring at the right for what is not committed yet; and a row of tabs that
 plugins fill. It opens from View → Note Info, the palette, and Get Info in
 the tree's menu, follows the note in front once switching pauses, and
-remembers whether it was open, its tab and its width. Its key is chosen with
+remembers whether it was open, its tab and its width. A note whose marks
+span more than a year draws the last twelve months to scale, about twelve
+days a column, and gathers everything before into one muted mark at the
+left, said as how many; the axis's left end (Earlier · its date) switches
+to all of the note's time. Drawn whole, a note alive for years put this
+year in a column or two, and the last 90 days would have left most of its
+life in the gathered mark. Its key is chosen with
 the others in the Shortcuts board.
 
 The tabs, in order: **Related** and **Activity** from the vault's memory, and
@@ -113,7 +119,13 @@ work in any folder, memory or not.
   each row keeping its place in the whole history, and Show All has the
   rest back. A passage written since the last commit has no history yet,
   and History says so. The right click rather than the git mark, because a
-  passage git has not marked has a history too.
+  passage git has not marked has a history too. Taking back only the
+  passage is designed and not built: with History narrowed to it, a
+  commit's diff bar would offer Take This Passage Back, which replaces only
+  the passage's lines with their text at that commit (the range `git log
+  -L` gives for it there), as one edit Undo reverses, and only while the
+  passage on screen is still the one git followed. It waits on the passage
+  call keeping those ranges, which it now discards.
 - **Properties** groups each value by where it comes from: the note's own
   frontmatter, its text (words, Chinese a character each; tables; code;
   links), git, and the file. The vault adds the values a folder's policy, a
@@ -122,7 +134,11 @@ work in any folder, memory or not.
   about it.
 - **Activity** says who read the note and how often (the person and each
   agent apart), which agents cannot and why, what most often leads to it
-  (notes, searches, questions), and its heat in a sentence.
+  (notes, searches, questions), and its heat in a sentence. Written says
+  how many commits changed it and names each agent that said it wrote it:
+  over MCP, or from a hook after an edit of its own. Git cannot say who made
+  a commit's change, and the commits stay the person's; nothing is added to
+  commit messages, which was the other way considered.
 
 ### Related, in Note Info
 
@@ -225,7 +241,7 @@ to say is not shown at all.
 The sections are a slot (`folder:<id>`, see [the slots
 plan](../architecture/plugin-slots.md)): History adds the commits, Memory the
 other two, each asking for itself. The meters are where the heat map starts;
-a treemap comes only if a list with meters turns out not to be enough.
+a list with meters, not a treemap (see Rejected).
 
 ### The Review page
 
@@ -305,6 +321,19 @@ can add one; the key is shown once, with **Copy Setup for Claude Code** (a
 block). **Take Key Back…** empties the agent's keys and records when; a
 running server reads the policy again before its next answer, so the agent
 is refused from then on.
+
+Every read the record keeps names who caused it, so an agent's reading is
+never counted as the person's. Noto records the person's opens as `owner`;
+a server records under its key's principal, or, started as the owner, under
+the name its client gives; the command line records under `NOTO_ACTOR` or
+the agent that says so in its environment (Claude Code, Codex), and
+measuring recall records nothing. An agent that edits notes with its own
+tools is seen only by git, so Settings → Memory also offers **Copy Hook for
+Claude Code**: a `PostToolUse` hook that runs the same command line's
+`record --hook` after each Read and edit, which appends one line in the
+folder that keeps memory for that note, opens no index (about 30 ms), and
+never fails the agent's step. Any agent can run `record write <path>`
+itself. Noto never guesses who changed a file on disk.
 
 The MCP server those setups start is the vault's command line, which Noto
 ships unpacked beside itself, run by the computer's own Node (22.13 or
@@ -391,6 +420,11 @@ the app's own features use the seams anyone else's would.
   says yes.
 - A dialog per suggestion. The queue with keys is faster and can be left at
   any point.
+- A treemap for a folder's info. A list with meters reads in a 300-pixel
+  pane and names every note; a treemap needs area and a hover to say what
+  each block is.
+- Signing an agent's writes in commit messages (`Proposed-by:`). The
+  commits are the person's; the read record names the agent instead.
 
 ## Order of work
 
@@ -413,5 +447,10 @@ the app's own features use the seams anyone else's would.
    history. Done, on a `folder:<id>` slot for a folder's sections; the
    vault gained `folderAbout` and `formatRecall`, and one passage's history
    is offered by a right click rather than the git mark.
+
+7. Who an event names, the agent hook, the read record one line per call
+   with counted repeats, the timeline's last year, and a save pressed during
+   a save kept. Done; the vault gained `record`, `agentActor`, `EventLog`
+   and `writes.agents`.
 
 Progress is kept in the author's notes; the changelog says what shipped.
