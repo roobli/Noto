@@ -144,6 +144,8 @@ import type {
   WorkspaceNoteHistoryRequestV1,
   WorkspaceNoteVersionReplyV1,
   WorkspaceNoteVersionRequestV1,
+  WorkspaceNotePreviewReplyV1,
+  WorkspaceNotePreviewRequestV1,
   WorkspaceOpenPathRequestV1,
   WorkspaceTabRequestV1,
   WorkspaceTabsEventV1,
@@ -217,6 +219,8 @@ import {
   isWorkspaceMemoryPrivacyResultV1,
   isWorkspaceNoteVersionRequestV1,
   isWorkspaceNoteVersionResultV1,
+  isWorkspaceNotePreviewRequestV1,
+  isWorkspaceNotePreviewResultV1,
   isWorkspaceOpenPathRequestV1,
   isWorkspaceTabRequestV1,
   isWorkspaceTabsEventV1,
@@ -593,6 +597,9 @@ const workspaceApi: NotoWorkspaceApiV1 = Object.freeze({
   noteVersion: (request: WorkspaceNoteVersionRequestV1) => isWorkspaceNoteVersionRequestV1(request)
     ? invokeWorkspace<WorkspaceNoteVersionReplyV1>(WORKSPACE_CHANNELS.noteVersion, request, request.requestId, isWorkspaceNoteVersionResultV1)
     : Promise.resolve(rejectedWorkspace<WorkspaceNoteVersionReplyV1>('invalid', 'Invalid note version request')),
+  notePreview: (request: WorkspaceNotePreviewRequestV1) => isWorkspaceNotePreviewRequestV1(request)
+    ? invokeWorkspace<WorkspaceNotePreviewReplyV1>(WORKSPACE_CHANNELS.notePreview, request, request.requestId, isWorkspaceNotePreviewResultV1)
+    : Promise.resolve(rejectedWorkspace<WorkspaceNotePreviewReplyV1>('invalid', 'Invalid note preview request')),
   keepMemory: (request: WorkspaceRequestV1) => isWorkspaceRequestV1(request)
     ? invokeWorkspace<WorkspaceKeepMemoryReplyV1>(WORKSPACE_CHANNELS.keepMemory, request, request.requestId, isWorkspaceKeepMemoryResultV1)
     : Promise.resolve(rejectedWorkspace<WorkspaceKeepMemoryReplyV1>('invalid', 'Invalid keep memory request')),

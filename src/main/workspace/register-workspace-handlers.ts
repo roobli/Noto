@@ -29,6 +29,7 @@ import {
   type WorkspaceNoteHistoryRequestV1,
   type WorkspaceNotePassageRequestV1,
   type WorkspaceNoteVersionRequestV1,
+  type WorkspaceNotePreviewRequestV1,
   type WorkspaceEntryRequestV1,
   type WorkspaceExportRequestV1,
 } from '../../shared/workspace/v1/contracts';
@@ -51,6 +52,7 @@ import {
   isWorkspaceNoteHistoryRequestV1,
   isWorkspaceNotePassageRequestV1,
   isWorkspaceNoteVersionRequestV1,
+  isWorkspaceNotePreviewRequestV1,
   isWorkspaceEntryRequestV1,
   isWorkspaceExportRequestV1,
 } from '../../shared/workspace/v1/validate';
@@ -200,6 +202,9 @@ export function registerWorkspaceHandlers(deps: {
 
   register(WORKSPACE_CHANNELS.noteVersion, isWorkspaceNoteVersionRequestV1,
     (request: WorkspaceNoteVersionRequestV1) => deps.session.noteVersion(request.path, request.commit, request.at));
+
+  register(WORKSPACE_CHANNELS.notePreview, isWorkspaceNotePreviewRequestV1,
+    (request: WorkspaceNotePreviewRequestV1) => deps.session.notePreview(request.path, request.line));
 
   // Rename, duplicate, trash and new folder. Main re-resolves the target and
   // checks it against the open folder at the moment it acts, so a row that has

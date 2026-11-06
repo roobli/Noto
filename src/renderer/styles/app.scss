@@ -2319,9 +2319,14 @@ section.plugin-group > .plugin-market-row.is-set-aside {
 
 /* One selected row, moved by the keyboard and by the pointer alike. There is no
    separate hover state: two different highlights on one list is two answers to
-   "which one does Enter take". */
-.quick-result.is-selected { background: var(--raised); }
-.quick-result:hover { background: var(--raised); }
+   "which one does Enter take". It wears the spine, as the tree's current note
+   and History's open commit do: this is where you are in the list. */
+.quick-result.is-selected {
+  border-radius: 0 6px 6px 0;
+  background: var(--surface-active);
+  box-shadow: inset 2px 0 0 var(--accent);
+}
+.quick-result:hover { background: var(--surface-active); }
 
 .quick-name {
   min-width: 0;
@@ -2336,9 +2341,10 @@ section.plugin-group > .plugin-market-row.is-set-aside {
   min-width: 0;
   overflow: hidden;
   color: var(--muted);
-  font-family: tokens.$mono;
-  /* Quieter than the name it belongs to. It is context, not the answer. */
-  font-size: 10.5px;
+  /* Quieter than the name it belongs to. It is context, not the answer. In
+     the interface face: most folders here are named in Chinese, which a
+     monospace face only borrows from another font, a size off. */
+  font: 400 11px/15px tokens.$ui;
   text-overflow: ellipsis;
   white-space: nowrap;
 }
@@ -3255,6 +3261,92 @@ section.plugin-group > .plugin-market-row.is-set-aside {
    own palette is 740px, and 1000 wide; the same numbers, capped to the
    window so a narrow one never has a panel wider than itself. */
 .quick-open[data-width='wide'] { width: min(1000px, calc(100vw - 32px)); }
+
+/* The list and, beside it, the note in front of it. */
+.quick-open.has-preview { width: min(980px, calc(100vw - 48px)); }
+.quick-open.has-preview[data-width='wide'] { width: min(1220px, calc(100vw - 32px)); }
+.quick-body { display: flex; flex: 1 1 auto; min-height: 0; }
+.quick-body > .quick-results { flex: 1 1 50%; min-width: 0; }
+
+/* The preview reads like the page it will open onto: the document's face, its
+   leading, headings as headings; fading out where it is cut. */
+.quick-preview {
+  display: flex;
+  flex: 1 1 50%;
+  flex-direction: column;
+  min-width: 0;
+  border-left: 1px solid var(--hairline);
+  background: var(--paper);
+
+  &.is-blank { align-items: center; justify-content: center; }
+}
+.quick-preview-head {
+  flex: 0 0 auto;
+  padding: 18px 24px 10px;
+}
+.quick-preview-title {
+  display: -webkit-box;
+  margin: 0;
+  overflow: hidden;
+  color: var(--ink-strong);
+  font: 600 18px/25px tokens.$prose;
+  -webkit-box-orient: vertical;
+  -webkit-line-clamp: 2;
+  line-clamp: 2;
+  overflow-wrap: anywhere;
+}
+.quick-preview-where {
+  display: flex;
+  gap: 8px;
+  min-width: 0;
+  margin: 5px 0 0;
+  color: var(--muted);
+  font: 400 11.5px/16px tokens.$ui;
+  white-space: nowrap;
+
+  > span:not(:first-child)::before { content: '\00b7'; margin-right: 8px; }
+}
+.quick-preview-folder { min-width: 0; overflow: hidden; text-overflow: ellipsis; }
+.quick-preview-body {
+  position: relative;
+  flex: 1 1 auto;
+  min-height: 0;
+  overflow: hidden;
+  padding: 6px 24px 28px;
+  color: var(--ink);
+  font: 400 13.5px/1.75 tokens.$prose;
+  mask-image: linear-gradient(to bottom, #000 calc(100% - 64px), transparent);
+
+  p, hr { margin: 0 0 6px; }
+}
+.quick-preview-h1, .quick-preview-h2, .quick-preview-h3 { margin-top: 10px !important; color: var(--ink-strong); font-weight: 600; }
+.quick-preview-h1 { font-size: 16px; }
+.quick-preview-h2 { font-size: 15px; }
+.quick-preview-h3 { font-size: 14px; }
+.quick-preview-li { position: relative; padding-left: 16px; }
+.quick-preview-li::before { content: ''; position: absolute; top: 0.8em; left: 4px; width: 4px; height: 4px; border-radius: 50%; background: var(--muted); }
+.quick-preview-quote { padding-left: 12px; border-left: 2px solid var(--quote-line); color: var(--quote-ink); }
+.quick-preview-code {
+  margin: 0 !important;
+  padding: 0 10px;
+  overflow: hidden;
+  background: var(--code-fill);
+  color: var(--code-text);
+  font: 400 11.5px/1.65 tokens.$mono;
+  text-overflow: ellipsis;
+  white-space: pre;
+}
+.quick-preview-rule { height: 0; border: 0; border-top: 1px solid var(--hairline); margin: 10px 0 !important; }
+/* The line a search inside notes found, and the words in it. */
+.quick-preview-body .is-hit { margin-right: -8px; margin-left: -8px; padding-right: 8px; padding-left: 8px; border-radius: 4px; background: color-mix(in srgb, var(--mark-fill) 38%, transparent); }
+.quick-preview-hit { border-radius: 2px; background: var(--mark-fill); color: var(--ink-strong); }
+.quick-preview-empty { margin: 0; padding: 24px; color: var(--muted); font: 400 12.5px/18px tokens.$ui; text-align: center; }
+
+/* Where the window is too narrow for both, the list keeps the room. */
+@media (max-width: 900px) {
+  .quick-open.has-preview { width: min(740px, calc(100vw - 48px)); }
+  .quick-preview { display: none; }
+}
 
 .quick-tabs {
   display: flex;

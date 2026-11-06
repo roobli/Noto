@@ -15,12 +15,12 @@ import { GraphCache, linksForNote } from './note-graph';
 import { buildTagIndex, notesForTag, type TagIndex } from './tag-index';
 import type { SearchFlags } from '../../shared/search/pattern';
 import path from 'node:path';
-import { access, cp, lstat, mkdir, readFile, readdir, realpath, rename, rm, stat, writeFile } from 'node:fs/promises';
+import { access, cp, lstat, mkdir, open as openFile, readFile, readdir, realpath, rename, rm, stat, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { createHash, randomUUID } from 'node:crypto';
 import { BrowserWindow, Menu, clipboard, dialog, shell, type MenuItemConstructorOptions } from 'electron';
 import { FILE_TRUTH_CHANNELS, type FileTruthOpenReplyV1 } from '../../shared/file-truth/v1/contracts';
-import { openableExternalUrl } from '../../shared/workspace/v1/validate';
+import { NOTE_PREVIEW_MAX, openableExternalUrl } from '../../shared/workspace/v1/validate';
 import {
   NOTO_WORKSPACE_VERSION,
   WORKSPACE_CHANNELS,
@@ -47,6 +47,7 @@ import {
   type WorkspaceMemoryFolderReplyV1,
   type WorkspaceMemoryPrivacyReplyV1,
   type WorkspaceNoteVersionReplyV1,
+  type WorkspaceNotePreviewReplyV1,
   type WorkspaceTagIndexReplyV1,
   type WorkspaceNotesByTagReplyV1,
   type WorkspaceCodeViewV1,
@@ -125,6 +126,13 @@ export const MAX_TABS = 24;
 
 /** Past this many, a change names no folders and the window reads every listing again. */
 const CHANGED_LISTINGS_MAX = 500;
+/** What Quick Open's preview reads of a note's opening: a screen of it, never the whole of a long one. */
+const PREVIEW_BYTES = 6144;
+/** The largest note a match far down in it is shown from. */
+const PREVIEW_SCAN_BYTES = 4 * 1024 * 1024;
+/** Lines shown above a match, and in all, around it. */
+const PREVIEW_BEFORE = 4;
+const PREVIEW_LINES = 28;
 
 /**
  * The folders whose listings a change on disk may have touched, spelled as the
@@ -2097,6 +2105,41 @@ export class WorkspaceSession {
   }
 
   /** A note's text at one of its own commits. */
+  /**
+   * Quick Open's preview: the opening of a note in the open folder, or the
+   * lines around a match in it. Only a few kilobytes are read for an opening;
+   * a match far down is found in a file no bigger than PREVIEW_SCAN_BYTES. A
+   * file outside the folder, or not a note, gets nothing.
+   */
+  async notePreview(target: string, line: number | null): Promise<WorkspaceNotePreviewReplyV1> {
+    const none: WorkspaceNotePreviewReplyV1 = { version: NOTO_WORKSPACE_VERSION, text: null, from: 1, modified: null };
+    const real = await this.inRoot(target);
+    if (real === null || !/\.(md|markdown|mdown|mkd|txt)$/i.test(real)) return none;
+    try {
+      const info = await stat(real);
+      if (!info.isFile()) return none;
+      if (line === null) {
+        const handle = await openFile(real, 'r');
+        try {
+          const buffer = Buffer.alloc(Math.min(PREVIEW_BYTES, info.size));
+          const { bytesRead } = await handle.read(buffer, 0, buffer.length, 0);
+          // A character cut at the end of the read is dropped, not shown as a replacement mark.
+          const text = buffer.subarray(0, bytesRead).toString('utf8').replace(/\uFFFD+$/, '');
+          return { version: NOTO_WORKSPACE_VERSION, text: text.slice(0, NOTE_PREVIEW_MAX), from: 1, modified: info.mtimeMs };
+        } finally {
+          await handle.close();
+        }
+      }
+      if (info.size > PREVIEW_SCAN_BYTES) return none;
+      const lines = (await readFile(real, 'utf8')).split('\n');
+      const from = Math.max(1, Math.min(line, lines.length) - PREVIEW_BEFORE);
+      const text = lines.slice(from - 1, from - 1 + PREVIEW_LINES).join('\n').slice(0, NOTE_PREVIEW_MAX);
+      return { version: NOTO_WORKSPACE_VERSION, text, from, modified: info.mtimeMs };
+    } catch {
+      return none;
+    }
+  }
+
   async noteVersion(target: string, commit: string, at: string): Promise<WorkspaceNoteVersionReplyV1> {
     const real = await this.readableNote(target);
     const text = real === null ? null : await this.history.version(real, commit, at);

@@ -2940,6 +2940,11 @@ function NotoWorkspace({ platform }: { platform: NotoPlatform }) {
     : platform === 'win32' ? 'File Explorer' : 'the file manager';
 
   /** What a Try It in What Noto Can Do leads to: the same as its menu command, or the place it is. */
+  /** Quick Open's preview of a note: its opening, or the lines around a match in it. */
+  const previewNote = useCallback((filePath: string, line: number | null) => window.notoWorkspace.notePreview({
+    version: 1, requestId: rid('note-preview'), path: filePath, line,
+  }).then((reply) => (reply.ok ? reply.value : null)), []);
+
   const tryGuide = (action: GuideTry) => {
     setPrefs((current) => ({ ...current, open: false }));
     switch (action) {
@@ -3491,6 +3496,7 @@ function NotoWorkspace({ platform }: { platform: NotoPlatform }) {
         canInsertLink={document !== null}
         onOpenFile={(filePath) => void openPath(filePath)}
         onInsertLink={(entry) => insertWikiLink(entry, quickOpen.linking === true)}
+        onPreview={previewNote}
         linking={quickOpen.linking === true}
         onClose={() => { setQuickOpen((current) => ({ ...current, open: false })); editorRef.current?.focus(); }}
       />

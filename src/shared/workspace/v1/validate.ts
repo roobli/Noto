@@ -63,6 +63,8 @@ import {
   WorkspaceNotePassageRequestV1,
   WorkspaceNoteVersionReplyV1,
   WorkspaceNoteVersionRequestV1,
+  WorkspaceNotePreviewReplyV1,
+  WorkspaceNotePreviewRequestV1,
   WorkspaceTagIndexReplyV1,
   WorkspaceTagSummaryV1,
   WorkspaceNotesByTagRequestV1,
@@ -376,6 +378,28 @@ export function isWorkspaceNoteVersionReplyV1(value: unknown): value is Workspac
 export const isWorkspaceNoteVersionResultV1 = (
   value: unknown, id: string,
 ): value is WorkspaceResultV1<WorkspaceNoteVersionReplyV1> => isResult(value, id, isWorkspaceNoteVersionReplyV1);
+
+/** The longest preview main sends, in characters. */
+export const NOTE_PREVIEW_MAX = 8192;
+
+export function isWorkspaceNotePreviewRequestV1(value: unknown): value is WorkspaceNotePreviewRequestV1 {
+  return record(value) && exact(value, ['version', 'requestId', 'path', 'line'])
+    && value.version === 1 && typeof value.requestId === 'string' && requestId.test(value.requestId)
+    && typeof value.path === 'string' && value.path.length > 0 && value.path.length <= 4096
+    && (value.line === null || (typeof value.line === 'number' && Number.isSafeInteger(value.line) && value.line >= 1 && value.line <= 10_000_000));
+}
+
+export function isWorkspaceNotePreviewReplyV1(value: unknown): value is WorkspaceNotePreviewReplyV1 {
+  return record(value) && exact(value, ['version', 'text', 'from', 'modified'])
+    && value.version === 1
+    && (value.text === null || (typeof value.text === 'string' && value.text.length <= NOTE_PREVIEW_MAX))
+    && typeof value.from === 'number' && Number.isSafeInteger(value.from) && value.from >= 1
+    && (value.modified === null || time(value.modified));
+}
+
+export const isWorkspaceNotePreviewResultV1 = (
+  value: unknown, id: string,
+): value is WorkspaceResultV1<WorkspaceNotePreviewReplyV1> => isResult(value, id, isWorkspaceNotePreviewReplyV1);
 
 /** A short string, as the memory's titles, paths and phrases are. */
 const text = (value: unknown, max = 4096) => typeof value === 'string' && value.length <= max;

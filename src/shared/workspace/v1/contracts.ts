@@ -93,6 +93,7 @@ export const WORKSPACE_CHANNELS = {
   showFolderInfo: 'noto:v1:workspace:show-folder-info',
   /** One note's text as one of its commits had it. */
   noteVersion: 'noto:v1:workspace:note-version',
+  notePreview: 'noto:v1:workspace:note-preview',
   /** What the folder's memory knows about one note. See `WorkspaceNoteMemoryReplyV1`. */
   noteMemory: 'noto:v1:workspace:note-memory',
   /** Begin keeping memory for the open folder, as `noto-vault init` would, once main has asked the person. */
@@ -1051,6 +1052,23 @@ export interface WorkspaceNoteVersionReplyV1 {
   readonly text: string | null;
 }
 
+/** Quick Open's preview of the note in front of the list: its opening, or the lines around a match in it. */
+export interface WorkspaceNotePreviewRequestV1 extends WorkspaceRequestV1 {
+  readonly path: string;
+  /** A line to show the lines around, 1-based, for a match inside the note; null for its opening. */
+  readonly line: number | null;
+}
+
+export interface WorkspaceNotePreviewReplyV1 {
+  readonly version: typeof NOTO_WORKSPACE_VERSION;
+  /** A few kilobytes of the note; null when it is not a note in the open folder or cannot be read. */
+  readonly text: string | null;
+  /** The line the text begins on, 1-based. */
+  readonly from: number;
+  /** When the file last changed, in milliseconds; null with no text. */
+  readonly modified: number | null;
+}
+
 /** Where a value the vault holds about a note came from. */
 export type MemoryOriginV1 = 'note' | 'script' | 'folder' | 'config' | 'default';
 
@@ -1486,6 +1504,7 @@ export interface NotoWorkspaceApiV1 {
   folderHistory(request: WorkspaceFolderRequestV1): Promise<WorkspaceResultV1<WorkspaceFolderHistoryReplyV1>>;
   /** One note's text at one of its own commits. */
   noteVersion(request: WorkspaceNoteVersionRequestV1): Promise<WorkspaceResultV1<WorkspaceNoteVersionReplyV1>>;
+  notePreview(request: WorkspaceNotePreviewRequestV1): Promise<WorkspaceResultV1<WorkspaceNotePreviewReplyV1>>;
   /** What the folder's memory knows about one note. */
   noteMemory(request: WorkspaceFolderRequestV1): Promise<WorkspaceResultV1<WorkspaceNoteMemoryReplyV1>>;
   /** Begin keeping memory for the open folder. */
