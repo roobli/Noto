@@ -50,6 +50,8 @@ export interface FileTreeProps {
   readonly onEditingDone?: (name: string | null) => void;
   /** Refreshed listings, so a folder changed on disk is read again. */
   readonly reloadToken?: number;
+  /** The folders whose listings the change may have touched, when main knew them; all are read again otherwise. */
+  readonly reloadOnly?: readonly string[] | null;
   /**
    * Bumped to shut every folder except the ones holding the current note.
    *
@@ -224,7 +226,7 @@ function foldersBetween(root: string, target: string | null): string[] {
 
 export function FileTree({
   root, rootName, activePath, list, onOpenFile, onRowMenu, onChooseFolder, onMoveEntry, vaultMenu,
-  editing = null, onEditingDone, reloadToken = 0, collapseToken = 0, gitMarks = null, privacyMarks = null,
+  editing = null, onEditingDone, reloadToken = 0, reloadOnly = null, collapseToken = 0, gitMarks = null, privacyMarks = null,
 }: FileTreeProps) {
   const [children, setChildren] = useState<ReadonlyMap<string, readonly WorkspaceEntryV1[]>>(new Map());
   const [expanded, setExpanded] = useState<ReadonlySet<string>>(new Set());
@@ -318,7 +320,10 @@ export function FileTree({
    */
   useEffect(() => {
     if (reloadToken === 0) return;
-    for (const directory of [...childrenRef.current.keys()]) void load(directory);
+    // Only what changed when main said what that was: an agent writing notes all afternoon should not
+    // have every folder ever opened read again each time.
+    const only = reloadOnly === null ? null : new Set(reloadOnly);
+    for (const directory of [...childrenRef.current.keys()]) if (only === null || only.has(directory)) void load(directory);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [reloadToken]);
   useEffect(() => {

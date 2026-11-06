@@ -121,6 +121,30 @@ interface OpenDocument {
  */
 export const MAX_TABS = 24;
 
+/** Past this many, a change names no folders and the window reads every listing again. */
+const CHANGED_LISTINGS_MAX = 500;
+
+/**
+ * The folders whose listings a change on disk may have touched, spelled as the
+ * window spells them: each changed path's folder, and the path itself in case
+ * it is a folder that came, went or was replaced. Hidden paths change nothing
+ * shown. Null when there are too many to be worth naming.
+ */
+export function changedListings(root: string, touched: readonly string[]): string[] | null {
+  const folders = new Set<string>();
+  for (const relative of touched) {
+    if (relative.split('/').some((segment) => segment.startsWith('.'))) continue;
+    const parent = path.posix.dirname(relative);
+    folders.add(parent === '.' ? root : path.join(root, ...parent.split('/')));
+    folders.add(path.join(root, ...relative.split('/')));
+    if (folders.size > CHANGED_LISTINGS_MAX) return null;
+  }
+  return [...folders];
+}
+
+/** Moves closer together than this (rows dropped at once) have their links followed in one pass. */
+const RELINK_SETTLE_MS = 150;
+
 /**
  * What an open produced, inside main.
  *
@@ -1402,11 +1426,13 @@ export class WorkspaceSession {
     this.announceTreeChanged();
   }
 
-  announceTreeChanged(): void {
+  announceTreeChanged(directories: readonly string[] | null = null): void {
     // A rename or new note can change which tags exist; drop the scan so the
     // next Browse Tags sees the vault as it is now.
     this.tagIndexCache = null;
-    this.send(WORKSPACE_CHANNELS.treeChanged, { version: NOTO_WORKSPACE_VERSION });
+    this.send(WORKSPACE_CHANNELS.treeChanged, directories === null
+      ? { version: NOTO_WORKSPACE_VERSION }
+      : { version: NOTO_WORKSPACE_VERSION, directories });
     // A rename, a trash or a new note changes what git reports.
     this.git.refresh();
   }
@@ -2011,7 +2037,7 @@ export class WorkspaceSession {
       this.logger.log('workspace_disk_changed', { touched: touched === null ? 'unknown' : touched.length });
       this.invalidateFolderCaches();
       this.listed.clear();
-      this.announceTreeChanged();
+      this.announceTreeChanged(touched === null ? null : changedListings(root, touched));
     } else if (change.notes) {
       // Saved text can change a note's tags, and nothing else the folder caches.
       this.tagIndexCache = null;

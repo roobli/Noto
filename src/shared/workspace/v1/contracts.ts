@@ -1471,7 +1471,8 @@ export interface NotoWorkspaceApiV1 {
   searchContent(request: WorkspaceContentRequestV1): Promise<WorkspaceResultV1<WorkspaceContentReplyV1>>;
   manageEntry(request: WorkspaceEntryRequestV1): Promise<WorkspaceResultV1<WorkspaceEntryReplyV1>>;
   exportRendered(request: WorkspaceExportRequestV1): Promise<WorkspaceResultV1<WorkspaceExportReplyV1>>;
-  onTreeChanged(listener: () => void): () => void;
+  /** `directories`: the folders whose listings may have changed, when main knew them; null for all of them. */
+  onTreeChanged(listener: (event: { readonly directories: readonly string[] | null }) => void): () => void;
   gitMarks(request: WorkspaceRequestV1): Promise<WorkspaceResultV1<WorkspaceGitMarksV1>>;
   onGitMarksChanged(listener: (event: WorkspaceGitMarksV1) => void): () => void;
   onGitBlocksChanged(listener: (event: WorkspaceGitBlocksV1) => void): () => void;

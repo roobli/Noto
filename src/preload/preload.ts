@@ -624,15 +624,18 @@ const workspaceApi: NotoWorkspaceApiV1 = Object.freeze({
   manageEntry: (request: WorkspaceEntryRequestV1) => isWorkspaceEntryRequestV1(request)
     ? invokeWorkspace<WorkspaceEntryReplyV1>(WORKSPACE_CHANNELS.manageEntry, request, request.requestId, isWorkspaceEntryResultV1)
     : Promise.resolve(rejectedWorkspace<WorkspaceEntryReplyV1>('invalid', 'Invalid entry action request')),
-  // The event carries nothing: it says a listing is stale, and the renderer
-  // asks for what it needs. A payload here would be a second source of truth
-  // about the tree.
-  onTreeChanged: (listener: () => void) =>
+  // The event says which listings are stale, never what is in them: the
+  // renderer asks for what it needs, so the tree has one source of truth.
+  // `directories` names the folders when main knew them; without it, all.
+  onTreeChanged: (listener: (event: { directories: readonly string[] | null }) => void) =>
     subscribe(
       WORKSPACE_CHANNELS.treeChanged,
-      (value): value is { version: 1 } => typeof value === 'object' && value !== null
-        && (value as { version?: unknown }).version === NOTO_WORKSPACE_VERSION,
-      () => listener(),
+      (value): value is { version: 1; directories?: readonly string[] } => typeof value === 'object' && value !== null
+        && (value as { version?: unknown }).version === NOTO_WORKSPACE_VERSION
+        && (!('directories' in value) || (Array.isArray((value as { directories?: unknown }).directories)
+          && ((value as { directories: unknown[] }).directories).length <= 500
+          && ((value as { directories: unknown[] }).directories).every((entry) => typeof entry === 'string' && entry.length > 0 && entry.length <= 4096))),
+      (event) => listener({ directories: event.directories ?? null }),
     ),
   exportRendered: (request: WorkspaceExportRequestV1) => isWorkspaceExportRequestV1(request)
     ? invokeWorkspace<WorkspaceExportReplyV1>(WORKSPACE_CHANNELS.exportRendered, request, request.requestId, isWorkspaceExportResultV1)

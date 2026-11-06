@@ -1234,9 +1234,10 @@ function NotoWorkspace({ platform }: { platform: NotoPlatform }) {
         return next;
       });
     });
-    const unsubscribeTree = window.notoWorkspace.onTreeChanged(() => {
+    const unsubscribeTree = window.notoWorkspace.onTreeChanged((event) => {
       if (!active) return;
-      setTreeVersion((current) => current + 1);
+      // Main names the folders whose listings may have changed when it knows; the tree reads only those.
+      setTreeVersion((current) => ({ token: current.token + 1, only: event.directories }));
       // What quick open and wiki links match against is stale too. Main walks
       // again only when the change was structural; otherwise this is its cache.
       void ensureFileIndexRef.current();
@@ -2288,14 +2289,14 @@ function NotoWorkspace({ platform }: { platform: NotoPlatform }) {
   const tabPathsRef = useRef(new Map<string, string>());
   /** The rail as it was before a new note opened it to be named, if it did. */
   const railBeforeNamingRef = useRef<{ open: boolean; view: RailView } | null>(null);
-  /** Bumped whenever something in the tree moved, so listings are read again. */
-  const [treeVersion, setTreeVersion] = useState(0);
+  /** Bumped whenever something in the tree moved, so listings are read again: those in `only`, or all of them. */
+  const [treeVersion, setTreeVersion] = useState<{ token: number; only: readonly string[] | null }>({ token: 0, only: null });
 
   // Turning the viewer off dismisses a code file and refreshes the tree so
   // non-Markdown rows disappear again.
   useEffect(() => {
     if (!settings.codeViewer) setCodeView(null);
-    setTreeVersion((current) => current + 1);
+    setTreeVersion((current) => ({ token: current.token + 1, only: null }));
   }, [settings.codeViewer]);
 
   /** Bumped to shut every folder but the current note's, which the tree watches for. */
@@ -2699,7 +2700,7 @@ function NotoWorkspace({ platform }: { platform: NotoPlatform }) {
       case 'tree-sort-modified': case 'tree-sort-modified-old':
         changeSettings({ treeSort: event.command.slice('tree-sort-'.length) as TreeSortV1 });
         // The order is main's, so the tree has to ask again to see it.
-        setTreeVersion((current) => current + 1);
+        setTreeVersion((current) => ({ token: current.token + 1, only: null }));
         break;
       case 'shortcuts':
         setShortcuts((open) => !open);
@@ -2965,7 +2966,8 @@ function NotoWorkspace({ platform }: { platform: NotoPlatform }) {
               onMoveEntry: moveEntryInto,
               editing: treeEditing,
               onEditingDone: finishTreeEdit,
-              reloadToken: treeVersion,
+              reloadToken: treeVersion.token,
+              reloadOnly: treeVersion.only,
               collapseToken: treeCollapse,
               gitMarks: treeGitMarks,
               privacyMarks: treePrivacyMarks,
