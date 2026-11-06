@@ -58,6 +58,9 @@ export interface GitService {
   passage(path: string, text: string): Promise<NotePassage | null>;
 }
 
+/** What answers the git service's questions; the marks come with `ShellState.update`. */
+export type GitBackend = Omit<GitService, 'current' | 'subscribe'>;
+
 /** Which commits changed a passage: see `WorkspaceNotePassageReplyV1`. */
 export type NotePassage = Omit<WorkspaceNotePassageReplyV1, 'version'>;
 
@@ -93,6 +96,9 @@ export interface VaultService {
    */
   trust(): Promise<boolean>;
 }
+
+/** What answers the vault service's questions; changes come by `ShellState.memoryMoved`. */
+export type VaultBackend = Omit<VaultService, 'subscribe'>;
 
 export type {
   ReviewDismissalV1 as ReviewDismissal, ReviewKindV1 as ReviewKind, ReviewProposalV1 as ReviewProposal,
@@ -528,7 +534,7 @@ export class ShellState {
   private settled: string | null = null;
   private settleTimer: ReturnType<typeof setTimeout> | null = null;
   private readonly noteSettled = new Signal();
-  private reader: Pick<GitService, 'history' | 'version' | 'passage'> = {
+  private reader: GitBackend = {
     history: async () => null,
     version: async () => null,
     passage: async () => null,
@@ -539,10 +545,12 @@ export class ShellState {
   };
   private diffs: (request: DiffRequest | null, pluginId: string) => void = () => {};
   private tabs: (key: string, reveal?: string) => void = () => {};
-  private memoryAbout: VaultService['about'] = async () => null;
-  private memoryKeep: VaultService['keep'] = async () => 'failed';
-  private memoryTrust: VaultService['trust'] = async () => false;
-  private memoryAsk: VaultService['ask'] = async () => null;
+  private memory: VaultBackend = {
+    about: async () => null,
+    keep: async () => 'failed',
+    trust: async () => false,
+    ask: async () => null,
+  };
   private readonly memoryChanged = new Signal();
 
   /** How long the note in front must stay before the info pane follows it. */
@@ -565,16 +573,12 @@ export class ShellState {
   };
 
   readonly vault: VaultService = {
-    about: (path) => this.memoryAbout(path),
+    about: (path) => this.memory.about(path),
     subscribe: (listener) => this.memoryChanged.subscribe(listener),
-    keep: () => this.memoryKeep(),
-    trust: () => this.memoryTrust(),
-    ask: (cue, note) => this.memoryAsk(cue, note),
+    keep: () => this.memory.keep(),
+    trust: () => this.memory.trust(),
+    ask: (cue, note) => this.memory.ask(cue, note),
   };
-
-  setMemoryAsker(ask: VaultService['ask']): void {
-    this.memoryAsk = ask;
-  }
 
   private reviewAsk: (action: WorkspaceReviewActionV1) => Promise<ReviewAnswer> = async () => ({ state: 'unavailable', value: null, error: null });
 
@@ -587,10 +591,9 @@ export class ShellState {
     this.reviewAsk = ask;
   }
 
-  setMemoryReader(about: VaultService['about'], keep: VaultService['keep'], trust: VaultService['trust']): void {
-    this.memoryAbout = about;
-    this.memoryKeep = keep;
-    this.memoryTrust = trust;
+  /** What the vault service asks main through: everything it offers but its change signal. */
+  setMemoryBackend(backend: VaultBackend): void {
+    this.memory = backend;
   }
 
   /** Main said the memory opened or changed. */
@@ -607,7 +610,8 @@ export class ShellState {
     return this.noteSettled.subscribe(listener);
   }
 
-  setGitReader(reader: Pick<GitService, 'history' | 'version' | 'passage'>): void {
+  /** What the git service asks main through: everything it offers but the marks, which are pushed. */
+  setGitReader(reader: GitBackend): void {
     this.reader = reader;
   }
 

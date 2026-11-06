@@ -1818,7 +1818,6 @@ export class WorkspaceSession {
     return this.memory.about(real);
   }
 
-  /** A note's commits, following renames; see `git-history.ts`. */
   /** Which of a note's commits changed one passage of it; see `git-history.ts`. */
   async notePassage(target: string, text: string): Promise<WorkspaceNotePassageReplyV1> {
     const real = await this.readableNote(target);
@@ -1829,6 +1828,7 @@ export class WorkspaceSession {
     return reply;
   }
 
+  /** A note's commits, following renames; see `git-history.ts`. */
   async noteHistory(target: string): Promise<WorkspaceNoteHistoryReplyV1> {
     const real = await this.readableNote(target);
     if (real === null) {

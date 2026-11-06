@@ -1812,23 +1812,27 @@ function NotoWorkspace({ platform }: { platform: NotoPlatform }) {
         return result.ok ? result.value.text : null;
       },
     });
-    slotState.setMemoryReader(async (filePath) => {
-      const result = await window.notoWorkspace.noteMemory({ version: 1, requestId: rid('note-memory'), path: filePath });
-      if (!result.ok) return null;
-      const { version: _version, ...answer } = result.value;
-      return answer;
-    }, async () => {
-      const result = await window.notoWorkspace.keepMemory({ version: 1, requestId: rid('keep-memory') });
-      return result.ok ? result.value.outcome : 'failed';
-    }, async () => {
-      const result = await window.notoWorkspace.trustMemory({ version: 1, requestId: rid('trust-memory') });
-      return result.ok && result.value.trusted;
-    });
-    slotState.setMemoryAsker(async (cue, note) => {
-      const result = await window.notoWorkspace.memoryAsk({ version: 1, requestId: rid('memory-ask'), cue, note });
-      if (!result.ok) return null;
-      const { version: _version, ...answer } = result.value;
-      return answer;
+    slotState.setMemoryBackend({
+      about: async (filePath) => {
+        const result = await window.notoWorkspace.noteMemory({ version: 1, requestId: rid('note-memory'), path: filePath });
+        if (!result.ok) return null;
+        const { version: _version, ...answer } = result.value;
+        return answer;
+      },
+      keep: async () => {
+        const result = await window.notoWorkspace.keepMemory({ version: 1, requestId: rid('keep-memory') });
+        return result.ok ? result.value.outcome : 'failed';
+      },
+      trust: async () => {
+        const result = await window.notoWorkspace.trustMemory({ version: 1, requestId: rid('trust-memory') });
+        return result.ok && result.value.trusted;
+      },
+      ask: async (cue, note) => {
+        const result = await window.notoWorkspace.memoryAsk({ version: 1, requestId: rid('memory-ask'), cue, note });
+        if (!result.ok) return null;
+        const { version: _version, ...answer } = result.value;
+        return answer;
+      },
     });
     slotState.setReviewer(async (action) => {
       const result = await window.notoWorkspace.memoryReview({ version: 1, requestId: rid('memory-review'), action });
