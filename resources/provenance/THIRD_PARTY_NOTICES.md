@@ -2,7 +2,7 @@
 
 Generated from the installed dependency tree. Do not edit by hand.
 
-- Lockfile SHA-256: `6949e408c8665a31c1775bd415b8e8234450d0701737022f9cc2fbbf284ebb5a`
+- Lockfile SHA-256: `639be663064a8952ee0b4db9e9cfd46d218a3bc5b6d9b7948cd621040d4b8c27`
 - Unique resolved packages: 744
 - Packages with copied license or notice text: 715
 - Packages without a root license or notice file: 29

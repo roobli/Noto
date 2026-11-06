@@ -1,0 +1,28 @@
+{
+  "schemaVersion": 2,
+  "id": "dev.lr00rl.noto.memory",
+  "name": "Memory",
+  "version": "1.0.0",
+  "runtime": "trusted-renderer",
+  "activation": {
+    "startup": false,
+    "events": [],
+    "hotkeys": []
+  },
+  "capabilities": [
+    "vault.read"
+  ],
+  "lifecycle": [
+    "activate",
+    "deactivate"
+  ],
+  "commands": [],
+  "settings": [],
+  "hotkeys": [],
+  "editorExtensions": [],
+  "uiExtensions": [
+    "info:related",
+    "info:activity",
+    "track:reads"
+  ]
+}

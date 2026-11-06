@@ -13,7 +13,7 @@
  * `@roobli/vault/events` instead.
  */
 
-import { appendFile, mkdir, stat } from 'node:fs/promises';
+import { appendFile, mkdir } from 'node:fs/promises';
 import os from 'node:os';
 import path from 'node:path';
 
@@ -26,28 +26,30 @@ function hostName(): string {
 /** A vault-relative path, or null when the file is not inside the folder. */
 function inside(root: string, file: string): string | null {
   const relative = path.relative(root, file);
-  if (!relative || relative.startsWith('..') || path.isAbsolute(relative)) return null;
+  if (!relative || relative === '..' || relative.startsWith(`..${path.sep}`) || path.isAbsolute(relative)) return null;
   return relative.split(path.sep).join('/');
+}
+
+/** Make a folder that may be there already; false when its parent is not. */
+async function folderIn(dir: string): Promise<boolean> {
+  try {
+    await mkdir(dir);
+    return true;
+  } catch (error) {
+    const code = (error as NodeJS.ErrnoException).code;
+    if (code === 'EEXIST') return true;
+    if (code === 'ENOENT' || code === 'ENOTDIR') return false;
+    throw error;
+  }
 }
 
 export class VaultVisits {
   /** One sitting per launch, so notes opened one after another can be paired. */
   private readonly session = `${Date.now().toString(36)}${Math.random().toString(36).slice(2, 6)}`;
   private readonly host = hostName();
-  private readonly keeps = new Map<string, boolean>();
   private last: { path: string; time: number } | null = null;
 
   constructor(private readonly log: (event: string, data: Record<string, unknown>) => void = () => {}) {}
-
-  /** Whether a folder keeps memory: it has `.noto/`. Asked once per folder. */
-  private async keepsMemory(root: string): Promise<boolean> {
-    const known = this.keeps.get(root);
-    if (known !== undefined) return known;
-    let keeps = false;
-    try { keeps = (await stat(path.join(root, '.noto'))).isDirectory(); } catch { keeps = false; }
-    this.keeps.set(root, keeps);
-    return keeps;
-  }
 
   /**
    * Record that a note was brought to the front. The same note again within
@@ -56,7 +58,7 @@ export class VaultVisits {
   async opened(root: string | null, file: string, from?: string | null): Promise<void> {
     if (root === null || !isNote(file)) return;
     const rel = inside(root, path.resolve(file));
-    if (rel === null || !(await this.keepsMemory(root))) return;
+    if (rel === null) return;
     const now = Date.now();
     if (this.last && this.last.path === rel && now - this.last.time < 1000) return;
     this.last = { path: rel, time: now };
@@ -65,9 +67,14 @@ export class VaultVisits {
     const line: Record<string, string> = { time: time.toISOString(), actor: 'owner', verb: 'open', path: rel, session: this.session };
     if (fromRel && fromRel !== rel) line.from = fromRel;
     const month = `${time.getUTCFullYear()}-${String(time.getUTCMonth() + 1).padStart(2, '0')}`;
-    const target = path.join(root, '.noto', 'events', this.host, `${month}.jsonl`);
+    // Whether the folder keeps memory is asked on every open, so one that
+    // began keeping it a moment ago is recorded and one whose .noto was just
+    // deleted is not: its events folder is made only inside a .noto that is
+    // there, never with the .noto around it.
+    const events = path.join(root, '.noto', 'events');
+    const target = path.join(events, this.host, `${month}.jsonl`);
     try {
-      await mkdir(path.dirname(target), { recursive: true });
+      if (!(await folderIn(events)) || !(await folderIn(path.dirname(target)))) return;
       await appendFile(target, `${JSON.stringify(line)}\n`, 'utf8');
     } catch (error) {
       // Memory is a convenience: a read-only vault still opens its notes.

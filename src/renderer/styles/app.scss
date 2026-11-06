@@ -4216,3 +4216,137 @@ section.plugin-group > .plugin-market-row.is-set-aside {
   &:disabled { color: var(--muted); cursor: default; opacity: 0.6; }
   &:focus-visible { outline: 2px solid var(--focus); outline-offset: 1px; }
 }
+
+/* Related and Activity: notes worth having in mind, each with why. */
+.memory-group { padding: 8px 8px 4px; }
+
+.memory-heading {
+  display: flex;
+  justify-content: space-between;
+  margin: 0 8px 3px;
+  color: var(--muted);
+  font: 600 10.5px/14px tokens.$ui;
+  letter-spacing: 0.02em;
+}
+
+.memory-count { font-weight: 500; font-variant-numeric: tabular-nums; }
+
+.memory-list { margin: 0; padding: 0; list-style: none; }
+
+.memory-row {
+  position: relative;
+  display: flex;
+  flex-direction: column;
+  gap: 1px;
+  width: 100%;
+  min-width: 0;
+  padding: 4px 22px 4px 8px;
+  border: 0;
+  border-radius: 6px;
+  background: transparent;
+  color: var(--ink);
+  font-family: tokens.$ui;
+  text-align: left;
+  cursor: pointer;
+
+  &:hover { background: var(--raised); }
+  &:focus-visible { outline: 2px solid var(--focus); outline-offset: -2px; }
+  &:disabled { cursor: default; }
+}
+
+.memory-title {
+  overflow: hidden;
+  font: 500 12.5px/17px tokens.$ui;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.memory-why {
+  overflow: hidden;
+  color: var(--muted);
+  font: 400 11px/15px tokens.$ui;
+  font-variant-numeric: tabular-nums;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+/* How warm the note is: read and written lately. The accent, as on the timeline. */
+.memory-heat {
+  position: absolute;
+  top: 50%;
+  right: 8px;
+  width: 3px;
+  height: 14px;
+  border-radius: 1.5px;
+  background: linear-gradient(to top, var(--accent) calc(var(--heat) * 100%), var(--hairline) 0);
+  transform: translateY(-50%);
+}
+
+.memory-more,
+.memory-plain {
+  padding: 2px 8px;
+  color: var(--ink);
+  font: 400 12px/18px tokens.$ui;
+}
+
+.memory-more { color: var(--muted); font-size: 11px; }
+
+.memory-outgoing {
+  margin: 8px 16px 0;
+  color: var(--muted);
+  font: 400 11.5px/16px tokens.$ui;
+}
+
+.memory-link {
+  padding: 0;
+  border: 0;
+  background: none;
+  color: var(--ink);
+  font: inherit;
+  text-decoration: underline;
+  text-decoration-color: var(--hairline);
+  text-underline-offset: 2px;
+  cursor: pointer;
+
+  &:focus-visible { outline: 2px solid var(--focus); outline-offset: 1px; border-radius: 2px; }
+}
+
+.memory-broken { margin: 4px 0 0; padding: 0 0 0 12px; color: var(--ink); }
+
+.memory-superseded {
+  margin: 6px 16px 4px;
+  padding: 6px 8px;
+  border-left: 2px solid var(--accent);
+  color: var(--ink);
+  font: 400 12px/17px tokens.$ui;
+}
+
+.memory-heat-words {
+  margin: 10px 16px 0;
+  color: var(--muted);
+  font: 400 11.5px/16px tokens.$ui;
+}
+
+.memory-tab .properties-list { padding: 0 8px; }
+
+.properties-origin { margin-left: 4px; color: var(--muted); font-size: 11px; }
+
+/* A state with one thing to do (keep memory, allow the scripts): main asks the question. */
+/* A mention: the name it is about in ink, the words around it muted. */
+.memory-name { color: var(--ink); }
+
+/* Why an agent may not read the note: muted, and wrapped rather than cut, since it is the answer. */
+.properties-row dd.memory-reason { color: var(--muted); }
+
+.memory-keep { padding-bottom: 8px; }
+.memory-keep-start { margin: 0 16px; }
+.memory-keep .info-status { margin: 8px 16px 0; }
+
+.info-button.is-primary {
+  border-color: var(--accent);
+  background: var(--accent);
+  color: var(--paper);
+
+  &:hover:not(:disabled) { background: var(--accent); filter: brightness(1.06); }
+  &:disabled { opacity: 0.6; cursor: default; }
+}

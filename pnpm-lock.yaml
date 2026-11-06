@@ -11,6 +11,9 @@ importers:
       '@roobli/md':
         specifier: github:roobli/md#39955fe91f767415edb8161496b48369a48373dc
         version: https://codeload.github.com/roobli/md/tar.gz/39955fe91f767415edb8161496b48369a48373dc(@types/mdast@4.0.4)(micromark-util-types@2.0.2)(micromark@4.0.2(supports-color@8.1.1))(supports-color@8.1.1)
+      '@roobli/vault':
+        specifier: link:../vault
+        version: link:../vault
       electron-updater:
         specifier: 6.8.9
         version: 6.8.9(supports-color@8.1.1)

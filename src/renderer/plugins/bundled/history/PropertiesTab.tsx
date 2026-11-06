@@ -11,8 +11,19 @@
 
 import { useEffect, useState, type ReactNode } from 'react';
 import { createRoot } from 'react-dom/client';
-import type { InfoTabHost, InfoTabView, NoteHistory } from '../../slots';
+import type { InfoTabHost, InfoTabView, NoteHistory, NoteMemory } from '../../slots';
 import { frontmatterFields, plural, size, textCounts, when } from './model';
+
+/** Where a value the memory holds came from. */
+function originWords(from: string): string {
+  switch (from) {
+    case 'note': return 'written in the note';
+    case 'script': return 'from a script';
+    case 'folder': return 'from the folder\'s policy';
+    case 'config': return 'from brain.yaml';
+    default: return 'by default';
+  }
+}
 
 /** "3 to notes, 1 to the web", or "None". */
 function linkWords(notes: number, web: number): string {
@@ -50,6 +61,7 @@ function PropertiesTab({ host }: { readonly host: InfoTabHost }) {
   const [text, setText] = useState<string | null>(() => host.noteText());
   const [history, setHistory] = useState<NoteHistory | null>(null);
   const [copied, setCopied] = useState(false);
+  const [memory, setMemory] = useState<NoteMemory | null>(null);
 
   useEffect(() => host.onNote(() => setNote(host.note())), [host]);
   useEffect(() => {
@@ -67,6 +79,25 @@ function PropertiesTab({ host }: { readonly host: InfoTabHost }) {
     return () => { live = false; stop(); };
   }, [host, note]);
 
+  // What the folder's memory makes of the note, and from where: the answer to
+  // why an agent cannot read a note that says nothing about it.
+  useEffect(() => {
+    setMemory(null);
+    if (note === null || !host.vault) return undefined;
+    let live = true;
+    // Only the latest question's answer counts: one asked on a change can come back before the first.
+    let latest = 0;
+    const ask = () => {
+      const mine = ++latest;
+      host.vault!.about(note).then((answer) => {
+        if (live && mine === latest) setMemory(answer?.state === 'ok' ? answer.memory : null);
+      }, () => {});
+    };
+    ask();
+    const stop = host.vault.subscribe(ask);
+    return () => { live = false; stop(); };
+  }, [host, note]);
+
   if (note === null) return null;
   const fields = text === null ? [] : frontmatterFields(text);
   const counts = text === null ? null : textCounts(text);
@@ -81,6 +112,13 @@ function PropertiesTab({ host }: { readonly host: InfoTabHost }) {
           {fields.map((field) => (
             <Row key={field.key} name={field.key} testId="properties-field">{field.value || <span className="properties-empty">empty</span>}</Row>
           ))}
+        </Group>
+      )}
+      {memory && (
+        <Group title="In the folder's memory">
+          <Row name="Kind" testId="properties-memory">{memory.kind.value} <span className="properties-origin">{originWords(memory.kind.from)}</span></Row>
+          <Row name="Known" testId="properties-memory">{memory.known.value ?? 'not said'} <span className="properties-origin">{originWords(memory.known.from)}</span></Row>
+          <Row name="Sensitivity" testId="properties-memory">{memory.sensitivity.value} <span className="properties-origin">{originWords(memory.sensitivity.from)}</span></Row>
         </Group>
       )}
       {counts && (

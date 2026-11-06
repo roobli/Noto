@@ -1,0 +1,254 @@
+/**
+ * Related and Activity: what the folder's memory knows about the note in
+ * front.
+ *
+ * Related is the notes worth having in mind while writing this one, in four
+ * groups, each row saying why it is there so the reader can judge it: what
+ * links here, notes this one names without linking, notes read or changed
+ * together with it, and notes about the same thing. Activity is how the note
+ * is used: who read it and how often, what led there, what was written to it,
+ * its heat in a sentence, and which agents may not read it and why.
+ */
+
+import { useState, type CSSProperties, type ReactNode } from 'react';
+import { createRoot } from 'react-dom/client';
+import type { InfoTabHost, InfoTabView, NoteMemory, NoteMemoryAnswer } from '../../slots';
+import { absolute, actorName, agentName, heatWords, nameOf, times, togetherWhy, useMemory } from './model';
+
+/** Rows a group shows before it says how many more there are. */
+const SHOWN = 8;
+
+function NotHere({ answer }: { readonly answer: NoteMemoryAnswer | null }) {
+  if (answer === null) return null;
+  const words: Record<string, string> = {
+    'no-memory': 'This folder does not keep memory, so there is nothing here yet. A folder keeps memory when it has a .noto folder, which the vault tools make. History and Properties work without it.',
+    untrusted: 'This folder’s memory runs scripts from its .noto/scripts folder, and Noto runs them only once you allow it. History and Properties work without them.',
+    opening: 'Reading the folder’s notes. The first time, for a big folder, this takes a little while.',
+    unknown: 'The memory does not hold this note yet. It is read once the note is saved.',
+    unavailable: 'The folder’s memory could not be read. Noto tries again in a little while.',
+    outside: 'This note is not in the open folder, so the folder’s memory has nothing to say about it.',
+  };
+  return <p className="info-note" data-testid="memory-state" data-state={answer.state}>{words[answer.state] ?? ''}</p>;
+}
+
+/**
+ * A state with one thing to do about it: begin keeping memory, or allow the
+ * folder's scripts. Main asks the question itself, in a sheet that says what
+ * will be written or names the scripts, so the button here only starts it.
+ */
+function AskMain({ answer, label, testId, run }: {
+  readonly answer: NoteMemoryAnswer;
+  readonly label: string;
+  readonly testId: string;
+  readonly run: () => Promise<'done' | 'cancelled' | 'failed'>;
+}) {
+  const [busy, setBusy] = useState(false);
+  const [failed, setFailed] = useState(false);
+  return (
+    <div className="memory-keep" data-testid={testId}>
+      <NotHere answer={answer} />
+      <button type="button" className="info-button memory-keep-start" data-testid={`${testId}-start`} disabled={busy}
+        onClick={() => {
+          setBusy(true);
+          setFailed(false);
+          void run().then((outcome) => { setBusy(false); setFailed(outcome === 'failed'); }, () => { setBusy(false); setFailed(true); });
+        }}>
+        {label}
+      </button>
+      {failed && <p className="info-status" role="status">That did not work. The folder may be read-only.</p>}
+    </div>
+  );
+}
+
+function Group({ title, count, children, testId }: { readonly title: string; readonly count: number; readonly children: ReactNode; readonly testId: string }) {
+  if (count === 0) return null;
+  return (
+    <section className="memory-group" aria-label={title} data-testid={testId}>
+      <h3 className="memory-heading"><span>{title}</span><span className="memory-count">{count.toLocaleString('en')}</span></h3>
+      <ul className="memory-list">{children}</ul>
+    </section>
+  );
+}
+
+function Row({ host, rel, title, why, heat, testId }: {
+  readonly host: InfoTabHost; readonly rel: string; readonly title: string; readonly why: ReactNode; readonly heat?: number; readonly testId: string;
+}) {
+  const target = absolute(host.folder(), rel);
+  return (
+    <li>
+      <button type="button" className="memory-row" data-testid={testId} data-path={rel} title={rel}
+        disabled={target === null} onClick={() => { if (target) host.openNote(target); }}>
+        <span className="memory-title">{title || nameOf(rel)}</span>
+        <span className="memory-why">{why}</span>
+        {heat !== undefined && heat > 0 && (
+          <span className="memory-heat" aria-hidden="true" style={{ '--heat': `${Math.min(1, heat)}` } as CSSProperties} />
+        )}
+      </button>
+    </li>
+  );
+}
+
+/** Characters kept on each side of a mention: enough to place it, few enough that the name is always in view. */
+const BEFORE = 8;
+const AFTER = 14;
+
+/** Where the note names the other one: a little on each side, the name itself in ink. */
+function Mention({ around }: { readonly around: readonly [string, string, string] }) {
+  const before = Array.from(around[0]);
+  const after = Array.from(around[2]);
+  return (
+    <span className="memory-around" data-testid="memory-around">
+      {before.length > BEFORE ? '…' : ''}{before.slice(-BEFORE).join('')}
+      <span className="memory-name">{around[1]}</span>
+      {after.slice(0, AFTER).join('')}{after.length > AFTER ? '…' : ''}
+    </span>
+  );
+}
+
+const more = (count: number, shown: number) => (count > shown
+  ? <li className="memory-more">{(count - shown).toLocaleString('en')} more not shown</li>
+  : null);
+
+function Related({ host }: { readonly host: InfoTabHost }) {
+  const { note, answer } = useMemory(host);
+  const [brokenOpen, setBrokenOpen] = useState(false);
+  if (note === null) return null;
+  if (!host.vault) return <p className="info-note">Related needs the folder's memory, which this plugin has not been allowed.</p>;
+  if (answer?.state === 'no-memory') {
+    return <AskMain answer={answer} label="Keep Memory for This Folder…" testId="memory-keep"
+      run={() => host.vault!.keep().then((outcome) => (outcome === 'made' ? 'done' : outcome))} />;
+  }
+  if (answer?.state === 'untrusted') {
+    return <AskMain answer={answer} label="Review Scripts…" testId="memory-trust"
+      run={() => host.vault!.trust().then((trusted) => (trusted ? 'done' : 'cancelled'))} />;
+  }
+  if (answer?.state !== 'ok' || !answer.memory) return <NotHere answer={answer} />;
+  const memory = answer.memory;
+  const listed = memory.linksHere.length + memory.namedHere.length + memory.together.length + memory.aboutSame.length;
+  return (
+    <div className="memory-tab" data-testid="related-tab">
+      {memory.supersededBy && (
+        <p className="memory-superseded" data-testid="memory-superseded">
+          Superseded by{' '}
+          <button type="button" className="memory-link" onClick={() => {
+            const target = absolute(host.folder(), memory.supersededBy!.path);
+            if (target) host.openNote(target);
+          }}>{memory.supersededBy.title || nameOf(memory.supersededBy.path)}</button>
+        </p>
+      )}
+      <Group title="Links here" count={memory.linksHereCount} testId="related-links-here">
+        {memory.linksHere.slice(0, SHOWN).map((item) => (
+          <Row key={item.path} host={host} rel={item.path} title={item.title} heat={item.heat} testId="related-row"
+            why={[item.relation ? item.relation.replace(/_/g, ' ') : 'links here', item.reads > 0 ? `read ${times(item.reads)}` : ''].filter(Boolean).join(' · ')} />
+        ))}
+        {more(memory.linksHereCount, Math.min(SHOWN, memory.linksHere.length))}
+      </Group>
+      <Group title="Named here, not linked" count={memory.namedHereCount} testId="related-named-here">
+        {memory.namedHere.slice(0, SHOWN).map((item) => (
+          <Row key={item.id} host={host} rel={item.to} title={item.title} testId="related-row"
+            why={<Mention around={item.around} />} />
+        ))}
+        {more(memory.namedHereCount, Math.min(SHOWN, memory.namedHere.length))}
+      </Group>
+      <Group title="Read together" count={memory.togetherCount} testId="related-together">
+        {memory.together.slice(0, SHOWN).map((item) => (
+          <Row key={`${item.path}:${item.type}`} host={host} rel={item.path} title={item.title} testId="related-row"
+            why={togetherWhy(item.type, item.count)} />
+        ))}
+        {more(memory.togetherCount, Math.min(SHOWN, memory.together.length))}
+      </Group>
+      <Group title="About the same" count={memory.aboutSame.length} testId="related-about-same">
+        {memory.aboutSame.slice(0, SHOWN).map((item) => (
+          <Row key={item.path} host={host} rel={item.path} title={item.title} testId="related-row"
+            why={item.why.join(' · ') || item.excerpt} />
+        ))}
+      </Group>
+      {listed === 0 && <p className="info-note" data-testid="related-nothing">Nothing else in the folder links to this note or is about the same thing yet.</p>}
+      <div className="memory-outgoing" data-testid="related-outgoing">
+        {memory.outgoing.count === 0 ? 'Links to no other note.' : `Links to ${memory.outgoing.count.toLocaleString('en')} ${memory.outgoing.count === 1 ? 'note' : 'notes'}`}
+        {memory.outgoing.brokenCount > 0 && (
+          <>
+            {', '}
+            <button type="button" className="memory-link" aria-expanded={brokenOpen} onClick={() => setBrokenOpen((open) => !open)}>
+              {memory.outgoing.brokenCount.toLocaleString('en')} broken
+            </button>
+            {brokenOpen && (
+              <ul className="memory-broken">
+                {memory.outgoing.broken.map((item) => <li key={`${item.target}:${item.line}`}>{item.target} <span className="memory-why">line {item.line}</span></li>)}
+              </ul>
+            )}
+          </>
+        )}
+      </div>
+    </div>
+  );
+}
+
+function Activity({ host }: { readonly host: InfoTabHost }) {
+  const { note, answer } = useMemory(host);
+  if (note === null) return null;
+  if (!host.vault) return <p className="info-note">Activity needs the folder's memory, which this plugin has not been allowed.</p>;
+  if (answer?.state !== 'ok' || !answer.memory) return <NotHere answer={answer} />;
+  const memory: NoteMemory = answer.memory;
+  return (
+    <div className="memory-tab" data-testid="activity-tab">
+      <section className="memory-group" aria-label="Read" data-testid="activity-reads" data-key="reads">
+        <h3 className="memory-heading"><span>Read</span></h3>
+        {memory.readers.length === 0 && <p className="memory-why">No one has opened it since the folder began keeping memory.</p>}
+        <dl className="properties-list">
+          {memory.readers.map((reader) => (
+            <div key={reader.actor} className="properties-row" data-testid="activity-reader">
+              <dt>{actorName(reader.actor)}</dt>
+              <dd>{times(reader.count)}, last {new Date(reader.last).toLocaleDateString('en', { month: 'short', day: 'numeric' })}</dd>
+            </div>
+          ))}
+        </dl>
+      </section>
+      {memory.agents.length > 0 && (
+        <section className="memory-group" aria-label="Agents" data-testid="activity-agents">
+          <h3 className="memory-heading"><span>Agents</span></h3>
+          <dl className="properties-list">
+            {memory.agents.map((agent) => (
+              <div key={agent.name} className="properties-row" data-testid={agent.canSee ? 'activity-allowed' : 'activity-barred'}>
+                <dt title={agentName(agent.name)}>{agentName(agent.name)}</dt>
+                {agent.canSee
+                  ? <dd>may read it</dd>
+                  : <dd className="memory-reason">cannot read it{agent.why ? `: ${agent.why}` : ''}</dd>}
+              </div>
+            ))}
+          </dl>
+        </section>
+      )}
+      {memory.leadsHere.length > 0 && (
+        <section className="memory-group" aria-label="What leads here">
+          <h3 className="memory-heading"><span>What leads here</span></h3>
+          <ul className="memory-list">
+            {memory.leadsHere.map((item) => (item.from
+              ? <Row key={`from:${item.from}`} host={host} rel={item.from} title={nameOf(item.from)} why={`opened from it ${times(item.count)}`} testId="activity-lead" />
+              : <li key={`query:${item.query}`} className="memory-plain" data-testid="activity-lead">Searched “{item.query}” <span className="memory-why">{times(item.count)}</span></li>))}
+          </ul>
+        </section>
+      )}
+      <section className="memory-group" aria-label="Written">
+        <h3 className="memory-heading"><span>Written</span></h3>
+        <p className="memory-plain">
+          {memory.writes.commits === 0 ? 'No commits' : `${memory.writes.commits.toLocaleString('en')} ${memory.writes.commits === 1 ? 'commit' : 'commits'}`}
+          {memory.writes.appends > 0 ? `, ${memory.writes.appends.toLocaleString('en')} added by agents` : ''}
+        </p>
+      </section>
+      <p className="memory-heat-words" data-testid="activity-heat">{heatWords(memory)}</p>
+    </div>
+  );
+}
+
+function mount(Component: typeof Related, element: HTMLElement, host: InfoTabHost): InfoTabView {
+  const root = createRoot(element);
+  root.render(<Component host={host} />);
+  return {
+    reveal: () => element.querySelector<HTMLElement>('[data-key="reads"]')?.scrollIntoView({ block: 'nearest' }),
+    dispose: () => root.unmount(),
+  };
+}
+
+export const mountRelated = (element: HTMLElement, host: InfoTabHost) => mount(Related, element, host);
+export const mountActivity = (element: HTMLElement, host: InfoTabHost) => mount(Activity, element, host);

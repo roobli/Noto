@@ -150,6 +150,18 @@ export function registerWorkspaceHandlers(deps: {
   register(WORKSPACE_CHANNELS.noteHistory, isWorkspaceNoteHistoryRequestV1,
     (request: WorkspaceNoteHistoryRequestV1) => deps.session.noteHistory(request.path));
 
+  // The one write here: the files `noto-vault init` makes, in the open folder,
+  // after the window has said what they are and the person has agreed.
+  // Both ask the person in a sheet main shows, so nothing in the window can answer for them.
+  register(WORKSPACE_CHANNELS.keepMemory, isWorkspaceRequestV1,
+    () => deps.session.keepMemory());
+  register(WORKSPACE_CHANNELS.trustMemory, isWorkspaceRequestV1,
+    () => deps.session.trustMemory());
+
+  // Read-only: what the folder's memory holds about one note in it.
+  register(WORKSPACE_CHANNELS.noteMemory, isWorkspaceFolderRequestV1,
+    (request: WorkspaceFolderRequestV1) => deps.session.noteMemory(request.path));
+
   register(WORKSPACE_CHANNELS.noteVersion, isWorkspaceNoteVersionRequestV1,
     (request: WorkspaceNoteVersionRequestV1) => deps.session.noteVersion(request.path, request.commit, request.at));
 

@@ -27,6 +27,24 @@ How releases are made, and what each channel receives, is in
   first and last commit, and the file's dates, size and path. The pane
   remembers whether it was open, its tab and its width. A folder outside
   git says so and gives the file's dates instead.
+- **Related and Activity, from the folder's memory.** In a folder that keeps
+  memory (one with a `.noto/` folder, as the vault tools make), Note Info
+  gains two tabs and a row of reads on its timeline. Related lists what
+  links to the note, the notes it names without linking, the notes read or
+  changed together with it, and the notes about the same thing, each with
+  the reason it is there, and says how many notes it links to and which
+  links are broken. Activity says who read it and how often, what led to
+  it, what was written to it, its heat in a sentence, and which agents may
+  not read it and why. Properties adds the note's kind, how it is known and
+  its sensitivity, each with where it comes from. The memory runs on a
+  thread of its own, opened the first time it is asked, so the window never
+  waits for its index; a folder without `.noto/` is never opened or written
+  to. Keep Memory for This Folder asks first, in a sheet that lists the
+  files it will make. A folder whose memory runs scripts from
+  `.noto/scripts` (a clone, a download) runs none of them until you have
+  seen them named and allowed them, once per folder; History and Properties
+  work meanwhile. A memory that could not be opened is tried again after a
+  pause.
 - **Plugins can add to Note Info.** A tab (`info:<id>`) and a timeline track
   (`track:<id>`) are slots like the rail's pages, and `git.read` now gives a
   note's history and its text at any of its commits. History and Properties

@@ -29,6 +29,8 @@ import {
 } from './plugins/bundled-plugin-discovery';
 import { RendererLeaseBridge } from './plugins/renderer-lease-bridge';
 import { ServiceHost } from './plugins/service-host';
+import { memoryWorkerPath, systemMemoryWorker } from './workspace/memory-host';
+import { MemoryTrust } from './workspace/memory-trust';
 import { ExperimentalPluginRuntimeHost } from './plugins/experimental-plugin-runtime-host';
 import { PluginInstaller } from './plugins/plugin-installer';
 import { discoverUserPlugins, FRESH_MARKER, joinCatalog, readUserPluginCode, userPluginCodeUrl, type SetAsidePlugin, type UserPlugin } from './plugins/user-plugins';
@@ -443,6 +445,10 @@ async function run(): Promise<void> {
     () => settings.current().treeSort,
     () => settings.current().codeViewer,
     () => settings.current().remoteImages,
+  );
+  session.useMemory(
+    systemMemoryWorker(memoryWorkerPath(app.isPackaged, process.resourcesPath, __dirname)),
+    new MemoryTrust(path.join(app.getPath('userData'), 'memory-trust.json'), (event, fields) => logger.log(event, fields)),
   );
   // Registered first of the quit listeners. Node runs every listener even
   // when one prevents the quit, so the others check the same hold.

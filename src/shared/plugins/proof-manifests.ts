@@ -116,7 +116,7 @@ export const historyManifest = {
     events: [],
     hotkeys: [],
   },
-  capabilities: ['git.read', 'editor.read', 'editor.transform'],
+  capabilities: ['git.read', 'editor.read', 'editor.transform', 'vault.read'],
   lifecycle: ['activate', 'deactivate'],
   commands: [],
   settings: [],
@@ -125,8 +125,28 @@ export const historyManifest = {
   uiExtensions: ['info:history', 'info:properties', 'track:commits'],
 } satisfies PluginManifest;
 
+export const memoryManifest = {
+  schemaVersion: 2,
+  id: 'dev.lr00rl.noto.memory',
+  name: 'Memory',
+  version: '1.0.0',
+  runtime: 'trusted-renderer',
+  activation: {
+    startup: false,
+    events: [],
+    hotkeys: [],
+  },
+  capabilities: ['vault.read'],
+  lifecycle: ['activate', 'deactivate'],
+  commands: [],
+  settings: [],
+  hotkeys: [],
+  editorExtensions: [],
+  uiExtensions: ['info:related', 'info:activity', 'track:reads'],
+} satisfies PluginManifest;
+
 /** Bundled plugins that start switched on for a reader who never touched them. */
-export const BUNDLED_ON_BY_DEFAULT: ReadonlySet<string> = new Set([sidenotesManifest.id, changesManifest.id, historyManifest.id]);
+export const BUNDLED_ON_BY_DEFAULT: ReadonlySet<string> = new Set([sidenotesManifest.id, changesManifest.id, historyManifest.id, memoryManifest.id]);
 
 export const markdownPaddingManifest = {
   schemaVersion: 2,

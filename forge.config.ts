@@ -47,7 +47,7 @@ const appleNotarize = process.env.APPLE_API_KEY && process.env.APPLE_API_KEY_ID 
 
 const config: ForgeConfig = {
   packagerConfig: {
-    asar: { unpack: '**/.vite/build/fs-service.js' },
+    asar: { unpack: '**/.vite/build/{fs-service,vault-worker}.js' },
     extraResource: [
       path.resolve(__dirname, 'resources'),
       path.resolve(__dirname, 'node_modules/electron/dist/LICENSE'),
@@ -145,6 +145,7 @@ const config: ForgeConfig = {
         { entry: 'src/preload/preload.ts', config: 'vite.preload.config.mts', target: 'preload' },
         { entry: 'src/preload/plugin-preload.ts', config: 'vite.plugin-preload.config.mts', target: 'preload' },
         { entry: 'src/service/fs-service.ts', config: 'vite.service.config.mts', target: 'main' },
+        { entry: 'src/vault-worker/vault-worker.ts', config: 'vite.vault.config.mts', target: 'main' },
       ],
       renderer: [
         { name: 'main_window', config: 'vite.renderer.config.mts' },

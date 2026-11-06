@@ -12,7 +12,7 @@
  * live inside the editor's lease and go when the note does.
  */
 
-import type { WorkspaceNoteHistoryReplyV1 } from '../../shared/workspace/v1/contracts';
+import type { WorkspaceNoteHistoryReplyV1, WorkspaceNoteMemoryReplyV1 } from '../../shared/workspace/v1/contracts';
 
 export type Disposer = () => void;
 
@@ -50,6 +50,30 @@ export interface GitService {
   version(path: string, commit: string, at: string): Promise<string | null>;
 }
 
+/** What the folder's memory says about a note: see `WorkspaceNoteMemoryReplyV1`. */
+export type NoteMemoryAnswer = Omit<WorkspaceNoteMemoryReplyV1, 'version'>;
+export type { NoteMemoryV1 as NoteMemory } from '../../shared/workspace/v1/contracts';
+
+/** The `vault.read` capability: the open folder's memory, `@roobli/vault`'s index of it. */
+export interface VaultService {
+  /** What the memory knows about a note. Null when main could not be asked. */
+  about(path: string): Promise<NoteMemoryAnswer | null>;
+  /** Called when the memory opened or changed, so what was asked may be asked again. */
+  subscribe(listener: () => void): Disposer;
+  /**
+   * Begin keeping memory for the open folder: the files `noto-vault init`
+   * makes, then the index. Main first asks the person, saying what will be
+   * written, in a sheet of its own; `cancelled` when they said no.
+   */
+  keep(): Promise<'made' | 'cancelled' | 'failed'>;
+  /**
+   * Let the open folder's memory run the scripts in its `.noto/scripts`, which
+   * it needs before it opens (`untrusted`). Main names them and asks the
+   * person; true when they are allowed.
+   */
+  trust(): Promise<boolean>;
+}
+
 /** What every slot gets: where the window is, and how to go somewhere. */
 export interface ShellHost {
   /** The folder open now, or null. */
@@ -72,6 +96,8 @@ export interface ShellHost {
 export interface RailPageHost extends ShellHost {
   /** Present only for a plugin that declares `git.read`. */
   readonly git: GitService | null;
+  /** Present only for a plugin that declares `vault.read`. */
+  readonly vault: VaultService | null;
 }
 
 export interface RailPageContribution {
@@ -385,6 +411,10 @@ export class ShellState {
   };
   private diffs: (request: DiffRequest | null, pluginId: string) => void = () => {};
   private tabs: (key: string, reveal?: string) => void = () => {};
+  private memoryAbout: VaultService['about'] = async () => null;
+  private memoryKeep: VaultService['keep'] = async () => 'failed';
+  private memoryTrust: VaultService['trust'] = async () => false;
+  private readonly memoryChanged = new Signal();
 
   /** How long the note in front must stay before the info pane follows it. */
   static readonly SETTLE_MS = 250;
@@ -403,6 +433,24 @@ export class ShellState {
     history: (path) => this.reader.history(path),
     version: (path, commit, at) => this.reader.version(path, commit, at),
   };
+
+  readonly vault: VaultService = {
+    about: (path) => this.memoryAbout(path),
+    subscribe: (listener) => this.memoryChanged.subscribe(listener),
+    keep: () => this.memoryKeep(),
+    trust: () => this.memoryTrust(),
+  };
+
+  setMemoryReader(about: VaultService['about'], keep: VaultService['keep'], trust: VaultService['trust']): void {
+    this.memoryAbout = about;
+    this.memoryKeep = keep;
+    this.memoryTrust = trust;
+  }
+
+  /** Main said the memory opened or changed. */
+  memoryMoved(): void {
+    this.memoryChanged.emit();
+  }
 
   /** The note the info pane is about. */
   settledNote(): string | null {
@@ -484,9 +532,10 @@ export function shellContext(
   info: InfoRegistry = infoPane,
 ): { context: ShellContext; dispose: Disposer } {
   const git = manifest.capabilities.includes('git.read') ? state.git : null;
+  const vault = manifest.capabilities.includes('vault.read') ? state.vault : null;
   const reads = manifest.capabilities.includes('editor.read');
   const writes = manifest.capabilities.includes('editor.transform');
-  const host: RailPageHost = { ...state.host, git };
+  const host: RailPageHost = { ...state.host, git, vault };
   const handles = new Set<RailPageHandle>();
   const removals = new Set<Disposer>();
   const infoHost: InfoTabHost = {

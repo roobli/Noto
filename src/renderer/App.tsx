@@ -1154,6 +1154,8 @@ function NotoWorkspace({ platform }: { platform: NotoPlatform }) {
     const unsubscribeGit = window.notoWorkspace.onGitMarksChanged((event) => {
       if (active) setGitMarks(event);
     });
+    // The folder's memory opened or took in new reads: whatever asked it asks again.
+    const unsubscribeMemory = window.notoWorkspace.onMemoryChanged(() => slotState.memoryMoved());
     const unsubscribeGitBlocks = window.notoWorkspace.onGitBlocksChanged((event) => {
       if (!active) return;
       gitBlocksRef.current.set(event.documentId, event);
@@ -1289,6 +1291,7 @@ function NotoWorkspace({ platform }: { platform: NotoPlatform }) {
       unsubscribeTree();
       unsubscribeGit();
       unsubscribeGitBlocks();
+      unsubscribeMemory();
       unsubscribeRename();
       unsubscribeTabs();
       unsubscribeFolder();
@@ -1709,6 +1712,18 @@ function NotoWorkspace({ platform }: { platform: NotoPlatform }) {
         const result = await window.notoWorkspace.noteVersion({ version: 1, requestId: rid('note-version'), path: filePath, commit, at });
         return result.ok ? result.value.text : null;
       },
+    });
+    slotState.setMemoryReader(async (filePath) => {
+      const result = await window.notoWorkspace.noteMemory({ version: 1, requestId: rid('note-memory'), path: filePath });
+      if (!result.ok) return null;
+      const { version: _version, ...answer } = result.value;
+      return answer;
+    }, async () => {
+      const result = await window.notoWorkspace.keepMemory({ version: 1, requestId: rid('keep-memory') });
+      return result.ok ? result.value.outcome : 'failed';
+    }, async () => {
+      const result = await window.notoWorkspace.trustMemory({ version: 1, requestId: rid('trust-memory') });
+      return result.ok && result.value.trusted;
     });
     slotState.setEditorAccess({
       text: () => (slotState.settledNote() === slotState.host.activeNote() ? currentNoteText() : null),

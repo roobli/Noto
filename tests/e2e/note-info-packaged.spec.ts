@@ -98,6 +98,9 @@ test.describe('the info pane', () => {
       await expect(pane(page)).toBeVisible();
       await expect(pane(page).getByTestId('info-title')).toHaveText('plan');
       await expect(pane(page).getByTestId('info-state')).toHaveText('Uncommitted changes');
+      // Related comes first; in a folder without memory it offers to keep some, and History is next.
+      await expect(pane(page).getByTestId('memory-keep')).toBeVisible();
+      await pane(page).getByTestId('info-tab').filter({ hasText: 'History' }).click();
 
       const commits = pane(page).getByTestId('history-commit');
       await expect(commits).toHaveCount(3);
@@ -149,7 +152,7 @@ test.describe('the info pane', () => {
     // For review only: the same pane in the dark theme.
     if (SHOTS) {
       const userData = scratch('user-data-dark');
-      writeFileSync(path.join(userData, 'settings.json'), JSON.stringify({ theme: 'dark', infoOpen: true }));
+      writeFileSync(path.join(userData, 'settings.json'), JSON.stringify({ theme: 'dark', infoOpen: true, infoTab: 'dev.lr00rl.noto.history:history' }));
       const dark = await launch(repo, note, userData);
       try {
         await expect(pane(dark.page).getByTestId('history-commit')).toHaveCount(3);

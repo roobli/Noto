@@ -22,6 +22,7 @@ import {
   sidenotesManifest,
   changesManifest,
   historyManifest,
+  memoryManifest,
 } from '../../shared/plugins/proof-manifests';
 import {
   cloneLocalPluginState,
@@ -146,6 +147,7 @@ export const bundledPluginCatalog = createPluginCatalog([
   sidenotesManifest,
   changesManifest,
   historyManifest,
+  memoryManifest,
   markdownPaddingManifest,
   filesystemProofManifest,
 ]);

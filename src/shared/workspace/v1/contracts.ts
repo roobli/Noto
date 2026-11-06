@@ -83,6 +83,14 @@ export const WORKSPACE_CHANNELS = {
   noteHistory: 'noto:v1:workspace:note-history',
   /** One note's text as one of its commits had it. */
   noteVersion: 'noto:v1:workspace:note-version',
+  /** What the folder's memory knows about one note. See `WorkspaceNoteMemoryReplyV1`. */
+  noteMemory: 'noto:v1:workspace:note-memory',
+  /** Begin keeping memory for the open folder, as `noto-vault init` would, once main has asked the person. */
+  keepMemory: 'noto:v1:workspace:keep-memory',
+  /** Let the open folder's memory run its scripts, once main has asked the person, naming them. */
+  trustMemory: 'noto:v1:workspace:trust-memory',
+  /** Push: the folder's memory opened or changed, so what was asked of it may be asked again. */
+  memoryChanged: 'noto:v1:workspace:memory-changed',
 } as const;
 
 /** One entry in the workspace tree. */
@@ -934,6 +942,84 @@ export interface WorkspaceNoteVersionReplyV1 {
   readonly text: string | null;
 }
 
+/** Where a value the vault holds about a note came from. */
+export type MemoryOriginV1 = 'note' | 'script' | 'folder' | 'config' | 'default';
+
+export interface MemoryTracedV1<T> {
+  readonly value: T;
+  readonly from: MemoryOriginV1;
+}
+
+/**
+ * Everything a folder's memory knows about one note, as `@roobli/vault`'s
+ * `about` gives it. Paths are relative to the folder, with forward slashes.
+ */
+export interface NoteMemoryV1 {
+  readonly path: string;
+  readonly title: string;
+  readonly id: string | null;
+  readonly kind: MemoryTracedV1<string>;
+  readonly known: MemoryTracedV1<string | null>;
+  readonly sensitivity: MemoryTracedV1<string>;
+  readonly status: string | null;
+  readonly tags: readonly string[];
+  readonly aliases: readonly string[];
+  readonly heat: {
+    readonly heat: number;
+    readonly reads: number;
+    readonly writes: number;
+    readonly lastRead: string | null;
+    readonly lastWrite: string | null;
+  };
+  readonly supersededBy: { readonly path: string; readonly title: string } | null;
+  readonly linksHere: readonly { readonly path: string; readonly title: string; readonly relation: string | null; readonly heat: number; readonly reads: number }[];
+  readonly linksHereCount: number;
+  readonly namedHere: readonly { readonly id: string; readonly to: string; readonly title: string; readonly score: number; readonly around: readonly [string, string, string] }[];
+  readonly namedHereCount: number;
+  readonly together: readonly { readonly path: string; readonly title: string; readonly type: string; readonly count: number; readonly weight: number; readonly last: string | null }[];
+  readonly togetherCount: number;
+  readonly aboutSame: readonly { readonly path: string; readonly title: string; readonly why: readonly string[]; readonly excerpt: string }[];
+  /** `broken` is the first few; `brokenCount` says how many there are. */
+  readonly outgoing: { readonly count: number; readonly broken: readonly { readonly target: string; readonly line: number }[]; readonly brokenCount: number };
+  readonly reads: readonly { readonly day: string; readonly count: number }[];
+  readonly readers: readonly { readonly actor: string; readonly count: number; readonly last: string }[];
+  readonly leadsHere: readonly { readonly from: string | null; readonly query: string | null; readonly count: number }[];
+  readonly writes: { readonly commits: number; readonly appends: number };
+  readonly agents: readonly { readonly name: string; readonly canSee: boolean; readonly why: string | null }[];
+}
+
+/**
+ * `ok` carries what the memory knows; `no-memory` is a folder without a
+ * `.noto/` folder, which is never written to; `opening` means the index is
+ * being read and the answer will come; `unknown` a note the index does not
+ * hold (a new one, or one the folder's rules leave out); `unavailable` that
+ * the memory could not be read; `outside` a path not in the open folder.
+ */
+/** The files `keepMemory` made, folder-relative; null when the folder could not keep memory. */
+export interface WorkspaceKeepMemoryReplyV1 {
+  readonly version: typeof NOTO_WORKSPACE_VERSION;
+  /** `cancelled` when the person said no to main's question. */
+  readonly outcome: 'made' | 'cancelled' | 'failed';
+  /** The files made, folder-relative; empty unless `made`. */
+  readonly made: readonly string[];
+}
+
+export interface WorkspaceTrustMemoryReplyV1 {
+  readonly version: typeof NOTO_WORKSPACE_VERSION;
+  readonly trusted: boolean;
+}
+
+export interface WorkspaceMemoryChangedV1 {
+  readonly version: typeof NOTO_WORKSPACE_VERSION;
+}
+
+export interface WorkspaceNoteMemoryReplyV1 {
+  readonly version: typeof NOTO_WORKSPACE_VERSION;
+  /** `untrusted`: the folder's memory runs scripts, and the person has not allowed them yet. */
+  readonly state: 'ok' | 'no-memory' | 'untrusted' | 'opening' | 'unknown' | 'unavailable' | 'outside';
+  readonly memory: NoteMemoryV1 | null;
+}
+
 export interface WorkspaceLinksReplyV1 {
   readonly version: typeof NOTO_WORKSPACE_VERSION;
   readonly available: boolean;
@@ -992,6 +1078,12 @@ export interface NotoWorkspaceApiV1 {
   noteHistory(request: WorkspaceNoteHistoryRequestV1): Promise<WorkspaceResultV1<WorkspaceNoteHistoryReplyV1>>;
   /** One note's text at one of its own commits. */
   noteVersion(request: WorkspaceNoteVersionRequestV1): Promise<WorkspaceResultV1<WorkspaceNoteVersionReplyV1>>;
+  /** What the folder's memory knows about one note. */
+  noteMemory(request: WorkspaceFolderRequestV1): Promise<WorkspaceResultV1<WorkspaceNoteMemoryReplyV1>>;
+  /** Begin keeping memory for the open folder. */
+  keepMemory(request: WorkspaceRequestV1): Promise<WorkspaceResultV1<WorkspaceKeepMemoryReplyV1>>;
+  /** Let the open folder's memory run its scripts. */
+  trustMemory(request: WorkspaceRequestV1): Promise<WorkspaceResultV1<WorkspaceTrustMemoryReplyV1>>;
   tagIndex(request: WorkspaceRequestV1): Promise<WorkspaceResultV1<WorkspaceTagIndexReplyV1>>;
   notesByTag(request: WorkspaceNotesByTagRequestV1): Promise<WorkspaceResultV1<WorkspaceNotesByTagReplyV1>>;
   fileIndex(request: WorkspaceRequestV1): Promise<WorkspaceResultV1<WorkspaceIndexReplyV1>>;
@@ -1009,5 +1101,6 @@ export interface NotoWorkspaceApiV1 {
   gitMarks(request: WorkspaceRequestV1): Promise<WorkspaceResultV1<WorkspaceGitMarksV1>>;
   onGitMarksChanged(listener: (event: WorkspaceGitMarksV1) => void): () => void;
   onGitBlocksChanged(listener: (event: WorkspaceGitBlocksV1) => void): () => void;
+  onMemoryChanged(listener: (event: WorkspaceMemoryChangedV1) => void): () => void;
   onRenameRow(listener: (event: WorkspaceRenameRowEventV1) => void): () => void;
 }

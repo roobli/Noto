@@ -1,0 +1,347 @@
+/**
+ * The open folder's memory, as main holds it.
+ *
+ * A folder keeps memory when it has a `.noto/` folder; one without it is
+ * never written to and never opened here. The vault itself runs on a worker
+ * thread (`src/vault-worker/vault-worker.ts`), started the first time Note
+ * Info asks about a note in such a folder, so a window that never shows the
+ * pane costs nothing. A folder whose memory runs scripts is opened only once
+ * the person has allowed it (`memory-trust.ts`); until then the answer is
+ * `untrusted`. While it opens (seconds, the first time, for a big folder) the
+ * answer is `opening`, and `onChanged` fires once it is ready so the window
+ * asks again. After that it is refreshed when notes change on disk and every
+ * half minute, which takes in what was read in the meantime; an answer never
+ * waits for a refresh to be asked for, and at most one waits behind the one
+ * running. A memory that failed to open is tried again after a pause that
+ * grows each time.
+ */
+
+import { existsSync } from 'node:fs';
+import path from 'node:path';
+import { Worker } from 'node:worker_threads';
+import {
+  NOTO_WORKSPACE_VERSION,
+  type NoteMemoryV1,
+  type WorkspaceNoteMemoryReplyV1,
+} from '../../shared/workspace/v1/contracts';
+import type { MemoryAnswer, MemoryRequest } from '../../vault-worker/vault-worker';
+import { memoryScripts } from './memory-trust';
+
+const ABOUT_TIMEOUT_MS = 5_000;
+/** Opening builds the index the first time, which for a big folder is a while. */
+const OPEN_TIMEOUT_MS = 180_000;
+const REFRESH_EVERY_MS = 30_000;
+const REFRESH_AFTER_CHANGE_MS = 1_500;
+/** How long the worker has to close the index before it is stopped anyway. */
+const CLOSE_TIMEOUT_MS = 3_000;
+/** The first pause before a failed memory is tried again; it doubles, up to the cap. */
+const RETRY_FIRST_MS = 30_000;
+const RETRY_CAP_MS = 10 * 60_000;
+
+type State = 'closed' | 'opening' | 'open' | 'failed';
+
+type Pending = { resolve: (value: unknown) => void; reject: (error: MemoryError) => void; timer: ReturnType<typeof setTimeout> };
+
+/** A request before it is numbered: `Omit` taken over each kind of request on its own. */
+type Unnumbered = MemoryRequest extends infer Each ? Each extends MemoryRequest ? Omit<Each, 'id'> : never : never;
+
+class MemoryError extends Error {
+  constructor(message: string, readonly unknown = false) {
+    super(message);
+  }
+}
+
+/** The worker, as the host talks to it: replaced by a fake in tests. */
+export interface MemoryWorker {
+  postMessage(request: MemoryRequest): void;
+  on(event: 'message', listener: (answer: MemoryAnswer) => void): void;
+  on(event: 'error' | 'exit', listener: (value: unknown) => void): void;
+  terminate(): Promise<number> | void;
+}
+
+export interface MemoryHostOptions {
+  readonly startWorker: () => MemoryWorker;
+  /** The window should ask again: the memory opened, changed, or the folder did. */
+  readonly onChanged: () => void;
+  /** Whether the folder's memory may be opened, scripts and all. Without it, only a folder with no scripts. */
+  readonly mayOpen?: (root: string) => boolean;
+  readonly log?: (event: string, fields: Record<string, unknown>) => void;
+}
+
+/** Where the bundled worker is, packaged or not. */
+export function memoryWorkerPath(packaged: boolean, resourcesPath: string, here: string): string {
+  return packaged
+    ? path.join(resourcesPath, 'app.asar.unpacked', '.vite', 'build', 'vault-worker.js')
+    : path.join(here, 'vault-worker.js');
+}
+
+export function systemMemoryWorker(file: string): () => MemoryWorker {
+  return () => new Worker(file) as unknown as MemoryWorker;
+}
+
+/** A path inside the folder, as the vault names notes, or null. */
+export function insideFolder(root: string, file: string): string | null {
+  const rel = path.relative(root, file);
+  if (rel === '' || rel === '..' || rel.startsWith(`..${path.sep}`) || path.isAbsolute(rel)) return null;
+  return rel.split(path.sep).join('/');
+}
+
+/** Without a way to ask, only a folder whose memory runs no scripts is opened. */
+const runsNoScripts = (root: string): boolean => memoryScripts(root).length === 0;
+
+export class MemoryHost {
+  private root: string | null = null;
+  private state: State = 'closed';
+  private worker: MemoryWorker | null = null;
+  private nextId = 1;
+  private readonly pending = new Map<number, Pending>();
+  private refreshTimer: ReturnType<typeof setTimeout> | null = null;
+  private everyTimer: ReturnType<typeof setInterval> | null = null;
+  private retryTimer: ReturnType<typeof setTimeout> | null = null;
+  private touched: Set<string> | null = new Set();
+  private refreshing = false;
+  /** Another refresh was asked for while one ran. */
+  private again = false;
+  /** An answer timed out, so the window is told when the memory is free again. */
+  private owed = false;
+  private failures = 0;
+  private retryAt = 0;
+
+  constructor(private readonly options: MemoryHostOptions) {}
+
+  /** The folder the window shows, as its real path, or null. Closes the memory of the one before. */
+  setFolder(root: string | null): void {
+    if (root === this.root) return;
+    this.stop();
+    this.failures = 0;
+    this.root = root;
+    // Anything asked before the folder was known was told it is outside.
+    this.options.onChanged();
+  }
+
+  folder(): string | null {
+    return this.root;
+  }
+
+  /** What the memory knows about the note at `real`, a real path inside the folder. */
+  async about(real: string): Promise<WorkspaceNoteMemoryReplyV1> {
+    const reply = (state: WorkspaceNoteMemoryReplyV1['state'], memory: NoteMemoryV1 | null = null): WorkspaceNoteMemoryReplyV1 => ({
+      version: NOTO_WORKSPACE_VERSION, state, memory,
+    });
+    const root = this.root;
+    if (root === null) return reply('outside');
+    const rel = insideFolder(root, real);
+    if (rel === null) return reply('outside');
+    if (!existsSync(path.join(root, '.noto'))) return reply('no-memory');
+    if (this.state === 'failed' && Date.now() >= this.retryAt) this.state = 'closed';
+    if (this.state === 'closed') {
+      if (!(this.options.mayOpen ?? runsNoScripts)(root)) return reply('untrusted');
+      this.open(root);
+    }
+    if (this.state === 'opening') return reply('opening');
+    if (this.state === 'failed') return reply('unavailable');
+    try {
+      const memory = await this.ask({ kind: 'about', rel }, ABOUT_TIMEOUT_MS) as NoteMemoryV1;
+      return reply('ok', memory);
+    } catch (error) {
+      if (error instanceof MemoryError && error.unknown) return reply('unknown');
+      this.owed = true;
+      return reply('unavailable');
+    }
+  }
+
+  /**
+   * Begin keeping memory for the folder: what `noto-vault init` makes, then
+   * the index. Only after the person said yes to what will be written; main
+   * asks. Resolves with the files made, or null when it failed.
+   */
+  async keep(): Promise<readonly string[] | null> {
+    const root = this.root;
+    if (root === null) return null;
+    this.stop();
+    this.root = root;
+    this.state = 'opening';
+    const worker = this.start();
+    try {
+      const value = await this.ask({ kind: 'keep', root }, OPEN_TIMEOUT_MS) as { made?: string[] } | null;
+      if (this.worker === worker) this.opened();
+      // Made, even when the folder changed meanwhile.
+      return value?.made ?? [];
+    } catch (error) {
+      if (this.worker === worker) this.failed('memory_keep_failed', error as Error);
+      return null;
+    }
+  }
+
+  /**
+   * Notes changed on disk, as folder-relative paths, or null for "anything
+   * may have". They are read again a moment later, together.
+   */
+  changed(paths: readonly string[] | null): void {
+    if (this.state !== 'open') return;
+    if (paths === null) this.touched = null;
+    else if (this.touched !== null) for (const rel of paths) this.touched.add(rel.split(path.sep).join('/'));
+    if (this.refreshTimer !== null) clearTimeout(this.refreshTimer);
+    this.refreshTimer = setTimeout(() => { this.refreshTimer = null; void this.refresh(); }, REFRESH_AFTER_CHANGE_MS);
+  }
+
+  dispose(): void {
+    this.stop();
+    this.root = null;
+  }
+
+  private start(): MemoryWorker {
+    const worker = this.options.startWorker();
+    this.worker = worker;
+    worker.on('message', (answer: MemoryAnswer) => this.answer(answer));
+    const lost = (why: string) => {
+      if (this.worker !== worker) return;
+      this.worker = null;
+      this.failed('memory_worker_lost', new Error(why));
+    };
+    worker.on('error', (error) => lost(error instanceof Error ? error.message : String(error)));
+    worker.on('exit', (code) => lost(`exit ${String(code)}`));
+    return worker;
+  }
+
+  private opened(): void {
+    this.state = 'open';
+    this.failures = 0;
+    if (this.everyTimer !== null) clearInterval(this.everyTimer);
+    this.everyTimer = setInterval(() => { void this.refresh(); }, REFRESH_EVERY_MS);
+    this.options.onChanged();
+  }
+
+  /** The memory could not be had: stop its worker, and try again after a pause. */
+  private failed(event: string, error: Error): void {
+    this.options.log?.(event, { error: error.message, failures: this.failures + 1 });
+    const worker = this.worker;
+    this.clear();
+    if (worker) this.close(worker);
+    this.state = 'failed';
+    const pause = Math.min(RETRY_CAP_MS, RETRY_FIRST_MS * 2 ** this.failures);
+    this.failures += 1;
+    this.retryAt = Date.now() + pause;
+    // The window asks again then, which opens it again.
+    this.retryTimer = setTimeout(() => { this.retryTimer = null; this.options.onChanged(); }, pause);
+    this.options.onChanged();
+  }
+
+  private open(root: string): void {
+    this.state = 'opening';
+    const started = Date.now();
+    const worker = this.start();
+    void this.ask({ kind: 'open', root }, OPEN_TIMEOUT_MS).then((value) => {
+      if (this.worker !== worker) return;
+      this.options.log?.('memory_open', { ms: Date.now() - started, notes: (value as { notes?: number } | null)?.notes ?? null });
+      this.opened();
+    }, (error: MemoryError) => {
+      if (this.worker === worker) this.failed('memory_open_failed', error);
+    });
+  }
+
+  private async refresh(): Promise<void> {
+    if (this.state !== 'open') return;
+    if (this.refreshing) { this.again = true; return; }
+    this.refreshing = true;
+    const worker = this.worker;
+    const paths = this.touched === null ? null : [...this.touched];
+    this.touched = new Set();
+    try {
+      const stats = await this.ask({ kind: 'refresh', paths }, OPEN_TIMEOUT_MS) as { parsed?: number; events?: number; removed?: number; moved?: number } | null;
+      if (this.worker !== worker) return;
+      // Only news when something the window shows may differ, or an answer was missed meanwhile.
+      const news = stats !== null && ((stats.parsed ?? 0) > 0 || (stats.events ?? 0) > 0 || (stats.removed ?? 0) > 0 || (stats.moved ?? 0) > 0);
+      if (news || this.owed) {
+        this.owed = false;
+        this.options.onChanged();
+      }
+    } catch {
+      // What was not read waits for the next one.
+      if (this.worker === worker) {
+        if (paths === null) this.touched = null;
+        else if (this.touched !== null) for (const rel of paths) this.touched.add(rel);
+      }
+    } finally {
+      if (this.worker === worker) {
+        this.refreshing = false;
+        if (this.again) {
+          this.again = false;
+          void this.refresh();
+        }
+      }
+    }
+  }
+
+  private ask(request: Unnumbered, timeoutMs: number): Promise<unknown> {
+    const worker = this.worker;
+    if (!worker) return Promise.reject(new MemoryError('The memory is not open.'));
+    const id = this.nextId++;
+    return new Promise((resolve, reject) => {
+      const timer = setTimeout(() => {
+        this.pending.delete(id);
+        reject(new MemoryError('The memory took too long to answer.'));
+      }, timeoutMs);
+      this.pending.set(id, { resolve, reject, timer });
+      worker.postMessage({ ...request, id } as MemoryRequest);
+    });
+  }
+
+  private answer(answer: MemoryAnswer): void {
+    const waiting = this.pending.get(answer.id);
+    if (!waiting) return;
+    this.pending.delete(answer.id);
+    clearTimeout(waiting.timer);
+    if (answer.ok) waiting.resolve(answer.value);
+    else waiting.reject(new MemoryError(answer.error, answer.unknown === true));
+  }
+
+  private fail(error: MemoryError): void {
+    for (const waiting of this.pending.values()) {
+      clearTimeout(waiting.timer);
+      waiting.reject(error);
+    }
+    this.pending.clear();
+  }
+
+  /** Let the worker close the index (its last write lands whole), then stop it either way. */
+  private close(worker: MemoryWorker): void {
+    const id = this.nextId++;
+    let timer: ReturnType<typeof setTimeout> | null = null;
+    const end = () => {
+      if (timer !== null) clearTimeout(timer);
+      this.pending.delete(id);
+      void Promise.resolve(worker.terminate()).catch(() => {});
+    };
+    timer = setTimeout(end, CLOSE_TIMEOUT_MS);
+    this.pending.set(id, { resolve: end, reject: end, timer });
+    try {
+      worker.postMessage({ id, kind: 'close' });
+    } catch {
+      end();
+    }
+  }
+
+  /** Timers and bookkeeping off, everything waiting told the memory is gone. */
+  private clear(): void {
+    if (this.refreshTimer !== null) clearTimeout(this.refreshTimer);
+    if (this.everyTimer !== null) clearInterval(this.everyTimer);
+    if (this.retryTimer !== null) clearTimeout(this.retryTimer);
+    this.refreshTimer = null;
+    this.everyTimer = null;
+    this.retryTimer = null;
+    this.touched = new Set();
+    this.refreshing = false;
+    this.again = false;
+    this.owed = false;
+    this.worker = null;
+    this.fail(new MemoryError('The memory closed.'));
+  }
+
+  private stop(): void {
+    const worker = this.worker;
+    this.clear();
+    this.state = 'closed';
+    if (worker) this.close(worker);
+  }
+}

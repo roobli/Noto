@@ -48,6 +48,26 @@ describe('recording which notes were opened', () => {
   });
 });
 
+describe('a folder that begins or stops keeping memory', () => {
+  it('is recorded from the first open after it begins, and its .noto is never made again after it is deleted', async () => {
+    const visits = new VaultVisits();
+    await visits.opened(root, path.join(root, 'one.md'));
+    expect(existsSync(path.join(root, '.noto'))).toBe(false);
+    mkdirSync(path.join(root, '.noto'));
+    await visits.opened(root, path.join(root, 'two.md'));
+    expect(lines().map((line) => line.path)).toEqual(['two.md']);
+    rmSync(path.join(root, '.noto'), { recursive: true });
+    await visits.opened(root, path.join(root, 'three.md'));
+    expect(existsSync(path.join(root, '.noto'))).toBe(false);
+  });
+
+  it('takes a note whose name begins with two dots as inside the folder', async () => {
+    mkdirSync(path.join(root, '.noto'));
+    await new VaultVisits().opened(root, path.join(root, '..notes.md'));
+    expect(lines().map((line) => line.path)).toEqual(['..notes.md']);
+  });
+});
+
 describe('the open request', () => {
   it('may say which note it was reached from, and nothing else new', async () => {
     const { isWorkspaceOpenPathRequestV1 } = await import('../../src/shared/workspace/v1/validate');

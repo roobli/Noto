@@ -125,6 +125,10 @@ import type {
   WorkspaceTextReplyV1,
   WorkspaceLinksReplyV1,
   WorkspaceNoteHistoryReplyV1,
+  WorkspaceNoteMemoryReplyV1,
+  WorkspaceMemoryChangedV1,
+  WorkspaceKeepMemoryReplyV1,
+  WorkspaceTrustMemoryReplyV1,
   WorkspaceNoteHistoryRequestV1,
   WorkspaceNoteVersionReplyV1,
   WorkspaceNoteVersionRequestV1,
@@ -178,6 +182,9 @@ import {
   isWorkspaceLinksResultV1,
   isWorkspaceNoteHistoryRequestV1,
   isWorkspaceNoteHistoryResultV1,
+  isWorkspaceNoteMemoryResultV1,
+  isWorkspaceKeepMemoryResultV1,
+  isWorkspaceTrustMemoryResultV1,
   isWorkspaceNoteVersionRequestV1,
   isWorkspaceNoteVersionResultV1,
   isWorkspaceOpenPathRequestV1,
@@ -201,6 +208,7 @@ import {
   isWorkspaceRenameRowEventV1,
   isWorkspaceGitMarksV1,
   isWorkspaceGitBlocksV1,
+  isWorkspaceMemoryChangedV1,
   isWorkspaceGitMarksResultV1,
   isWorkspaceContentResultV1,
   isWorkspaceTagIndexResultV1,
@@ -543,6 +551,15 @@ const workspaceApi: NotoWorkspaceApiV1 = Object.freeze({
   noteVersion: (request: WorkspaceNoteVersionRequestV1) => isWorkspaceNoteVersionRequestV1(request)
     ? invokeWorkspace<WorkspaceNoteVersionReplyV1>(WORKSPACE_CHANNELS.noteVersion, request, request.requestId, isWorkspaceNoteVersionResultV1)
     : Promise.resolve(rejectedWorkspace<WorkspaceNoteVersionReplyV1>('invalid', 'Invalid note version request')),
+  keepMemory: (request: WorkspaceRequestV1) => isWorkspaceRequestV1(request)
+    ? invokeWorkspace<WorkspaceKeepMemoryReplyV1>(WORKSPACE_CHANNELS.keepMemory, request, request.requestId, isWorkspaceKeepMemoryResultV1)
+    : Promise.resolve(rejectedWorkspace<WorkspaceKeepMemoryReplyV1>('invalid', 'Invalid keep memory request')),
+  trustMemory: (request: WorkspaceRequestV1) => isWorkspaceRequestV1(request)
+    ? invokeWorkspace<WorkspaceTrustMemoryReplyV1>(WORKSPACE_CHANNELS.trustMemory, request, request.requestId, isWorkspaceTrustMemoryResultV1)
+    : Promise.resolve(rejectedWorkspace<WorkspaceTrustMemoryReplyV1>('invalid', 'Invalid trust memory request')),
+  noteMemory: (request: WorkspaceFolderRequestV1) => isWorkspaceFolderRequestV1(request)
+    ? invokeWorkspace<WorkspaceNoteMemoryReplyV1>(WORKSPACE_CHANNELS.noteMemory, request, request.requestId, isWorkspaceNoteMemoryResultV1)
+    : Promise.resolve(rejectedWorkspace<WorkspaceNoteMemoryReplyV1>('invalid', 'Invalid note memory request')),
   tagIndex: (request: WorkspaceRequestV1) => isWorkspaceRequestV1(request)
     ? invokeWorkspace<WorkspaceTagIndexReplyV1>(WORKSPACE_CHANNELS.tagIndex, request, request.requestId, isWorkspaceTagIndexResultV1)
     : Promise.resolve(rejectedWorkspace<WorkspaceTagIndexReplyV1>('invalid', 'Invalid tag index request')),
@@ -574,6 +591,8 @@ const workspaceApi: NotoWorkspaceApiV1 = Object.freeze({
     subscribe(WORKSPACE_CHANNELS.gitMarksChanged, isWorkspaceGitMarksV1, listener),
   onGitBlocksChanged: (listener: (event: WorkspaceGitBlocksV1) => void) =>
     subscribe(WORKSPACE_CHANNELS.gitBlocksChanged, isWorkspaceGitBlocksV1, listener),
+  onMemoryChanged: (listener: (event: WorkspaceMemoryChangedV1) => void) =>
+    subscribe(WORKSPACE_CHANNELS.memoryChanged, isWorkspaceMemoryChangedV1, listener),
 });
 
 const settingsApi: NotoSettingsApiV1 = Object.freeze({

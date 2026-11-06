@@ -32,6 +32,11 @@ import {
   WorkspaceLinkV1,
   WorkspaceLinksReplyV1,
   NoteCommitV1,
+  NoteMemoryV1,
+  WorkspaceMemoryChangedV1,
+  WorkspaceKeepMemoryReplyV1,
+  WorkspaceTrustMemoryReplyV1,
+  WorkspaceNoteMemoryReplyV1,
   WorkspaceNoteHistoryReplyV1,
   WorkspaceNoteHistoryRequestV1,
   WorkspaceNoteVersionReplyV1,
@@ -326,6 +331,92 @@ export function isWorkspaceNoteVersionReplyV1(value: unknown): value is Workspac
 export const isWorkspaceNoteVersionResultV1 = (
   value: unknown, id: string,
 ): value is WorkspaceResultV1<WorkspaceNoteVersionReplyV1> => isResult(value, id, isWorkspaceNoteVersionReplyV1);
+
+/** A short string, as the memory's titles, paths and phrases are. */
+const text = (value: unknown, max = 4096) => typeof value === 'string' && value.length <= max;
+const textOrNull = (value: unknown, max = 4096) => value === null || text(value, max);
+const number = (value: unknown) => typeof value === 'number' && Number.isFinite(value);
+const whole = (value: unknown) => typeof value === 'number' && Number.isSafeInteger(value) && value >= 0;
+const listOf = (value: unknown, max: number, each: (item: Record<string, unknown>) => boolean) =>
+  Array.isArray(value) && value.length <= max && value.every((item) => record(item) && each(item));
+const ORIGINS = new Set(['note', 'script', 'folder', 'config', 'default']);
+const traced = (value: unknown, nullable: boolean) => record(value) && exact(value, ['value', 'from'])
+  && (nullable ? textOrNull(value.value, 64) : text(value.value, 64))
+  && typeof value.from === 'string' && ORIGINS.has(value.from);
+
+function isNoteMemoryV1(value: unknown): value is NoteMemoryV1 {
+  if (!record(value) || !exact(value, [
+    'path', 'title', 'id', 'kind', 'known', 'sensitivity', 'status', 'tags', 'aliases', 'heat', 'supersededBy',
+    'linksHere', 'linksHereCount', 'namedHere', 'namedHereCount', 'together', 'togetherCount', 'aboutSame',
+    'outgoing', 'reads', 'readers', 'leadsHere', 'writes', 'agents',
+  ])) return false;
+  const { heat, outgoing, writes, supersededBy } = value;
+  return text(value.path) && text(value.title) && textOrNull(value.id, 512)
+    && traced(value.kind, false) && traced(value.known, true) && traced(value.sensitivity, false)
+    && textOrNull(value.status, 512)
+    && Array.isArray(value.tags) && value.tags.length <= 512 && value.tags.every((tag) => text(tag, 256))
+    && Array.isArray(value.aliases) && value.aliases.length <= 512 && value.aliases.every((alias) => text(alias, 512))
+    && record(heat) && exact(heat, ['heat', 'reads', 'writes', 'lastRead', 'lastWrite'])
+    && number(heat.heat) && whole(heat.reads) && whole(heat.writes) && textOrNull(heat.lastRead, 64) && textOrNull(heat.lastWrite, 64)
+    && (supersededBy === null || (record(supersededBy) && exact(supersededBy, ['path', 'title']) && text(supersededBy.path) && text(supersededBy.title)))
+    && listOf(value.linksHere, 200, (item) => exact(item, ['path', 'title', 'relation', 'heat', 'reads'])
+      && text(item.path) && text(item.title) && textOrNull(item.relation, 128) && number(item.heat) && whole(item.reads))
+    && whole(value.linksHereCount)
+    && listOf(value.namedHere, 200, (item) => exact(item, ['id', 'to', 'title', 'score', 'around'])
+      && text(item.id, 128) && text(item.to) && text(item.title) && number(item.score)
+      && Array.isArray(item.around) && item.around.length === 3 && item.around.every((part) => text(part, 1024)))
+    && whole(value.namedHereCount)
+    && listOf(value.together, 200, (item) => exact(item, ['path', 'title', 'type', 'count', 'weight', 'last'])
+      && text(item.path) && text(item.title) && text(item.type, 64) && whole(item.count) && number(item.weight) && textOrNull(item.last, 64))
+    && whole(value.togetherCount)
+    && listOf(value.aboutSame, 200, (item) => exact(item, ['path', 'title', 'why', 'excerpt'])
+      && text(item.path) && text(item.title) && Array.isArray(item.why) && item.why.length <= 16
+      && item.why.every((reason) => text(reason, 512)) && text(item.excerpt, 8192))
+    && record(outgoing) && exact(outgoing, ['count', 'broken', 'brokenCount']) && whole(outgoing.count) && whole(outgoing.brokenCount)
+    && listOf(outgoing.broken, 1000, (item) => exact(item, ['target', 'line']) && text(item.target) && whole(item.line))
+    && listOf(value.reads, 20000, (item) => exact(item, ['day', 'count']) && text(item.day, 10) && whole(item.count))
+    && listOf(value.readers, 200, (item) => exact(item, ['actor', 'count', 'last']) && text(item.actor, 256) && whole(item.count) && text(item.last, 64))
+    && listOf(value.leadsHere, 200, (item) => exact(item, ['from', 'query', 'count']) && textOrNull(item.from) && textOrNull(item.query, 1024) && whole(item.count))
+    && record(writes) && exact(writes, ['commits', 'appends']) && whole(writes.commits) && whole(writes.appends)
+    && listOf(value.agents, 200, (item) => exact(item, ['name', 'canSee', 'why']) && text(item.name, 256)
+      && typeof item.canSee === 'boolean' && textOrNull(item.why, 512));
+}
+
+const MEMORY_STATES = new Set(['ok', 'no-memory', 'untrusted', 'opening', 'unknown', 'unavailable', 'outside']);
+const KEEP_OUTCOMES = new Set(['made', 'cancelled', 'failed']);
+
+export function isWorkspaceKeepMemoryReplyV1(value: unknown): value is WorkspaceKeepMemoryReplyV1 {
+  return record(value) && exact(value, ['version', 'outcome', 'made']) && value.version === 1
+    && typeof value.outcome === 'string' && KEEP_OUTCOMES.has(value.outcome)
+    && Array.isArray(value.made) && value.made.length <= 64 && value.made.every((file) => text(file, 512))
+    && (value.outcome === 'made' || value.made.length === 0);
+}
+
+export function isWorkspaceTrustMemoryReplyV1(value: unknown): value is WorkspaceTrustMemoryReplyV1 {
+  return record(value) && exact(value, ['version', 'trusted']) && value.version === 1 && typeof value.trusted === 'boolean';
+}
+
+export const isWorkspaceTrustMemoryResultV1 = (
+  value: unknown, id: string,
+): value is WorkspaceResultV1<WorkspaceTrustMemoryReplyV1> => isResult(value, id, isWorkspaceTrustMemoryReplyV1);
+
+export const isWorkspaceKeepMemoryResultV1 = (
+  value: unknown, id: string,
+): value is WorkspaceResultV1<WorkspaceKeepMemoryReplyV1> => isResult(value, id, isWorkspaceKeepMemoryReplyV1);
+
+export function isWorkspaceMemoryChangedV1(value: unknown): value is WorkspaceMemoryChangedV1 {
+  return record(value) && exact(value, ['version']) && value.version === 1;
+}
+
+export function isWorkspaceNoteMemoryReplyV1(value: unknown): value is WorkspaceNoteMemoryReplyV1 {
+  return record(value) && exact(value, ['version', 'state', 'memory']) && value.version === 1
+    && typeof value.state === 'string' && MEMORY_STATES.has(value.state)
+    && (value.state === 'ok' ? isNoteMemoryV1(value.memory) : value.memory === null);
+}
+
+export const isWorkspaceNoteMemoryResultV1 = (
+  value: unknown, id: string,
+): value is WorkspaceResultV1<WorkspaceNoteMemoryReplyV1> => isResult(value, id, isWorkspaceNoteMemoryReplyV1);
 
 export const isWorkspaceLinksResultV1 = (
   value: unknown, id: string,

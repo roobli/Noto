@@ -31,6 +31,9 @@ import {
   type WorkspaceOpenExternalReplyV1,
   type WorkspaceLinksReplyV1,
   type WorkspaceNoteHistoryReplyV1,
+  type WorkspaceNoteMemoryReplyV1,
+  type WorkspaceKeepMemoryReplyV1,
+  type WorkspaceTrustMemoryReplyV1,
   type WorkspaceNoteVersionReplyV1,
   type WorkspaceTagIndexReplyV1,
   type WorkspaceNotesByTagReplyV1,
@@ -79,6 +82,8 @@ import {
 import { buildFileIndex } from './file-index';
 import { GitMarks, defaultGitRunner, findGit } from './git-marks';
 import { NoteHistoryReader, systemBatchGit } from './git-history';
+import { MemoryHost, type MemoryWorker } from './memory-host';
+import { memoryScripts, type MemoryTrust } from './memory-trust';
 import { VaultWatcher, classifyTouched, inspectTouched } from './vault-watcher';
 import { gitBlockDiff } from './git-blocks';
 import type { WorkspaceGitBlocksV1 } from '../../shared/workspace/v1/contracts';
@@ -114,6 +119,15 @@ export type WorkspaceSessionOpenV1 =
   | { readonly version: typeof NOTO_WORKSPACE_VERSION; readonly opened: FileTruthOpenReplyV1 }
   | { readonly version: typeof NOTO_WORKSPACE_VERSION; readonly codeView: WorkspaceCodeViewV1 };
 
+/** What keeping memory writes, said in main's question before anything is. */
+const KEPT_FILES = [
+  ['brain.yaml', 'how notes are sorted into kinds; yours to edit'],
+  ['access.yaml', 'which agents may read what; none may until you add one'],
+  ['.gitignore', 'keeps the index out of git'],
+  ['index.sqlite', 'the index of the notes, rebuilt whenever it is missing'],
+  ['events/', 'a line for each note you open, to learn what is read together'],
+] as const;
+
 export class WorkspaceSession {
   /** Keyed by resolved path: opening the same file twice reuses its tab. */
   private readonly documents = new Map<string, OpenDocument>();
@@ -131,6 +145,9 @@ export class WorkspaceSession {
 
   /** The vault's graph, read once per version of its file. */
   private readonly graphCache = new GraphCache();
+  /** The folder's memory, once main is given a way to start it; see `useMemory`. */
+  private memory: MemoryHost | null = null;
+  private memoryTrust: MemoryTrust | null = null;
   /** One reader for the window, so a note's history is walked once until HEAD moves. */
   private readonly history = new NoteHistoryReader(
     defaultGitRunner,
@@ -488,6 +505,7 @@ export class WorkspaceSession {
   closeAll(): void {
     this.git.close();
     this.vaultWatcher.close();
+    this.memory?.dispose();
     if (this.gutterTimer !== null) clearTimeout(this.gutterTimer);
     for (const document of this.documents.values()) document.store.close();
     this.documents.clear();
@@ -553,6 +571,10 @@ export class WorkspaceSession {
   private async adoptFolder(root: string, chosen = true): Promise<WorkspaceFolderEventV1> {
     this.folderRoot = root;
     this.folderChosen = chosen;
+    if (this.memory) {
+      const memory = this.memory;
+      void realpath(root).then((real) => { if (this.folderRoot === root) memory.setFolder(real); }, () => memory.setFolder(null));
+    }
     // A new folder invalidates the old index rather than serving it stale.
     this.indexCache = null;
     this.tagIndexCache = null;
@@ -1376,6 +1398,109 @@ export class WorkspaceSession {
     return index;
   }
 
+  /**
+   * Give the session a way to start the memory's worker, and the record of
+   * which folders may run their memory's scripts. Main does, once, at startup.
+   */
+  useMemory(startWorker: () => MemoryWorker, trust: MemoryTrust): void {
+    this.memory?.dispose();
+    this.memoryTrust = trust;
+    this.memory = new MemoryHost({
+      startWorker,
+      mayOpen: (root) => trust.mayOpen(root),
+      onChanged: () => this.send(WORKSPACE_CHANNELS.memoryChanged, { version: NOTO_WORKSPACE_VERSION }),
+      log: (event, fields) => this.logger.log(event, fields),
+    });
+    const root = this.folderRoot;
+    if (root) void realpath(root).then((real) => this.memory?.setFolder(real), () => {});
+  }
+
+  /**
+   * Begin keeping memory for the open folder, once the person has read what
+   * will be written and said yes. Main asks, in a sheet of its own, so a
+   * plugin that calls this cannot say yes for them.
+   */
+  async keepMemory(): Promise<WorkspaceKeepMemoryReplyV1> {
+    const reply = (outcome: WorkspaceKeepMemoryReplyV1['outcome'], made: readonly string[] = []): WorkspaceKeepMemoryReplyV1 => ({
+      version: NOTO_WORKSPACE_VERSION, outcome, made,
+    });
+    const memory = this.memory;
+    const root = memory?.folder() ?? null;
+    const window = this.getWindow();
+    if (!memory || root === null || !window) return reply('failed');
+    // A folder that keeps memory already is opened (or asked about its
+    // scripts) instead; nothing about it is Noto's to have made.
+    if (await stat(path.join(root, '.noto')).then(() => true, () => false)) {
+      this.send(WORKSPACE_CHANNELS.memoryChanged, { version: NOTO_WORKSPACE_VERSION });
+      return reply('made');
+    }
+    const answer = await dialog.showMessageBox(window, {
+      type: 'question',
+      buttons: ['Keep Memory', 'Cancel'],
+      defaultId: 0,
+      cancelId: 1,
+      message: `Keep memory for "${path.basename(root)}"?`,
+      detail: [
+        'Noto will make a .noto folder in it with:',
+        '',
+        ...KEPT_FILES.map(([file, why]) => `${file}: ${why}`),
+        '',
+        'Nothing is sent anywhere. Deleting the .noto folder turns all of it off.',
+      ].join('\n'),
+    });
+    if (answer.response !== 0) return reply('cancelled');
+    const made = await memory.keep();
+    this.logger.log('memory_keep', { outcome: made === null ? 'failed' : 'made', files: made?.length ?? 0 });
+    if (made === null) return reply('failed');
+    // Noto wrote all of it, so nothing in it came from somewhere else.
+    this.memoryTrust?.trust(root);
+    return reply('made', made);
+  }
+
+  /**
+   * Let the open folder's memory run the scripts in its `.noto/scripts`,
+   * once the person has seen them named and said yes; see `memory-trust.ts`.
+   */
+  async trustMemory(): Promise<WorkspaceTrustMemoryReplyV1> {
+    const reply = (trusted: boolean): WorkspaceTrustMemoryReplyV1 => ({ version: NOTO_WORKSPACE_VERSION, trusted });
+    const trust = this.memoryTrust;
+    const root = this.memory?.folder() ?? null;
+    const window = this.getWindow();
+    if (!trust || root === null || !window) return reply(false);
+    if (trust.mayOpen(root)) return reply(true);
+    const scripts = memoryScripts(root);
+    const shown = scripts.slice(0, 12);
+    const answer = await dialog.showMessageBox(window, {
+      type: 'warning',
+      buttons: ['Run Scripts', 'Cancel'],
+      defaultId: 1,
+      cancelId: 1,
+      message: `Let the memory of "${path.basename(root)}" run its scripts?`,
+      detail: [
+        `It runs ${scripts.length === 1 ? 'this script' : `these ${scripts.length} scripts`} from .noto/scripts when it reads the notes:`,
+        '',
+        ...shown,
+        ...(scripts.length > shown.length ? [`and ${scripts.length - shown.length} more`] : []),
+        '',
+        'A script can do anything a program on this computer can. Allow them only if you wrote them or trust where the folder came from. History and Properties work without them.',
+      ].join('\n'),
+    });
+    if (answer.response !== 0) return reply(false);
+    trust.trust(root);
+    this.logger.log('memory_trusted', { scripts: scripts.length });
+    this.send(WORKSPACE_CHANNELS.memoryChanged, { version: NOTO_WORKSPACE_VERSION });
+    return reply(true);
+  }
+
+  /** What the folder's memory knows about a note; see `memory-host.ts`. */
+  async noteMemory(target: string): Promise<WorkspaceNoteMemoryReplyV1> {
+    const real = await this.readableNote(target);
+    if (real === null || this.memory === null) {
+      return { version: NOTO_WORKSPACE_VERSION, state: real === null ? 'outside' : 'unavailable', memory: null };
+    }
+    return this.memory.about(real);
+  }
+
   /** A note's commits, following renames; see `git-history.ts`. */
   async noteHistory(target: string): Promise<WorkspaceNoteHistoryReplyV1> {
     const real = await this.readableNote(target);
@@ -1498,6 +1623,7 @@ export class WorkspaceSession {
   private async followDisk(touched: readonly string[] | null): Promise<void> {
     const root = this.folderRoot;
     if (!root) return;
+    this.memory?.changed(touched);
     let change = { structural: true, notes: true };
     if (touched !== null) {
       const indexed = this.indexCache?.root === root ? this.indexCache.reply.entries : [];

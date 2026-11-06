@@ -12,7 +12,8 @@
   "capabilities": [
     "git.read",
     "editor.read",
-    "editor.transform"
+    "editor.transform",
+    "vault.read"
   ],
   "lifecycle": [
     "activate",
