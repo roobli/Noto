@@ -61,6 +61,7 @@ import {
 import { blockMarkdownNow, captureMarkdown, captureStableWire, captureTransaction, effectiveOrigins, isUnwritableBlock, pinnedSource, type CaptureStats, type PristineBlock } from './capture';
 import type { NotoEditorPort } from './NotoEditorPort';
 import { createOriginPlugin, getBlockOrigins, rebaseOrigins, transactionKeepsTopLevelNodes } from './origin-plugin';
+import { caretCatchUp } from './caret-catch-up';
 import { gitGutterPlugin, gitTargetAtSelection, setGitBlocks, showCommittedAtSelection, type GitRevertTarget } from './git-gutter';
 import { gitRevertKind, gitRevertTransaction, type GitRevertContext } from './git-revert';
 import { closeGitPopover } from './git-popover';
@@ -431,6 +432,8 @@ export class NotoEditor implements NotoEditorPort {
 
   private corePlugins(document: NotoDocumentWire): Plugin[] {
     return [
+      // First of the key handlers, so every one after it sees where the caret is.
+      caretCatchUp(),
       createOriginPlugin(document.origins),
       // A getter, not a value: the setting can change while the editor is open
       // and the rules must follow without the editor being rebuilt.

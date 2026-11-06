@@ -81,8 +81,32 @@ export const sidenotesManifest = {
   uiExtensions: [],
 } satisfies PluginManifest;
 
+/**
+ * The notes changed since the last commit, as a page in the rail. Its whole
+ * interface is that page, so it never takes an editor lease.
+ */
+export const changesManifest = {
+  schemaVersion: 2,
+  id: 'dev.lr00rl.noto.changes',
+  name: 'Changes',
+  version: '1.0.0',
+  runtime: 'trusted-renderer',
+  activation: {
+    startup: false,
+    events: [],
+    hotkeys: [],
+  },
+  capabilities: ['git.read'],
+  lifecycle: ['activate', 'deactivate'],
+  commands: [],
+  settings: [],
+  hotkeys: [],
+  editorExtensions: [],
+  uiExtensions: ['rail:changes'],
+} satisfies PluginManifest;
+
 /** Bundled plugins that start switched on for a reader who never touched them. */
-export const BUNDLED_ON_BY_DEFAULT: ReadonlySet<string> = new Set([sidenotesManifest.id]);
+export const BUNDLED_ON_BY_DEFAULT: ReadonlySet<string> = new Set([sidenotesManifest.id, changesManifest.id]);
 
 export const markdownPaddingManifest = {
   schemaVersion: 2,

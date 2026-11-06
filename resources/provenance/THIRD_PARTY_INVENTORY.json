@@ -1,5 +1,5 @@
 {
-  "lockfileSha256": "f0ec23d3ac1de63197569b4eea3f105c3d401699444edecbd3306d8c4254fd1b",
+  "lockfileSha256": "6949e408c8665a31c1775bd415b8e8234450d0701737022f9cc2fbbf284ebb5a",
   "packages": [
     {
       "name": "@antfu/install-pkg",
@@ -5283,7 +5283,7 @@
     },
     {
       "name": "prosemirror-model",
-      "version": "1.25.11",
+      "version": "1.25.12",
       "license": "MIT",
       "repository": "git+https://code.haverbeke.berlin/prosemirror/prosemirror-model.git",
       "noticeFiles": [
@@ -5328,7 +5328,7 @@
     },
     {
       "name": "prosemirror-view",
-      "version": "1.42.3",
+      "version": "1.42.9",
       "license": "MIT",
       "repository": "git+https://code.haverbeke.berlin/prosemirror/prosemirror-view.git",
       "noticeFiles": [

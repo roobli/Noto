@@ -178,6 +178,14 @@ into view; View → Collapse Other Folders does the same. A new note, from
 `Untitled` selected: type a name and press `Enter` to start writing in it, or
 press `Escape` to keep the placeholder.
 
+In a folder under git, the icon beside the rail's search, with a count, turns
+the rail to Changes: only the notes that differ from the last commit, as one
+short tree, each opened by a click and given the file tree's menu by a right
+click. In a folder with a `.noto/` folder in it, Noto writes down each note you
+bring to the front, and the note you followed a link from, one line each in
+`.noto/events/`, for the [vault tools](https://github.com/roobli/vault) to read;
+a folder without `.noto/` is never written to.
+
 `Cmd+/` opens Source Code Mode: the whole note as the Markdown it is saved as,
 the way Typora's Command-slash does. `Cmd+Alt+/` still toggles source for the
 single block under the caret, which is the escape hatch when you want to fix
@@ -265,9 +273,12 @@ the document only if it asked for that; a service plugin gets a filesystem
 grant scoped to a path, revocable, and denied everywhere else. Nothing is
 ambient.
 
-Four plugins ship in the build. Title Shift promotes and demotes heading
+Six plugins ship in the build. Title Shift promotes and demotes heading
 levels, and Markdown Padding applies CJK spacing rules; both are ports of the
-author's Typora plugins. Semantic Focus and Fixture Reader are bundled
+author's Typora plugins. Sidenotes draws `<span class="sidenote">` notes in the
+margin and writes new ones there, and Changes lists the notes changed since
+the last commit as a page in the rail, the first plugin to use a slot outside
+the editor. Semantic Focus and Fixture Reader are bundled
 examples, one per runtime kind, kept so that a plugin author has a working
 plugin of each shape to read and so the capability broker has something that
 exercises it.

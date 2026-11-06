@@ -13,6 +13,7 @@
  */
 
 import type { EditorExtension } from '../../editor/noto/editor-extensions';
+import type { ShellContext } from '../slots';
 import type { NotoEditorPort } from '../../editor/noto/NotoEditorPort';
 import { padCjkSpacing, shiftHeadings } from './transforms';
 
@@ -52,6 +53,12 @@ export interface TrustedPluginContext {
 
 export interface TrustedPlugin {
   activate(context: TrustedPluginContext): Disposer;
+  /**
+   * What the plugin adds to the shell rather than to the editor: a rail page,
+   * say. Called while the plugin is switched on, whether or not a note is
+   * open, and undone when it is switched off. See `../slots.ts`.
+   */
+  shell?(context: ShellContext): Disposer;
 }
 
 /**

@@ -11,6 +11,25 @@ How releases are made, and what each channel receives, is in
 
 ### Added
 
+- **Changes, in the rail.** A toggle beside search, with a count, opens the
+  notes that differ from the last commit as one short tree: changed, new and
+  deleted, each with its own mark, and a chain of folders holding only the
+  next drawn as one row. A click opens the note; a deleted one is listed,
+  struck through. A right click gives a note or folder the same menu as in
+  the file tree (open, rename, duplicate, move, reveal, copy path, trash); a
+  rename or new folder is typed on the row in the file tree, and the rail
+  comes back to Changes after. It is a bundled plugin, on by default, and can
+  be switched off in the Plugin Center.
+- **Plugins can put a page in the rail.** A trusted plugin may register a
+  page with a toggle in the rail's head, and read the folder's git status if
+  its manifest declares `git.read`. The page lives while the plugin is
+  switched on, with or without a note open. Changes is the first; the slots
+  and what they offer are described in `docs/architecture/plugin-slots.md`.
+- **A vault that keeps memory learns what you read.** In a folder with a
+  `.noto/` folder, each note brought to the front is one line in
+  `.noto/events/`, with the note you followed a link from. The vault tools
+  read it to tell which notes are warm and which are thought of together. A
+  folder without `.noto/` is never written to.
 - **Write a sidenote in the margin.** Select words, then Add Sidenote from
   the right-click menu or Cmd-Alt-S: a card opens in the right margin, beside
   the line, with the keys in it. Enter saves the note and Escape leaves
@@ -100,6 +119,17 @@ How releases are made, and what each channel receives, is in
 
 ### Fixed
 
+- **Changes lists the notes of a folder opened through a link.** Git names
+  the notes from where the folder really is, and the page looked for them
+  under the name it was opened by, so it said nothing had changed while its
+  toggle counted them. On Windows every folder under a short name was
+  affected, the temporary folder among them.
+- **A selection made right after clicking into a note keeps its last
+  letter.** 20 ms after the editor takes the focus it used to put back the
+  selection it last knew, to undo where the browser drops the caret; on a
+  busy machine that came after a Shift and arrow pressed in the meantime and
+  undid it. The editor engine (`prosemirror-view` 1.42.9) now leaves a
+  selection that has moved since the focus.
 - **Moving a row or column by its handle works more than once.** The
   handles went away with the first move, with the caret moving between cells
   and with every key typed, and came back only when the pointer left the

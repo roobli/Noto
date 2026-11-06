@@ -89,7 +89,7 @@ const GIT_WORDS: Readonly<Record<WorkspaceGitChangeV1 | 'folder', string>> = {
  * tell. A deleted note has no row; its folders carry the ring. The words
  * travel with the mark as hidden text, so the row reads "edited.md, Changed".
  */
-function GitMark({ kind }: { kind: WorkspaceGitChangeV1 | 'folder' }) {
+export function GitMark({ kind }: { kind: WorkspaceGitChangeV1 | 'folder' }) {
   return (
     <span className={`tree-git tree-git-${kind}`} data-testid="tree-git-mark" data-git={kind}>
       {kind === 'new' && (
@@ -290,6 +290,24 @@ export function FileTree({
       if (!childrenRef.current.has(directory)) void load(directory);
     }
   }, [root, activePath, load]);
+
+  // A row named from elsewhere (a page in the rail, say) can be under closed
+  // folders; they open so its name field is there to type in.
+  const editingPath = editing?.path ?? null;
+  useEffect(() => {
+    if (!root || !editingPath) return;
+    const ancestors = foldersBetween(root, editingPath);
+    if (ancestors.length === 0) return;
+    setExpanded((current) => {
+      if (ancestors.every((directory) => current.has(directory))) return current;
+      const next = new Set(current);
+      for (const directory of ancestors) next.add(directory);
+      return next;
+    });
+    for (const directory of ancestors) {
+      if (!childrenRef.current.has(directory)) void load(directory);
+    }
+  }, [root, editingPath, load]);
 
   /*
    * Which rows are stuck to the top.
@@ -608,7 +626,7 @@ export function FileTree({
  * says which. A lifted flap drawn in the panel colour came out at 15px as a
  * pale stripe across the lower half, a two-tone smudge beside the name.
  */
-function FolderGlyph() {
+export function FolderGlyph() {
   return (
     <svg className="tree-glyph tree-glyph-folder" viewBox="0 0 16 16" aria-hidden="true">
       <path d="M1.5 4.25a1 1 0 0 1 1-1h3.2l1.4 1.5h6.4a1 1 0 0 1 1 1v6.5a1 1 0 0 1-1 1h-11a1 1 0 0 1-1-1z" />
@@ -616,7 +634,7 @@ function FolderGlyph() {
   );
 }
 
-function FileGlyph() {
+export function FileGlyph() {
   return (
     <svg className="tree-glyph" viewBox="0 0 16 16" aria-hidden="true">
       <path d="M4.25 1.75h5l3 3v9.5h-8z" />

@@ -19,8 +19,34 @@ import { FileTree, type FileTreeProps } from './FileTree';
 import { nestOutline, type OutlineEntry, type OutlineNode } from './outline';
 import { clampRailWidth, railWidthMaxForScreen, SETTING_RANGES } from '../shared/settings/v1/contracts';
 import { sizeTreeGuides } from './tree-guides';
+import type { RailPageEntry } from './plugins/slots';
 
-export type RailView = 'files' | 'outline' | 'links' | 'search';
+/** A built-in view, or a page a plugin put in the rail, by its key. */
+export type RailView = 'files' | 'outline' | 'links' | 'search' | `page:${string}`;
+
+/**
+ * A page a plugin put in the rail. The rail gives it an element and its host
+ * and takes it back when the page is closed or the plugin is switched off;
+ * what is drawn inside is the plugin's.
+ */
+function PluginPage({ entry }: { entry: RailPageEntry }) {
+  const element = useRef<HTMLDivElement>(null);
+  useEffect(() => {
+    const target = element.current;
+    if (!target) return undefined;
+    let unmount: (() => void) | null = null;
+    try {
+      unmount = entry.page.mount(target, entry.host);
+    } catch (error) {
+      target.textContent = `${entry.page.title} could not be shown: ${(error as Error).message}`;
+    }
+    return () => {
+      try { unmount?.(); } catch { /* A page that fails to leave still leaves. */ }
+      target.replaceChildren();
+    };
+  }, [entry.page, entry.host]);
+  return <div className="rail-plugin-page" ref={element} />;
+}
 
 const RAIL_MIN = SETTING_RANGES.railWidth.min;
 
@@ -48,6 +74,8 @@ export interface WorkspaceRailProps {
   readonly search: RailSearchProps;
   /** The links view's wiring, the same way. */
   readonly links: RailLinksProps;
+  /** Pages plugins have put in the rail, each a toggle beside search. */
+  readonly pages?: readonly RailPageEntry[];
 }
 
 function Tab({ id, current, onSelect, children, testId }: {
@@ -158,19 +186,21 @@ function OutlineLevel({ nodes, root, onGoToBlock, current, folded, onFold }: {
  * Measuring would mean a layout read on every switch and a frame at the wrong
  * position on the first one.
  */
-const INDICATOR: Record<RailView, { left: string; width: string }> = {
+const INDICATOR: Record<'files' | 'outline' | 'links', { left: string; width: string }> = {
   // Measured against the drawn labels: where each starts, and its width
   // less the letter-spacing that trails the last glyph.
   files: { left: '0px', width: '31px' },
   outline: { left: '48px', width: '51px' },
   links: { left: '116px', width: '34px' },
-  // No rule under either label while the search has the rail.
-  search: { left: '0px', width: '0px' },
 };
+/** No rule under any label while search or a plugin's page has the rail: its toggle shows it instead. */
+const NO_RULE = { left: '0px', width: '0px' };
+const ruleFor = (view: RailView) => (view === 'files' || view === 'outline' || view === 'links' ? INDICATOR[view] : NO_RULE);
 
 export function WorkspaceRail({
-  view, onView, showLinks, width, onResize, outline, onGoToBlock, currentHeading, tree, onCollapseTree, search, links,
+  view, onView, showLinks, width, onResize, outline, onGoToBlock, currentHeading, tree, onCollapseTree, search, links, pages = [],
 }: WorkspaceRailProps) {
+  const page = view.startsWith('page:') ? pages.find((entry) => `page:${entry.key}` === view) ?? null : null;
   const railRef = useRef<HTMLElement>(null);
   const outlineRef = useRef<HTMLElement>(null);
   /** The headings folded shut, by block. Kept while the rail lives, as Typora keeps its folds. */
@@ -283,9 +313,9 @@ export function WorkspaceRail({
         role="tablist"
         aria-label="Rail view"
         style={{
-          '--rail-indicator-left': INDICATOR[view].left,
+          '--rail-indicator-left': ruleFor(view).left,
           // The rule is drawn 100px wide and scaled to the label's width.
-          '--rail-indicator-scale': String(parseFloat(INDICATOR[view].width) / 100),
+          '--rail-indicator-scale': String(parseFloat(ruleFor(view).width) / 100),
         } as CSSProperties}
       >
         <Tab id="files" current={view} onSelect={onView} testId="rail-files">Files</Tab>
@@ -305,6 +335,22 @@ export function WorkspaceRail({
             </svg>
           </button>
         )}
+        {/* Plugins' pages, as toggles like search's: the words in the tabs are
+            the shell's three views, and a narrow rail has room for icons. */}
+        {pages.map((entry) => {
+          const key = `page:${entry.key}` as const;
+          const on = view === key;
+          return (
+            <button key={entry.key} type="button" data-testid="rail-page-toggle" data-page={entry.key}
+              className={on ? 'icon-button rail-page is-on' : 'icon-button rail-page'}
+              aria-label={entry.badge ? `${entry.page.title}, ${entry.badge}` : entry.page.title}
+              aria-pressed={on} title={entry.page.title}
+              onClick={() => onView(on ? 'files' : key)}>
+              <svg viewBox="0 0 16 16" aria-hidden="true"><path d={entry.page.icon} /></svg>
+              {entry.badge && <span className="rail-page-badge" data-testid="rail-page-badge" aria-hidden="true">{entry.badge}</span>}
+            </button>
+          );
+        })}
         <button type="button" data-testid="rail-search"
           className={view === 'search' ? 'icon-button rail-search is-on' : 'icon-button rail-search'}
           aria-label="Search in notes" aria-pressed={view === 'search'} title="Search in notes (⇧⌘F)"
@@ -322,7 +368,12 @@ export function WorkspaceRail({
         </button>
       </div>
 
-      {view === 'files' && (
+      {page && (
+        <div className="rail-view" id="rail-view-page" data-testid="rail-plugin-view" data-page={page.key} aria-label={page.page.title} role="region">
+          <PluginPage entry={page} />
+        </div>
+      )}
+      {(view === 'files' || (view.startsWith('page:') && !page)) && (
         <div className="rail-view" id="rail-view-files" role="tabpanel" aria-labelledby="rail-tab-files">
           <FileTree {...tree} />
         </div>

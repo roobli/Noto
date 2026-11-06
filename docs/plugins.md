@@ -175,6 +175,22 @@ Commands appear in the command palette (`Shift+Cmd+P`) while the plugin is activ
 under the title the manifest gives them. Hotkeys are dispatched by the shell
 and reach the plugin through the registry, so they work wherever focus is.
 
+### Adding to the window
+
+Editor extensions live inside an editor and go when the note does. A plugin
+that knows about the folder rather than one note needs a place in the window
+that is there with no note open. A trusted plugin may have a second entry
+point beside `activate`, `shell(context): () => void`, called while the plugin
+is switched on, whether or not a note is open, and undone when it is switched
+off. Its context registers a rail page (a toggle beside the rail's search, with
+an optional count, named as `rail:<id>` in the manifest's `uiExtensions`) and
+carries the host: where the window is, `openNote`, and `showFileMenu`, the file
+tree's own menu for a note or folder, run in main against a path main checks.
+With `git.read` among its capabilities it also reads what changed in the
+folder since the last commit. The slots, the services and what comes next are
+in [architecture/plugin-slots.md](architecture/plugin-slots.md); the bundled
+Changes plugin (`src/renderer/plugins/bundled/changes/`) is the worked example.
+
 ## Lifecycle, as the reader sees it
 
 A freshly discovered plugin is off. Enabling it in Settings records the
@@ -332,13 +348,14 @@ build:
   and an enabled plugin is waiting, the shell raises `editor.ready` and the
   plugin activates, so a plugin enabled yesterday is running when a note
   opens today. `activation.startup` is validated and stored but nothing
-  fires it, and no other event is raised.
+  fires it, and no other event is raised. A trusted plugin's `shell` entry
+  point is the exception: it runs whenever the plugin is switched on.
 - **Settings are booleans.** See above.
 - **`notice` is a status line message.** It shows in the status bar for a
   couple of seconds, attributed to the plugin in the lifecycle counters, and
   that is all it can do: no actions, no persistence.
-- **UI extensions are declared and unconsumed.** Nothing reads
-  `uiExtensions` yet.
+- **The window has one slot so far.** `uiExtensions` is read for rail pages
+  (`rail:<id>`) and nothing else, and only trusted plugins can fill it.
 
 Each of these is a known gap rather than a design choice, and the order above
 is the order they are likely to close.

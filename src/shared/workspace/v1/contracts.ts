@@ -153,6 +153,8 @@ export interface WorkspaceRequestV1 {
 
 export interface WorkspaceOpenPathRequestV1 extends WorkspaceRequestV1 {
   readonly path: string;
+  /** The note this one was reached from, by a link; recorded for the vault's memory. */
+  readonly from?: string;
 }
 
 /** Activating or closing a tab, both identified by path. */
@@ -533,6 +535,19 @@ export interface WorkspaceGitMarksV1 {
   readonly files: ReadonlyArray<readonly [string, WorkspaceGitChangeV1]>;
   /** Folders, below the open one, holding a change somewhere inside. */
   readonly folders: readonly string[];
+  /**
+   * True once git has been read for the folder; absent otherwise (not in a
+   * repository, git missing, too slow). Lets "nothing changed" be told from
+   * "nothing known".
+   */
+  readonly repository?: true;
+  /**
+   * The folder as the file system names it, links and Windows short names
+   * resolved. Every path in `files` and `folders` is under it, as the file
+   * tree's paths are, and it differs from `root` when the folder was opened
+   * through another name for it. Sent with `repository`.
+   */
+  readonly realRoot?: string;
 }
 
 /** Bounds on a gutter message: a note over a megabyte has no gutter at all. */

@@ -499,6 +499,80 @@ button:disabled { color: var(--muted); opacity: 0.7; }
 
 .rail-collapse + .rail-search { margin-left: -10px; }
 
+/* A plugin's page in the rail: a toggle drawn as search is, in the same
+   group of icons at the right of the head, 4px from its neighbours. The
+   words in the tabs stay the shell's own three views; a 190px rail has room
+   for icons, not for more words. */
+.rail-page {
+  @include hit-area.extend;
+  position: relative;
+  margin-left: auto;
+  width: 22px;
+  min-width: 22px;
+  height: 22px;
+  min-height: 22px;
+  margin-top: -3px;
+
+  svg { width: 13px; height: 13px; }
+}
+
+.rail-collapse + .rail-page,
+.rail-page + .rail-page,
+.rail-page + .rail-search { margin-left: -10px; }
+
+/* A count beside the icon, set as the tabs are set: small, quiet, in the
+   muted tier until the page is open. Figures of one width, so a count that
+   changes does not shift. Over the icon's corner, clear of its stroke. */
+.rail-page-badge {
+  position: absolute;
+  top: -4px;
+  left: 15px;
+  min-width: 11px;
+  padding: 0 2px;
+  border-radius: 5px;
+  /* The rail's own ground, so the count cuts the icon's corner cleanly. */
+  background: var(--panel);
+  color: var(--muted);
+  font: 600 9px/11px tokens.$ui;
+  font-variant-numeric: tabular-nums;
+  text-align: center;
+  pointer-events: none;
+}
+
+.rail-page.is-on .rail-page-badge,
+.rail-page:hover .rail-page-badge { color: var(--ink); }
+
+.rail-plugin-page { min-height: 100%; }
+
+/* Changes: a line saying what kind of changes, then the tree. */
+.changes-summary {
+  margin: 2px 0 6px;
+  color: var(--muted);
+  font: 500 11px tokens.$ui;
+  font-variant-numeric: tabular-nums;
+}
+
+/* A deleted note has no file to open: struck through, quiet, and inert. */
+.tree-row.changes-deleted {
+  cursor: default;
+  color: var(--muted);
+
+  .tree-name { text-decoration: line-through; text-decoration-color: var(--muted); }
+}
+
+.tree-row.changes-deleted:hover { background: transparent; }
+
+/* Deleted is a shape too: a short dash where the others have a dot or a plus. */
+.changes-deleted-mark {
+  flex: 0 0 auto;
+  width: 7px;
+  height: 1.5px;
+  margin-left: auto;
+  margin-right: 1.5px;
+  border-radius: 1px;
+  background: var(--muted);
+}
+
 /* The moving rule. One element under both labels, positioned by a custom
    property the pressed tab sets, so there is no measuring in script and no
    flash of the wrong position on first paint. */

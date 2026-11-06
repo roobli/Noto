@@ -41,6 +41,7 @@ import type { StructuredLogger } from '../logger';
 import type { RecentFiles } from './recent-files';
 import type { WorkspaceSession } from './session';
 import { openedNote, openReply } from './open-reply';
+import { VaultVisits } from './vault-visits';
 
 export function registerWorkspaceHandlers(deps: {
   session: WorkspaceSession;
@@ -58,6 +59,7 @@ export function registerWorkspaceHandlers(deps: {
   /** The folders opened before, read at call time so the list is current. */
   recentFolders: () => Promise<readonly RecentFileV1[]>;
 }): void {
+  const visits = new VaultVisits((event, data) => deps.logger.log(event, data));
   const register = <TRequest extends { requestId: string }, TReply>(
     channel: string,
     validate: (value: unknown) => value is TRequest,
@@ -157,7 +159,10 @@ export function registerWorkspaceHandlers(deps: {
       const opened = deps.session.activate(request.path);
       // A tab that is not open is not an error worth failing the call over; the
       // renderer's list was simply a moment out of date.
-      if (opened) deps.onMenuStale();
+      if (opened) {
+        deps.onMenuStale();
+        void visits.opened(deps.session.folder, request.path);
+      }
       return { version: NOTO_WORKSPACE_VERSION, opened: opened ? openedNote(opened) : null } as const;
     });
 
@@ -178,6 +183,7 @@ export function registerWorkspaceHandlers(deps: {
     async (request: WorkspaceOpenPathRequestV1) => {
       const reply = await deps.session.openPath(request.path);
       deps.onMenuStale();
+      if ('opened' in reply) void visits.opened(deps.session.folder, request.path, request.from);
       return openReply(reply);
     });
 

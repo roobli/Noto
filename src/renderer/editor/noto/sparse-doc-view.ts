@@ -218,7 +218,7 @@ function hasAccessor(proto: object, name: string): boolean {
 /**
  * Check the private prosemirror-view shape the sparse patch relies on.
  * Returns a problem description, or '' when the shape matches.
- * Pinned against prosemirror-view 1.42.3; any drift must land here first.
+ * Pinned against prosemirror-view 1.42.9; any drift must land here first.
  */
 export function validatePmViewShape(
   docView: unknown,

@@ -98,7 +98,10 @@ export function isWorkspaceRequestV1(value: unknown): value is WorkspaceRequestV
 }
 
 export function isWorkspaceOpenPathRequestV1(value: unknown): value is WorkspaceOpenPathRequestV1 {
-  return record(value) && exact(value, ['version', 'requestId', 'path'])
+  return record(value)
+    && (exact(value, ['version', 'requestId', 'path'])
+      || (exact(value, ['version', 'requestId', 'path', 'from'])
+        && typeof value.from === 'string' && value.from.length > 0 && value.from.length <= 4096))
     && value.version === 1 && typeof value.requestId === 'string' && requestId.test(value.requestId)
     && typeof value.path === 'string' && value.path.length > 0 && value.path.length <= 4096;
 }
@@ -574,7 +577,10 @@ const isMarkPath = (value: unknown): value is string =>
   typeof value === 'string' && value.length > 0 && value.length <= 4096;
 
 export function isWorkspaceGitMarksV1(value: unknown): value is WorkspaceGitMarksV1 {
-  return record(value) && exact(value, ['version', 'root', 'files', 'folders'])
+  return record(value)
+    && (exact(value, ['version', 'root', 'files', 'folders'])
+      || (exact(value, ['version', 'root', 'files', 'folders', 'repository', 'realRoot'])
+        && value.repository === true && isMarkPath(value.realRoot)))
     && value.version === NOTO_WORKSPACE_VERSION
     && (value.root === null || isMarkPath(value.root))
     && Array.isArray(value.files) && value.files.length <= MAX_GIT_MARKS
