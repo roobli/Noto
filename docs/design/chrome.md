@@ -215,10 +215,17 @@ glyphs are filled shapes, files are outlines, and the two labels over the
 tree are set as Typora sets its sidebar heading, in small capitals with no
 indicator.
 
-A name that does not fit the rail is scrolled to, never cut to an ellipsis.
-Rows are as wide as their names and at least the rail, so the pane scrolls
-sideways the way Typora's does, which is what a vault of long Chinese
-filenames needs.
+The tree is as wide as the rail and never scrolls sideways. It used to, the
+way Typora's does, with the twisty and glyph pinned while names slid under
+them; in a 1000px window a note six folders down then had about 19px for its
+name, and a swipe put names under icons. Now the step per level gives up
+width when the open tree is deep (30px down to 14px, `tree-fit.ts`), and a
+name that still does not fit is cut in the middle, keeping its end: a start
+it shares with its siblings goes first, a note's `.md` before that. A rest on
+a cut row shows the whole name over the page. Settings, Appearance, File tree
+chooses how the folders you are in stay in sight (a stack of held rows, or
+one trail row) and whether notes show `.md`; Option-click or the row menu
+makes a folder the tree's root.
 Every row carries a glyph, a folder or a file, drawn inline in the title bar's
 stroke style in the muted tier; they are what makes a column of names read as
 files rather than as an outline, and a file row carries the twisty's width as

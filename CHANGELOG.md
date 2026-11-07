@@ -11,6 +11,20 @@ How releases are made, and what each channel receives, is in
 
 ### Added
 
+- **A deep folder fits a narrow window.** The file tree no longer scrolls
+  sideways. When the open tree is deep, each level steps in less (from 30 px
+  down to 14 px), so the deepest note keeps room for its name. A name that
+  still does not fit is cut in the middle, keeping its end: a start it shares
+  with its neighbours goes first, and a note's `.md` before that. Rest the
+  pointer on a cut name to read it whole.
+- **Focus on a folder.** Option-click a folder, or choose Focus on This
+  Folder from its menu, and it becomes the tree's root, with its full steps
+  back and a bar above it leading up again. Escape, or ×, shows the whole
+  folder.
+- **Settings → Appearance → File tree.** Folders you are in: Stack, each held
+  on its own row as before, or Trail, folded into one row of names that leads
+  back to any of them. And Show .md in the tree, on by default.
+
 - **Quick Open shows the note you are on beside its results.** The
   highlighted note's title, folder and when it changed, then its opening as
   readable text; in In Notes mode the lines around the match, with the
@@ -309,6 +323,9 @@ How releases are made, and what each channel receives, is in
 
 ### Fixed
 
+- **The filename is centred over the page with Note Info open.** It was
+  centred over everything right of the rail, so it sat off to the right of
+  the text it names. It now moves with the page when Note Info opens.
 - **Save pressed while a save is landing is no longer ignored.** It waits
   for that save and then writes what is on screen, so the note no longer
   stays marked unsaved with the last words unwritten.
