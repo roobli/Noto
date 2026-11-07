@@ -199,9 +199,10 @@ button:disabled { color: var(--muted); opacity: 0.7; }
      narrower than what it holds, so when the window is too narrow for that
      the name gives up the width, never the controls, and it can not reach
      under either group. With the rail closed the first column is empty and
-     the page is the window. */
+     the page is the window; the last is Note Info's width, empty while it is
+     closed. */
   display: grid;
-  grid-template-columns: var(--title-rail, 0px) minmax(max-content, 1fr) minmax(0, max-content) minmax(max-content, 1fr);
+  grid-template-columns: var(--title-rail, 0px) minmax(max-content, 1fr) minmax(0, max-content) minmax(max-content, 1fr) var(--title-info, 0px);
   transition: grid-template-columns var(--motion-slow) var(--ease-out);
   align-items: center;
   /* No column gap: with the rail closed its column is empty, and a gap after
@@ -255,7 +256,17 @@ button:disabled { color: var(--muted); opacity: 0.7; }
 }
 
 .title-left { grid-column: var(--title-left-column, 2); justify-self: start; }
-.title-actions { grid-column: 4; justify-self: end; }
+/* Over the page's right side and Note Info's column together, so the buttons
+   keep to the window's corner whether Note Info is open or not. */
+.title-actions { grid-column: 4 / -1; justify-self: end; }
+
+/* Note Info takes a column of the title bar as it does of the window, so the
+   filename is centred over the page it names and moves with it when Note Info
+   opens. Centred over everything right of the rail, it sat off to the right
+   of the text, over the edge of Note Info's column. */
+.app-shell {
+  --title-info: var(--shell-info, 0px);
+}
 
 /* With the rail open, the toggle and the trail sit on the rail's head, beside
    the traffic lights, exactly where they are with it closed: opening the rail
