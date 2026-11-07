@@ -362,6 +362,14 @@ unsigned local build and a signed release build take the same path: set
 still succeeds and is simply unsigned, which is what a contributor without
 certificates needs.
 
+The two libraries Noto is built on, [`@roobli/md`](https://github.com/roobli/md)
+for Markdown and [`@roobli/vault`](https://github.com/roobli/vault) for the
+folder's memory, are pinned to a commit in `package.json` and compiled on
+install, so a clean checkout builds without either repository beside it. To
+work on one alongside Noto, point its entry at your checkout for a while
+(`"@roobli/vault": "link:../vault"`), and pin it again to the pushed commit
+before the change goes up.
+
 The end-to-end suite runs against a packaged application rather than a
 development server, because the things most likely to break in an Electron app
 are exactly the things a development server does not exercise: the preload
