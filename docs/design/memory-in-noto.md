@@ -146,16 +146,16 @@ The first tab, replacing the Links tab's `graph.json` list.
 
 ```
  ┌──────────────── note ──────────────────┬──── Related ───────────────┐
- │ # 看完 GFW 之后的改造方案                │ Ask the vault…             │
+ │ # 读完 DuckDB 之后的改造方案             │ Ask the vault…             │
  │                                        │                            │
- │ … M22 的拨测结果说明 …                   │ LINKS HERE              3  │
- │                                        │ 多内核横向演进对照          │
+ │ … Q4 的压测结果说明 …                    │ LINKS HERE              3  │
+ │                                        │ 多引擎横向性能对照          │
  │                                        │   links here · read 5×  ▮▮▮│
  │                                        │ NAMED HERE, NOT LINKED  2  │
- │                                        │ M22 拨测报告        Link   │
- │                                        │   "…M22 的拨测结果…"       │
+ │                                        │ Q4 压测报告         Link   │
+ │                                        │   "…Q4 的压测结果…"        │
  │                                        │ READ TOGETHER           4  │
- │                                        │ 积至与 MESA 泄露文件        │
+ │                                        │ DuckDB 与 Polars 对比       │
  │                                        │   opened after this 6×  ▮▮ │
  │                                        │ ABOUT THE SAME          5  │
  │                                        │ …                          │
@@ -280,9 +280,9 @@ new slot, and its name opens the note when the context is wanted.
  │ ‹ Review                          │
  │ NAMED, NOT LINKED          3 of 40│
  │ ┌───────────────────────────────┐ │
- │ │ AAA_深度对比xray与sing-box · 152│ │
- │ │ …见 多内核横向演进对照 的总结…   │ │
- │ │ → 多内核横向演进对照 in A402…   │ │
+ │ │ AAA_深度对比Spark与Flink · 152  │ │
+ │ │ …见 多引擎横向性能对照 的总结…   │ │
+ │ │ → 多引擎横向性能对照 in A407…   │ │
  │ │ [Link It Y] [Not This N] [Skip S]│
  │ └───────────────────────────────┘ │
  └───────────────────────────────────┘

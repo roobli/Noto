@@ -117,7 +117,7 @@ function largest(low: number, high: number, fits: (k: number) => boolean): numbe
 /**
  * A name cut to a width, keeping its end.
  *
- * Siblings in a vault tend to share their start (`geedge_docs_`, `2026_11_`)
+ * Siblings in a vault tend to share their start (`project_docs_`, `2026_11_`)
  * and differ at the end, so a start shared with a sibling goes first, cut back
  * to one of its own separators or dropped whole. Otherwise the name keeps a
  * short head, about a third of the room, and as much of its end as fits. A

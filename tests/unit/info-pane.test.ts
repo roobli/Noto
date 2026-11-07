@@ -155,11 +155,11 @@ describe('the words of History and Properties', () => {
   });
 
   it('reads a note\'s frontmatter fields in the order written', () => {
-    const text = '---\ntitle: "A plan"\ntags: [gfw, probe]\naliases:\n  - M22\n  - 拨测\nempty:\n# a comment\n---\n\n# Body\n';
+    const text = '---\ntitle: "A plan"\ntags: [plans, probe]\naliases:\n  - Q4\n  - 压测\nempty:\n# a comment\n---\n\n# Body\n';
     expect(frontmatterFields(text)).toEqual([
       { key: 'title', value: 'A plan' },
-      { key: 'tags', value: 'gfw, probe' },
-      { key: 'aliases', value: 'M22, 拨测' },
+      { key: 'tags', value: 'plans, probe' },
+      { key: 'aliases', value: 'Q4, 压测' },
       { key: 'empty', value: '' },
     ]);
     expect(frontmatterFields('# No frontmatter\n')).toEqual([]);
@@ -168,7 +168,7 @@ describe('the words of History and Properties', () => {
   it('counts words as a reader would, Chinese a character each, and leaves code and frontmatter out', () => {
     const text = [
       '---', 'title: not counted', '---', '',
-      '# 看完 GFW 之后', '', 'Two words.', '',
+      '# 看完 DuckDB 之后', '', 'Two words.', '',
       '```', 'not words at all', '```', '',
       '| a | b |', '| --- | --- |', '| 1 | 2 |', '',
       'See [[Other note]] and [the site](https://example.com) and [a note](other.md).',
@@ -179,7 +179,7 @@ describe('the words of History and Properties', () => {
     expect(counts.headings).toBe(1);
     expect(counts.noteLinks).toBe(2);
     expect(counts.webLinks).toBe(1);
-    // 看完 之后 (4) + GFW + Two words. + a b 1 2 + See Other note and the site and a note (link targets are not words).
+    // 看完 之后 (4) + DuckDB + Two words. + a b 1 2 + See Other note and the site and a note (link targets are not words).
     expect(counts.words).toBe(4 + 1 + 2 + 4 + 9);
   });
 });

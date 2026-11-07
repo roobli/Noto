@@ -32,9 +32,9 @@ function scratch(name: string): string {
   return directory;
 }
 
-const FIRST = '---\ntitle: A plan\ntags: [gfw, probe]\n---\n\n# Plan\n\nFirst.\n';
-const SECOND = '---\ntitle: A plan\ntags: [gfw, probe]\n---\n\n# Plan\n\nFirst.\n\nMore.\n';
-const NOW = '---\ntitle: A plan\ntags: [gfw, probe]\n---\n\n# Plan\n\nFirst.\n\nMore.\n\nNot committed.\n';
+const FIRST = '---\ntitle: A plan\ntags: [plans, probe]\n---\n\n# Plan\n\nFirst.\n';
+const SECOND = '---\ntitle: A plan\ntags: [plans, probe]\n---\n\n# Plan\n\nFirst.\n\nMore.\n';
+const NOW = '---\ntitle: A plan\ntags: [plans, probe]\n---\n\n# Plan\n\nFirst.\n\nMore.\n\nNot committed.\n';
 
 /** A note written, changed, moved, and changed again on disk. */
 function movedNote(): { repo: string; note: string } {
@@ -196,7 +196,7 @@ test.describe('the info pane', () => {
       await expect(fields).toHaveCount(2);
       await expect(fields.first()).toContainText('title');
       await expect(fields.first()).toContainText('A plan');
-      await expect(fields.nth(1)).toContainText('gfw, probe');
+      await expect(fields.nth(1)).toContainText('plans, probe');
       await expect(pane(page).getByTestId('properties-first')).toContainText('Today');
       await expect(pane(page).getByTestId('properties-path')).toContainText(path.join('Areas', 'plan.md'));
       if (SHOTS) await capture(app, path.join(SHOTS, 'info-properties-light.png'));
