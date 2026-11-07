@@ -99,11 +99,13 @@ not a second top-bar icon — both used to open the same shell with different
 default sections, which read as two modals. Back and forward walk the trail, three
 notes each way, from the author's plugin of that name, and they fade rather
 than vanish when there is nowhere to go, so the pair keeps its place. The
-filename in the centre is preceded by where the note is: inside an open
-folder, the path from the folder's own name, otherwise the shortened
-directory, and only its last two segments, since a title bar is not the place
-to read a six-level path in full. What is not on it, and where it went
-instead:
+filename in the centre is preceded by the folder the note is in, and only
+that folder, since a title bar is not the place to read a six-level path in
+full. It is centred over the page, not over everything right of the rail:
+Note Info takes a column of the title bar as it takes one of the window, so
+the name moves with the page when Note Info opens. Beside the gear, `?` opens
+What Noto Can Do, the guide, with a dot on it when something is new since it
+was last opened. What is not on it, and where it went instead:
 
 | Was a button | Now |
 | --- | --- |
@@ -325,24 +327,37 @@ Remote, or graph pitch on that screen. The title bar likewise does not promote
 Remote or Plugins.
 
 The shell has the main window's frame. A title-bar row runs the width of the
-window and drags it. The categories' ground runs from floor to ceiling under the
-traffic lights, with the search field below them. The pane's name and Done sit
-on the lights' line over the pane, where System Settings puts its own, and Done
-keeps clear of the caption buttons on Windows and Linux. Drawn from the top edge,
-the column put the search field under the lights, and the overlay covered the
-only place the window could be dragged. The pane is held to a 680px measure and
-centred, with its scroll bar at the window's edge, and "changes apply at once"
-is said once, at the foot of the categories. Editor's switches sit in three
-groups, Writing, Code blocks and Files, because fourteen in a row read as a list
-nobody finished sorting.
+window and drags it, with Done as a pill in a 52px bar that has air above and
+below it, clear of the caption buttons on Windows and Linux. The window's floor
+is the panel tone. The categories are a slab inset from the window's edges,
+below the traffic lights, with the search field at its top and "changes apply at
+once" said once, at its foot; a column glued to the window's edge read as held
+in. The pane is held to a 760px measure and centred, with its scroll bar at the
+window's edge. Each pane opens on its own glyph drawn large in a ring of soft
+light, the one ornament, then its name and one line about it.
+
+Settings sit in groups lifted off the floor as cards in the tone every floating
+surface uses. Everything in a pane starts at the card's edge, and everything
+inside a card, or said about one, at a single 20px inset. A group's name takes
+the uppercase voice Note Info's groups use, and what a group is for sits under
+its name rather than as a paragraph over the pane. Editor's switches sit in
+three groups, Writing, Code blocks and Files, because fourteen in a row read as
+a list nobody finished sorting. Appearance opens on a small page set in the
+theme, face, size, line height and width chosen below it, which follows each
+control as it moves, and draws its choices as pictures: the theme's paper, `Aa
+文` in each face, the column at each width. Its File tree group chooses how the
+folders you are in stay in sight (a stack of held rows or one trail row) and
+whether a note's row shows `.md`. Memory lists each agent as a row with its
+initial, ends the list with Add an Agent, and keeps Copy Hook for Claude Code
+in a row of its own.
 
 `Esc`, Done, or `Cmd+,` again leaves immediately for the document. Focus returns
 to the editor when a note is open so the next keystroke types; with nothing open
 it returns to the gear.
 
-No rule between rows. A line under every setting draws a table where there is
-only a list. Space separates; a label and its control are already a pair by
-sharing a line.
+Inside a card, rows are parted by a hairline; between cards, by space alone.
+A line under every setting on an open page drew a table where there was only a
+list, and a card is what makes a group read as one thing.
 
 Appearance is a glance: theme, text size, line height, document font, page
 width, and a custom stylesheet path. Colour theming is that CSS file — not a
@@ -416,6 +431,7 @@ and while its own menu is open. The strip along the foot carries the recent
 notes and one line of state, and that line fades once it has been read, so
 the foot is empty at rest.
 
-The title bar carries the rail's ground above the rail and the page's above
-the page, so the divide between the two columns runs from the top of the
-window to the bottom rather than being cut across by a band.
+The title bar carries the rail's ground above the rail, the page's above the
+page and Note Info's above Note Info, so the divide between each column runs
+from the top of the window to the bottom rather than being cut across by a
+band.

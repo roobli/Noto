@@ -51,8 +51,8 @@ The honest summary of where it stands is worth reading before you depend on
 it.
 
 All three platforms are now verified the same way: the packaged application is
-built and then driven through its real interface, and the whole suite of about 300 packaged tests passes on macOS, Windows and Linux
-on every change, alongside nearly 3,000 unit tests. Windows was unproven until the run that proved it,
+built and then driven through its real interface, and the whole suite of about 370 packaged tests runs on macOS, Windows and Linux
+on every change, alongside about 3,200 unit tests. Windows was unproven until the run that proved it,
 which is also the run that found two faults nobody could have read out of the
 code: every plugin came up needing recovery because a durability step that
 only POSIX has was being treated as a failure, and the remote control refused
@@ -134,15 +134,18 @@ palette, and `Cmd+,` opens Settings (and closes it again), a full-page shell wit
 categories, where plugins are turned on under the Plugins section. On Windows and Linux, read
 Control for Command.
 
-The title bar carries the filename and nothing else that is not an action you
-can take right now: Save appears when there is something to save and is absent
-when there is not. The gear is the single Settings entry; Plugins is reached
-from Settings' left nav, not a second top-bar icon. What the chrome is for, and
+The title bar carries the filename, centred over the page, and nothing else
+that is not an action you can take right now: Save appears when there is
+something to save and is absent when there is not. The gear is the single
+Settings entry; Plugins is reached from Settings' left nav, not a second top-bar
+icon. Beside the gear, `?` opens What Noto Can Do: every feature, where to find
+it, a Show Me that goes there, and a dot on the button when something is new. What the chrome is for, and
 why it is this quiet, is written down in
 [`docs/design/chrome.md`](docs/design/chrome.md).
 
-Settings carries the document's typography, so text size, line height and
-line width are yours to set rather than fixed: the width is a character count,
+Settings carries the document's typography, shown on a small page at the top
+of Appearance that follows each control as it moves, so text size, line height
+and line width are yours to set rather than fixed: the width is a character count,
 not a pixel width, so it holds as the size changes. Saving automatically is
 there too, off by default and debounced against typing, and it refuses in
 exactly the cases the Save button refuses. A custom stylesheet can be pointed at
@@ -153,6 +156,10 @@ is enough to retheme the app without editing it.
 whole folder by how well it matches and by how often and how recently you open
 it, so an empty box already shows the few notes you probably want. `Enter`
 opens the note; `Alt+Enter` writes a `[[wiki link]]` to it at the caret instead.
+The highlighted note is shown beside the results, its title, folder and when it
+changed, then its opening as readable text, so you can tell two notes with the
+same name apart before opening either; in a narrow window the list takes the
+width alone.
 Wiki links render inline wherever they appear, and `Cmd+click` follows one.
 
 The links are decorations rather than a node type, so they cannot reach the
@@ -170,6 +177,22 @@ The open folder names itself on the tree's first row; an ellipsis on that
 row holds what acts on the folder: open another, reveal it in the file manager,
 refresh, and the folders you opened before. `Cmd+Shift+R` reveals the current
 note instead.
+
+The tree fits the rail rather than scrolling sideways. When the open folders go
+deep, each level steps in less, and a name that still does not fit is cut in
+the middle, keeping its end; rest the pointer on it to read it whole. Settings →
+Appearance → File tree chooses how the folders you are in stay in sight as the
+tree scrolls, each held on its own row or folded into one trail row of names,
+and whether a note shows its `.md`. Option-click a folder, or choose Focus on
+This Folder from its menu, to make it the tree's root for a while; Escape shows
+the whole folder again.
+
+Drag a row onto a folder to move it, or onto a note to put it beside that note;
+hold at the top or bottom edge to scroll, and over a closed folder to open it.
+`Cmd`-click and `Shift`-click choose several rows to drag, move or trash
+together. When Noto renames or moves a note or a folder, the links to it are
+written again, each in the style it was written in, and the status line says
+how many, with Undo.
 
 After looking through a large folder, the arrows beside the rail's search shut
 every folder except the ones holding the note in front, and bring that note back
@@ -196,8 +219,8 @@ Properties (frontmatter, counts, dates, path). Commits that only rewrote a
 tool's marked region, or changed a hundred files at once, are drawn quieter.
 In a folder that keeps memory, Related lists what links to the note, what it
 names without linking, what is read with it and what is about the same thing,
-and Activity says who read it, what led there and which agents may not read
-it; a folder without memory is offered it, with what would be written said
+and Activity says who read it, what led there, which agents wrote it and
+which may not read it; a folder without memory is offered it, with what would be written said
 first, and a folder whose memory runs scripts runs none until they are
 allowed.
 
@@ -210,7 +233,10 @@ write back, and a note with unsaved edits is left alone.
 
 Settings → Memory says which agents may read the folder and what they may
 do; Add an Agent gives one a key, shown once with a setup to paste for
-Claude Code or Codex, and Take Key Back stops it at its next request. A
+Claude Code or Codex, and Take Key Back stops it at its next request. Copy
+Hook for Claude Code gives Claude Code a hook that says which notes it read and
+wrote with its own tools, so its edits are named as its own rather than
+counted as yours. A
 folder's right-click menu sets it open, private or sealed.
 
 `Cmd+/` opens Source Code Mode: the whole note as the Markdown it is saved as,
