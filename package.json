@@ -23,8 +23,9 @@
     "start": "node scripts/start.mjs",
     "compat:node22": "tsc --ignoreConfig --noEmit --strict --target ES2024 --module NodeNext --moduleResolution NodeNext --types node tests/compatibility-probe.ts",
     "typecheck": "tsc --noEmit",
+    "icons": "electron scripts/make-icons.cjs",
     "test": "vitest run",
-    "build:vite": "vite build --config vite.main.config.mts && vite build --config vite.preload.config.mts && vite build --config vite.service.config.mts && vite build --config vite.plugin-preload.config.mts && vite build --config vite.plugin-runtime.config.mts && vite build --config vite.renderer.config.mts",
+    "build:vite": "vite build --config vite.main.config.mts && vite build --config vite.preload.config.mts && vite build --config vite.service.config.mts && vite build --config vite.vault.config.mts && vite build --config vite.vault-cli.config.mts && vite build --config vite.plugin-preload.config.mts && vite build --config vite.plugin-runtime.config.mts && vite build --config vite.renderer.config.mts",
     "build": "node scripts/package-variant.mjs release",
     "package:e2e": "node scripts/package-variant.mjs e2e",
     "package:release": "node scripts/package-variant.mjs release",
@@ -37,6 +38,7 @@
   },
   "dependencies": {
     "@roobli/md": "github:roobli/md#39955fe91f767415edb8161496b48369a48373dc",
+    "@roobli/vault": "github:roobli/vault#4c9652b6dc108f33613db4df4d32fc5b9992cd94",
     "electron-updater": "6.8.9",
     "mdast-util-from-markdown": "^2.0.3",
     "mdast-util-frontmatter": "^2.0.1",

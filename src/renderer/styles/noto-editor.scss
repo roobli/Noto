@@ -1206,8 +1206,10 @@
      toggle stays where it always is; it used to vanish here, and with it the
      only visible way to the files. The first track is explicitly zero: the
      rail is out of flow, and the base grid's `--shell-rail` track would
-     otherwise reserve its width and push the document right. */
-  .app-shell { grid-template-columns: 0 minmax(0, 1fr); }
+     otherwise reserve its width and push the document right. The info pane
+     keeps its own track, so a narrow window with Note Info open still gives
+     it the width it was set to rather than an unsized extra column. */
+  .app-shell { grid-template-columns: 0 minmax(0, 1fr) var(--shell-info, 0px); }
   .app-shell > .workspace-rail {
     position: absolute;
     top: 0;
@@ -1407,7 +1409,9 @@
      set 10px in, so each depth costs 30px and the stem stands at the level's
      left edge. The arm crosses 14px down the row, which is where the theme's
      own SVG draws it. */
-  --tree-indent: 20px;
+  /* 20px at rest; less when the open tree is deep and the rail narrow, set
+     by the tree from tree-fit.ts so the deepest name keeps half the rail. */
+  --tree-indent: var(--tree-indent-now, 20px);
   --tree-arm: 14px;
   /* Where the quiet stem stops, and how far the lit one reaches. The tree sets
      both: the stem to the last child's top, the lit length to the arm of the
@@ -1546,7 +1550,7 @@
    stay above lower ones (20→11, active 10 — under chrome menus). */
 .tree-directory.tree-on-path[aria-expanded='true'] {
   position: sticky;
-  top: calc((min(var(--tree-depth, 1), 10) - 1) * var(--tree-row));
+  top: calc(var(--tree-held-top, 0px) + (min(var(--tree-depth, 1), 10) - 1) * var(--tree-row));
   /* Ladder 20→11: above guides (0), below vault menu / chrome (≥40). Theme
      uses 110→101; matching that magnitude covered .vault-menu-list (z-index
      40) so Reveal-in-Finder could not be clicked over a stuck active file. */
@@ -1558,7 +1562,7 @@
    fills its node and would have no room to hold. */
 .tree-node.tree-node-active {
   position: sticky;
-  top: calc((min(var(--tree-depth, 1), 10) - 1) * var(--tree-row));
+  top: calc(var(--tree-held-top, 0px) + (min(var(--tree-depth, 1), 10) - 1) * var(--tree-row));
   z-index: 10;
   background: var(--surface-active);
 }
@@ -1684,20 +1688,20 @@
      At 8 it read as a blank row between the two. */
   padding-top: 3px;
   /* As wide as its widest row, so the rail scrolls sideways to a long name. */
-  width: max-content;
-  min-width: 100%;
+  width: 100%;
+  min-width: 0;
 }
 
 /* Exactly --tree-row (32px) tall, so the sticky offsets, which are multiples
-   of it, meet with no seam. As wide as the name needs and at least the rail,
-   so a long name is scrolled to rather than cut. */
+   of it, meet with no seam. As wide as the rail and no wider: a long name is
+   cut by the tree, keeping its end, and shown whole on a rest over it. */
 .tree-row {
   position: relative;
   display: flex;
   align-items: center;
   gap: 4px;
-  width: max-content;
-  min-width: 100%;
+  width: 100%;
+  min-width: 0;
   /* The generic button floor would beat this height and put an overhang on
      every stuck row. */
   min-height: 0;
@@ -1729,25 +1733,18 @@
    to clear to be read. */
 .tree-directory.tree-row:hover { color: var(--ink); }
 
-/* In the rail's horizontal scroll, the twisty and glyph stay put while the
-   name runs under them. The opaque ground follows the row's hover and active
-   surface; the guide arms sit to the left of this column, outside it. */
+/* The twisty and the glyph, in a column of their own that scrolls with its
+   row: the rail no longer scrolls sideways, so nothing needs pinning, and
+   pinned it put names under icons. tree-fit.ts counts on this geometry
+   (TREE_NAME_INSET): the row's 6px padding, the 5px twisty, the 4px gap, the
+   15px glyph and the row's 4px gap before the name. */
 .tree-leading {
-  position: sticky;
-  left: 0;
+  position: relative;
   z-index: 1;
   display: flex;
   align-items: center;
   gap: 4px;
   flex: 0 0 auto;
-  background: var(--panel);
-}
-.tree-row:hover > .tree-leading {
-  background: color-mix(in srgb, var(--accent) 8%, var(--panel));
-}
-.tree-file-active > .tree-leading,
-.tree-file-active:hover > .tree-leading {
-  background: var(--surface-active);
 }
 
 /* A CSS triangle rather than an icon font, so it inherits colour and needs no
@@ -1805,8 +1802,13 @@
    scrolls sideways to a long name, which shows the whole of it rather than
    the first half; Typora clips without an ellipsis too, and cannot scroll to
    the rest. Truncating here would need that scroll taken away first. */
+/* A name that does not fit is cut by the tree, keeping its end (tree-fit.ts);
+   the ellipsis here only covers the frame before the tree has measured. */
 .tree-name {
   position: relative;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
   white-space: nowrap;
 }
 
@@ -1835,6 +1837,177 @@
   outline: none;
   box-shadow: 0 0 0 2px color-mix(in srgb, var(--accent) 24%, transparent);
 }
+
+/*
+ * The step per level, set on the tree's root from its width and how deep its
+ * open rows go. Registered so it can ease: closing a deep folder or widening
+ * the rail lets every level slide back out together rather than jump.
+ */
+@property --tree-indent-now {
+  syntax: '<length>';
+  inherits: true;
+  initial-value: 20px;
+}
+:root {
+  /* The focus bar's height, which held rows and the trail start below. */
+  --tree-focusbar: 34px;
+}
+.tree-root {
+  transition: --tree-indent-now var(--motion-slow) var(--ease-out);
+}
+
+/* With the trail chosen, nothing in the tree itself holds: the trail does. */
+.tree-root.is-trail .tree-directory.tree-on-path[aria-expanded='true'],
+.tree-root.is-trail .tree-node.tree-node-active {
+  position: relative;
+  top: auto;
+}
+
+/*
+ * The trail: the open folders above what is in view, outermost first, in one
+ * row held at the top of the rail. One row however deep the tree goes, where
+ * the stack costs one a level. It reaches into the rail's side padding, so
+ * nothing scrolled under it shows beside it, and paints a pixel above itself,
+ * so no seam opens between it and the bar over it. Its negative foot keeps it
+ * from pushing the tree down; at rest it is clear and lets the pointer through.
+ */
+.tree-trail {
+  position: sticky;
+  top: var(--tree-held-top, 0px);
+  z-index: 22;
+  display: flex;
+  align-items: center;
+  gap: 2px;
+  height: var(--tree-row);
+  margin: 0 calc(-1 * var(--rail-side, 0px)) calc(-1 * var(--tree-row));
+  padding: 0 calc(var(--rail-side, 0px) - 6px) 0 calc(var(--rail-side, 0px) - 2px);
+  background: var(--panel);
+  border-bottom: 1px solid var(--hairline);
+  box-shadow: 0 -1px 0 var(--panel), 0 2px 6px -4px color-mix(in srgb, var(--shadow) 30%, transparent);
+  font-size: 12px;
+  line-height: 1;
+  color: var(--muted);
+  opacity: 0;
+  translate: 0 -4px;
+  pointer-events: none;
+  transition: opacity var(--motion-medium) var(--ease-out), translate var(--motion-medium) var(--ease-out);
+}
+.tree-trail[data-on] {
+  opacity: 1;
+  translate: none;
+  pointer-events: auto;
+}
+.tree-path {
+  flex: 1 1 auto;
+  min-width: 0;
+  display: flex;
+  align-items: center;
+  overflow: hidden;
+}
+.tree-path-part {
+  flex: none;
+  max-width: 9em;
+  min-height: 0;
+  padding: 4px 5px;
+  border: 0;
+  border-radius: 4px;
+  background: none;
+  color: inherit;
+  font: inherit;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  cursor: pointer;
+}
+.tree-path-part.is-last { color: var(--ink); }
+.tree-path-sep {
+  flex: none;
+  padding: 0 1px;
+  opacity: 0.5;
+}
+.tree-path-part:hover,
+.tree-focus-button:hover {
+  background: color-mix(in srgb, var(--accent) 8%, transparent);
+  color: var(--ink);
+}
+.tree-focus-button {
+  flex: none;
+  display: grid;
+  place-items: center;
+  width: 24px;
+  height: 24px;
+  min-height: 0;
+  padding: 0;
+  border: 0;
+  border-radius: 5px;
+  background: none;
+  color: var(--muted);
+  cursor: pointer;
+}
+.tree-focus-button svg {
+  width: 14px;
+  height: 14px;
+  fill: none;
+  stroke: currentcolor;
+  stroke-width: 1.4;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+}
+
+/*
+ * The bar over a focused tree: up one folder, the way back to the open
+ * folder's root, and the button that shows all of it again. Held above
+ * everything in the tree, which starts below it.
+ */
+.tree-focusbar {
+  position: sticky;
+  top: 0;
+  z-index: 23;
+  display: flex;
+  align-items: center;
+  gap: 2px;
+  height: var(--tree-focusbar);
+  margin: 0 calc(-1 * var(--rail-side, 0px));
+  padding: 0 calc(var(--rail-side, 0px) - 6px);
+  background: var(--panel);
+  border-bottom: 1px solid var(--hairline);
+  font-size: 12px;
+  line-height: 1;
+  color: var(--muted);
+}
+/* The focused folder stands where the open folder's own row stands. */
+.tree-vault-row.is-focus-root { cursor: default; }
+
+/* A change of focus slides the tree in from the side it went: deeper from the right, back out from the left. */
+@keyframes tree-focus-in { from { opacity: 0; translate: 14px 0; } }
+@keyframes tree-focus-out { from { opacity: 0; translate: -14px 0; } }
+.tree-body[data-way='in'] { animation: tree-focus-in var(--motion-slow) var(--ease-out); }
+.tree-body[data-way='out'] { animation: tree-focus-out var(--motion-slow) var(--ease-out); }
+
+/*
+ * A cut name shown whole, lifted over the page after a short rest on its row,
+ * as Finder's list does. Set over the name to the pixel, in the row's own face,
+ * and never in the way of the pointer.
+ */
+.tree-peek {
+  position: fixed;
+  z-index: 200;
+  display: flex;
+  align-items: center;
+  padding: 0 10px 0 6px;
+  font: 14px/22px tokens.$prose;
+  color: var(--ink);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  background: var(--paper);
+  border: 1px solid var(--hairline);
+  border-radius: 6px;
+  box-shadow: 0 12px 28px -12px color-mix(in srgb, var(--shadow) 40%, transparent);
+  pointer-events: none;
+  animation: tree-peek-in var(--motion-medium) var(--ease-out);
+}
+@keyframes tree-peek-in { from { opacity: 0; translate: 0 2px; } }
 
 /*
  * Git marks: what changed in the notes since the last commit.
@@ -1893,6 +2066,33 @@
     stroke-linecap: round;
   }
 }
+
+/* A lock after a locked folder's name: muted, a little under the name's
+   x-height, sat on its baseline. Private is an outlined body, sealed a solid
+   one. It never shrinks, so a long name gives way to it rather than hiding it. */
+.tree-privacy {
+  flex: 0 0 auto;
+  display: inline-flex;
+  align-items: center;
+  margin-left: 5px;
+  color: var(--muted);
+  pointer-events: none;
+
+}
+
+.lock-glyph {
+  display: block;
+  flex: 0 0 auto;
+  width: 8px;
+  height: 10px;
+  fill: none;
+  stroke: currentcolor;
+  stroke-width: 1.2;
+  stroke-linecap: round;
+}
+
+.lock-glyph-sealed .lock-glyph-body { fill: currentcolor; }
+.tree-row:has(> .tree-privacy) > .tree-name { min-width: 0; overflow: hidden; text-overflow: ellipsis; }
 
 /* Visually hidden, read with the row's name. */
 .tree-git-words {
@@ -2775,30 +2975,199 @@
 
 /* The folder a dragged row will land in. The accent's own tint, as the
    hover is, with a ring so a folder in a list of folders is unmistakably
-   the one under the pointer. */
+   the one under the pointer. The sticky column with the twisty and glyph is
+   opaque so names can scroll under it, so it takes the same tint, and the
+   ring is a layer of its own above it: drawn on the row, the column covered
+   its left side and left the glyph on a grey patch inside a broken frame.
+   The glyph comes up to the accent, the row's name to ink. */
 .tree-row.is-drop-target,
 .tree-row.is-drop-target:hover {
-  background: color-mix(in srgb, var(--accent) 14%, transparent);
-  box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--accent) 45%, transparent);
+  color: var(--ink);
+  background-color: color-mix(in srgb, var(--accent) 14%, transparent);
+}
+.tree-directory[data-stuck].is-drop-target::before { background: color-mix(in srgb, var(--accent) 14%, var(--panel)); }
+.tree-row.is-drop-target .tree-glyph { color: var(--accent); }
+
+.tree-drop-ring {
+  position: absolute;
+  inset: 0;
+  z-index: 2;
+  border-radius: inherit;
+  box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--accent) 55%, transparent);
+  pointer-events: none;
 }
 
-/* What is being dragged recedes while it is in the air. */
+/* A closed folder held over fills a line under its name, then opens: the
+   wait is shown, so the opening is expected rather than a surprise. */
+.tree-row.is-springing {
+  background-image: linear-gradient(var(--accent), var(--accent));
+  background-repeat: no-repeat;
+  background-position: left 30px bottom 3px;
+  background-size: 0 2px;
+  /* As long as the wait itself, which the tree sets from `SPRING_MS`. */
+  animation: tree-spring var(--spring-ms) var(--ease-linear) forwards;
+}
+@keyframes tree-spring { to { background-size: calc(100% - 36px) 2px; } }
+
+/* Rows chosen with Command or Shift: a wash of the accent, lighter than the
+   drop target's and without its ring, across the sticky column too, so a
+   chosen row reads as one band from the twisty to the end of its name. */
+.tree-row.is-selected,
+.tree-row.is-selected:hover {
+  color: var(--ink);
+  background-color: color-mix(in srgb, var(--accent) 10%, transparent);
+}
+/* Chosen rows next to each other are one band, as a run of them is in Finder. */
+.tree-node:has(> .tree-row.is-selected) + .tree-node > .tree-row.is-selected {
+  border-top-left-radius: 0;
+  border-top-right-radius: 0;
+}
+.tree-node:has(> .tree-row.is-selected):has(+ .tree-node > .tree-row.is-selected) > .tree-row.is-selected {
+  border-bottom-left-radius: 0;
+  border-bottom-right-radius: 0;
+}
+.tree-row.is-selected .tree-glyph { color: var(--ink); }
+
+/* What is being dragged stays in its place, faded, so the eye follows the
+   pill and still sees where it came from. */
+.tree-row.is-dragged { opacity: 0.45; }
 .tree-row[draggable='true']:active { cursor: grabbing; }
+
+/* The pill a dragged row is carried as: its glyph and name, nothing of the
+   guides or the rows around it. Drawn off screen for the moment the browser
+   takes its picture. */
+.tree-drag-pill {
+  position: fixed;
+  top: -1000px;
+  left: -1000px;
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  max-width: 320px;
+  padding: 4px 11px 4px 8px;
+  border: 1px solid color-mix(in srgb, var(--accent) 45%, var(--hairline));
+  border-radius: 999px;
+  background: var(--panel);
+  color: var(--ink);
+  font: 13px/18px tokens.$prose;
+  white-space: nowrap;
+
+  .tree-glyph { color: var(--accent); }
+  span { overflow: hidden; text-overflow: ellipsis; }
+}
+
+/* How many more come with it, when several rows are carried. */
+.tree-drag-count {
+  flex: 0 0 auto;
+  padding: 0 6px;
+  border-radius: 999px;
+  background: var(--accent);
+  color: var(--paper);
+  font: 600 10.5px/16px tokens.$ui;
+  font-variant-numeric: tabular-nums;
+}
+
+/* Held at an edge, the tree scrolls toward it, and the edge says so: a tint
+   from the edge and a chevron, as strong as the scroll (`--edge`, set each
+   frame from the speed). Sticky, so they stay at the rail's edges while the
+   rows run under them; above the held rows. */
+.tree-edge {
+  --edge: 0;
+  position: sticky;
+  left: 0;
+  z-index: 6;
+  height: 0;
+  pointer-events: none;
+}
+.tree-edge-up { top: 0; }
+/* Past the rail's foot, which sticky positions measure from inside of. */
+.tree-edge-down { bottom: calc(-1 * var(--rail-foot, 0px)); }
+
+.tree-edge::before {
+  content: '';
+  position: absolute;
+  left: calc(-1 * var(--rail-side, 0px));
+  right: calc(-1 * var(--rail-side, 0px));
+  height: 40px;
+  opacity: var(--edge);
+  transition: opacity var(--motion-fast) var(--ease-out);
+}
+.tree-edge-up::before { top: 0; background: linear-gradient(to bottom, color-mix(in srgb, var(--accent) 22%, var(--panel)), transparent); }
+.tree-edge-down::before { bottom: 0; background: linear-gradient(to top, color-mix(in srgb, var(--accent) 22%, var(--panel)), transparent); }
+
+.tree-edge::after {
+  content: '';
+  position: absolute;
+  left: 50%;
+  width: 7px;
+  height: 7px;
+  margin-left: -4px;
+  border: solid var(--accent);
+  border-width: 1.5px 0 0 1.5px;
+  opacity: var(--edge);
+  transition: opacity var(--motion-fast) var(--ease-out);
+  animation: tree-edge-nudge var(--motion-nudge) var(--ease-in-out) infinite alternate;
+}
+.tree-edge-up::after { top: 9px; rotate: 45deg; }
+.tree-edge-down::after { bottom: 9px; rotate: -135deg; }
+@keyframes tree-edge-nudge { to { translate: 0 -2px; } }
+.tree-edge-down::after { animation-name: tree-edge-nudge-down; }
+@keyframes tree-edge-nudge-down { to { translate: 0 2px; } }
+
+/* Where the drop would go, in words, at the foot of the rail: by the time a
+   long drag arrives, the folder's own row may be scrolled out of sight.
+   Never in the way: the pointer passes through it to the rows beneath. */
+.tree-drop-chip {
+  position: sticky;
+  bottom: calc(10px - var(--rail-foot, 0px));
+  left: 8px;
+  z-index: 7;
+  box-sizing: border-box;
+  width: fit-content;
+  max-width: calc(100% - 16px);
+  margin: 6px 8px 0;
+  padding: 4px 11px;
+  overflow: hidden;
+  border: 1px solid var(--hairline);
+  border-radius: 999px;
+  background: var(--panel);
+  color: var(--muted);
+  font: 500 11.5px/16px tokens.$ui;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  box-shadow: 0 2px 10px color-mix(in srgb, var(--shadow) 12%, transparent);
+  pointer-events: none;
+  animation: tree-chip-in var(--motion-default) var(--ease-out);
+
+  &[data-verdict='move'] {
+    border-color: color-mix(in srgb, var(--accent) 50%, var(--hairline));
+    color: var(--ink);
+  }
+
+  /* What is chosen, and what can be done with it, while nothing is in the air. */
+  &.is-choice { color: var(--ink); }
+}
+@keyframes tree-chip-in { from { opacity: 0; translate: 0 4px; } }
+
+@media (prefers-reduced-motion: reduce) {
+  .tree-row.is-springing { animation: none; background-image: none; }
+  .tree-edge::after, .tree-drop-chip { animation: none; }
+}
 
 /* The face the document is set in, from the Appearance pane. The serif is
    the theme's own and needs no rule; the other two name the stacks the
    tokens already carry, so a machine missing one falls back the same way. */
-:root[data-prose-face='sans'] .ProseMirror { font-family: tokens.$ui; }
-:root[data-prose-face='mono'] .ProseMirror { font-family: tokens.$mono; }
+:root[data-prose-face='sans'] :is(.ProseMirror, .pref-specimen-page) { font-family: tokens.$ui; }
+:root[data-prose-face='mono'] :is(.ProseMirror, .pref-specimen-page) { font-family: tokens.$mono; }
 
 /* An installed family leads the preset stack when the reader picks one. */
-:root[data-prose-font='custom'][data-prose-face='serif'] .ProseMirror {
+:root[data-prose-font='custom'][data-prose-face='serif'] :is(.ProseMirror, .pref-specimen-page) {
   font-family: var(--prose-font-family), tokens.$prose;
 }
-:root[data-prose-font='custom'][data-prose-face='sans'] .ProseMirror {
+:root[data-prose-font='custom'][data-prose-face='sans'] :is(.ProseMirror, .pref-specimen-page) {
   font-family: var(--prose-font-family), tokens.$ui;
 }
-:root[data-prose-font='custom'][data-prose-face='mono'] .ProseMirror {
+:root[data-prose-font='custom'][data-prose-face='mono'] :is(.ProseMirror, .pref-specimen-page) {
   font-family: var(--prose-font-family), tokens.$mono;
 }
 
@@ -3237,6 +3606,77 @@
   font-size: 12.5px;
   line-height: 1.3;
 }
+
+/* A plugin's mark on a few words of the note (`note-marks-plugin.ts`): a dotted
+   line under them, lighter than a spelling mark, because it is an offer and
+   not a fault. Fainter still until the pointer is on it. */
+.noto-note-mark {
+  text-decoration-line: underline;
+  text-decoration-style: dotted;
+  text-decoration-thickness: 1.5px;
+  text-underline-offset: 4px;
+  text-decoration-color: color-mix(in srgb, var(--accent) 42%, transparent);
+  transition: text-decoration-color var(--motion-fast) var(--ease-out);
+}
+.noto-note-mark:hover { text-decoration-color: var(--accent); }
+
+/* Its card: what the mark is, small and quiet; what it offers; its actions,
+   the first in the accent. Narrow, beside the words rather than over the page. */
+.noto-mark-card {
+  animation: noto-arrive var(--motion-default) var(--ease-out);
+  position: fixed;
+  z-index: 40;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  width: max-content;
+  min-width: 200px;
+  max-width: min(340px, calc(100vw - 32px));
+  margin: 0;
+  border: 1px solid var(--hairline);
+  border-radius: 8px;
+  background: var(--panel);
+  padding: 9px 12px 10px;
+  color: var(--ink);
+  font-family: tokens.$ui;
+  box-shadow: 0 14px 36px -12px color-mix(in srgb, var(--shadow) 32%, transparent);
+}
+.noto-mark-card-kind {
+  margin: 0;
+  color: var(--muted);
+  font-size: 11px;
+  font-weight: 600;
+  letter-spacing: 0.02em;
+}
+.noto-mark-card-title {
+  margin: 0;
+  color: var(--ink-strong);
+  font-size: 13.5px;
+  font-weight: 600;
+  line-height: 1.35;
+  overflow-wrap: anywhere;
+}
+.noto-mark-card-detail {
+  margin: 0;
+  color: var(--muted);
+  font-size: 12px;
+  line-height: 1.35;
+  overflow-wrap: anywhere;
+}
+.noto-mark-card-actions {
+  display: flex;
+  gap: 6px;
+  margin-top: 8px;
+}
+.noto-mark-card-action {
+  min-height: 26px;
+  padding: 3px 10px;
+  font-size: 12.5px;
+  line-height: 1.3;
+}
+.noto-mark-card-action.is-primary { background: var(--accent); color: var(--paper); border-color: transparent; }
+.noto-mark-card-action.is-primary:hover { background: color-mix(in srgb, var(--accent) 88%, var(--ink)); }
+.noto-mark-card-action:focus-visible { outline: 2px solid var(--accent); outline-offset: 1px; }
 
 /* The caret Noto draws (`caret-plugin.ts`): two pixels in the accent, solid
    while the reader types or moves and breathing once it sits still. The

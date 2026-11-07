@@ -16,6 +16,10 @@ import type { MenuItemConstructorOptions } from 'electron';
 
 export interface TreeRowActions {
   readonly open: (target: string) => void;
+  /** Open the note and show its info beside it: history, properties. For a folder, the pane turns to the folder. */
+  readonly info: (target: string) => void;
+  /** Make the folder the rail's root, for work deep in one place. Folders only. */
+  readonly focus?: (target: string) => void;
   readonly newNote: (directory: string) => void;
   readonly newFolder: (directory: string) => void;
   /** Asks the renderer for a name, which is where the row and the caret are. */
@@ -26,7 +30,54 @@ export interface TreeRowActions {
   readonly trash: (target: string, kind: 'file' | 'directory') => void;
   readonly reveal: (target: string) => void;
   readonly copyPath: (target: string) => void;
+  /**
+   * For a folder of a folder that keeps memory: how private it is now, and
+   * how to change it. Absent elsewhere, and the menu has no Privacy.
+   */
+  readonly privacy?: { readonly level: 'open' | 'private' | 'sealed'; readonly set: (level: 'open' | 'private' | 'sealed') => void };
 }
+
+/**
+ * The menu for the open folder's own row: what can be made in it, its info,
+ * and where it is. Nothing that renames, moves or trashes the folder the window
+ * is showing, which is not something a row's menu should be able to do.
+ */
+export function buildVaultRowMenu(target: string, actions: Pick<TreeRowActions, 'newNote' | 'newFolder' | 'info' | 'reveal' | 'copyPath'>, platform: NodeJS.Platform = process.platform): MenuItemConstructorOptions[] {
+  return [
+    { id: 'tree-new-note', label: 'New Note Here', click: () => actions.newNote(target) },
+    { id: 'tree-new-folder', label: 'New Folder Here', click: () => actions.newFolder(target) },
+    { id: 'tree-info', label: 'Get Info', click: () => actions.info(target) },
+    { type: 'separator' },
+    { id: 'tree-reveal', label: revealLabel(platform), click: () => actions.reveal(target) },
+    { id: 'tree-copy-path', label: 'Copy Path', click: () => actions.copyPath(target) },
+  ];
+}
+
+/** What a menu for several chosen rows does: one action for all of them. */
+export interface TreeSelectionActions {
+  readonly move: () => void;
+  readonly trash: () => void;
+  readonly copyPaths: () => void;
+}
+
+/** The menu for several rows chosen together: what can be done to all of them at once. */
+export function buildSelectionMenu(count: number, actions: TreeSelectionActions, platform: NodeJS.Platform = process.platform): MenuItemConstructorOptions[] {
+  const bin = trashLabel(platform).replace(/^Move to /, '');
+  return [
+    { id: 'tree-many-move', label: `Move ${count} Items to…`, click: () => actions.move() },
+    { id: 'tree-many-copy-paths', label: 'Copy Paths', click: () => actions.copyPaths() },
+    { type: 'separator' },
+    // Last and alone, as for one row: the only action here with no undo.
+    { id: 'tree-many-trash', label: `Move ${count} Items to ${bin}`, click: () => actions.trash() },
+  ];
+}
+
+/** What each level means, said where it is chosen. */
+const PRIVACY: readonly { readonly level: 'open' | 'private' | 'sealed'; readonly label: string }[] = [
+  { level: 'open', label: 'Open: agents with a key may read it' },
+  { level: 'private', label: 'Private: only agents allowed private notes' },
+  { level: 'sealed', label: 'Sealed: no agent, ever' },
+];
 
 /** What the system calls the file manager, which differs on each of them. */
 export function revealLabel(platform: NodeJS.Platform): string {
@@ -52,6 +103,7 @@ export function buildTreeRowMenu(
   // A folder opens by being expanded, which the row already does on a click.
   if (kind === 'file') {
     items.push({ id: 'tree-open', label: 'Open', click: () => actions.open(target) });
+    items.push({ id: 'tree-info', label: 'Get Info', click: () => actions.info(target) });
   } else {
     // Where the reader pressed. The File menu's New Note goes beside the note
     // in front, which is not always the folder they are pointing at.
@@ -59,6 +111,9 @@ export function buildTreeRowMenu(
   }
   if (kind === 'directory') {
     items.push({ id: 'tree-new-folder', label: 'New Folder Here', click: () => actions.newFolder(target) });
+    items.push({ id: 'tree-info', label: 'Get Info', click: () => actions.info(target) });
+    const focus = actions.focus;
+    if (focus) items.push({ id: 'tree-focus', label: 'Focus on This Folder', click: () => focus(target) });
   }
   items.push({ type: 'separator' });
   items.push({ id: 'tree-rename', label: 'Rename…', click: () => actions.rename(target) });
@@ -67,6 +122,17 @@ export function buildTreeRowMenu(
   items.push({ type: 'separator' });
   items.push({ id: 'tree-reveal', label: revealLabel(platform), click: () => actions.reveal(target) });
   items.push({ id: 'tree-copy-path', label: 'Copy Path', click: () => actions.copyPath(target) });
+  if (kind === 'directory' && actions.privacy) {
+    const { level, set } = actions.privacy;
+    items.push({
+      id: 'tree-privacy',
+      label: 'Privacy',
+      submenu: PRIVACY.map((entry) => ({
+        id: `tree-privacy-${entry.level}`, label: entry.label, type: 'radio' as const, checked: entry.level === level,
+        click: () => { if (entry.level !== level) set(entry.level); },
+      })),
+    });
+  }
   items.push({ type: 'separator' });
   // Last, and alone below a rule. It is the one action here with no undo, so
   // it is the hardest to hit by accident and the furthest from Open.

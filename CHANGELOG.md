@@ -11,6 +11,159 @@ How releases are made, and what each channel receives, is in
 
 ### Added
 
+- **A deep folder fits a narrow window.** The file tree no longer scrolls
+  sideways. When the open tree is deep, each level steps in less (from 30 px
+  down to 14 px), so the deepest note keeps room for its name. A name that
+  still does not fit is cut in the middle, keeping its end: a start it shares
+  with its neighbours goes first, and a note's `.md` before that. Rest the
+  pointer on a cut name to read it whole.
+- **Focus on a folder.** Option-click a folder, or choose Focus on This
+  Folder from its menu, and it becomes the tree's root, with its full steps
+  back and a bar above it leading up again. Escape, or ×, shows the whole
+  folder.
+- **Settings → Appearance → File tree.** Folders you are in: Stack, each held
+  on its own row as before, or Trail, folded into one row of names that leads
+  back to any of them. And Show .md in the tree, on by default.
+
+- **Quick Open shows the note you are on beside its results.** The
+  highlighted note's title, folder and when it changed, then its opening as
+  readable text; in In Notes mode the lines around the match, with the
+  matched line marked. The palette is wider to make room for it.
+- **Appearance shows the page it sets.** The head of the pane draws a page
+  in miniature in the live theme, with real text in the document's face,
+  size and leading, as wide as the page width makes it, and it changes as
+  the controls under it move. Theme, document font and page width are
+  tiles that picture each choice.
+- **Note Info: a pane beside the page about the note in front.** View → Note
+  Info, the command palette, or Get Info in the tree's menu opens it. Its
+  head says where the note is and what git says about it, a timeline lays
+  out its commits (a ring at the right for changes not yet committed), and
+  its tabs come from plugins. History lists every commit that touched the
+  note, through renames and moves, newest first; a press opens the commit in
+  the diff view, whose bar steps to the commit before or after (`[` and
+  `]`), compares the version with the note as it stands, copies it, or takes
+  it back as one edit that Undo reverses and that is saved only when the
+  note is. Shift with a press compares any two. A commit that only rewrote
+  text between a tool's markers, or one that changed more than a hundred
+  files, is drawn quieter. Properties shows the note's frontmatter, its
+  words (Chinese a character each), tables, code blocks and links, its
+  first and last commit, and the file's dates, size and path. The pane
+  remembers whether it was open, its tab and its width. A folder outside
+  git says so and gives the file's dates instead.
+- **Related and Activity, from the folder's memory.** In a folder that keeps
+  memory (one with a `.noto/` folder, as the vault tools make), Note Info
+  gains two tabs and a row of reads on its timeline. Related lists what
+  links to the note, the notes it names without linking, the notes read or
+  changed together with it, and the notes about the same thing, each with
+  the reason it is there, and says how many notes it links to and which
+  links are broken. Activity says who read it and how often, what led to
+  it, what was written to it, its heat in a sentence, and which agents may
+  not read it and why. Properties adds the note's kind, how it is known and
+  its sensitivity, each with where it comes from. The memory runs on a
+  thread of its own, opened the first time it is asked, so the window never
+  waits for its index; a folder without `.noto/` is never opened or written
+  to. Keep Memory for This Folder asks first, in a sheet that lists the
+  files it will make. A folder whose memory runs scripts from
+  `.noto/scripts` (a clone, a download) runs none of them until you have
+  seen them named and allowed them, once per folder; History and Properties
+  work meanwhile. A memory that could not be opened is tried again after a
+  pause.
+- **Review, the folder's queue, in the rail.** In a folder that keeps
+  memory, a page beside Changes lists what agents proposed and what the
+  tools found, with a count on its toggle of the proposals and the links to
+  moved notes. A proposal opens in the diff view, one file at a time with [
+  and ], to Accept (merged three ways with what is there now) or Reject.
+  Links to notes that moved are fixed all at once; names a note uses
+  without linking, and notes read together with no link, are gone through
+  one at a time by key: Y links, N says not this for good, S skips. Each
+  line is shown as it will read linked. What Review writes shows up in
+  Changes, Undo takes the last write back where the files are still as it
+  left them, a note with unsaved edits is left alone and named, and what
+  was said no to can be brought back. The lists come from a second memory
+  worker, so finding every mention in a big folder never holds up Note
+  Info.
+- **Agents and privacy, without a terminal.** Settings → Memory lists the
+  agents a folder's memory knows, what each may read and do, and when it
+  last read anything, along with what any agent without a key gets, which
+  can be turned off. Add an Agent asks its name, whether it reads private
+  notes, and whether it only reads, also proposes changes, or also writes
+  in one folder; Noto asks once more in a sheet of its own, then shows the
+  key once with a setup to copy for Claude Code or Codex. Take Key Back
+  stops the agent at its next request. A folder's right-click menu has
+  Privacy: Open, Private or Sealed. `.noto/access.yaml` keeps its comments
+  and its own indent through all of it, and every change is read back before
+  it is saved: one that would alter anything else in the policy is not made,
+  and says which part to change by hand. The MCP server the setups start is the vault's command
+  line, shipped with Noto and run by Node 22.13 or later.
+- **Link suggestions in the note.** In a folder that keeps memory, the few
+  likeliest notes the note in front names without linking get a faint
+  dotted underline. Rest the pointer on one, or press Option-Return with the
+  caret in it, for a card: Link writes the link in place as one edit Undo
+  takes back, and Not This says no for good, in Review as well. View → Show
+  Suggestions in Notes turns them off. Plugins can mark words in the note
+  the same way, through a new `marks:<id>` slot.
+- **Locks, and the memory's own settings.** A folder made private or
+  sealed wears a small lock in the tree (outlined for private, solid for
+  sealed), and a note private by its own frontmatter says so in the status
+  line. Settings → Memory now says what the index holds and how fresh it
+  is, rebuilds it, keeps or stops the read record on this computer, and
+  stops keeping memory: its sheet lists what `.noto` holds, then moves it to
+  the Trash. An agent's server stops serving a folder whose `.noto` is gone,
+  and one started later refuses it rather than making `.noto` again.
+- **Ask the vault, and Copy as Context.** At the top of Related, or from
+  "Memory: ask the folder a question" in the command palette, a question in words is answered with
+  the notes most likely to matter, each with why and a few lines of it, the
+  note in front's neighbours counting for more. Copy as Context puts the
+  answer on the clipboard as the Markdown an agent asking through MCP is
+  given, for pasting into a chat.
+- **One passage's history.** History of This Passage, in a paragraph's
+  right-click menu in a note under git, lists only the commits that changed
+  those lines, followed where they moved, with Show All to have the rest
+  back. A passage written since the last commit says it has no history yet.
+- **A folder's info.** Get Info in a folder's right-click menu turns Note
+  Info to the folder until a note is chosen: how many notes it holds and how
+  many of its links are broken, its warmest notes each with a meter, the
+  newest commits that changed anything in it with the notes they changed,
+  the notes read most, and those nothing links to or from. Back returns to
+  the note in front. Plugins add to it through a `folder:<id>` slot.
+- **Links follow a note when it is renamed or moved.** Moving or renaming a
+  note or a folder in the tree (one at a time or several together) writes
+  again every link that reached it, in the notes that linked to it and in
+  its own relative links, each in the style it was written: a bare name stays
+  a bare name, a path stays a path, an embed, a label, an anchor and `%20`
+  are kept. The status line says how many links in how many notes, with
+  Undo, which takes back each note nothing has changed since. A note with
+  unsaved edits is left alone and counted. Moves made in quick succession
+  are followed as one. Move to Trash says how many links would lead nowhere.
+  In a folder that keeps memory the index names the notes to read;
+  elsewhere each note is read once.
+- **Dragging in the file tree crosses more than a screen.** Holding a
+  dragged row at the top or bottom edge scrolls the tree, slowly where the
+  edge begins and faster deeper in; a closed folder held over opens; the
+  foot of the rail says where the drop would go, and why not when it would
+  not move anything. A note's row is a drop target for the folder it is in.
+  The target folder's row and icon take the accent together.
+- **Several rows at once.** Command-click chooses rows in the tree and
+  Shift-click a run of them; dragging one of them carries them all, and the
+  right-click menu offers Move N Items To…, Copy Paths and Move to Trash for
+  the lot. Escape clears the choice.
+- **The open folder's own row has a menu**: New Note Here, New Folder Here,
+  Get Info for the whole folder, Reveal and Copy Path.
+- **What Noto Can Do is the guide.** The `?` in the title bar opens it as a
+  sheet over the window, with a dot when something is new since you last
+  looked; each entry says where the feature is and what Noto does, needs or
+  not, and most have a Show Me or Try It that goes there. One that needs a
+  folder or a note in front, when there is none, says so in its place.
+- **Noto has an icon**: an N on paper whose last stroke is the caret.
+- **Note Info names the agents that wrote a note.** Git keeps every change
+  but not who made it, so an agent that edits files with its own tools
+  looked like you. Activity's Written section now lists the agents that said
+  they wrote the note, and Settings → Memory copies a Claude Code hook that
+  says so after each of its reads and edits. Nothing is added to commits.
+- **Plugins can add to Note Info.** A tab (`info:<id>`) and a timeline track
+  (`track:<id>`) are slots like the rail's pages, and `git.read` now gives a
+  note's history and its text at any of its commits. History and Properties
+  are built from them alone.
 - **Table rows and columns come out from the right-click menu.** A right
   click in a table offers Insert Row Above and Below, Insert Column Left and
   Right, Delete Row, Delete Column and Delete Table. A row's or column's
@@ -70,6 +223,39 @@ How releases are made, and what each channel receives, is in
 
 ### Changed
 
+- **Settings has room to breathe.** The groups are lifted cards on a
+  slightly darker floor, the list of panes is a panel set in from the
+  window's edges, Done has air around it, and everything in a pane lines up
+  on one edge. Each pane opens on its own mark in a ring of soft light.
+- **Quick Open fits a laptop's window.** Its margin grows with the window
+  instead of a fixed 24 px, it sits a tenth of the way down, the preview is
+  a shade under the list, and the list's scroll bar shows only under the
+  pointer.
+- **Note Info's ground runs to the top of the window,** as the rail's does,
+  so no seam crosses the pane under the title bar.
+- **Note Info's Related tab reads in plain words.** Each note says in a few
+  words why it is offered (read together, linked from, a title like this
+  one) instead of the index's own phrases cut off mid-word, a small meter
+  shows how warm it is, and a group past eight notes has Show More. History
+  draws its commits on a line, and Properties groups its facts.
+- **Settings → Memory uses the same cards as every other pane.** Its agents
+  are one card with a mark for each and Add an Agent as the last row; the
+  Claude Code hook is a row with Copy Hook.
+- **A long note's timeline draws its last year.** When a note's commits or
+  reads span more than a year, the timeline draws the last twelve months to
+  scale and everything before as one muted mark at the left, said as how
+  many; the axis's left end switches to all of its time.
+- **What an agent does is recorded under its name.** The vault's command
+  line records under the agent that runs it (Claude Code and Codex say so in
+  their environment, or `NOTO_ACTOR`), a server started as the owner under
+  the name its client gives, and measuring recall records nothing, so none
+  of it is counted as your reading.
+- **The read record is shorter.** One recall is one line with all the notes
+  it returned, and a note opened again with nothing between, within a
+  minute, is counted on one line instead of written again. On a real folder
+  that is 244 lines where there were 908.
+- **A change on disk reads again only the folders it touched**, not every
+  folder ever opened in the tree.
 - **Tables ask for less attention.** The table's tools stand in the page's
   right margin beside the table, and only while the caret is in it and the
   pointer is on it; they used to sit over the line above the table the whole
@@ -137,6 +323,25 @@ How releases are made, and what each channel receives, is in
 
 ### Fixed
 
+- **The filename is centred over the page with Note Info open.** It was
+  centred over everything right of the rail, so it sat off to the right of
+  the text it names. It now moves with the page when Note Info opens.
+- **Save pressed while a save is landing is no longer ignored.** It waits
+  for that save and then writes what is on screen, so the note no longer
+  stays marked unsaved with the last words unwritten.
+- **The timeline's marks sit on its line**, rather than a little below it.
+- **No speck under the rail's tabs with a page in front.** With Changes (or
+  any page) showing, the tab underline was scaled to nothing but still left
+  a faint mark at the rail's left edge on a fine screen; it now fades out.
+- **The rail no longer lies over the page while a window grows.** With a
+  wide rail, widening the window raised the rail's limit and the rail took
+  its new width at once while its column eased after it, so for a moment it
+  covered the start of the page. A change of window width now moves both at
+  once, as dragging the rail's edge does.
+- **A quote written on a list item's own line is a quote.** `- > a` showed
+  as a list item reading "> a", and so did a heading, a code fence or a
+  nested list started on the marker's line (`- # h`, `- - a`). They are now
+  the blocks CommonMark makes of them, and are written back as they were.
 - **Changes lists the notes of a folder opened through a link.** Git names
   the notes from where the folder really is, and the page looked for them
   under the name it was opened by, so it said nothing had changed while its

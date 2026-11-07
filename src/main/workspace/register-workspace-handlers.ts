@@ -5,7 +5,7 @@
  * the request, and never let an exception escape as an unhandled rejection.
  */
 
-import { ipcMain, type BrowserWindow } from 'electron';
+import { app, ipcMain, type BrowserWindow } from 'electron';
 import {
   NOTO_WORKSPACE_VERSION,
   WORKSPACE_CHANNELS,
@@ -14,12 +14,22 @@ import {
   type WorkspaceResultV1,
   type WorkspaceTabRequestV1,
   type WorkspaceFolderRequestV1,
+  type WorkspaceReviewRequestV1,
+  type WorkspaceAgentRequestV1,
+  type WorkspaceMemoryAskRequestV1,
+  type WorkspaceMemoryFolderRequestV1,
+  type WorkspaceMemoryPrivacyRequestV1,
   type RecentFileV1,
   type WorkspaceOpenExternalRequestV1,
   type WorkspaceTreeMenuRequestV1,
+  type WorkspaceUndoLinksRequestV1,
   type WorkspaceRevealRequestV1,
   type WorkspaceContentRequestV1,
   type WorkspaceNotesByTagRequestV1,
+  type WorkspaceNoteHistoryRequestV1,
+  type WorkspaceNotePassageRequestV1,
+  type WorkspaceNoteVersionRequestV1,
+  type WorkspaceNotePreviewRequestV1,
   type WorkspaceEntryRequestV1,
   type WorkspaceExportRequestV1,
 } from '../../shared/workspace/v1/contracts';
@@ -28,11 +38,21 @@ import {
   isWorkspaceRequestV1,
   isWorkspaceTabRequestV1,
   isWorkspaceFolderRequestV1,
+  isWorkspaceReviewRequestV1,
+  isWorkspaceAgentRequestV1,
+  isWorkspaceMemoryAskRequestV1,
+  isWorkspaceMemoryFolderRequestV1,
+  isWorkspaceMemoryPrivacyRequestV1,
   isWorkspaceOpenExternalRequestV1,
   isWorkspaceTreeMenuRequestV1,
+  isWorkspaceUndoLinksRequestV1,
   isWorkspaceRevealRequestV1,
   isWorkspaceContentRequestV1,
   isWorkspaceNotesByTagRequestV1,
+  isWorkspaceNoteHistoryRequestV1,
+  isWorkspaceNotePassageRequestV1,
+  isWorkspaceNoteVersionRequestV1,
+  isWorkspaceNotePreviewRequestV1,
   isWorkspaceEntryRequestV1,
   isWorkspaceExportRequestV1,
 } from '../../shared/workspace/v1/validate';
@@ -59,7 +79,9 @@ export function registerWorkspaceHandlers(deps: {
   /** The folders opened before, read at call time so the list is current. */
   recentFolders: () => Promise<readonly RecentFileV1[]>;
 }): void {
-  const visits = new VaultVisits((event, data) => deps.logger.log(event, data));
+  const visits = new VaultVisits((event, data) => deps.logger.log(event, data), (root) => deps.session.recordsReads(root));
+  // A note opened again and again is counted; the count is written before Noto goes.
+  app.on('will-quit', () => visits.flush());
   const register = <TRequest extends { requestId: string }, TReply>(
     channel: string,
     validate: (value: unknown) => value is TRequest,
@@ -128,7 +150,7 @@ export function registerWorkspaceHandlers(deps: {
     () => deps.session.newFile());
 
   register(WORKSPACE_CHANNELS.treeMenu, isWorkspaceTreeMenuRequestV1,
-    (request: WorkspaceTreeMenuRequestV1) => deps.session.treeMenu(request.path, request.kind));
+    (request: WorkspaceTreeMenuRequestV1) => deps.session.treeMenu(request.path, request.kind, request.also ?? []));
 
   register(WORKSPACE_CHANNELS.searchContent, isWorkspaceContentRequestV1,
     (request: WorkspaceContentRequestV1) => deps.session.searchContent(request.query, {
@@ -140,6 +162,49 @@ export function registerWorkspaceHandlers(deps: {
 
   register(WORKSPACE_CHANNELS.notesByTag, isWorkspaceNotesByTagRequestV1,
     (request: WorkspaceNotesByTagRequestV1) => deps.session.notesByTag(request.tag));
+
+  // Read-only: git log and cat-file on one note in the open folder, and only
+  // a commit and path from that note's own history.
+  register(WORKSPACE_CHANNELS.undoLinks, isWorkspaceUndoLinksRequestV1,
+    (request: WorkspaceUndoLinksRequestV1) => deps.session.undoLinks(request.pass));
+  register(WORKSPACE_CHANNELS.folderHistory, isWorkspaceFolderRequestV1,
+    (request: WorkspaceFolderRequestV1) => deps.session.folderHistory(request.path));
+  register(WORKSPACE_CHANNELS.folderMemory, isWorkspaceFolderRequestV1,
+    (request: WorkspaceFolderRequestV1) => deps.session.folderMemory(request.path));
+  register(WORKSPACE_CHANNELS.notePassage, isWorkspaceNotePassageRequestV1,
+    (request: WorkspaceNotePassageRequestV1) => deps.session.notePassage(request.path, request.text));
+  register(WORKSPACE_CHANNELS.noteHistory, isWorkspaceNoteHistoryRequestV1,
+    (request: WorkspaceNoteHistoryRequestV1) => deps.session.noteHistory(request.path));
+
+  // The one write here: the files `noto-vault init` makes, in the open folder,
+  // after the window has said what they are and the person has agreed.
+  // Both ask the person in a sheet main shows, so nothing in the window can answer for them.
+  register(WORKSPACE_CHANNELS.keepMemory, isWorkspaceRequestV1,
+    () => deps.session.keepMemory());
+  register(WORKSPACE_CHANNELS.trustMemory, isWorkspaceRequestV1,
+    () => deps.session.trustMemory());
+  // Agents: listing them, and adding one or taking a key back after main has asked the person.
+  register(WORKSPACE_CHANNELS.memoryAgents, isWorkspaceAgentRequestV1,
+    (request: WorkspaceAgentRequestV1) => deps.session.memoryAgents(request.action));
+  register(WORKSPACE_CHANNELS.memoryPrivacy, isWorkspaceMemoryPrivacyRequestV1,
+    (request: WorkspaceMemoryPrivacyRequestV1) => deps.session.memoryPrivacy(request.note));
+  register(WORKSPACE_CHANNELS.memoryFolder, isWorkspaceMemoryFolderRequestV1,
+    (request: WorkspaceMemoryFolderRequestV1) => deps.session.memoryFolder(request.action));
+  register(WORKSPACE_CHANNELS.memoryAsk, isWorkspaceMemoryAskRequestV1,
+    (request: WorkspaceMemoryAskRequestV1) => deps.session.memoryAsk(request.cue, request.note));
+  // Review: reads, and the writes the person asked for (accept, link, take back), each refusing notes with unsaved edits.
+  register(WORKSPACE_CHANNELS.memoryReview, isWorkspaceReviewRequestV1,
+    (request: WorkspaceReviewRequestV1) => deps.session.memoryReview(request.action));
+
+  // Read-only: what the folder's memory holds about one note in it.
+  register(WORKSPACE_CHANNELS.noteMemory, isWorkspaceFolderRequestV1,
+    (request: WorkspaceFolderRequestV1) => deps.session.noteMemory(request.path));
+
+  register(WORKSPACE_CHANNELS.noteVersion, isWorkspaceNoteVersionRequestV1,
+    (request: WorkspaceNoteVersionRequestV1) => deps.session.noteVersion(request.path, request.commit, request.at));
+
+  register(WORKSPACE_CHANNELS.notePreview, isWorkspaceNotePreviewRequestV1,
+    (request: WorkspaceNotePreviewRequestV1) => deps.session.notePreview(request.path, request.line));
 
   // Rename, duplicate, trash and new folder. Main re-resolves the target and
   // checks it against the open folder at the moment it acts, so a row that has

@@ -1032,6 +1032,8 @@ the whole name rather than the first half of it. Typora clips too, and its
 node titles are set to `clip` rather than `ellipsis`, so it cannot show the
 rest at all. The ellipsis was added, found to do nothing, and taken out again;
 the reason it is absent is now written where the next person will look.
+(2026-11-06: replaced. The rail no longer scrolls sideways; names are cut in
+the middle, keeping their end, and shown whole on a rest. See chrome.md.)
 
 The folders above the one being read were not pinned to the top. Also
 deliberate, and the rule says so: only folders on the path to the note in

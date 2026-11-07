@@ -51,7 +51,13 @@ body {
      caret that flickers is harder to find, not easier. */
   --motion-caret-breath: 1100ms;
   --motion-caret-halo: 420ms;
+  /* The chevron at the file tree's edge while a drag scrolls it: a slow
+     back and forth that says "moving", never a bounce. */
+  --motion-nudge: 700ms;
   --ease-out: cubic-bezier(0.16, 1, 0.3, 1);
+  /* For a line that fills while something waits (a folder about to open
+     under a drag): even, so the time it shows is the time it takes. */
+  --ease-linear: linear;
   --ease-in: cubic-bezier(0.7, 0, 0.84, 0);
   --ease-in-out: cubic-bezier(0.4, 0, 0.2, 1);
 }
@@ -146,7 +152,7 @@ button:disabled { color: var(--muted); opacity: 0.7; }
      floor to ceiling. A bar painted across both (2026-09) put the lights on a
      band that belonged to neither column, and the left edge read as two
      stacked grounds. */
-  grid-template-columns: var(--shell-rail, auto) minmax(0, 1fr);
+  grid-template-columns: var(--shell-rail, auto) minmax(0, 1fr) var(--shell-info, 0px);
   --titlebar-height: 32px;
   /* The rail is clipped by the shell as its column grows, so the document
      moves with the surface instead of jumping before it appears. */
@@ -170,6 +176,12 @@ button:disabled { color: var(--muted); opacity: 0.7; }
 .app-shell > .file-truth-alert { grid-row: 4; grid-column: 2; }
 .app-shell > .operational-status { grid-row: 5; grid-column: 2; }
 .app-shell > .workspace-rail { grid-row: 1 / -1; grid-column: 1; }
+/* Under the title bar, as an inspector hangs under a toolbar: the title
+   bar's buttons on the right stay clear of it. */
+/* The pane, like the rail, has its ground from the top of the window to the
+   bottom, the title bar lying across it: started under the bar, its tint
+   stopped at a seam the bar's paper drew across the top of the column. */
+.app-shell > .info-pane { grid-row: 1 / -1; grid-column: 3; padding-top: var(--titlebar-height); }
 
 /* Title bar
    -------------------------------------------------------------------------
@@ -187,9 +199,10 @@ button:disabled { color: var(--muted); opacity: 0.7; }
      narrower than what it holds, so when the window is too narrow for that
      the name gives up the width, never the controls, and it can not reach
      under either group. With the rail closed the first column is empty and
-     the page is the window. */
+     the page is the window; the last is Note Info's width, empty while it is
+     closed. */
   display: grid;
-  grid-template-columns: var(--title-rail, 0px) minmax(max-content, 1fr) minmax(0, max-content) minmax(max-content, 1fr);
+  grid-template-columns: var(--title-rail, 0px) minmax(max-content, 1fr) minmax(0, max-content) minmax(max-content, 1fr) var(--title-info, 0px);
   transition: grid-template-columns var(--motion-slow) var(--ease-out);
   align-items: center;
   /* No column gap: with the rail closed its column is empty, and a gap after
@@ -243,7 +256,17 @@ button:disabled { color: var(--muted); opacity: 0.7; }
 }
 
 .title-left { grid-column: var(--title-left-column, 2); justify-self: start; }
-.title-actions { grid-column: 4; justify-self: end; }
+/* Over the page's right side and Note Info's column together, so the buttons
+   keep to the window's corner whether Note Info is open or not. */
+.title-actions { grid-column: 4 / -1; justify-self: end; }
+
+/* Note Info takes a column of the title bar as it does of the window, so the
+   filename is centred over the page it names and moves with it when Note Info
+   opens. Centred over everything right of the rail, it sat off to the right
+   of the text, over the edge of Note Info's column. */
+.app-shell {
+  --title-info: var(--shell-info, 0px);
+}
 
 /* With the rail open, the toggle and the trail sit on the rail's head, beside
    the traffic lights, exactly where they are with it closed: opening the rail
@@ -590,7 +613,8 @@ button:disabled { color: var(--muted); opacity: 0.7; }
   background: var(--ink);
   transform-origin: 0 50%;
   transform: translateX(var(--rail-indicator-left, 0)) scaleX(var(--rail-indicator-scale, 0));
-  transition-property: transform;
+  opacity: var(--rail-indicator-shown, 1);
+  transition-property: transform, opacity;
   transition-duration: var(--motion-medium);
   transition-timing-function: var(--ease-out);
 }
@@ -621,15 +645,24 @@ button:disabled { color: var(--muted); opacity: 0.7; }
 .rail-view {
   flex: 1 1 auto;
   min-height: 0;
-  /* Both ways. A name that does not fit is scrolled to, never cut to an
-     ellipsis, which is what Typora does and what a vault of long Chinese
-     filenames needs. No top padding: a stuck row must sit flush against the
-     top of the scrollport, or the rows sliding under it show through the gap. */
+  /* Both ways for the outline and the other views; the file tree keeps to
+     the rail's width (#rail-view-files). No top padding: a stuck row must sit
+     flush against the top of the scrollport, or the rows sliding under it show
+     through the gap. */
   overflow: auto;
   overscroll-behavior: contain;
   /* A deep foot, as Typora's tree has, so the last row is never jammed
-     against the bottom of the pane. */
-  padding: 0 12px 60px;
+     against the bottom of the pane. Named, because what sticks to the
+     bottom of the rail (the file tree's drag cues) measures from inside it. */
+  --rail-foot: 60px;
+  --rail-side: 12px;
+  padding: 0 var(--rail-side) var(--rail-foot);
+}
+
+/* The file tree never scrolls sideways: it narrows its steps and cuts names to
+   the rail instead (tree-fit.ts), so a swipe across it does nothing. */
+#rail-view-files {
+  overflow-x: hidden;
 }
 
 /* The drag target is wider than the line it moves, because a 1px border is not
@@ -665,7 +698,9 @@ button:disabled { color: var(--muted); opacity: 0.7; }
    pointer at once, not after the column's transition, and nothing in them
    takes a selection or shows its own pointer. */
 .app-shell.is-resizing-rail,
-.app-shell.is-resizing-rail > .titlebar { transition: none; }
+.app-shell.is-resizing-rail > .titlebar,
+.app-shell.is-resizing-window,
+.app-shell.is-resizing-window > .titlebar { transition: none; }
 .app-shell.is-resizing-rail {
   cursor: col-resize;
   user-select: none;
@@ -899,15 +934,14 @@ button:disabled { color: var(--muted); opacity: 0.7; }
    that lived on opposite sides of the window. */
 
 /* Cursor-style Settings: full-page shell, left categories / right content. */
-.settings-page,
-.pref-scrim {
+.settings-page {
   animation: noto-fade var(--motion-micro) var(--ease-out);
   position: fixed;
   z-index: 60;
   inset: 0;
   display: grid;
   place-items: stretch;
-  background: var(--paper);
+  background: var(--panel);
   padding: 0;
 }
 
@@ -918,32 +952,45 @@ button:disabled { color: var(--muted); opacity: 0.7; }
    had no title bar to drag the window by. */
 .pref-dialog,
 .settings-shell {
-  --pref-nav-width: clamp(200px, 17vw, 248px);
+  --pref-nav-width: clamp(214px, 19vw, 262px);
   /* Wide enough for a label, its hint and a control on one line inside a
      group's card; narrow enough that a two-line hint is still read as one
      thought. At 680 the pane was a strip down the middle of a wide window. */
-  --pref-measure: 800px;
+  --pref-measure: 760px;
   /* A group of settings is a card a shade off the paper, as System Settings
      and Typora draw theirs: the rows of one group read as one thing. */
   /* Off the raised tone rather than the panel's: in the dark theme the panel
      is darker than the paper, and the groups read as wells. */
-  --pref-card: color-mix(in srgb, var(--raised) 70%, var(--paper));
+  /* The window's floor is the panel's tone and the groups are lifted off it
+     in the overlay's, the tone every floating surface uses: paper by day,
+     a step above the page by night. Cards a shade darker than the page, as
+     they were, read as wells pressed into it; lifted, the pane reads as
+     things set out on a table. */
+  --pref-ground: var(--panel);
+  --pref-card: var(--overlay);
+  /* The categories float between the two: an inset slab, not a column glued
+     to the window's edge. */
+  --pref-slab: color-mix(in srgb, var(--overlay) 55%, var(--panel));
+  /* Tall enough that Done has air above and below it. */
+  --pref-bar: 52px;
+  /* One inset for everything set inside a card or said about one. */
+  --pref-inset: 20px;
   /* The gutter both sides keep for the pane's scroll bar, which Done allows
      for too, so the cards end under Done whether or not the pane scrolls. */
   --pref-gutter: 6px;
-  --pref-card-line: var(--hairline);
+  --pref-card-line: color-mix(in srgb, var(--hairline) 85%, transparent);
   --pref-card-rule: color-mix(in srgb, var(--hairline) 70%, transparent);
   animation: noto-arrive var(--motion-default) var(--ease-out);
   display: grid;
   grid-template-columns: var(--pref-nav-width) minmax(0, 1fr);
-  grid-template-rows: var(--titlebar-height, 32px) minmax(0, 1fr);
+  grid-template-rows: var(--pref-bar) minmax(0, 1fr);
   width: 100%;
   height: 100%;
   max-height: none;
   overflow: hidden;
   border: 0;
   border-radius: 0;
-  background: var(--paper);
+  background: var(--pref-ground);
   box-shadow: none;
 }
 
@@ -963,10 +1010,16 @@ button:disabled { color: var(--muted); opacity: 0.7; }
   min-width: 0;
   min-height: 0;
   overflow-y: auto;
-  border-right: 1px solid var(--hairline);
-  background: var(--panel);
-  /* Its head is the title bar's row, where the lights are. */
-  padding: calc(var(--titlebar-height, 32px) + 10px) 14px 14px;
+  /* Below the traffic lights, which stay where the main window has them, and
+     clear of the window's other edges by the same margin: a slab set on the
+     window's floor rather than a column glued to its edge. */
+  margin: 40px 0 10px 10px;
+  border: 1px solid var(--pref-card-line);
+  border-radius: 14px;
+  background: var(--pref-slab);
+  box-shadow: 0 1px 2px color-mix(in srgb, var(--shadow) 4%, transparent),
+    0 14px 34px -24px color-mix(in srgb, var(--shadow) 32%, transparent);
+  padding: 12px 10px;
 }
 
 /* Said once for every pane, at the foot of the column that names them. */
@@ -1003,7 +1056,7 @@ button:disabled { color: var(--muted); opacity: 0.7; }
   justify-content: flex-end;
   gap: 12px;
   min-width: 0;
-  padding-inline: calc(max(28px, (100% - var(--pref-measure)) / 2) + var(--pref-gutter));
+  padding-inline: calc(max(48px, (100% - var(--pref-measure)) / 2) + var(--pref-gutter));
 
   button { -webkit-app-region: no-drag; }
 }
@@ -1013,7 +1066,7 @@ button:disabled { color: var(--muted); opacity: 0.7; }
 [data-platform='win32'] .pref-heading,
 [data-platform='linux'] .pref-heading {
   padding-right: max(
-    calc(max(28px, (100% - var(--pref-measure)) / 2) + var(--pref-gutter)),
+    calc(max(48px, (100% - var(--pref-measure)) / 2) + var(--pref-gutter)),
     min(180px, max(0px, calc(100vw - env(titlebar-area-width, calc(100vw - 138px)) - env(titlebar-area-x, 0px) - 8px)))
   );
 }
@@ -1026,8 +1079,8 @@ button:disabled { color: var(--muted); opacity: 0.7; }
   gap: 11px;
   margin-bottom: 12px;
   border: 1px solid var(--hairline);
-  border-radius: 8px;
-  background: var(--paper);
+  border-radius: 9px;
+  background: var(--pref-card);
   padding: 0 10px;
   color: var(--muted);
 
@@ -1065,11 +1118,12 @@ button:disabled { color: var(--muted); opacity: 0.7; }
 
 .pref-nav-label {
   display: block;
-  margin: 2px 10px 6px;
+  margin: 4px 10px 6px;
   color: var(--muted);
-  font-size: 11.5px;
+  font-size: 10.5px;
   font-weight: 600;
-  letter-spacing: 0.01em;
+  letter-spacing: 0.07em;
+  text-transform: uppercase;
 }
 
 .pref-nav-sep { margin-top: 18px; }
@@ -1116,7 +1170,7 @@ button:disabled { color: var(--muted); opacity: 0.7; }
    easy to lose when the eye comes back from the pane. */
 .pref-section.is-current,
 .pref-section.is-current:hover:not(:disabled) {
-  background: color-mix(in srgb, var(--accent) 18%, var(--panel));
+  background: color-mix(in srgb, var(--accent) 15%, var(--pref-slab));
   color: var(--ink-strong);
   font-weight: 600;
 }
@@ -1130,13 +1184,49 @@ button:disabled { color: var(--muted); opacity: 0.7; }
   min-height: 0;
 }
 
-.pref-close { min-height: 24px; padding: 2px 14px; font-size: 12px; }
+.pref-close {
+  min-height: 28px;
+  border: 1px solid var(--pref-card-line);
+  border-radius: 999px;
+  background: var(--pref-card);
+  box-shadow: 0 1px 2px color-mix(in srgb, var(--shadow) 6%, transparent);
+  padding: 3px 16px;
+  color: var(--ink);
+  font-size: 12.5px;
+  font-weight: 500;
+}
 
 /* The pane's head: its name in the document's own face, the one place the
    settings borrow the page's type, and a line saying what the pane is for. */
 .pref-pane-head {
-  margin: 0 0 26px;
-  padding: 6px 2px 0;
+  display: grid;
+  grid-template-columns: 52px minmax(0, 1fr);
+  align-items: center;
+  column-gap: 18px;
+  margin: 0 0 36px;
+  padding: 4px 0 0;
+
+  > :not(.pref-pane-emblem) { grid-column: 2; }
+}
+
+/* The pane's mark in a ring of soft light: lit from above-left inside, and a
+   faint aura beyond its edge. The one ornament in the settings. */
+.pref-pane-emblem {
+  grid-row: 1 / span 2;
+  display: grid;
+  place-items: center;
+  width: 52px;
+  height: 52px;
+  border: 1px solid color-mix(in srgb, var(--accent) 24%, transparent);
+  border-radius: 50%;
+  background: radial-gradient(circle at 34% 28%,
+    color-mix(in srgb, var(--accent) 6%, var(--pref-card)) 0%,
+    color-mix(in srgb, var(--accent) 17%, var(--pref-card)) 100%);
+  box-shadow: 0 0 0 5px color-mix(in srgb, var(--accent) 3%, transparent),
+    0 0 28px -4px color-mix(in srgb, var(--accent) 26%, transparent);
+  color: var(--accent);
+
+  .pref-glyph { width: 24px; height: 24px; color: inherit; stroke-width: 1.15; }
 }
 
 .pref-pane-head .settings-title {
@@ -1145,9 +1235,9 @@ button:disabled { color: var(--muted); opacity: 0.7; }
   /* The variable is set only while a font is picked by name; without the
      fallback the declaration fails and the title fell back to the UI sans. */
   font-family: var(--prose-font-family, #{tokens.$prose}), tokens.$prose;
-  font-size: 26px;
+  font-size: 28px;
   font-weight: 600;
-  line-height: 1.25;
+  line-height: 1.2;
   letter-spacing: -0.005em;
 }
 
@@ -1159,7 +1249,7 @@ button:disabled { color: var(--muted); opacity: 0.7; }
 .pref-pane-head .settings-crumb { font-weight: 500; }
 
 .pref-pane-lead {
-  margin: 6px 0 0;
+  margin: 5px 0 0;
   color: var(--muted);
   font-size: 13px;
   line-height: 1.5;
@@ -1254,7 +1344,7 @@ button:disabled { color: var(--muted); opacity: 0.7; }
   min-height: 0;
   overflow: auto;
   overscroll-behavior: contain;
-  padding: 22px max(28px, calc((100% - var(--pref-measure)) / 2)) 64px;
+  padding: 6px max(48px, calc((100% - var(--pref-measure)) / 2)) 80px;
   scrollbar-gutter: stable both-edges;
 }
 
@@ -1276,33 +1366,33 @@ button:disabled { color: var(--muted); opacity: 0.7; }
    with no wrapper to keep in step with the markup. The Updates and Remote
    panes keep their rows in a wrapper of their own, so they are named too. A
    row of buttons is not a setting and stays off the card. */
-:is(.pref-content, .updates-pane, .remote-pane) > .pref-row:not(.pref-actions) {
+:is(.pref-content, .updates-pane, .remote-pane, .memory-pane) > .pref-row:not(.pref-actions) {
   border: 1px solid var(--pref-card-line);
   background: var(--pref-card);
-  padding: 11px 16px;
+  padding: 13px var(--pref-inset);
 }
 
-:is(.pref-content, .updates-pane, .remote-pane) > .pref-row + .pref-row {
+:is(.pref-content, .updates-pane, .remote-pane, .memory-pane) > .pref-row + .pref-row {
   margin-top: -1px;
   border-top-color: var(--pref-card-rule);
 }
 
-:is(.pref-content, .updates-pane, .remote-pane) > .pref-row:not(.pref-row + .pref-row) {
-  border-top-left-radius: 10px;
-  border-top-right-radius: 10px;
+:is(.pref-content, .updates-pane, .remote-pane, .memory-pane) > .pref-row:not(.pref-row + .pref-row) {
+  border-top-left-radius: 12px;
+  border-top-right-radius: 12px;
 }
 
-:is(.pref-content, .updates-pane, .remote-pane) > .pref-row:not(:has(+ .pref-row)) {
-  border-bottom-left-radius: 10px;
-  border-bottom-right-radius: 10px;
+:is(.pref-content, .updates-pane, .remote-pane, .memory-pane) > .pref-row:not(:has(+ .pref-row)) {
+  border-bottom-left-radius: 12px;
+  border-bottom-right-radius: 12px;
 }
 
 /* Notes, status lines and buttons between cards sit just off the card's
    edge, at the labels' indent, so they read as said about the card above. */
-:is(.pref-content, .updates-pane) > :is(.pref-note, .pref-status, .pref-problem) { margin: 10px 16px; }
-.pref-row.pref-actions { padding-inline: 16px; }
-.remote-pane > :is(.pref-note, .pref-status, .remote-token) { margin-inline: 16px; }
-.remote-pane > .remote-regenerate { justify-self: start; margin-inline: 16px; }
+:is(.pref-content, .updates-pane, .memory-pane) > :is(.pref-note, .pref-status, .pref-problem) { margin: 10px var(--pref-inset); }
+.pref-row.pref-actions { padding-inline: var(--pref-inset); }
+.remote-pane > :is(.pref-note, .pref-status, .remote-token) { margin-inline: var(--pref-inset); }
+.remote-pane > .remote-regenerate { justify-self: start; margin-inline: var(--pref-inset); }
 
 .pref-label {
   display: grid;
@@ -1353,6 +1443,212 @@ button:disabled { color: var(--muted); opacity: 0.7; }
   color: var(--ink);
   font-weight: 600;
 }
+
+/* The page as Appearance sets it, at the head of the pane: a window in
+   miniature, the rail's ground at its left and the paper beside it, and on the
+   paper a column of real text in the document's face, size and leading, as
+   wide as the page width makes it. It reads the live tokens, so the theme it
+   shows is the one in force; the controls under it change it as they move.
+   A fixed height with the foot fading out, so a larger text size grows the
+   text and not the pane. */
+.pref-specimen {
+  display: grid;
+  grid-template-columns: 16% minmax(0, 1fr);
+  height: 188px;
+  margin: 0 0 18px;
+  overflow: hidden;
+  border: 1px solid var(--pref-card-line);
+  border-radius: 12px;
+  background: var(--paper);
+  box-shadow: 0 1px 2px color-mix(in srgb, var(--shadow) 6%, transparent),
+    0 10px 28px -18px color-mix(in srgb, var(--shadow) 30%, transparent);
+}
+
+.pref-specimen-rail {
+  display: flex;
+  flex-direction: column;
+  gap: 9px;
+  border-right: 1px solid var(--hairline);
+  background: var(--panel);
+  padding: 22px 14px;
+
+  i {
+    display: block;
+    height: 5px;
+    border-radius: 3px;
+    background: color-mix(in srgb, var(--ink) 13%, transparent);
+  }
+
+  i:nth-child(1) { width: 62%; }
+  i:nth-child(2) { width: 80%; margin-left: 12%; }
+  i:nth-child(3) { width: 58%; margin-left: 12%; background: color-mix(in srgb, var(--accent) 55%, transparent); }
+  i:nth-child(4) { width: 70%; margin-left: 12%; }
+  i:nth-child(5) { width: 48%; }
+}
+
+.pref-specimen-paper {
+  display: flex;
+  justify-content: center;
+  min-width: 0;
+  padding: 22px 18px 0;
+  mask-image: linear-gradient(to bottom, #000 62%, transparent 98%);
+}
+
+/* The column's share of the paper for each page width, about as the window
+   gives it at a laptop's size, so Default reads as a reading column and Full
+   as the paper edge to edge. It snaps rather than slides: the app animates no
+   layout, and the text rewrapping is the change to see. */
+.pref-specimen-page {
+  display: flex;
+  flex-direction: column;
+  gap: 0.55em;
+  width: 58%;
+  min-width: 0;
+  color: var(--ink);
+  font-family: tokens.$prose;
+  font-size: var(--doc-font-size, 15px);
+  line-height: var(--doc-line-height, 1.58);
+}
+
+.pref-specimen[data-width='wide'] .pref-specimen-page { width: 78%; }
+.pref-specimen[data-width='full'] .pref-specimen-page { width: 100%; }
+
+.pref-specimen-title {
+  color: var(--ink-strong);
+  font-size: 1.55em;
+  font-weight: 600;
+  line-height: 1.25;
+}
+
+/* Tiles: the theme, the face and the width as small pictures of themselves,
+   a word under each. One accent ring marks the choice, as a segmented
+   control's raised segment does. */
+.pref-tiles-row { align-items: center; }
+
+.pref-tiles {
+  display: flex;
+  flex: 0 0 auto;
+  gap: 10px;
+}
+
+.pref-tile {
+  display: grid;
+  justify-items: center;
+  gap: 6px;
+  min-height: 0;
+  border: 0;
+  background: transparent;
+  padding: 0;
+  color: var(--muted);
+  font-size: 11.5px;
+
+  &:hover:not(:disabled) { background: transparent; color: var(--ink); }
+  &:focus-visible { outline: none; }
+  &:focus-visible .pref-tile-art { outline: 2px solid var(--focus); outline-offset: 2px; }
+  &.is-on { color: var(--ink); font-weight: 600; }
+}
+
+.pref-tile-art {
+  position: relative;
+  display: flex;
+  width: 66px;
+  height: 44px;
+  overflow: hidden;
+  border: 1px solid var(--hairline);
+  border-radius: 7px;
+  background: var(--paper);
+  transition: border-color var(--motion-fast) var(--ease-out), box-shadow var(--motion-fast) var(--ease-out),
+    translate var(--motion-fast) var(--ease-out);
+}
+
+.pref-tile:hover .pref-tile-art { border-color: color-mix(in srgb, var(--ink) 28%, var(--hairline)); translate: 0 -1px; }
+.pref-tile:active .pref-tile-art { translate: 0; }
+.pref-tile.is-on .pref-tile-art {
+  border-color: var(--accent);
+  box-shadow: 0 0 0 1px var(--accent), 0 4px 10px -6px color-mix(in srgb, var(--accent) 60%, transparent);
+}
+
+/* A theme tile draws its own theme's colours rather than the live tokens,
+   since it shows a theme that may not be the one in force: the paper, rail,
+   ink and accent of each, as _tokens.scss sets them. System draws both,
+   split on the diagonal. */
+$mini-tones: (
+  light: (paper: #FAF9F6, panel: #F3F1EC, ink: #34312E, accent: #A85D3B),
+  dark: (paper: #1F1E1C, panel: #181715, ink: #D7D4CF, accent: #E0A07A),
+);
+
+.pref-mini {
+  position: absolute;
+  inset: 0;
+  display: flex;
+  flex-direction: column;
+  justify-content: center;
+  gap: 5px;
+  padding: 0 9px 0 22px;
+
+  i { display: block; height: 3px; border-radius: 2px; }
+  i:nth-child(1) { width: 58%; height: 4px; }
+  i:nth-child(2) { width: 88%; }
+  i:nth-child(3) { width: 70%; }
+}
+
+@each $tone, $c in $mini-tones {
+  .pref-mini.is-#{$tone} {
+    background: linear-gradient(to right, map-get($c, panel) 14px, map-get($c, paper) 14px);
+
+    i { background: color-mix(in srgb, map-get($c, ink) 34%, transparent); }
+    i:nth-child(1) { background: map-get($c, ink); }
+    i:nth-child(3) { background: color-mix(in srgb, map-get($c, accent) 70%, transparent); }
+  }
+}
+
+.pref-mini + .pref-mini { clip-path: polygon(100% 0, 100% 100%, 0 100%); }
+
+/* A face tile sets its own name in its own stack: the Latin and the Han
+   together, since a face is chosen for both. */
+.pref-face-art {
+  display: grid;
+  place-items: center;
+  width: 100%;
+  color: var(--ink);
+  font-size: 15px;
+  letter-spacing: 0.01em;
+
+  &.is-serif { font-family: tokens.$prose; }
+  &.is-sans { font-family: tokens.$ui; }
+  &.is-mono { font-family: tokens.$mono; font-size: 13px; }
+}
+
+/* A width tile is the window again: the rail, then the text column at that
+   width's share of the paper. */
+.pref-width-art {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 100%;
+  padding-left: 14px;
+  background: linear-gradient(to right, var(--panel) 14px, var(--paper) 14px);
+
+  > span {
+    display: flex;
+    flex-direction: column;
+    gap: 4px;
+  }
+
+  i {
+    display: block;
+    height: 3px;
+    border-radius: 2px;
+    background: color-mix(in srgb, var(--ink) 30%, transparent);
+  }
+
+  i:nth-child(1) { width: 70%; height: 4px; background: var(--ink); }
+  i:nth-child(4) { width: 62%; }
+  &.is-default > span { width: 44%; }
+  &.is-wide > span { width: 66%; }
+  &.is-full > span { width: 88%; }
+}
+
 
 /* Sliders.
    A bare range input paints in the operating system's accent, which is neither
@@ -1781,6 +2077,8 @@ button:disabled { color: var(--muted); opacity: 0.7; }
 }
 
 .pref-action.is-danger { color: var(--danger); }
+.pref-inline-action.is-danger { color: var(--danger); }
+/* The pane's rows run to its edges, so its group headings do too. */
 
 .plugin-source-folder {
   margin-left: auto;
@@ -2021,6 +2319,9 @@ section.plugin-group > .plugin-market-row.is-set-aside {
 /* Status line
    ------------------------------------------------------------------------- */
 
+/* The line with nothing open but a notice: the message and its action, at the start. */
+.operational-status.is-bare { grid-template-columns: minmax(0, auto) auto 1fr; }
+
 .operational-status {
   display: grid;
   /* One column for each thing on the line: the recent notes, the folder, the
@@ -2082,6 +2383,17 @@ section.plugin-group > .plugin-market-row.is-set-aside {
   letter-spacing: 0.02em;
   line-height: 15px;
   white-space: nowrap;
+}
+
+/* A note made private by its own frontmatter: a fact about the note, so in
+   the muted tier with the tree's lock, where Read-only and Remote take the
+   accent because they change what the window does. */
+.status-flag.status-privacy {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  border-color: color-mix(in srgb, var(--muted) 45%, transparent);
+  color: var(--muted);
 }
 
 .status-message {
@@ -2207,16 +2519,20 @@ section.plugin-group > .plugin-market-row.is-set-aside {
 .quick-open {
   animation: noto-arrive var(--motion-default) var(--ease-out);
   position: absolute;
-  top: 10vh;
+  /* A tenth of the way down, never closer to the top than the title bar's
+     height plus air; and as far from each side as the window can spare, so
+     on a laptop's window it is a panel over the page, not a band across it. */
+  --quick-gutter: clamp(24px, 6vw, 96px);
+  top: clamp(40px, 11vh, 128px);
   left: 50%;
   translate: -50% 0;
   display: flex;
   flex-direction: column;
-  width: min(740px, calc(100vw - 48px));
+  width: min(740px, calc(100vw - 2 * var(--quick-gutter)));
   /* About as tall as it is wide on a desktop window, where it was a strip
      twelve rows high: a long list is what a search is read from, and the
      panel stops short of the page's foot so it still reads as a panel. */
-  max-height: min(68vh, 760px);
+  max-height: min(72vh, 760px);
   /* No transition on the width: it changes on ⌘[ and ⌘], from the keyboard,
      and a width that eases reflows every row on every frame of it. */
   overflow: hidden;
@@ -2288,9 +2604,14 @@ section.plugin-group > .plugin-market-row.is-set-aside {
 
 /* One selected row, moved by the keyboard and by the pointer alike. There is no
    separate hover state: two different highlights on one list is two answers to
-   "which one does Enter take". */
-.quick-result.is-selected { background: var(--raised); }
-.quick-result:hover { background: var(--raised); }
+   "which one does Enter take". It wears the spine, as the tree's current note
+   and History's open commit do: this is where you are in the list. */
+.quick-result.is-selected {
+  border-radius: 0 6px 6px 0;
+  background: var(--surface-active);
+  box-shadow: inset 2px 0 0 var(--accent);
+}
+.quick-result:hover { background: var(--surface-active); }
 
 .quick-name {
   min-width: 0;
@@ -2305,9 +2626,10 @@ section.plugin-group > .plugin-market-row.is-set-aside {
   min-width: 0;
   overflow: hidden;
   color: var(--muted);
-  font-family: tokens.$mono;
-  /* Quieter than the name it belongs to. It is context, not the answer. */
-  font-size: 10.5px;
+  /* Quieter than the name it belongs to. It is context, not the answer. In
+     the interface face: most folders here are named in Chinese, which a
+     monospace face only borrows from another font, a size off. */
+  font: 400 11px/15px tokens.$ui;
   text-overflow: ellipsis;
   white-space: nowrap;
 }
@@ -2399,8 +2721,7 @@ section.plugin-group > .plugin-market-row.is-set-aside {
   .app-shell { grid-template-rows: auto auto minmax(0, 1fr) auto 24px; }
   .operational-status { height: 24px; grid-template-columns: minmax(0, 1fr); }
   .status-message, .recent-strip { display: none; }
-  .settings-page,
-  .pref-scrim { padding: 0; }
+  .settings-page { padding: 0; }
   /* One column: the title bar, the categories as a strip under it, then the
      pane. The title moves past the lights, as the main bar's controls do. */
   .pref-dialog,
@@ -2454,7 +2775,7 @@ section.plugin-group > .plugin-market-row.is-set-aside {
    (docs/design/motion.md, amendment of 2026-10-20). `data-input` is the hand
    last used, kept on the root by input-modality.ts. */
 :root[data-input='keyboard'] :is(
-  .vault-menu-list, .pref-scrim, .settings-shell, .command-palette,
+  .vault-menu-list, .guide-scrim, .settings-page, .settings-shell, .command-palette,
   .command-palette-scrim, .quick-scrim, .quick-open, .table-dialog-scrim,
   .table-dialog, .reload-confirm-scrim, .reload-confirm, .shortcuts,
   .noto-git-popover
@@ -2624,11 +2945,21 @@ section.plugin-group > .plugin-market-row.is-set-aside {
 /* A heading inside a pane, so a pane of eight switches reads as two groups of
    four rather than as a list somebody stopped writing. */
 .pref-group {
-  margin: 30px 16px 9px;
+  margin: 34px 2px 10px;
   color: var(--muted);
-  font-size: 12px;
+  font-size: 11px;
   font-weight: 600;
-  letter-spacing: 0.01em;
+  letter-spacing: 0.07em;
+  text-transform: uppercase;
+}
+
+/* What a group is for, said once under its name rather than as a paragraph
+   floating over the pane. */
+.pref-lede {
+  margin: -4px 2px 12px;
+  color: var(--muted);
+  font-size: 12.5px;
+  line-height: 1.55;
 }
 
 /* Right under the pane's head the group needs no gap of its own. */
@@ -2913,12 +3244,45 @@ section.plugin-group > .plugin-market-row.is-set-aside {
 
 /* What Noto can do: one sheet, searchable, on the Help menu. Built out of
    the preferences panel's own furniture so it reads as the same product. */
+/* The title bar's ?: What Noto can do, and an accent dot while it holds something not yet seen. */
+.guide-toggle { position: relative; }
+.guide-toggle .guide-dot-fill { fill: currentcolor; stroke: none; }
+.guide-toggle.has-news::after {
+  content: '';
+  position: absolute;
+  top: 4px;
+  right: 4px;
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  background: var(--accent);
+  box-shadow: 0 0 0 2px var(--titlebar, var(--paper));
+}
+
+/* What Noto Can Do is a sheet over the window, the way the palette and quick
+   open are: the note it leads back to stays in view, dimmed, behind it; the
+   traffic lights and the title bar stay clear above it; a press outside
+   closes it. It once borrowed Settings' scrim, which became an opaque page
+   of its own in September, and so drew the guide as a box in the window's
+   corner, under the lights, over nothing. */
+.guide-scrim {
+  animation: noto-fade var(--motion-micro) var(--ease-out);
+  position: fixed;
+  z-index: 60;
+  inset: 0;
+  display: flex;
+  align-items: flex-start;
+  justify-content: center;
+  padding: 64px 24px 32px;
+  background: var(--scrim);
+}
+
 .shortcuts {
   animation: noto-arrive var(--motion-default) var(--ease-out);
   display: grid;
   grid-template-rows: auto minmax(0, 1fr);
-  width: min(760px, 92vw);
-  max-height: min(680px, 86vh);
+  width: min(760px, 100%);
+  max-height: min(720px, 100%);
   border: 1px solid var(--hairline);
   border-radius: 10px;
   background: var(--paper);
@@ -2984,6 +3348,45 @@ section.plugin-group > .plugin-market-row.is-set-aside {
   dt { display: flex; flex-wrap: wrap; gap: 4px; }
   dd { margin: 0; color: var(--ink); font-size: 13px; line-height: 1.5; }
 
+  /* What it needs, quieter than what it does, and the way to it at the row's end, so the list stays short. */
+  dd:has(> .shortcuts-try, > .shortcuts-later) { display: grid; grid-template-columns: minmax(0, 1fr) auto; column-gap: 14px; }
+  .shortcuts-what { display: block; }
+  .shortcuts-needs { display: block; grid-column: 1; color: var(--muted); font-size: 12px; }
+  /* Where a Try It cannot go yet, why, in its place and as quiet as a note. */
+  .shortcuts-later {
+    grid-column: 2;
+    grid-row: 1 / span 2;
+    align-self: start;
+    padding: 2px 0;
+    color: var(--muted);
+    font: 11.5px/18px tokens.$ui;
+    white-space: nowrap;
+  }
+  .shortcuts-try {
+    grid-column: 2;
+    grid-row: 1 / span 2;
+    align-self: start;
+    padding: 1px 9px;
+    border: 1px solid var(--hairline);
+    border-radius: 999px;
+    background: transparent;
+    color: var(--ink);
+    font: 500 11.5px/18px tokens.$ui;
+    cursor: pointer;
+
+    &:hover { border-color: color-mix(in srgb, var(--accent) 50%, var(--hairline)); color: var(--accent); }
+    &:focus-visible { outline: 2px solid var(--focus); outline-offset: 1px; }
+  }
+  .shortcuts-new {
+    margin-right: 6px;
+    padding: 0 6px;
+    border-radius: 999px;
+    background: color-mix(in srgb, var(--accent) 14%, transparent);
+    color: var(--accent);
+    font: 600 10.5px/16px tokens.$ui;
+    vertical-align: 1px;
+  }
+
   kbd {
     padding: 1px 6px;
     border: 1px solid var(--hairline);
@@ -2992,7 +3395,9 @@ section.plugin-group > .plugin-market-row.is-set-aside {
     color: var(--muted);
     font-family: tokens.$mono;
     font-size: 11px;
-    white-space: nowrap;
+    /* A key stays on one line; a longer name wraps inside its column rather than over the words beside it. */
+    max-width: 100%;
+    overflow-wrap: anywhere;
   }
 }
 
@@ -3049,6 +3454,150 @@ section.plugin-group > .plugin-market-row.is-set-aside {
   }
 }
 
+/* Settings → Memory: the folder's agents, a row each, and adding one. */
+/* Memory draws its settings on the cards every pane uses; its agents are one
+   card of their own, a row per agent with its mark, and the way to add one as
+   the card's last row, where the next agent will appear. */
+.memory-pane { display: flow-root; }
+.memory-pane > .pref-group:first-child { margin-top: 0; }
+
+.memory-agents {
+  margin: 0;
+  padding: 0;
+  overflow: hidden;
+  border: 1px solid var(--pref-card-line);
+  border-radius: 12px;
+  background: var(--pref-card);
+  list-style: none;
+}
+
+.memory-agent {
+  display: grid;
+  grid-template-columns: 30px minmax(0, 1fr) auto;
+  grid-template-areas: "mark name action" "mark words action";
+  align-items: center;
+  column-gap: 14px;
+  row-gap: 1px;
+  padding: 13px var(--pref-inset);
+}
+
+.memory-agents > li + li { border-top: 1px solid var(--pref-card-rule); }
+
+.memory-agent-mark {
+  grid-area: mark;
+  display: grid;
+  place-items: center;
+  width: 30px;
+  height: 30px;
+  border-radius: 50%;
+  background: color-mix(in srgb, var(--accent) 14%, var(--pref-card));
+  color: var(--accent);
+  font-family: tokens.$prose;
+  font-size: 13.5px;
+  font-weight: 600;
+  line-height: 1;
+}
+
+.memory-agent.is-off .memory-agent-mark {
+  background: color-mix(in srgb, var(--ink) 7%, var(--pref-card));
+  color: var(--muted);
+}
+
+.memory-agent-name { grid-area: name; color: var(--ink); font-size: 13px; font-weight: 500; }
+.memory-agent-words { grid-area: words; color: var(--muted); font-size: 12px; line-height: 1.45; }
+.memory-agent .pref-inline-action { grid-area: action; }
+
+/* The add row reads as the next agent not yet there: the same mark, drawn as
+   an outline, and the words in the accent. */
+.memory-agent-add button {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  width: 100%;
+  min-height: 0;
+  border: 0;
+  border-radius: 0;
+  background: transparent;
+  padding: 10px var(--pref-inset);
+  color: var(--accent);
+  font-size: 13px;
+  text-align: left;
+
+  &:hover:not(:disabled) { background: color-mix(in srgb, var(--accent) 6%, transparent); }
+  &:focus-visible { outline: 2px solid var(--focus); outline-offset: -2px; }
+
+  .memory-agent-mark {
+    border: 1px dashed color-mix(in srgb, var(--accent) 55%, transparent);
+    background: transparent;
+    font-family: inherit;
+    font-size: 15px;
+    font-weight: 400;
+  }
+}
+
+.memory-pane > :is(.memory-key, .memory-add) { margin-top: 12px; }
+
+/* The key shown once: a card edged in the accent, since it is the one thing
+   on the pane that will not be shown again. */
+.memory-key {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  padding: 16px var(--pref-inset);
+  border: 1px solid color-mix(in srgb, var(--accent) 45%, var(--pref-card-line));
+  border-radius: 12px;
+  background: var(--pref-card);
+}
+
+.memory-key > .pref-note, .memory-key > .pref-status { margin: 0; }
+
+/* The key itself, to be read and copied whole. */
+.memory-key-text {
+  padding: 6px 8px;
+  border: 1px solid var(--hairline);
+  border-radius: 5px;
+  background: var(--paper);
+  color: var(--ink);
+  font: 500 12.5px/18px tokens.$mono;
+  overflow-wrap: anywhere;
+  user-select: all;
+}
+
+.memory-key-actions { display: flex; flex-wrap: wrap; gap: 6px; }
+.memory-key > .pref-inline-action { align-self: flex-start; }
+
+.memory-add {
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+  padding: 16px var(--pref-inset);
+  border: 1px solid var(--pref-card-line);
+  border-radius: 12px;
+  background: var(--pref-card);
+}
+
+.memory-add-field {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  margin: 0;
+  padding: 0;
+  border: 0;
+
+  label { display: flex; align-items: center; gap: 6px; color: var(--ink); font-size: 12.5px; }
+  input[type="radio"] { accent-color: var(--accent); }
+
+  input[type="text"], input:not([type]) {
+    max-width: 280px;
+    padding: 4px 8px;
+    border: 1px solid var(--hairline);
+    border-radius: 5px;
+    background: var(--paper);
+    color: var(--ink);
+    font: 400 12.5px/18px tokens.$ui;
+  }
+}
+
 .remote-token {
   display: grid;
   grid-template-columns: auto minmax(0, 1fr) auto auto;
@@ -3082,7 +3631,100 @@ section.plugin-group > .plugin-market-row.is-set-aside {
 /* Quick open's three tabs, its scope chip, and the two widths. The author's
    own palette is 740px, and 1000 wide; the same numbers, capped to the
    window so a narrow one never has a panel wider than itself. */
-.quick-open[data-width='wide'] { width: min(1000px, calc(100vw - 32px)); }
+.quick-open[data-width='wide'] { width: min(1000px, calc(100vw - 2 * clamp(16px, 3vw, 48px))); }
+
+/* The list and, beside it, the note in front of it. */
+.quick-open.has-preview { width: min(980px, calc(100vw - 2 * var(--quick-gutter))); }
+.quick-open.has-preview[data-width='wide'] { width: min(1220px, calc(100vw - 2 * clamp(16px, 3vw, 48px))); }
+
+/* The list's scroll bar shows only while the list is under the pointer: drawn
+   always, it stood as a third rule between the two columns. */
+.quick-results::-webkit-scrollbar-thumb { background: transparent; }
+.quick-results:hover::-webkit-scrollbar-thumb { background: var(--hairline); }
+.quick-body { display: flex; flex: 1 1 auto; min-height: 0; }
+.quick-body > .quick-results { flex: 1 1 50%; min-width: 0; }
+
+/* The preview reads like the page it will open onto: the document's face, its
+   leading, headings as headings; fading out where it is cut. */
+.quick-preview {
+  display: flex;
+  flex: 1 1 50%;
+  flex-direction: column;
+  min-width: 0;
+  border-left: 1px solid var(--hairline);
+  /* A shade under the list in both themes: the side you read, set back from
+     the side you choose from. Paper alone matched the light theme's panel. */
+  background: color-mix(in srgb, var(--paper) 55%, var(--panel));
+
+  &.is-blank { align-items: center; justify-content: center; }
+}
+.quick-preview-head {
+  flex: 0 0 auto;
+  padding: 18px 24px 10px;
+}
+.quick-preview-title {
+  display: -webkit-box;
+  margin: 0;
+  overflow: hidden;
+  color: var(--ink-strong);
+  font: 600 18px/25px tokens.$prose;
+  -webkit-box-orient: vertical;
+  -webkit-line-clamp: 2;
+  line-clamp: 2;
+  overflow-wrap: anywhere;
+}
+.quick-preview-where {
+  display: flex;
+  gap: 8px;
+  min-width: 0;
+  margin: 5px 0 0;
+  color: var(--muted);
+  font: 400 11.5px/16px tokens.$ui;
+  white-space: nowrap;
+
+  > span:not(:first-child)::before { content: '\00b7'; margin-right: 8px; }
+}
+.quick-preview-folder { min-width: 0; overflow: hidden; text-overflow: ellipsis; }
+.quick-preview-body {
+  position: relative;
+  flex: 1 1 auto;
+  min-height: 0;
+  overflow: hidden;
+  padding: 6px 24px 28px;
+  color: var(--ink);
+  font: 400 13.5px/1.75 tokens.$prose;
+  mask-image: linear-gradient(to bottom, #000 calc(100% - 64px), transparent);
+
+  p, hr { margin: 0 0 6px; }
+}
+.quick-preview-h1, .quick-preview-h2, .quick-preview-h3 { margin-top: 10px !important; color: var(--ink-strong); font-weight: 600; }
+.quick-preview-h1 { font-size: 16px; }
+.quick-preview-h2 { font-size: 15px; }
+.quick-preview-h3 { font-size: 14px; }
+.quick-preview-li { position: relative; padding-left: 16px; }
+.quick-preview-li::before { content: ''; position: absolute; top: 0.8em; left: 4px; width: 4px; height: 4px; border-radius: 50%; background: var(--muted); }
+.quick-preview-quote { padding-left: 12px; border-left: 2px solid var(--quote-line); color: var(--quote-ink); }
+.quick-preview-code {
+  margin: 0 !important;
+  padding: 0 10px;
+  overflow: hidden;
+  background: var(--code-fill);
+  color: var(--code-text);
+  font: 400 11.5px/1.65 tokens.$mono;
+  text-overflow: ellipsis;
+  white-space: pre;
+}
+.quick-preview-rule { height: 0; border: 0; border-top: 1px solid var(--hairline); margin: 10px 0 !important; }
+/* The line a search inside notes found, and the words in it. */
+.quick-preview-body .is-hit { margin-right: -8px; margin-left: -8px; padding-right: 8px; padding-left: 8px; border-radius: 4px; background: color-mix(in srgb, var(--mark-fill) 38%, transparent); }
+.quick-preview-hit { border-radius: 2px; background: var(--mark-fill); color: var(--ink-strong); }
+.quick-preview-empty { margin: 0; padding: 24px; color: var(--muted); font: 400 12.5px/18px tokens.$ui; text-align: center; }
+
+/* Where the window is too narrow for both, the list keeps the room. */
+@media (max-width: 900px) {
+  .quick-open.has-preview { width: min(740px, calc(100vw - 2 * var(--quick-gutter))); }
+  .quick-preview { display: none; }
+}
 
 .quick-tabs {
   display: flex;
@@ -3777,4 +4419,1043 @@ section.plugin-group > .plugin-market-row.is-set-aside {
   overflow: hidden;
   clip-path: inset(50%);
   white-space: nowrap;
+}
+
+
+/* The info pane
+   -------------------------------------------------------------------------
+   Everything about the note in front, beside the page. The rail's ground,
+   rules and type, so the window reads as rail, page, pane; the timeline is
+   its one ornament and the one place the accent carries meaning. */
+
+@keyframes noto-info-in {
+  from { opacity: 0; }
+  to { opacity: 1; }
+}
+
+.info-pane {
+  position: relative;
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+  min-height: 0;
+  overflow: hidden;
+  border-left: 1px solid var(--hairline);
+  background: var(--panel);
+  color: var(--ink);
+  font-family: tokens.$ui;
+  animation: noto-info-in var(--motion-medium) var(--ease-out);
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .info-pane { animation: none; }
+}
+
+.info-resize {
+  position: absolute;
+  z-index: 5;
+  top: 0;
+  bottom: 0;
+  left: -3px;
+  width: 7px;
+  cursor: col-resize;
+  touch-action: none;
+}
+
+.info-resize::after {
+  content: '';
+  position: absolute;
+  inset: 0 3px;
+  background: var(--accent);
+  opacity: 0;
+  transition: opacity var(--motion-micro) var(--ease-out);
+}
+
+.info-resize:hover::after,
+.info-resize:focus-visible::after,
+.is-resizing-rail .info-resize::after { opacity: 0.55; }
+
+.info-head {
+  display: flex;
+  flex: 0 0 auto;
+  align-items: flex-start;
+  gap: 8px;
+  padding: 16px 10px 10px 16px;
+}
+
+.info-identity { flex: 1 1 auto; min-width: 0; }
+
+/* The note's own name, in the face the note is read in: the pane is about this
+   note, and says so first. Two lines before it gives up, since a long Chinese
+   title cut after a few characters names nothing. */
+.info-title {
+  display: -webkit-box;
+  margin: 0;
+  overflow: hidden;
+  color: var(--ink-strong);
+  font: 600 17px/23px tokens.$prose;
+  -webkit-box-orient: vertical;
+  -webkit-line-clamp: 2;
+  line-clamp: 2;
+  overflow-wrap: anywhere;
+}
+
+.info-where {
+  display: flex;
+  align-items: center;
+  min-width: 0;
+  gap: 6px;
+  margin: 5px 0 0;
+  color: var(--muted);
+  font: 400 11.5px/16px tokens.$ui;
+}
+
+.info-folder {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.info-folder-glyph {
+  flex: 0 0 auto;
+  width: 13px;
+  height: 13px;
+  fill: none;
+  stroke: currentColor;
+  stroke-linejoin: round;
+  stroke-width: 1.2;
+}
+
+.info-folder::after { content: '\00b7'; margin-left: 6px; }
+.info-state { flex: 0 0 auto; white-space: nowrap; }
+
+/* A note that differs from its last commit wears the tree's changed dot beside the words. */
+.info-state[data-state='changed']::before {
+  content: '';
+  display: inline-block;
+  width: 6px;
+  height: 6px;
+  margin: 0 5px 1px 0;
+  border-radius: 50%;
+  background: var(--git-changed);
+  vertical-align: middle;
+}
+.info-close { flex: 0 0 auto; margin-top: -3px; }
+
+.info-empty,
+.info-note {
+  margin: 10px 16px;
+  color: var(--muted);
+  font: 400 12px/18px tokens.$ui;
+
+  p { margin: 0 0 8px; }
+}
+
+.info-status {
+  margin: 4px 16px 6px;
+  color: var(--ink);
+  font: 400 11.5px/16px tokens.$ui;
+}
+
+.info-button {
+  min-height: 22px;
+  padding: 1px 9px;
+  border: 1px solid var(--hairline);
+  border-radius: 5px;
+  background: var(--paper);
+  color: var(--ink);
+  font: 500 11.5px/18px tokens.$ui;
+  cursor: pointer;
+
+  &:hover { background: var(--raised); }
+  &:focus-visible { outline: 2px solid var(--focus); outline-offset: 1px; }
+}
+
+/* The timeline: a row per track, today at the right edge. */
+.info-timeline {
+  flex: 0 0 auto;
+  padding: 2px 16px 10px;
+}
+
+.info-tracks { display: flex; flex-direction: column; gap: 3px; }
+
+.info-track {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.info-track-marks {
+  position: relative;
+  flex: 1 1 auto;
+  height: 14px;
+}
+
+.info-track.is-amounts .info-track-marks { height: 20px; }
+
+/* The axis a track's marks sit on. */
+.info-track.is-events .info-track-marks::before {
+  content: '';
+  position: absolute;
+  top: 50%;
+  right: 0;
+  left: 0;
+  height: 1px;
+  background: var(--hairline);
+}
+
+.info-track-name {
+  flex: 0 0 48px;
+  order: 2;
+  overflow: hidden;
+  color: var(--muted);
+  font: 500 10px/13px tokens.$ui;
+  text-align: right;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+/* Centred on the track's line, and taller than it so it is easy to hit: a
+   button is otherwise at least 28px, which put each dot 7px below the line. */
+.info-mark {
+  position: absolute;
+  top: 50%;
+  left: var(--x);
+  width: 9px;
+  height: 18px;
+  min-height: 0;
+  padding: 0;
+  border: 0;
+  border-radius: 3px;
+  background: transparent;
+  transform: translate(-50%, -50%);
+  cursor: pointer;
+
+  &::before {
+    content: '';
+    position: absolute;
+    top: 50%;
+    left: 50%;
+    width: 7px;
+    height: 7px;
+    border-radius: 50%;
+    background: var(--accent);
+    transform: translate(-50%, -50%);
+    transition: transform var(--motion-micro) var(--ease-out);
+  }
+
+  &:hover::before { transform: translate(-50%, -50%) scale(1.3); }
+  &:focus-visible { outline: 2px solid var(--focus); outline-offset: 0; }
+  &.is-many::before { width: 9px; height: 9px; }
+  &.is-faint::before { background: var(--muted); opacity: 0.45; }
+
+  /* Everything before the drawn year, gathered: not to scale, so not in the accent. */
+  &.is-earlier::before { background: var(--muted); }
+
+  /* Not committed yet: a ring at now. */
+  &.is-pending::before {
+    border: 1.5px solid var(--accent);
+    background: var(--panel);
+  }
+}
+
+.info-track.is-amounts .info-mark {
+  top: 0;
+  bottom: 0;
+  width: 6px;
+  height: auto;
+  transform: translateX(-50%);
+
+  &::before {
+    top: auto;
+    bottom: 0;
+    width: 4px;
+    height: calc(var(--h) * 100%);
+    border-radius: 1px;
+    opacity: 0.6;
+    transform: translateX(-50%);
+  }
+
+  &:hover::before { opacity: 1; transform: translateX(-50%); }
+}
+
+.info-axis {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  margin: 3px 56px 0 0;
+  color: var(--muted);
+  font: 500 10px/13px tokens.$ui;
+  font-variant-numeric: tabular-nums;
+}
+
+/* The axis's left end: a switch between the last year and all of a long note's time. */
+.info-axis-span {
+  padding: 0;
+  border: 0;
+  background: none;
+  color: inherit;
+  font: inherit;
+  text-decoration: underline dotted;
+  text-decoration-color: var(--hairline);
+  text-underline-offset: 2px;
+  cursor: pointer;
+
+  &:hover { color: var(--ink); }
+  &:focus-visible { outline: 2px solid var(--focus); outline-offset: 1px; border-radius: 2px; }
+}
+
+.info-summary {
+  margin: 6px 0 0;
+  color: var(--muted);
+  font: 500 11px/15px tokens.$ui;
+  font-variant-numeric: tabular-nums;
+}
+
+.info-tabs {
+  display: flex;
+  flex: 0 0 auto;
+  gap: 16px;
+  padding: 0 16px;
+  border-bottom: 1px solid var(--hairline);
+}
+
+.info-tab {
+  position: relative;
+  padding: 7px 0 7px;
+  border: 0;
+  background: none;
+  color: var(--muted);
+  font: 500 12.5px/17px tokens.$ui;
+  cursor: pointer;
+
+  &:hover { color: var(--ink); }
+  &:focus-visible { outline: 2px solid var(--focus); outline-offset: 2px; border-radius: 3px; }
+
+  &[aria-selected='true'] { color: var(--ink-strong); }
+  &[aria-selected='true']::after {
+    content: '';
+    position: absolute;
+    right: 0;
+    bottom: -1px;
+    left: 0;
+    height: 1.5px;
+    border-radius: 1px;
+    background: var(--ink);
+  }
+}
+
+.info-panels { position: relative; flex: 1 1 auto; min-height: 0; }
+
+/* A folder's info: the pane turned to a folder, its name at the head and the
+   plugins' sections in one column, rules between them. The warmth meters
+   are the accent, as heat is everywhere in the pane. */
+.info-title-glyph {
+  width: 14px;
+  height: 14px;
+  margin: 0 5px -2px 0;
+  fill: none;
+  stroke: var(--muted);
+  stroke-width: 1.25;
+  stroke-linejoin: round;
+}
+
+.info-back {
+  display: inline-flex;
+  flex: 0 0 auto;
+  align-items: center;
+  align-self: flex-start;
+  gap: 2px;
+  max-width: calc(100% - 24px);
+  margin: -2px 12px 4px;
+  padding: 2px 7px 2px 3px;
+  border: 0;
+  border-radius: 5px;
+  background: transparent;
+  color: var(--muted);
+  font: 500 11.5px/16px tokens.$ui;
+  cursor: pointer;
+
+  svg { flex: 0 0 auto; width: 12px; height: 12px; fill: none; stroke: currentColor; stroke-width: 1.5; stroke-linecap: round; stroke-linejoin: round; }
+  span { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  &:hover { background: var(--raised); color: var(--ink); }
+  &:focus-visible { outline: 2px solid var(--focus); outline-offset: -2px; }
+}
+
+.folder-sections { flex: 1 1 auto; min-height: 0; overflow: auto; padding: 2px 0 16px; }
+/* A section with nothing to say is not there at all, heading and rule too. */
+.folder-section:has(> .folder-section-body:empty) { display: none; }
+/* A rule between two shown sections only: one still loading has rendered nothing. */
+.folder-section:has(> .folder-section-body:not(:empty)) ~ .folder-section:has(> .folder-section-body:not(:empty)) {
+  border-top: 1px solid var(--hairline);
+}
+.folder-group { padding: 8px 8px 6px; }
+
+.folder-summary {
+  margin: 10px 16px 0;
+  color: var(--ink);
+  font: 500 12px/17px tokens.$ui;
+  font-variant-numeric: tabular-nums;
+}
+
+.folder-plain {
+  margin: 0 8px 4px;
+  color: var(--muted);
+  font: 400 12px/18px tokens.$ui;
+}
+
+.folder-act { margin: 4px 8px 4px; }
+
+/* How warm, against the warmest here: a short meter at the row's end, so it
+   is read as an amount and never as an underline. */
+.memory-row.folder-row { padding-right: 64px; }
+
+.folder-bar {
+  position: absolute;
+  top: 50%;
+  right: 8px;
+  width: 44px;
+  height: 3px;
+  border-radius: 1.5px;
+  /* Ink, as the heat meter beside a related note: the accent marks only where you are. */
+  background: linear-gradient(to right, color-mix(in srgb, var(--ink) 55%, transparent) calc(var(--share) * 100%), var(--hairline) 0);
+  transform: translateY(-50%);
+}
+
+.folder-commits { margin: 0; padding: 0; list-style: none; }
+
+.folder-commit {
+  display: flex;
+  flex-direction: column;
+  gap: 1px;
+  min-width: 0;
+  padding: 4px 8px 5px;
+}
+
+.folder-commit-notes {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0 8px;
+  min-width: 0;
+  font: 400 11px/16px tokens.$ui;
+}
+
+.folder-note-link {
+  max-width: 100%;
+  overflow: hidden;
+  padding: 0;
+  border: 0;
+  background: none;
+  color: var(--ink);
+  font: inherit;
+  text-decoration: underline;
+  text-decoration-color: var(--hairline);
+  text-overflow: ellipsis;
+  text-underline-offset: 2px;
+  white-space: nowrap;
+  cursor: pointer;
+
+  &:hover { text-decoration-color: currentColor; }
+  &:focus-visible { border-radius: 3px; outline: 2px solid var(--focus); outline-offset: 1px; }
+}
+
+.folder-more { color: var(--muted); }
+
+.info-panel {
+  position: absolute;
+  inset: 0;
+  overflow: auto;
+  padding: 6px 0 16px;
+
+  &[hidden] { display: none; }
+}
+
+/* History: a commit a row, its words on top and its when and who below. */
+/* One passage's history: which lines, how many commits, and the way back to all of them. */
+.history-passage {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 10px;
+  margin: 8px 16px 2px;
+  color: var(--muted);
+  font: 400 11.5px/16px tokens.$ui;
+
+  .memory-link { flex: 0 0 auto; color: var(--ink); }
+}
+
+/* The note's commits as one line through time, drawn as the tree draws its
+   connectors: a node on each commit, the newest at the top, and a ring for
+   what is not committed yet, as on the timeline above. */
+.history-list {
+  margin: 0;
+  padding: 8px 8px 0;
+  list-style: none;
+
+  > li { position: relative; padding-left: 16px; }
+  > li::before {
+    content: '';
+    position: absolute;
+    top: 0;
+    bottom: 0;
+    left: 7px;
+    width: 1px;
+    background: var(--tree-line);
+  }
+  > li:first-child::before { top: 15px; }
+  > li:last-child::before { bottom: auto; height: 15px; }
+  > li:only-child::before { display: none; }
+  > li::after {
+    content: '';
+    position: absolute;
+    top: 12px;
+    left: 4.5px;
+    width: 6px;
+    height: 6px;
+    border-radius: 50%;
+    background: color-mix(in srgb, var(--ink) 45%, var(--panel));
+    box-shadow: 0 0 0 2.5px var(--panel);
+  }
+  > li:has(> .is-faint)::after { transform: scale(0.7); background: var(--line-strong); }
+  > li:has(> .is-pending)::after { background: var(--panel); box-shadow: 0 0 0 2.5px var(--panel), inset 0 0 0 1.5px var(--accent); }
+  > li:has(> [aria-current='true'])::after { background: var(--ink-strong); }
+}
+
+.history-row {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  width: 100%;
+  min-width: 0;
+  padding: 6px 8px;
+  border: 0;
+  border-radius: 7px;
+  background: transparent;
+  color: var(--ink);
+  font-family: tokens.$ui;
+  text-align: left;
+  cursor: pointer;
+  transition: background-color var(--motion-micro) var(--ease-out);
+
+  &:hover { background: color-mix(in srgb, var(--ink) 5.5%, transparent); }
+  &:focus-visible { outline: 2px solid var(--focus); outline-offset: -2px; }
+  /* The commit on view in the diff, marked as the tree marks the note in front. */
+  &[aria-current='true'] { border-radius: 0 6px 6px 0; background: var(--surface-active); box-shadow: inset 2px 0 0 var(--accent); }
+  &.is-located { background: var(--surface-active); }
+}
+
+/* The commit's own words, two lines before they give up: a subject is a sentence. */
+.history-subject {
+  display: -webkit-box;
+  overflow: hidden;
+  color: var(--ink-strong);
+  font: 500 13px/18px tokens.$ui;
+  -webkit-box-orient: vertical;
+  -webkit-line-clamp: 2;
+  line-clamp: 2;
+  overflow-wrap: anywhere;
+}
+
+.history-meta,
+.history-moved {
+  overflow: hidden;
+  color: var(--muted);
+  font: 400 11.5px/16px tokens.$ui;
+  font-variant-numeric: tabular-nums;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.history-moved::before { content: '\21B3\00a0'; }
+
+/* A script's commit or a sweep: there, and quieter than the person's own. */
+.history-row.is-faint .history-subject { color: var(--muted); font-weight: 400; }
+
+
+.history-more { margin: 6px 16px 0; }
+
+/* Properties: groups named by where their values come from. */
+.properties-group { padding: 14px 16px 4px; }
+.properties-group + .properties-group { margin: 6px 16px 0; padding: 12px 0 4px; border-top: 1px solid color-mix(in srgb, var(--hairline) 70%, transparent); }
+
+.properties-heading {
+  margin: 0 0 6px;
+  color: var(--muted);
+  font: 600 10px/14px tokens.$ui;
+  letter-spacing: 0.07em;
+  text-transform: uppercase;
+}
+
+.properties-list {
+  display: grid;
+  grid-template-columns: minmax(64px, 36%) minmax(0, 1fr);
+  gap: 3px 12px;
+  margin: 0;
+}
+
+.properties-row { display: contents; }
+
+.properties-row dt {
+  overflow: hidden;
+  color: var(--muted);
+  font: 400 12px/18px tokens.$ui;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.properties-row dd {
+  min-width: 0;
+  margin: 0;
+  color: var(--ink);
+  font: 400 12px/18px tokens.$ui;
+  font-variant-numeric: tabular-nums;
+  overflow-wrap: anywhere;
+}
+
+/* A path wraps at its slashes; only a single name too long for the line breaks inside. */
+.properties-row dd .properties-path { overflow-wrap: break-word; }
+
+.properties-empty { color: var(--muted); }
+.properties-path { margin-right: 6px; word-break: break-all; }
+.properties-copy { min-height: 18px; padding: 0 7px; font-size: 11px; line-height: 16px; vertical-align: 1px; }
+
+/* The diff view, opened on two versions: what they are, and what can be done with them. */
+.diff-detail {
+  overflow: hidden;
+  color: var(--muted);
+  font-size: 12px;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+/* The title gives way last: the detail and the summary shorten first. */
+.unsaved-diff.is-versions .diff-title {
+  flex: 1 1 auto;
+
+  strong {
+    flex: 0 0 auto;
+    max-width: 55%;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+
+  .diff-detail { flex: 0 1 auto; min-width: 40px; }
+  .diff-summary { flex: 0 100 auto; min-width: 0; }
+}
+
+.diff-layouts .diff-layout { white-space: nowrap; }
+
+.diff-actions {
+  display: flex;
+  flex: 0 0 auto;
+  flex-wrap: wrap;
+  gap: 6px;
+  padding: 6px 10px 7px 20px;
+  border-bottom: 1px solid var(--hairline);
+}
+
+.diff-action {
+  min-height: 24px;
+  padding: 2px 9px;
+  border: 1px solid var(--hairline);
+  border-radius: 5px;
+  background: var(--paper);
+  color: var(--ink);
+  font: 500 12px tokens.$ui;
+  white-space: nowrap;
+  cursor: pointer;
+
+  &:hover:not(:disabled) { background: var(--raised); }
+  &:disabled { color: var(--muted); cursor: default; opacity: 0.6; }
+  &:focus-visible { outline: 2px solid var(--focus); outline-offset: 1px; }
+}
+
+/* Related and Activity: notes worth having in mind, each with why. */
+.memory-group { padding: 14px 8px 2px; }
+.memory-group + .memory-group { border-top: 1px solid color-mix(in srgb, var(--hairline) 70%, transparent); margin: 6px 8px 0; padding: 12px 0 2px; }
+
+/* Ask the vault: a field like the rail's search, at the top of Related, and
+   what it answered as one more group, each note with why and two lines of it. */
+.memory-ask { padding: 12px 16px 2px; }
+.memory-ask-form { position: relative; }
+.memory-ask-glyph {
+  position: absolute;
+  top: 50%;
+  left: 9px;
+  width: 13px;
+  height: 13px;
+  fill: none;
+  stroke: var(--muted);
+  stroke-linecap: round;
+  stroke-width: 1.5;
+  pointer-events: none;
+  transform: translateY(-50%);
+}
+.memory-ask-enter {
+  position: absolute;
+  top: 50%;
+  right: 7px;
+  padding: 0 5px;
+  border: 1px solid var(--hairline);
+  border-radius: 4px;
+  color: var(--muted);
+  font: 400 10.5px/16px tokens.$ui;
+  transform: translateY(-50%);
+}
+.memory-ask-field {
+  box-sizing: border-box;
+  width: 100%;
+  height: 30px;
+  border: 1px solid var(--hairline);
+  border-radius: 8px;
+  background: var(--paper);
+  padding: 0 30px 0 28px;
+  color: var(--ink);
+  font: 400 12.5px/17px tokens.$ui;
+  outline: none;
+  appearance: none;
+  transition: border-color var(--motion-micro) var(--ease-out), box-shadow var(--motion-micro) var(--ease-out);
+
+  &::placeholder { color: var(--muted); opacity: 0.85; }
+  &::-webkit-search-cancel-button { appearance: none; }
+  &:hover { border-color: var(--line-strong); }
+  &:focus { border-color: var(--focus); box-shadow: 0 0 0 3px color-mix(in srgb, var(--focus) 16%, transparent); }
+}
+/* The question asked, said back above its answer. */
+.memory-question {
+  margin: 0 8px 4px;
+  color: var(--ink);
+  font: 400 12.5px/18px tokens.$ui;
+  overflow-wrap: anywhere;
+
+  &::before { content: '\201C'; color: var(--muted); }
+  &::after { content: '\201D'; color: var(--muted); }
+}
+.memory-ask .info-status { margin: 6px 2px 0; }
+.memory-asked { padding-right: 0; padding-left: 0; }
+.memory-asked .memory-why {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  white-space: normal;
+}
+.memory-asked .memory-why > span:first-child { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.memory-excerpt {
+  display: -webkit-box;
+  overflow: hidden;
+  color: var(--ink);
+  font-size: 11.5px;
+  line-height: 16px;
+  -webkit-box-orient: vertical;
+  -webkit-line-clamp: 2;
+  line-clamp: 2;
+}
+.memory-asked .memory-heading { align-items: center; }
+.memory-copy { font: 500 10.5px/14px tokens.$ui; letter-spacing: 0; }
+
+/* A group's name, in the small capitals the rail's tabs and the guide's groups use. */
+.memory-heading,
+.folder-heading {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  margin: 0 8px 4px;
+  color: var(--muted);
+  font: 600 10px/14px tokens.$ui;
+  letter-spacing: 0.07em;
+  text-transform: uppercase;
+}
+
+.memory-count {
+  color: color-mix(in srgb, var(--muted) 80%, transparent);
+  font-weight: 500;
+  font-variant-numeric: tabular-nums;
+  letter-spacing: 0;
+}
+
+.memory-list { margin: 0; padding: 0; list-style: none; }
+
+.memory-row {
+  position: relative;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  width: 100%;
+  min-width: 0;
+  padding: 6px 30px 6px 8px;
+  border: 0;
+  border-radius: 7px;
+  background: transparent;
+  color: var(--ink);
+  font-family: tokens.$ui;
+  text-align: left;
+  cursor: pointer;
+  transition: background-color var(--motion-micro) var(--ease-out);
+
+  /* The panel and --raised are a shade apart, so a hover there showed nothing: ink, lightly. */
+  &:hover { background: color-mix(in srgb, var(--ink) 5.5%, transparent); }
+  &:active { background: color-mix(in srgb, var(--ink) 9%, transparent); }
+  &:focus-visible { outline: 2px solid var(--focus); outline-offset: -2px; }
+  &:disabled { cursor: default; }
+}
+
+.memory-title {
+  overflow: hidden;
+  color: var(--ink-strong);
+  font: 500 13px/18px tokens.$ui;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.memory-why {
+  overflow: hidden;
+  color: var(--muted);
+  font: 400 11.5px/16px tokens.$ui;
+  font-variant-numeric: tabular-nums;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+/* How warm a note is, in three steps of ink. The accent marks only where you are. */
+.memory-heat {
+  position: absolute;
+  top: 50%;
+  right: 10px;
+  display: flex;
+  align-items: flex-end;
+  gap: 2px;
+  height: 11px;
+  transform: translateY(-50%);
+
+  i {
+    width: 2.5px;
+    border-radius: 1px;
+    background: var(--hairline);
+  }
+  i:nth-child(1) { height: 5px; }
+  i:nth-child(2) { height: 8px; }
+  i:nth-child(3) { height: 11px; }
+  &[data-level='1'] i:nth-child(-n + 1),
+  &[data-level='2'] i:nth-child(-n + 2),
+  &[data-level='3'] i { background: color-mix(in srgb, var(--ink) 55%, transparent); }
+}
+
+.memory-more,
+.memory-plain {
+  padding: 2px 8px;
+  color: var(--ink);
+  font: 400 12px/18px tokens.$ui;
+}
+
+/* Show N more: a quiet button under the rows it adds to. */
+button.memory-more {
+  margin: 2px 0 0;
+  padding: 3px 8px;
+  border: 0;
+  border-radius: 6px;
+  background: none;
+  color: var(--muted);
+  font: 500 11.5px/16px tokens.$ui;
+  cursor: pointer;
+
+  &:hover { background: color-mix(in srgb, var(--ink) 5.5%, transparent); color: var(--ink); }
+  &:focus-visible { outline: 2px solid var(--focus); outline-offset: -2px; }
+}
+.memory-more.is-quiet { color: var(--muted); font-size: 11px; }
+
+/* A sentence in a group: it wraps rather than being cut mid-word. */
+.memory-note {
+  margin: 0 8px;
+  color: var(--muted);
+  font: 400 12px/18px tokens.$ui;
+}
+
+.memory-outgoing {
+  margin: 12px 16px 0;
+  padding-top: 10px;
+  border-top: 1px solid color-mix(in srgb, var(--hairline) 70%, transparent);
+  color: var(--muted);
+  font: 400 11.5px/16px tokens.$ui;
+}
+
+.memory-link {
+  padding: 0;
+  border: 0;
+  background: none;
+  color: var(--ink);
+  font: inherit;
+  text-decoration: underline;
+  text-decoration-color: var(--hairline);
+  text-underline-offset: 2px;
+  cursor: pointer;
+
+  &:focus-visible { outline: 2px solid var(--focus); outline-offset: 1px; border-radius: 2px; }
+}
+
+.memory-broken { margin: 4px 0 0; padding: 0 0 0 12px; color: var(--ink); }
+
+.memory-superseded {
+  margin: 6px 16px 4px;
+  padding: 6px 8px;
+  border-left: 2px solid var(--accent);
+  color: var(--ink);
+  font: 400 12px/17px tokens.$ui;
+}
+
+.memory-heat-words {
+  margin: 10px 16px 0;
+  color: var(--muted);
+  font: 400 11.5px/16px tokens.$ui;
+}
+
+.memory-tab .properties-list { padding: 0 8px; }
+
+.properties-origin { margin-left: 4px; color: var(--muted); font-size: 11px; }
+
+/* A state with one thing to do (keep memory, allow the scripts): main asks the question. */
+/* A mention: the name it is about in ink, the words around it muted. */
+.memory-name { color: var(--ink); }
+
+/* Review: the rail page of what waits on the person. Rows, headings and
+   buttons are the memory tabs' own; what is new is a kind's row (its name,
+   its count, what to do), the queue's card, and one accent: the name a
+   suggestion would link, drawn as the link it will become. */
+.review-page { padding-bottom: 12px; }
+.review-page:focus { outline: none; }
+.review-quiet { margin: 0 8px 4px; color: var(--muted); font: 400 12px/18px tokens.$ui; }
+.review-start { margin: 0 8px; }
+
+.review-kind {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto auto;
+  align-items: center;
+  gap: 8px;
+  min-height: 28px;
+  padding: 0 8px;
+  color: var(--ink);
+  font: 400 12px/18px tokens.$ui;
+}
+
+.review-kind-title { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.review-kind-action { min-width: 58px; }
+.review-kind-action:disabled,
+.review-queue .info-button:disabled { opacity: 0.45; cursor: default; }
+
+.review-dismissed-toggle {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  width: 100%;
+  padding: 2px 8px;
+  border: 0;
+  background: none;
+  color: var(--muted);
+  font: 600 10.5px/18px tokens.$ui;
+  letter-spacing: 0.02em;
+  text-align: left;
+  cursor: pointer;
+
+  &:disabled { cursor: default; }
+  .memory-count { margin-left: auto; }
+}
+
+.review-dismissal {
+  display: flex;
+  align-items: baseline;
+  gap: 8px;
+  padding: 2px 8px 2px 22px;
+  color: var(--muted);
+  font: 400 12px/18px tokens.$ui;
+}
+
+.review-dismissal-words { min-width: 0; flex: 1; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+
+/* A quiet action inside a line of text: Undo, Done, Bring Back. */
+.review-text-button {
+  flex: 0 0 auto;
+  padding: 0;
+  border: 0;
+  background: none;
+  color: var(--ink);
+  font: 500 11.5px/18px tokens.$ui;
+  text-decoration: underline;
+  text-decoration-color: var(--hairline);
+  text-underline-offset: 2px;
+  cursor: pointer;
+
+  &:hover { text-decoration-color: currentColor; }
+  &:focus-visible { outline: 2px solid var(--focus); outline-offset: 1px; border-radius: 3px; }
+  &:disabled { color: var(--muted); cursor: default; }
+}
+
+.review-status { margin: 10px 16px 0; }
+
+.review-queue-head { padding: 10px 16px 6px; }
+
+/* The kind and where in it, on the edge every other heading of the rail keeps. */
+.review-queue-title { margin: 0 16px 6px; }
+
+.review-card {
+  margin: 0 8px;
+  padding: 10px 10px 12px;
+  border: 1px solid var(--hairline);
+  border-radius: 8px;
+  background: var(--paper);
+  font: 400 12px/18px tokens.$ui;
+}
+
+.review-where { margin: 0 0 6px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+
+.review-line {
+  margin: 0 0 8px;
+  color: var(--muted);
+  font-size: 12.5px;
+  line-height: 20px;
+  overflow-wrap: anywhere;
+}
+
+/* The signature: the name drawn as the link it will become. */
+.review-linked {
+  color: var(--ink);
+  text-decoration: underline;
+  text-decoration-color: var(--accent);
+  text-decoration-thickness: 1.5px;
+  text-underline-offset: 3px;
+}
+
+.review-to { margin: 0 0 10px; color: var(--ink); }
+
+.review-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+
+  kbd {
+    margin-left: 4px;
+    color: var(--muted);
+    font: 500 10.5px/16px tokens.$ui;
+  }
+
+  .is-primary kbd { color: inherit; opacity: 0.8; }
+}
+
+/* Why an agent may not read the note: muted, and wrapped rather than cut, since it is the answer. */
+.properties-row dd.memory-reason { color: var(--muted); }
+
+.memory-keep { padding-bottom: 8px; }
+.memory-keep-start { margin: 0 16px; }
+.memory-keep .info-status { margin: 8px 16px 0; }
+
+.info-button.is-primary {
+  border-color: var(--accent);
+  background: var(--accent);
+  color: var(--paper);
+
+  &:hover:not(:disabled) { background: var(--accent); filter: brightness(1.06); }
+  &:disabled { opacity: 0.6; cursor: default; }
 }

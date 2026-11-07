@@ -1,5 +1,5 @@
 import { describe, expect, it, vi } from 'vitest';
-import { buildTreeRowMenu, revealLabel, trashLabel } from '../../src/main/workspace/tree-row-menu';
+import { buildSelectionMenu, buildVaultRowMenu, buildTreeRowMenu, revealLabel, trashLabel } from '../../src/main/workspace/tree-row-menu';
 
 /**
  * A native menu holds the input loop until it is dismissed and no automated
@@ -8,6 +8,7 @@ import { buildTreeRowMenu, revealLabel, trashLabel } from '../../src/main/worksp
  */
 const actions = () => ({
   open: vi.fn(),
+  info: vi.fn(),
   newNote: vi.fn(),
   newFolder: vi.fn(),
   rename: vi.fn(),
@@ -24,7 +25,7 @@ describe('the menu on a row of the tree', () => {
   it('offers a file the three things a file can do', () => {
     const items = buildTreeRowMenu('/vault/note.md', 'file', actions(), 'darwin');
     expect(labels(items)).toEqual([
-      'Open',
+      'Open', 'Get Info',
       '---', 'Rename…', 'Duplicate', 'Move to…',
       '---', 'Reveal in Finder', 'Copy Path',
       // Alone below a rule, furthest from Open: it is the only action here
@@ -38,11 +39,29 @@ describe('the menu on a row of the tree', () => {
     // folder's root, which is rarely the folder the reader is looking at.
     const items = buildTreeRowMenu('/vault/sub', 'directory', actions(), 'darwin');
     expect(labels(items)).toEqual([
-      'New Note Here', 'New Folder Here',
+      'New Note Here', 'New Folder Here', 'Get Info',
       '---', 'Rename…', 'Duplicate', 'Move to…',
       '---', 'Reveal in Finder', 'Copy Path',
       '---', 'Move to Trash',
     ]);
+  });
+
+  it('turns the info pane to the folder that was pressed', () => {
+    const spies = actions();
+    const items = buildTreeRowMenu('/vault/sub', 'directory', spies, 'darwin');
+    (items.find((candidate) => candidate.id === 'tree-info')?.click as () => void)();
+    expect(spies.info).toHaveBeenCalledWith('/vault/sub');
+  });
+
+  it('focuses the tree on the folder that was pressed, and offers no focus on a note', () => {
+    const focus = vi.fn();
+    const folder = buildTreeRowMenu('/vault/sub', 'directory', { ...actions(), focus }, 'darwin');
+    const item = folder.find((candidate) => candidate.id === 'tree-focus');
+    expect(item?.label).toBe('Focus on This Folder');
+    (item?.click as () => void)();
+    expect(focus).toHaveBeenCalledWith('/vault/sub');
+    const note = buildTreeRowMenu('/vault/note.md', 'file', { ...actions(), focus }, 'darwin');
+    expect(note.some((candidate) => candidate.id === 'tree-focus')).toBe(false);
   });
 
   it('makes the new note in the folder that was pressed', () => {
@@ -51,6 +70,20 @@ describe('the menu on a row of the tree', () => {
     const item = items.find((candidate) => candidate.id === 'tree-new-note');
     (item?.click as () => void)();
     expect(spies.newNote).toHaveBeenCalledWith('/vault/sub');
+  });
+
+  it('offers several chosen rows what can be done to all of them, trash last and alone', () => {
+    const run = { move: vi.fn(), trash: vi.fn(), copyPaths: vi.fn() };
+    const items = buildSelectionMenu(3, run, 'darwin');
+    expect(labels(items)).toEqual(['Move 3 Items to…', 'Copy Paths', '---', 'Move 3 Items to Trash']);
+    (items.find((item) => item.id === 'tree-many-trash')?.click as () => void)();
+    expect(run.trash).toHaveBeenCalledTimes(1);
+    expect(labels(buildSelectionMenu(2, run, 'win32')).at(-1)).toBe('Move 2 Items to Recycle Bin');
+  });
+
+  it('offers the open folder its info and what can be made in it, and nothing that removes it', () => {
+    const items = buildVaultRowMenu('/vault', actions(), 'darwin');
+    expect(labels(items)).toEqual(['New Note Here', 'New Folder Here', 'Get Info', '---', 'Reveal in Finder', 'Copy Path']);
   });
 
   it('calls the trash what each system calls it', () => {
