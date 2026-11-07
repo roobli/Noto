@@ -53,6 +53,7 @@ import {
   WorkspaceFolderMemoryReplyV1,
   WorkspaceFolderHistoryReplyV1,
   WorkspaceShowFolderInfoEventV1,
+  WorkspaceFocusFolderEventV1,
   WorkspaceLinksFollowedV1,
   WorkspaceUndoLinksReplyV1,
   WorkspaceUndoLinksRequestV1,
@@ -726,6 +727,11 @@ export const isWorkspaceFolderHistoryResultV1 = (
 ): value is WorkspaceResultV1<WorkspaceFolderHistoryReplyV1> => isResult(value, id, isWorkspaceFolderHistoryReplyV1);
 
 export function isWorkspaceShowFolderInfoEventV1(value: unknown): value is WorkspaceShowFolderInfoEventV1 {
+  return record(value) && exact(value, ['version', 'path']) && value.version === 1
+    && typeof value.path === 'string' && value.path.length > 0 && value.path.length <= 4096;
+}
+
+export function isWorkspaceFocusFolderEventV1(value: unknown): value is WorkspaceFocusFolderEventV1 {
   return record(value) && exact(value, ['version', 'path']) && value.version === 1
     && typeof value.path === 'string' && value.path.length > 0 && value.path.length <= 4096;
 }

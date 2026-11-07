@@ -739,7 +739,11 @@ export class WorkspaceSession {
       trash: (target, kind) => { void this.confirmTrash(target, kind); },
       reveal: (target) => shell.showItemInFolder(target),
       copyPath: (target) => clipboard.writeText(target),
-      ...(kind === 'directory' ? { privacy: await this.folderPrivacy(real) } : {}),
+      // Named as the window named it, as Get Info names a folder, so the tree finds its own row.
+      ...(kind === 'directory' ? {
+        privacy: await this.folderPrivacy(real),
+        focus: () => this.send(WORKSPACE_CHANNELS.focusFolder, { version: NOTO_WORKSPACE_VERSION, path: path.resolve(target) }),
+      } : {}),
     });
     setImmediate(() => Menu.buildFromTemplate(items).popup({ window }));
     return { version: NOTO_WORKSPACE_VERSION, accepted: true };

@@ -22,6 +22,7 @@ import {
   type NotoNumericSetting,
   type NotoSettingsV1,
   type NotoTheme,
+  type TreeHeldV1,
   type WidthModeV1,
   type ProseFaceV1,
   type RemoteStatusReplyV1,
@@ -233,6 +234,12 @@ const FACES: readonly { value: ProseFaceV1; label: string; hint: string }[] = [
   { value: 'serif', label: 'Serif', hint: 'Recommended. Songti SC, as Typora sets Chinese prose.' },
   { value: 'sans', label: 'Sans', hint: 'PingFang SC, for reading on a screen.' },
   { value: 'mono', label: 'Mono', hint: 'Menlo, for a note that is mostly code.' },
+];
+
+/** How the folders you are in are held as the tree scrolls; see `TREE_HELD`. */
+const HELD: readonly { value: TreeHeldV1; label: string; hint: string }[] = [
+  { value: 'stack', label: 'Stack', hint: 'Each folder on the way to the note in front holds its own row.' },
+  { value: 'trail', label: 'Trail', hint: 'The folders around what is in view fold into one row of names.' },
 ];
 
 const WIDTHS: readonly { value: WidthModeV1; label: string; hint: string }[] = [
@@ -995,6 +1002,17 @@ export function Settings({
                   checked={settings.alwaysOnTop}
                   onChange={(value) => onChange({ alwaysOnTop: value })}
                   testId="setting-always-on-top"
+                />
+                <p className="pref-group">File tree</p>
+                <Choices label="Folders you are in" hint="How they stay in sight at the top of the tree as it scrolls."
+                  options={HELD} value={settings.treeHeld}
+                  onPick={(value) => onChange({ treeHeld: value })} testPrefix="tree-held" />
+                <Switch
+                  label="Show .md in the tree"
+                  hint="Off leaves a note's row its name alone, which gives a deep tree in a narrow rail more room."
+                  checked={settings.treeNoteExtensions}
+                  onChange={(value) => onChange({ treeNoteExtensions: value })}
+                  testId="setting-tree-note-extensions"
                 />
               </>
             )}

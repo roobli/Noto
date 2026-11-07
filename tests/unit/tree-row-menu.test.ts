@@ -53,6 +53,17 @@ describe('the menu on a row of the tree', () => {
     expect(spies.info).toHaveBeenCalledWith('/vault/sub');
   });
 
+  it('focuses the tree on the folder that was pressed, and offers no focus on a note', () => {
+    const focus = vi.fn();
+    const folder = buildTreeRowMenu('/vault/sub', 'directory', { ...actions(), focus }, 'darwin');
+    const item = folder.find((candidate) => candidate.id === 'tree-focus');
+    expect(item?.label).toBe('Focus on This Folder');
+    (item?.click as () => void)();
+    expect(focus).toHaveBeenCalledWith('/vault/sub');
+    const note = buildTreeRowMenu('/vault/note.md', 'file', { ...actions(), focus }, 'darwin');
+    expect(note.some((candidate) => candidate.id === 'tree-focus')).toBe(false);
+  });
+
   it('makes the new note in the folder that was pressed', () => {
     const spies = actions();
     const items = buildTreeRowMenu('/vault/sub', 'directory', spies, 'darwin');

@@ -645,10 +645,10 @@ button:disabled { color: var(--muted); opacity: 0.7; }
 .rail-view {
   flex: 1 1 auto;
   min-height: 0;
-  /* Both ways. A name that does not fit is scrolled to, never cut to an
-     ellipsis, which is what Typora does and what a vault of long Chinese
-     filenames needs. No top padding: a stuck row must sit flush against the
-     top of the scrollport, or the rows sliding under it show through the gap. */
+  /* Both ways for the outline and the other views; the file tree keeps to
+     the rail's width (#rail-view-files). No top padding: a stuck row must sit
+     flush against the top of the scrollport, or the rows sliding under it show
+     through the gap. */
   overflow: auto;
   overscroll-behavior: contain;
   /* A deep foot, as Typora's tree has, so the last row is never jammed
@@ -657,6 +657,12 @@ button:disabled { color: var(--muted); opacity: 0.7; }
   --rail-foot: 60px;
   --rail-side: 12px;
   padding: 0 var(--rail-side) var(--rail-foot);
+}
+
+/* The file tree never scrolls sideways: it narrows its steps and cuts names to
+   the rail instead (tree-fit.ts), so a swipe across it does nothing. */
+#rail-view-files {
+  overflow-x: hidden;
 }
 
 /* The drag target is wider than the line it moves, because a 1px border is not

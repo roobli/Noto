@@ -169,6 +169,7 @@ import type {
   WorkspaceExportRequestV1,
   WorkspaceRenameRowEventV1,
   WorkspaceShowFolderInfoEventV1,
+  WorkspaceFocusFolderEventV1,
   WorkspaceLinksFollowedV1,
   WorkspaceUndoLinksReplyV1,
   WorkspaceUndoLinksRequestV1,
@@ -241,6 +242,7 @@ import {
   isWorkspaceExportResultV1,
   isWorkspaceRenameRowEventV1,
   isWorkspaceShowFolderInfoEventV1,
+  isWorkspaceFocusFolderEventV1,
   isWorkspaceLinksFollowedV1,
   isWorkspaceUndoLinksResultV1,
   isWorkspaceUndoLinksRequestV1,
@@ -657,6 +659,8 @@ const workspaceApi: NotoWorkspaceApiV1 = Object.freeze({
     subscribe(WORKSPACE_CHANNELS.renameRow, isWorkspaceRenameRowEventV1, listener),
   onShowFolderInfo: (listener: (event: WorkspaceShowFolderInfoEventV1) => void) =>
     subscribe(WORKSPACE_CHANNELS.showFolderInfo, isWorkspaceShowFolderInfoEventV1, listener),
+  onFocusFolder: (listener: (event: WorkspaceFocusFolderEventV1) => void) =>
+    subscribe(WORKSPACE_CHANNELS.focusFolder, isWorkspaceFocusFolderEventV1, listener),
   onLinksFollowed: (listener: (event: WorkspaceLinksFollowedV1) => void) =>
     subscribe(WORKSPACE_CHANNELS.linksFollowed, isWorkspaceLinksFollowedV1, listener),
   undoLinks: (request: WorkspaceUndoLinksRequestV1) => isWorkspaceUndoLinksRequestV1(request)

@@ -33,6 +33,8 @@ import {
   type SystemFontsReplyV1,
   type ShortcutsReplyV1,
   type TreeSortV1,
+  TREE_HELD,
+  type TreeHeldV1,
   type RemoteStatusReplyV1,
   UPDATE_CHANNEL_SETTINGS,
   type UpdateChannelSettingV1,
@@ -131,6 +133,12 @@ export function coerceSettings(value: unknown): NotoSettingsV1 {
     treeSort: TREE_SORTS.includes(value.treeSort as TreeSortV1)
       ? value.treeSort as TreeSortV1
       : DEFAULT_SETTINGS.treeSort,
+    treeHeld: TREE_HELD.includes(value.treeHeld as TreeHeldV1)
+      ? value.treeHeld as TreeHeldV1
+      : DEFAULT_SETTINGS.treeHeld,
+    treeNoteExtensions: typeof value.treeNoteExtensions === 'boolean'
+      ? value.treeNoteExtensions
+      : DEFAULT_SETTINGS.treeNoteExtensions,
     quickOpenWidth: value.quickOpenWidth === 'wide' ? 'wide' : DEFAULT_SETTINGS.quickOpenWidth,
     remoteControl: typeof value.remoteControl === 'boolean'
       ? value.remoteControl
@@ -256,6 +264,7 @@ export function isSettingsWriteRequestV1(value: unknown): value is SettingsWrite
     if (key === 'proseFace') return PROSE_FACES.includes(patch.proseFace as ProseFaceV1);
     if (key === 'proseFontFamily') return isProseFontFamily(patch.proseFontFamily);
     if (key === 'treeSort') return TREE_SORTS.includes(patch.treeSort as TreeSortV1);
+    if (key === 'treeHeld') return TREE_HELD.includes(patch.treeHeld as TreeHeldV1);
     if (key === 'quickOpenWidth') return patch.quickOpenWidth === 'default' || patch.quickOpenWidth === 'wide';
     if (key === 'customCssPath') return isCssPath(patch.customCssPath);
     if (key === 'imageDestination') return IMAGE_DESTINATIONS.includes(patch.imageDestination as ImageDestinationV1);
@@ -324,6 +333,8 @@ export function isSettingsReplyV1(value: unknown): value is SettingsReplyV1 {
     && typeof settings.sidenotes === 'boolean'
     && typeof settings.fileTags === 'boolean'
     && typeof settings.railLinks === 'boolean'
+    && TREE_HELD.includes(settings.treeHeld as TreeHeldV1)
+    && typeof settings.treeNoteExtensions === 'boolean'
     && typeof settings.infoOpen === 'boolean'
     && isInfoTab(settings.infoTab)
     && UPDATE_CHANNEL_SETTINGS.includes(settings.updateChannel as UpdateChannelSettingV1)

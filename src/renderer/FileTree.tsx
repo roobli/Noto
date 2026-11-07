@@ -10,11 +10,13 @@
  * cost a round trip once the children have been read.
  */
 
-import { useCallback, useEffect, useRef, useState, type ReactNode } from 'react';
+import { Fragment, useCallback, useEffect, useLayoutEffect, useRef, useState, type ReactNode } from 'react';
+import { createPortal } from 'react-dom';
 import type { SensitivityV1, WorkspaceEntryV1, WorkspaceGitChangeV1 } from '../shared/workspace/v1/contracts';
 import { branchToCurrentFile, sizeTreeGuides, startTreeGuides } from './tree-guides';
 import { EDGE_DELAY_MS, SPRING_MS, carried, dropVerdict, dropWords, edgeSpeed, edgeStrength, rangeOf } from './tree-drag';
 import { isComposing } from './ime';
+import { TREE_STEP_MARGIN, fitLabel, nameRoom, sharedStarts, treeLabel, treeStep, type FittedName } from './tree-fit';
 
 export interface FileTreeProps {
   readonly root: string | null;
@@ -75,6 +77,18 @@ export interface FileTreeProps {
    * the folder keeps memory; null when it does not. See `TreePrivacyMarks`.
    */
   readonly privacyMarks?: TreePrivacyMarks | null;
+  /**
+   * How the folders you are in stay in sight as the tree scrolls: each on a
+   * row of its own (`stack`), or folded into one row of names (`trail`).
+   */
+  readonly heldFolders?: 'stack' | 'trail';
+  /** Whether a note's row shows its `.md`. */
+  readonly noteExtensions?: boolean;
+  /**
+   * A folder to focus the rail on, asked for from its row's menu. The token
+   * tells one ask from the next, so asking for the same folder twice works.
+   */
+  readonly focusRequest?: { readonly path: string; readonly token: number } | null;
 }
 
 /**
@@ -216,6 +230,27 @@ function NameField({ initial, onDone }: {
 /** The height of one row, which the sticky offsets are multiples of. */
 export const TREE_ROW_HEIGHT = 32;
 
+/** True when `target` is inside `folder`, at any depth. */
+function isUnder(folder: string, target: string): boolean {
+  // A root that ends in its separator (`/`, `C:\\`) is its own prefix.
+  if (folder.endsWith('/') || folder.endsWith('\\')) return target.length > folder.length && target.startsWith(folder);
+  return target.startsWith(`${folder}/`) || target.startsWith(`${folder}\\`);
+}
+
+/** The last part of a path. */
+function baseName(target: string): string {
+  return target.split(/[\\/]/).filter(Boolean).at(-1) ?? target;
+}
+
+/** The folder a path is in. */
+function parentOf(target: string): string {
+  const cut = Math.max(target.lastIndexOf('/'), target.lastIndexOf('\\'));
+  return cut > 0 ? target.slice(0, cut) : target;
+}
+
+/** How long a rest on a cut name takes to show it whole: long enough that passing over rows shows nothing. */
+const PEEK_MS = 300;
+
 /** The folders between the root and a path under it, outermost first. */
 function foldersBetween(root: string, target: string | null): string[] {
   if (target === null) return [];
@@ -232,6 +267,7 @@ function foldersBetween(root: string, target: string | null): string[] {
 export function FileTree({
   root, rootName, activePath, list, onOpenFile, onRowMenu, onChooseFolder, onMoveEntry, vaultMenu,
   editing = null, onEditingDone, reloadToken = 0, reloadOnly = null, collapseToken = 0, gitMarks = null, privacyMarks = null,
+  heldFolders = 'stack', noteExtensions = true, focusRequest = null,
 }: FileTreeProps) {
   const [children, setChildren] = useState<ReadonlyMap<string, readonly WorkspaceEntryV1[]>>(new Map());
   const [expanded, setExpanded] = useState<ReadonlySet<string>>(new Set());
@@ -255,6 +291,29 @@ export function FileTree({
   const springOpened = useRef(new Set<string>());
   const edgeUp = useRef<HTMLDivElement>(null);
   const edgeDown = useRef<HTMLDivElement>(null);
+  /** The folder the rail is focused on, drawn as its root; null for the whole open folder. */
+  const [focus, setFocus] = useState<string | null>(null);
+  /** Which way focus last went, so the tree slides in from that side; null until it first moves. */
+  const [focusWay, setFocusWay] = useState<'in' | 'out' | null>(null);
+  /** The tree's inner width, which the step per level and every cut name are worked out from. */
+  const [treeWidth, setTreeWidth] = useState(0);
+  /** The rows' face, read off a row, so names are measured in what draws them. */
+  const [nameFont, setNameFont] = useState('');
+  /** For the trail: the open folders above what is in view, outermost first. */
+  const [trail, setTrail] = useState<readonly string[]>([]);
+  /** A cut name shown whole over the page, and where its row is. */
+  const [peek, setPeek] = useState<{ readonly text: string; readonly left: number; readonly top: number; readonly height: number } | null>(null);
+  const peekRow = useRef<HTMLElement | null>(null);
+  const peekTimer = useRef(0);
+  useEffect(() => () => window.clearTimeout(peekTimer.current), []);
+  /** Widths and fitted names in the current face, kept across renders: a drag redraws the tree on every move. */
+  const measureCache = useRef<{ font: string; context: CanvasRenderingContext2D | null; widths: Map<string, number>; fits: Map<string, FittedName> }>(
+    { font: '', context: null, widths: new Map(), fits: new Map() },
+  );
+  /** Each listing's labels and shared starts, worked out once per listing rather than on every render. */
+  const sharedCache = useRef(new WeakMap<readonly WorkspaceEntryV1[], { readonly extensions: boolean; readonly labels: readonly string[]; readonly starts: readonly string[] }>());
+  /** Set only by a focus the reader asked for, so the tree takes the keys then and never on a change from disk. */
+  const refocus = useRef(false);
 
   /** The file last scrolled into view, so a tree change never scrolls the rail again. */
   const shownRef = useRef<string | null>(null);
@@ -276,21 +335,29 @@ export function FileTree({
   const bodyRef = useRef<HTMLElement>(null);
 
   /*
-   * The tree scrolls sideways for long names. In the narrow-window overlay the
-   * pane is much smaller, so an offset chosen at desktop width would leave the
-   * twisty and glyph column off-screen and the rows would read as bare words.
+   * The tree's width and its rows' face, which the step per level and every
+   * cut name follow. Read when the rail is resized, when the tree is drawn
+   * anew under a focus, and whenever the tree changes, since the face can only
+   * be read once a row exists to read it from.
    */
-  useEffect(() => {
-    const narrow = window.matchMedia('(max-width: 900px)');
-    const reset = () => {
-      if (!narrow.matches) return;
-      const scroller = bodyRef.current?.closest<HTMLElement>('.rail-view');
-      if (scroller) scroller.scrollLeft = 0;
-    };
-    reset();
-    narrow.addEventListener('change', reset);
-    return () => narrow.removeEventListener('change', reset);
+  const readMeasure = useCallback(() => {
+    const body = bodyRef.current;
+    if (!body) return;
+    setTreeWidth(body.clientWidth);
+    const name = body.querySelector<HTMLElement>('.tree-file .tree-name, .tree-directory:not(.tree-vault-row) .tree-name');
+    if (!name) return;
+    const font = getComputedStyle(name).font;
+    setNameFont((current) => (current === font ? current : font));
   }, []);
+  useLayoutEffect(() => {
+    const scroller = bodyRef.current?.closest<HTMLElement>('.rail-view');
+    if (!scroller) return undefined;
+    readMeasure();
+    if (typeof ResizeObserver === 'undefined') return undefined;
+    const observer = new ResizeObserver(() => readMeasure());
+    observer.observe(scroller);
+    return () => observer.disconnect();
+  }, [root, focus, readMeasure]);
 
   /** The latest listing asked for per folder, so an older answer arriving late is dropped. */
   const loadSeqRef = useRef(new Map<string, number>());
@@ -315,6 +382,9 @@ export function FileTree({
     setSelected(new Set());
     anchorRef.current = null;
     setFailed(null);
+    setFocus(null);
+    setFocusWay(null);
+    setTrail([]);
     childrenRef.current = new Map();
     if (root) void load(root);
   }, [root, load]);
@@ -361,6 +431,66 @@ export function FileTree({
       if (!childrenRef.current.has(directory)) void load(directory);
     }
   }, [root, activePath, load]);
+
+  /*
+   * Focus: a folder made the rail's root, for a stretch of work deep in one
+   * place. The tree then starts there with its full steps, and the bar above
+   * it leads back up. The note in front is brought into view if it is inside.
+   */
+  const focusRef = useRef(focus);
+  focusRef.current = focus;
+  const focusOn = useCallback((folder: string | null) => {
+    const current = focusRef.current;
+    if (folder === current) return;
+    setFocusWay(folder !== null && (current === null || isUnder(current, folder)) ? 'in' : 'out');
+    if (folder !== null) {
+      setExpanded((open) => (open.has(folder) ? open : new Set(open).add(folder)));
+      if (!childrenRef.current.has(folder)) void load(folder);
+    }
+    setSelected(new Set());
+    setTrail([]);
+    setPeek(null);
+    shownRef.current = null;
+    refocus.current = true;
+    setFocus(folder);
+  }, [load]);
+
+  // Asked for from a folder's row menu.
+  const focusAsked = useRef(focusRequest?.token ?? 0);
+  useEffect(() => {
+    if (!focusRequest || focusRequest.token === focusAsked.current) return;
+    focusAsked.current = focusRequest.token;
+    if (root && isUnder(root, focusRequest.path)) focusOn(focusRequest.path);
+  }, [focusRequest, root, focusOn]);
+
+  /*
+   * A focused folder that went, or one of the folders above it (moved,
+   * renamed, trashed, or gone with a checkout), gives the whole open folder
+   * back. Quietly: the reader may be typing, and the keys stay where they are.
+   */
+  useEffect(() => {
+    if (focus === null || !root) return;
+    const gone = !isUnder(root, focus) || [...foldersBetween(root, focus), focus].some((folder) => {
+      const listing = children.get(parentOf(folder));
+      return listing !== undefined && !listing.some((entry) => entry.path === folder && entry.kind === 'directory');
+    });
+    if (!gone) return;
+    setFocusWay('out');
+    setTrail([]);
+    setPeek(null);
+    shownRef.current = null;
+    setFocus(null);
+  }, [children, focus, root]);
+
+  // A focus the reader asked for starts the tree from its top and keeps the keys on the tree, so Esc leads back out.
+  // Before the effect below, which then brings the note in front into view when it is inside.
+  useLayoutEffect(() => {
+    if (!refocus.current) return;
+    refocus.current = false;
+    const scroller = bodyRef.current?.closest<HTMLElement>('.rail-view');
+    if (scroller) scroller.scrollTop = 0;
+    bodyRef.current?.focus({ preventScroll: true });
+  }, [focus]);
 
   // A row named from elsewhere (a page in the rail, say) can be under closed
   // folders; they open so its name field is there to type in.
@@ -434,8 +564,26 @@ export function FileTree({
       // A held row is where the level under it begins, so the stems are
       // measured in the same frame the holding is.
       startTreeGuides(body);
+      // The trail: every open folder whose row has gone up under it while its
+      // contents are still in view, outermost first, as the DOM orders them.
+      if (heldFolders === 'trail') {
+        const bar = body.parentElement?.querySelector<HTMLElement>('.tree-focusbar')?.offsetHeight ?? 0;
+        const line = scroller.getBoundingClientRect().top + bar;
+        const held: string[] = [];
+        for (const row of body.querySelectorAll<HTMLElement>('.tree-directory[aria-expanded="true"][data-path]')) {
+          const box = row.parentElement?.getBoundingClientRect();
+          if (box && box.top < line + TREE_ROW_HEIGHT / 2 && box.bottom > line + TREE_ROW_HEIGHT) held.push(row.dataset.path!);
+        }
+        setTrail((current) => (current.length === held.length && current.every((path, index) => path === held[index]) ? current : held));
+      }
     };
-    const onScroll = () => { if (frame === 0) frame = requestAnimationFrame(mark); };
+    const onScroll = () => {
+      // A name shown whole belongs to a row that has just moved.
+      window.clearTimeout(peekTimer.current);
+      peekRow.current = null;
+      setPeek(null);
+      if (frame === 0) frame = requestAnimationFrame(mark);
+    };
     scroller.addEventListener('scroll', onScroll, { passive: true });
     mark();
     // Bring the current file into view the first time its row exists, and
@@ -456,11 +604,12 @@ export function FileTree({
     // it. Read once per change of the tree, not per scroll: the stems do not
     // move when the rail does.
     sizeTreeGuides(body, { litChild: branchToCurrentFile });
+    readMeasure();
     return () => {
       scroller.removeEventListener('scroll', onScroll);
       if (frame !== 0) cancelAnimationFrame(frame);
     };
-  }, [children, expanded, root, activePath]);
+  }, [children, expanded, root, activePath, focus, heldFolders, readMeasure]);
 
   /*
    * Hold a dragged row at the top or bottom of the rail and the tree scrolls
@@ -558,6 +707,77 @@ export function FileTree({
     );
   }
 
+  /** The folder the tree is drawn from: the focused one, or the open folder (also for the one render after the open folder changes). */
+  const top = focus !== null && isUnder(root, focus) ? focus : root;
+
+  /** How deep the deepest drawn row is, counting the first level as one. */
+  const deepest = (() => {
+    let most = 1;
+    const walk = (directory: string, depth: number) => {
+      if (depth > most) most = depth;
+      for (const entry of children.get(directory) ?? []) {
+        if (entry.kind === 'directory' && expanded.has(entry.path)) walk(entry.path, depth + 1);
+      }
+    };
+    walk(top, 1);
+    return most;
+  })();
+  const step = treeStep(treeWidth, deepest);
+
+  const cache = measureCache.current;
+  if (cache.font !== nameFont) {
+    cache.font = nameFont;
+    cache.widths = new Map();
+    cache.fits = new Map();
+  }
+  const measure = (text: string): number => {
+    let width = cache.widths.get(text);
+    if (width === undefined) {
+      cache.context ??= document.createElement('canvas').getContext('2d');
+      if (!cache.context) return 0;
+      cache.context.font = nameFont;
+      width = cache.context.measureText(text).width;
+      if (cache.widths.size > 20000) cache.widths.clear();
+      cache.widths.set(text, width);
+    }
+    return width;
+  };
+  /** A row's name cut to the room it has at its depth, after any marks; whole until the tree has measured. */
+  const fitted = (label: string, kind: 'file' | 'directory', depth: number, shared: string, marks: number): FittedName => {
+    if (!nameFont || treeWidth <= 0) return { text: label, cut: false };
+    const room = nameRoom(treeWidth, depth, step, marks);
+    // Most names fit, and their width is already known: only cut ones are worked out and kept.
+    if (measure(label) <= room) return { text: label, cut: false };
+    const key = `${kind}\u0000${room}\u0000${shared}\u0000${label}`;
+    let fit = cache.fits.get(key);
+    if (!fit) {
+      fit = fitLabel(label, kind, room, shared, measure);
+      if (cache.fits.size > 4000) cache.fits.clear();
+      cache.fits.set(key, fit);
+    }
+    return fit;
+  };
+  const namesOf = (entries: readonly WorkspaceEntryV1[]): { readonly labels: readonly string[]; readonly starts: readonly string[] } => {
+    const known = sharedCache.current.get(entries);
+    if (known && known.extensions === noteExtensions) return known;
+    const labels = entries.map((entry) => treeLabel(entry.name, entry.kind === 'directory' ? 'directory' : 'file', noteExtensions));
+    const made = { extensions: noteExtensions, labels, starts: sharedStarts(labels) };
+    sharedCache.current.set(entries, made);
+    return made;
+  };
+
+  /** Scroll a folder's row back to just under the trail, where its contents begin. */
+  const jumpTo = (folder: string) => {
+    const body = bodyRef.current;
+    const scroller = body?.closest<HTMLElement>('.rail-view');
+    const row = body?.querySelector<HTMLElement>(`.tree-row[data-path="${CSS.escape(folder)}"]`);
+    if (!body || !scroller || !row) return;
+    const bar = body.parentElement?.querySelector<HTMLElement>('.tree-focusbar')?.offsetHeight ?? 0;
+    const by = row.getBoundingClientRect().top - scroller.getBoundingClientRect().top - bar - TREE_ROW_HEIGHT;
+    const smooth = !window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+    scroller.scrollBy({ top: by, behavior: smooth ? 'smooth' : 'auto' });
+  };
+
   /**
    * A press on a pinned row brings that row back to where it lives rather
    * than acting on it.
@@ -624,9 +844,11 @@ export function FileTree({
       );
     }
 
+    const { labels, starts } = namesOf(entries);
     return (
       <div className="tree-level" style={{ '--tree-depth': depth } as React.CSSProperties}>
-        {entries.map((entry) => {
+        {entries.map((entry, index) => {
+          const label = labels[index]!;
           if (entry.kind === 'directory') {
             const isOpen = expanded.has(entry.path);
             // On the path to the current file, which is what earns a row its
@@ -636,6 +858,7 @@ export function FileTree({
             const holdsChanges = gitMarks?.folders.has(entry.path) ?? false;
             const own = privacyMarks?.folders.get(entry.path);
             const lock = own === 'private' || own === 'sealed' ? own : null;
+            const name = fitted(label, 'directory', depth, starts[index]!, (lock ? 1 : 0) + (holdsChanges ? 1 : 0));
             return (
               <div className="tree-node" key={entry.path}>
                 <button
@@ -645,12 +868,19 @@ export function FileTree({
                   data-path={entry.path}
                   aria-selected={selected.has(entry.path) || undefined}
                   data-depth={depth}
-                  title={[entry.name, ...(lock ? [PRIVACY_WORDS[lock]] : []), ...(holdsChanges ? [GIT_WORDS.folder] : [])].join(', ')}
+                  data-label={label}
+                  data-cut={name.cut || undefined}
+                  title={name.cut ? undefined : [entry.name, ...(lock ? [PRIVACY_WORDS[lock]] : []), ...(holdsChanges ? [GIT_WORDS.folder] : [])].join(', ')}
+                  aria-label={name.cut ? [entry.name, ...(lock ? [PRIVACY_WORDS[lock]] : []), ...(holdsChanges ? [GIT_WORDS.folder] : [])].join(', ') : undefined}
                   aria-expanded={isOpen}
                   style={springing === entry.path ? { '--spring-ms': `${SPRING_MS}ms` } as React.CSSProperties : undefined}
                   {...dragProps(entry.path)}
                   {...dropProps(entry.path)}
-                  onClick={(event) => { if (!choose(event, entry.path) && !revealPinned(event.currentTarget)) toggle(entry.path); }}
+                  onClick={(event) => {
+                    // Option-click makes the folder the rail's root.
+                    if (event.altKey) { event.preventDefault(); focusOn(entry.path); return; }
+                    if (!choose(event, entry.path) && !revealPinned(event.currentTarget)) toggle(entry.path);
+                  }}
                   onContextMenu={(event) => menuFor(event, entry.path, 'directory')}
                 >
                   <span className="tree-leading">
@@ -659,7 +889,7 @@ export function FileTree({
                   </span>
                   {editing && editing.intent !== 'new-folder' && editing.path === entry.path
                     ? <NameField initial={entry.name} onDone={commitEdit} />
-                    : <span className="tree-name">{entry.name}</span>}
+                    : <span className="tree-name">{name.text}</span>}
                   {lock && <PrivacyMark level={lock} />}
                   {holdsChanges && <GitMark kind="folder" />}
                   {dropClass(entry.path) && <span className="tree-drop-ring" aria-hidden="true" />}
@@ -684,6 +914,7 @@ export function FileTree({
 
           const isActive = entry.path === activePath;
           const change = gitMarks?.files.get(entry.path);
+          const name = fitted(label, 'file', depth, starts[index]!, change ? 1 : 0);
           return (
             <div className={isActive ? 'tree-node tree-node-active' : 'tree-node'} key={entry.path}>
               <button
@@ -692,7 +923,10 @@ export function FileTree({
                 aria-selected={selected.has(entry.path) || undefined}
                 data-testid="tree-file"
                 data-path={entry.path}
-                title={change ? `${entry.name}, ${GIT_WORDS[change]}` : entry.name}
+                data-label={label}
+                data-cut={name.cut || undefined}
+                title={name.cut ? undefined : change ? `${entry.name}, ${GIT_WORDS[change]}` : entry.name}
+                aria-label={name.cut ? (change ? `${entry.name}, ${GIT_WORDS[change]}` : entry.name) : undefined}
                 aria-current={isActive ? 'true' : undefined}
                 {...dragProps(entry.path)}
                 {...dropProps(directory)}
@@ -705,7 +939,7 @@ export function FileTree({
                 </span>
                 {editing && editing.intent !== 'new-folder' && editing.path === entry.path
                   ? <NameField initial={entry.name} onDone={commitEdit} />
-                  : <span className="tree-name">{entry.name}</span>}
+                  : <span className="tree-name">{name.text}</span>}
                 {change && <GitMark kind={change} />}
               </button>
             </div>
@@ -732,7 +966,7 @@ export function FileTree({
     const glyph = row.querySelector('.tree-glyph');
     if (glyph) pill.append(glyph.cloneNode(true));
     const name = document.createElement('span');
-    name.textContent = row.querySelector('.tree-name')?.textContent ?? '';
+    name.textContent = row.dataset.label ?? row.querySelector('.tree-name')?.textContent ?? '';
     pill.append(name);
     if (count > 1) {
       const more = document.createElement('b');
@@ -770,6 +1004,9 @@ export function FileTree({
       event.dataTransfer.effectAllowed = 'move';
       event.dataTransfer.setData('text/plain', moving.join('\n'));
       liftImage(event, moving.length);
+      window.clearTimeout(peekTimer.current);
+      peekRow.current = null;
+      setPeek(null);
       springOpened.current = new Set();
       setDragging(moving);
     },
@@ -861,15 +1098,73 @@ export function FileTree({
   const vaultName = rootName ?? root.split(/[\\/]/).filter(Boolean).at(-1) ?? root;
   const vaultLock = privacyMarks?.vault === 'private' || privacyMarks?.vault === 'sealed' ? privacyMarks.vault : null;
 
+  const topLock = focus === null
+    ? vaultLock
+    : ((own) => (own === 'private' || own === 'sealed' ? own : null))(privacyMarks?.folders.get(focus));
+  const upFrom = focus === null ? null : parentOf(focus);
+  const goUp = () => focusOn(upFrom === null || upFrom === root ? null : upFrom);
+  const rootStyle = {
+    '--tree-indent-now': `${step - TREE_STEP_MARGIN}px`,
+    '--tree-held-top': focus === null ? '0px' : 'var(--tree-focusbar)',
+  } as React.CSSProperties;
+
   return (
-    <div className="tree-root" data-testid="file-tree">
+    <div className={`tree-root${heldFolders === 'trail' ? ' is-trail' : ''}${focus !== null ? ' is-focused' : ''}`}
+      data-testid="file-tree" style={rootStyle}>
       {dragging !== null && <div ref={edgeUp} className="tree-edge tree-edge-up" aria-hidden="true" />}
       {failed && <p role="alert" className="tree-error">{failed}</p>}
-      <nav className="tree-body" ref={bodyRef}
-        onKeyDown={(event) => { if (event.key === 'Escape' && selected.size > 0) { event.preventDefault(); setSelected(new Set()); } }}>
+      {focus !== null && (
+        <div className="tree-focusbar" data-testid="tree-focusbar">
+          <button type="button" className="tree-focus-button" data-testid="tree-focus-up"
+            title="Up one folder (⌘↑)" aria-label="Up one folder" onClick={goUp}><UpGlyph /></button>
+          <TreePath parts={[root, ...foldersBetween(root, focus)]} name={(part) => (part === root ? vaultName : baseName(part))}
+            onPick={(part) => focusOn(part === root ? null : part)} trailing testId="tree-focus-path" />
+          <button type="button" className="tree-focus-button" data-testid="tree-focus-close"
+            title={`Show all of ${vaultName} (Esc)`} aria-label={`Show all of ${vaultName}`}
+            onClick={() => focusOn(null)}><CloseGlyph /></button>
+        </div>
+      )}
+      {heldFolders === 'trail' && (
+        <div className="tree-trail" data-testid="tree-trail" data-on={trail.length > 0 || undefined}
+          aria-hidden={trail.length === 0 || undefined}>
+          <TreePath parts={trail} name={baseName} onPick={jumpTo} strongLast testId="tree-trail-path" />
+          {trail.length > 0 && (
+            <button type="button" className="tree-focus-button" data-testid="tree-trail-focus"
+              title={`Focus on ${baseName(trail[trail.length - 1]!)}`} aria-label={`Focus on ${baseName(trail[trail.length - 1]!)}`}
+              onClick={() => focusOn(trail[trail.length - 1]!)}><FocusGlyph /></button>
+          )}
+        </div>
+      )}
+      {/* Keyed on the folder it is drawn from, so a change of focus draws it
+          anew and slides it in from the side the focus went. */}
+      <nav className="tree-body" ref={bodyRef} key={top} data-way={focusWay ?? undefined} tabIndex={-1}
+        onKeyDown={(event) => {
+          if ((event.target as Element).closest('.tree-name-field')) return;
+          if (event.key === 'Escape' && selected.size > 0) { event.preventDefault(); setSelected(new Set()); return; }
+          if (event.key === 'Escape' && focus !== null) { event.preventDefault(); focusOn(null); return; }
+          if (event.key === 'ArrowUp' && (event.metaKey || event.ctrlKey) && focus !== null) { event.preventDefault(); goUp(); }
+        }}
+        onPointerOver={(event) => {
+          const row = (event.target as Element).closest<HTMLElement>('.tree-row');
+          if (row === peekRow.current) return;
+          peekRow.current = row;
+          window.clearTimeout(peekTimer.current);
+          setPeek(null);
+          if (!row || row.dataset.cut === undefined || dragging !== null) return;
+          peekTimer.current = window.setTimeout(() => {
+            const shown = row.querySelector<HTMLElement>('.tree-name');
+            if (!shown || !row.isConnected) return;
+            const text = shown.getBoundingClientRect();
+            const line = row.getBoundingClientRect();
+            setPeek({ text: row.dataset.label ?? shown.textContent ?? '', left: text.left, top: line.top, height: line.height });
+          }, PEEK_MS);
+        }}
+        // A press puts the whole name away; it comes back only after the pointer leaves the row and returns.
+        onPointerDown={() => { window.clearTimeout(peekTimer.current); setPeek(null); }}
+        onPointerLeave={() => { peekRow.current = null; window.clearTimeout(peekTimer.current); setPeek(null); }}>
         {/* The folder itself is the first row, and the first level hangs from
             it: a tree whose lines begin one level down reads as a list with a
-            tree inside it. */}
+            tree inside it. Under a focus, the focused folder stands there. */}
         <div className="tree-node tree-vault">
           {/* No twisty column here, unlike every other row. The root cannot be
               collapsed, so the column would be permanently blank, and the guide
@@ -877,16 +1172,17 @@ export function FileTree({
               column: it would hang from empty space beside the folder rather
               than from the folder. Dropping the column puts the icon where the
               line starts. */}
-          <div className={`tree-row tree-directory tree-vault-row${dropClass(root)}`} data-testid="tree-vault"
-            data-depth={0} title={vaultLock ? `${root}, ${PRIVACY_WORDS[vaultLock]}` : root} {...dropProps(root)}
-            onContextMenu={(event) => { event.preventDefault(); onRowMenu(root, 'directory'); }}>
+          <div className={`tree-row tree-directory tree-vault-row${focus !== null ? ' is-focus-root' : ''}${dropClass(top)}`}
+            data-testid="tree-vault" data-focus-root={focus ?? undefined}
+            data-depth={0} title={topLock ? `${top}, ${PRIVACY_WORDS[topLock]}` : top} {...dropProps(top)}
+            onContextMenu={(event) => { event.preventDefault(); onRowMenu(top, 'directory'); }}>
             <FolderGlyph />
-            <span className="tree-name">{vaultName}</span>
-            {vaultLock && <PrivacyMark level={vaultLock} />}
-            {vaultMenu}
-            {dropClass(root) && <span className="tree-drop-ring" aria-hidden="true" />}
+            <span className="tree-name">{focus === null ? vaultName : baseName(focus)}</span>
+            {topLock && <PrivacyMark level={topLock} />}
+            {focus === null && vaultMenu}
+            {dropClass(top) && <span className="tree-drop-ring" aria-hidden="true" />}
           </div>
-          {renderLevel(root, 1)}
+          {renderLevel(top, 1)}
         </div>
       </nav>
       {dragging !== null && (
@@ -901,8 +1197,92 @@ export function FileTree({
         </div>
       )}
       {dragging !== null && <div ref={edgeDown} className="tree-edge tree-edge-down" aria-hidden="true" />}
+      {/* Over the page, so the rail's edge cannot cut it: set where the cut name stands, in its own face. */}
+      {peek && createPortal(
+        <div className="tree-peek" data-testid="tree-peek" aria-hidden="true"
+          style={{ left: peek.left - 7, top: peek.top, height: peek.height, maxWidth: `calc(100vw - ${Math.round(peek.left + 9)}px)` }}>
+          {peek.text}
+        </div>,
+        document.body,
+      )}
     </div>
   );
+}
+
+/**
+ * A path in one row, outermost first. When it does not fit, its outer parts
+ * fold into one "…" that still leads to the last of them, so the folders
+ * nearest the reader stay readable.
+ */
+function TreePath({ parts, name, onPick, strongLast = false, trailing = false, testId }: {
+  readonly parts: readonly string[];
+  readonly name: (part: string) => string;
+  readonly onPick: (part: string) => void;
+  readonly strongLast?: boolean;
+  /** A separator after the last part, for a path that leads on to the row below it. */
+  readonly trailing?: boolean;
+  readonly testId: string;
+}) {
+  const box = useRef<HTMLDivElement>(null);
+  const sig = parts.join('\n');
+  const [fold, setFold] = useState({ sig, count: 0 });
+  const folded = fold.sig === sig ? fold.count : 0;
+  // One more part folds on each pass until the row fits or only the last is left.
+  useLayoutEffect(() => {
+    const element = box.current;
+    if (element && element.scrollWidth > element.clientWidth + 1 && parts.length - folded > 1) setFold({ sig, count: folded + 1 });
+  });
+  // A wider rail may fit what was folded: start over when the width changes.
+  useLayoutEffect(() => {
+    const element = box.current;
+    if (!element || typeof ResizeObserver === 'undefined') return undefined;
+    let width = element.clientWidth;
+    const observer = new ResizeObserver(() => {
+      if (element.clientWidth === width) return;
+      width = element.clientWidth;
+      setFold({ sig: '', count: 0 });
+    });
+    observer.observe(element);
+    return () => observer.disconnect();
+  }, []);
+  const last = parts[parts.length - 1];
+  return (
+    <div className="tree-path" ref={box} data-testid={testId}>
+      {folded > 0 && (
+        <>
+          <button type="button" className="tree-path-part" data-folded=""
+            title={parts.slice(0, folded).map(name).join(' / ')} onClick={() => onPick(parts[folded - 1]!)}>…</button>
+          <span className="tree-path-sep" aria-hidden="true">/</span>
+        </>
+      )}
+      {parts.slice(folded).map((part, index) => (
+        <Fragment key={part}>
+          {index > 0 && <span className="tree-path-sep" aria-hidden="true">/</span>}
+          <button type="button" className={strongLast && part === last ? 'tree-path-part is-last' : 'tree-path-part'}
+            title={name(part)} onClick={() => onPick(part)}>{name(part)}</button>
+        </Fragment>
+      ))}
+      {trailing && parts.length > 0 && <span className="tree-path-sep" aria-hidden="true">/</span>}
+    </div>
+  );
+}
+
+/** Corner brackets round a point: a folder brought into focus. */
+function FocusGlyph() {
+  return (
+    <svg viewBox="0 0 16 16" aria-hidden="true">
+      <path d="M2.5 5.5v-3h3M10.5 2.5h3v3M13.5 10.5v3h-3M5.5 13.5h-3v-3" />
+      <circle cx="8" cy="8" r="1.7" fill="currentColor" stroke="none" />
+    </svg>
+  );
+}
+
+function UpGlyph() {
+  return <svg viewBox="0 0 16 16" aria-hidden="true"><path d="M8 13V3.6M4.2 7.2 8 3.4l3.8 3.8" /></svg>;
+}
+
+function CloseGlyph() {
+  return <svg viewBox="0 0 16 16" aria-hidden="true"><path d="M4.5 4.5l7 7M11.5 4.5l-7 7" /></svg>;
 }
 
 /*

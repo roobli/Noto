@@ -24,7 +24,7 @@ import { useEffect, useRef, useState } from 'react';
  * new ones marked New, gathered at the top, and the title bar's ? carries a
  * dot until the list is opened again.
  */
-export const GUIDE_EDITION = 3;
+export const GUIDE_EDITION = 4;
 
 /** What a Try It button does: the window leads there, or does it. */
 export type GuideTry =
@@ -111,6 +111,14 @@ export function shortcutGroups(mac: boolean): Group[] {
         { keys: [mod('click', mac), shift(mac) + 'click'], what: 'Choose several rows; drag one to move them all, or right-click for Move and Trash. Escape lets them go.', since: 2 },
         { keys: ['Links follow'], what: 'Rename or move a note or folder and the links to it are written again. The status line says how many, with Undo.', since: 2 },
         { keys: ['Changes'], what: "The rail's list of notes that differ from the last commit, as a short tree.", needs: 'The folder is in git.', tryIt: 'changes' },
+      ],
+    },
+    {
+      title: 'A deep folder in a narrow window',
+      entries: [
+        { keys: [alt(mac) + 'click'], what: 'Focus the tree on a folder: it becomes the rail\'s root, with a bar above it to go back up. Also Focus on This Folder in its right-click menu. Escape shows everything again.', since: 4 },
+        { keys: ['Rest on a name'], what: 'A name too long for the rail is cut, keeping its end; rest the pointer on it to read it whole. The rail no longer scrolls sideways.', since: 4 },
+        { keys: ['File tree'], what: 'In Settings → Appearance: hold the folders you are in as a stack of rows or fold them into one trail row, and show or hide .md.', since: 4 },
       ],
     },
     {

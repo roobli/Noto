@@ -91,6 +91,7 @@ export const WORKSPACE_CHANNELS = {
   undoLinks: 'noto:v1:workspace:undo-links',
   /** Push: Get Info was chosen on a folder in the tree, so the info pane turns to it. */
   showFolderInfo: 'noto:v1:workspace:show-folder-info',
+  focusFolder: 'noto:v1:workspace:focus-folder',
   /** One note's text as one of its commits had it. */
   noteVersion: 'noto:v1:workspace:note-version',
   notePreview: 'noto:v1:workspace:note-preview',
@@ -1039,6 +1040,12 @@ export interface WorkspaceShowFolderInfoEventV1 {
   readonly path: string;
 }
 
+/** Push: the folder the file tree should focus on, as the window named it, inside the open folder. */
+export interface WorkspaceFocusFolderEventV1 {
+  readonly version: typeof NOTO_WORKSPACE_VERSION;
+  readonly path: string;
+}
+
 export interface WorkspaceNoteVersionRequestV1 extends WorkspaceRequestV1 {
   readonly path: string;
   readonly commit: string;
@@ -1546,6 +1553,7 @@ export interface NotoWorkspaceApiV1 {
   onMemoryChanged(listener: (event: WorkspaceMemoryChangedV1) => void): () => void;
   onRenameRow(listener: (event: WorkspaceRenameRowEventV1) => void): () => void;
   onShowFolderInfo(listener: (event: WorkspaceShowFolderInfoEventV1) => void): () => void;
+  onFocusFolder(listener: (event: WorkspaceFocusFolderEventV1) => void): () => void;
   onLinksFollowed(listener: (event: WorkspaceLinksFollowedV1) => void): () => void;
   undoLinks(request: WorkspaceUndoLinksRequestV1): Promise<WorkspaceResultV1<WorkspaceUndoLinksReplyV1>>;
 }

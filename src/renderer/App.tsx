@@ -2351,6 +2351,11 @@ function NotoWorkspace({ platform }: { platform: NotoPlatform }) {
 
   /** Bumped to shut every folder but the current note's, which the tree watches for. */
   const [treeCollapse, setTreeCollapse] = useState(0);
+  /** A folder the tree should focus on, asked for from its row menu; the token tells one ask from the next. */
+  const [treeFocus, setTreeFocus] = useState<{ readonly path: string; readonly token: number } | null>(null);
+  useEffect(() => window.notoWorkspace.onFocusFolder((event) => {
+    setTreeFocus((current) => ({ path: event.path, token: (current?.token ?? 0) + 1 }));
+  }), []);
 
   /**
    * What to say when an action on a row did nothing.
@@ -3051,6 +3056,9 @@ function NotoWorkspace({ platform }: { platform: NotoPlatform }) {
               collapseToken: treeCollapse,
               gitMarks: treeGitMarks,
               privacyMarks: treePrivacyMarks,
+              heldFolders: settings.treeHeld,
+              noteExtensions: settings.treeNoteExtensions,
+              focusRequest: treeFocus,
             }}
             onCollapseTree={() => setTreeCollapse((current) => current + 1)}
           />
