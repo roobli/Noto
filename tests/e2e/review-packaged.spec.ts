@@ -184,7 +184,7 @@ test.describe('the Review page', () => {
 
       // essay.md is open: with unsaved edits in it, Link leaves it alone and says so.
       await page.locator('.ProseMirror').click();
-      await page.keyboard.press('Meta+ArrowDown');
+      await page.keyboard.press(process.platform === 'darwin' ? 'Meta+ArrowDown' : 'Control+End');
       await page.keyboard.type(' 还没存。');
       await kind(page, 'mention').getByTestId('review-start').click();
       await expect(view(page).getByTestId('review-queue')).toBeFocused();

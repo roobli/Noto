@@ -153,7 +153,7 @@ test.describe('the info pane', () => {
       await expect(pane(page).getByTestId('history-status')).toContainText('Restored the version from');
       await expect.poll(() => editorText(page)).not.toContain('More.');
       expect(readFileSync(note, 'utf8')).toBe(NOW);
-      await page.keyboard.press('Meta+z');
+      await page.keyboard.press(process.platform === 'darwin' ? 'Meta+z' : 'Control+z');
       await expect.poll(() => editorText(page)).toContain('Not committed.');
 
       // A mark on the timeline brings its commit forward in History.

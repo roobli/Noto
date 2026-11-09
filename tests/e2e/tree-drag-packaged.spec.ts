@@ -226,8 +226,8 @@ test.describe('dragging in the tree', () => {
         Menu.prototype.popup = function popup(this: Electron.Menu) { shown.push(this); };
       });
       const row = (name: string) => page.getByTestId('tree-file').filter({ hasText: name });
-      await row('a.md').click({ modifiers: ['Meta'] });
-      await row('b.md').click({ modifiers: ['Meta'] });
+      await row('a.md').click({ modifiers: [process.platform === 'darwin' ? 'Meta' : 'Control'] });
+      await row('b.md').click({ modifiers: [process.platform === 'darwin' ? 'Meta' : 'Control'] });
       await expect(page.locator('.tree-row.is-selected')).toHaveCount(2);
       await expect(page.getByTestId('tree-choice-chip')).toContainText('2 chosen');
       // Right-click one of them: the menu is for both.

@@ -97,7 +97,7 @@ test.describe('marks on the note in front', () => {
       // Settled, not only written: a save asked for while one is still landing is not taken.
       await expect(page.locator('.status-message')).toHaveText('Exact source saved');
       // Undo takes the link back, and the mark returns once the note is saved again.
-      await page.keyboard.press('Meta+z');
+      await page.keyboard.press(process.platform === 'darwin' ? 'Meta+z' : 'Control+z');
       expect(await editorText(page)).toContain('Read the Argus Index before');
       await save(app);
       await expect.poll(() => readFileSync(plan, 'utf8')).toContain('Read the Argus Index before');
@@ -116,8 +116,8 @@ test.describe('marks on the note in front', () => {
       await card.getByTestId('note-mark-action-dismiss').click();
       await expect(mark).toHaveCount(0);
       await expect.poll(() => (existsSync(path.join(root, '.noto', 'dismissed.jsonl')) ? readFileSync(path.join(root, '.noto', 'dismissed.jsonl'), 'utf8') : '')).toContain('Ideas/Argus Index.md');
-      // To the end of the line, as macOS goes there.
-      await page.keyboard.press('Meta+ArrowRight');
+      // To the end of the line.
+      await page.keyboard.press(process.platform === 'darwin' ? 'Meta+ArrowRight' : 'End');
       await page.keyboard.type(' Still.');
       await save(app);
       await expect.poll(() => readFileSync(plan, 'utf8')).toContain('Still.');
