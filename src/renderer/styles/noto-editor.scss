@@ -1258,6 +1258,17 @@
     z-index: 25;
     box-shadow: 0 10px 30px color-mix(in srgb, var(--shadow) 18%, transparent);
   }
+  /* The page behind the laid-over rail is dimmed, so it reads as underneath
+     and a press on it reads as "put the rail away", which it does. */
+  .app-shell[data-rail='open']::after {
+    content: '';
+    position: absolute;
+    inset: 0;
+    z-index: 24;
+    background: color-mix(in srgb, var(--ink) 14%, transparent);
+    pointer-events: none;
+    animation: noto-fade var(--motion-micro) var(--ease-out);
+  }
 }
 
 /* Find and replace

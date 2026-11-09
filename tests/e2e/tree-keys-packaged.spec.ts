@@ -81,3 +81,37 @@ test('the file tree walks, opens and renames from the keyboard', async () => {
     await app.close();
   }
 });
+
+// Daily-use audit finding 14: in a narrow window the rail lay over a third of
+// the page and stayed there after a pick or Escape.
+test('in a narrow window the rail laid over the page goes away on a pick and on Escape', async () => {
+  const root = scratch('narrow-rail');
+  writeFileSync(path.join(root, 'one.md'), '# One\n', 'utf8');
+  writeFileSync(path.join(root, 'two.md'), '# Two\n', 'utf8');
+  const userData = scratch('user-data');
+  writeFileSync(path.join(userData, 'settings.json'), JSON.stringify({}));
+  const app = await electron.launch({
+    executablePath: packagedExecutable(),
+    args: [`--user-data-dir=${userData}`, `--folder=${root}`, `--open=${path.join(root, 'one.md')}`],
+  });
+  try {
+    const page = await app.firstWindow();
+    await page.setViewportSize({ width: 680, height: 800 });
+    await page.waitForSelector('[data-testid="noto-editor"]', { state: 'visible', timeout: 30_000 });
+    const shell = page.getByTestId('noto-app');
+    const toggle = page.getByTestId('sidebar-toggle');
+    if ((await shell.getAttribute('data-rail')) !== 'open') await toggle.click();
+    await expect(shell).toHaveAttribute('data-rail', 'open');
+    await page.locator('[role="treeitem"][data-path$="two.md"]').click();
+    await expect(page.locator('.canvas-slot:not([hidden]) .ProseMirror h1')).toHaveText('Two');
+    await expect(shell).not.toHaveAttribute('data-rail', 'open');
+
+    await toggle.click();
+    await expect(shell).toHaveAttribute('data-rail', 'open');
+    await page.locator('[role="treeitem"][data-path$="one.md"]').focus();
+    await page.keyboard.press('Escape');
+    await expect(shell).not.toHaveAttribute('data-rail', 'open');
+  } finally {
+    await app.close();
+  }
+});

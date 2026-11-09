@@ -801,9 +801,26 @@ function NotoWorkspace({ platform }: { platform: NotoPlatform }) {
       if (target?.closest('.workspace-rail, [data-testid="sidebar-toggle"], [role="dialog"], [role="menu"]')) return;
       setRail((current) => ({ ...current, open: false }));
     };
+    // Escape puts it away too, unless something inside the rail used the key
+    // (a search box clearing, a selection let go), and gives the keys to the note.
+    const onKeyDown = (event: KeyboardEvent) => {
+      if (!narrow.matches || event.key !== 'Escape' || event.defaultPrevented) return;
+      const target = event.target instanceof Element ? event.target : null;
+      if (target?.closest('[role="dialog"], [role="menu"]')) return;
+      setRail((current) => ({ ...current, open: false }));
+      editorRef.current?.focus();
+    };
     window.addEventListener('pointerdown', onPointerDown, true);
-    return () => window.removeEventListener('pointerdown', onPointerDown, true);
+    window.addEventListener('keydown', onKeyDown);
+    return () => {
+      window.removeEventListener('pointerdown', onPointerDown, true);
+      window.removeEventListener('keydown', onKeyDown);
+    };
   }, [rail.open]);
+  /** A pick in the rail laid over a narrow window puts the rail away, so the page it opened is in view (daily-use audit, finding 14). */
+  const putOverlayRailAway = useCallback(() => {
+    if (window.matchMedia(RAIL_OVERLAY_MEDIA).matches) setRail((current) => (current.open ? { ...current, open: false } : current));
+  }, []);
   /* Links is opt-in: if the setting is off while that view is showing, leave it. */
   useEffect(() => {
     if (settings.railLinks) return;
@@ -1490,7 +1507,8 @@ function NotoWorkspace({ platform }: { platform: NotoPlatform }) {
     // Same confirmed-open path as Quick Open: frecency only advances when this
     // succeeds, and a failed tree click does not pollute the ranking.
     void openPathRef.current(filePath);
-  }, []);
+    putOverlayRailAway();
+  }, [putOverlayRailAway]);
 
   const closeTab = useCallback((filePath: string) => {
     void window.notoWorkspace.closeTab({ version: 1, requestId: rid('tab-close'), path: filePath });
@@ -3103,6 +3121,7 @@ function NotoWorkspace({ platform }: { platform: NotoPlatform }) {
       // title bar to leave room for them. The value is the one bootstrap
       // validated, which the shell already has.
       data-platform={platform}
+      data-rail={rail.open ? 'open' : undefined}
       data-testid="noto-app" data-file-state={state}
       /* The open rail's width: the shell's first column, and the title bar's,
          so the filename can be centred over the page. */
@@ -3145,7 +3164,7 @@ function NotoWorkspace({ platform }: { platform: NotoPlatform }) {
             onResize={(railWidth) => changeSettings({ railWidth: clampRailWidth(railWidth, window.innerWidth) })}
             outline={outline}
             currentHeading={currentHeading}
-            onGoToBlock={(blockIndex) => editorRef.current?.focusBlock(blockIndex)}
+            onGoToBlock={(blockIndex) => { editorRef.current?.focusBlock(blockIndex); putOverlayRailAway(); }}
             tree={{
               vaultMenu: (
                 <RailFooter
