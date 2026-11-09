@@ -131,14 +131,15 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        # macos-14 = Apple silicon. The Intel zip is cross-built on the same
+        # macos-15 = Apple silicon. The Intel zip is cross-built on the same
         # runner and renamed to Noto-<version>-macos-x64.zip below, so both
         # architectures ship from one job (D8).
         # ubuntu-24.04, not ubuntu-latest: latest moved to 26.04 on
         # 2026-10-20, and its rpm 6 builds in a directory electron-installer-
         # redhat's spec does not expect (`cp -r usr/*` finds nothing), so every
         # .rpm failed. Unpin once the installer copes with rpm >= 4.20.
-        os: [macos-14, windows-latest, ubuntu-24.04]
+        # macos-15 because GitHub retired macos-14 on 2026-11-02.
+        os: [macos-15, windows-latest, ubuntu-24.04]
     steps:
       - uses: actions/checkout@v4
         with:
