@@ -38,7 +38,7 @@ import {
 import { findWrapping } from 'prosemirror-transform';
 import type { Node as ProseNode, ResolvedPos } from 'prosemirror-model';
 import { moveBlock, moveColumn } from './move-block';
-import { enterInTable, tableFromRows, unwrapAtStart } from './block-edges';
+import { deleteSelectedRowsOrColumns, enterInTable, exitAtEdge, tableFromRows, unwrapAtStart } from './block-edges';
 import { openLinkEditor } from './link-plugin';
 import { fenceOnEnter } from './input-rules';
 import {
@@ -719,8 +719,13 @@ export function notoBindings({ mac, onWidthStep, taskStamp }: KeymapOptions): Re
     [`${mod}-y`]: redo,
 
     Enter: enter,
-    // Typora's Backspace at the head of a block, tried before the ordinary one.
-    Backspace: unwrapAtStart,
+    // Whole rows or columns selected go first; then Typora's Backspace at the
+    // head of a block, tried before the ordinary one.
+    Backspace: chainCommands(deleteSelectedRowsOrColumns, unwrapAtStart),
+    Delete: deleteSelectedRowsOrColumns,
+    // Out past a quote, a list, a table or a code block at the edge of the note.
+    ArrowDown: exitAtEdge(1),
+    ArrowUp: exitAtEdge(-1),
     'Shift-Enter': insertHardBreak,
     [`${mod}-Enter`]: insertHardBreak,
 

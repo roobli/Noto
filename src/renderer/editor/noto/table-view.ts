@@ -39,9 +39,17 @@ interface Drag {
   readonly edges: readonly number[];
   /** Where the pointer went down, to tell a click from a drag. */
   readonly origin: number;
+  /** Shift was held: a click adds the rows or columns up to this one to the selection. */
+  readonly extend: boolean;
   moved: boolean;
   gap: number;
 }
+
+/** What a handle does, said on hover, since nothing else on it says so. */
+const HANDLE_TITLES = {
+  row: 'Drag to move the row. Click to select it, Shift-click to select the rows up to it, then Delete to remove them.',
+  column: 'Drag to move the column. Click to select it, Shift-click to select the columns up to it, then Delete to remove them.',
+} as const;
 
 /** How far the pointer travels before a press becomes a drag rather than a click. */
 const DRAG_THRESHOLD = 4;
@@ -308,6 +316,7 @@ export class TableView implements NodeView {
         const handle = document.createElement('div');
         handle.className = 'noto-table-handle';
         handle.dataset.axis = axis;
+        handle.title = HANDLE_TITLES[axis];
         rail.append(handle);
       }
       Array.from(rail.children).forEach((handle, at) => set(handle as HTMLElement, at));
@@ -348,7 +357,7 @@ export class TableView implements NodeView {
     const origin = axis === 'row' ? event.clientY - frame.top : event.clientX - frame.left;
 
     event.preventDefault();
-    this.drag = { axis, index, edges, origin, moved: false, gap: index };
+    this.drag = { axis, index, edges, origin, extend: event.shiftKey, moved: false, gap: index };
     handle.classList.add('noto-table-handle-held');
     this.rails.dataset.dragging = axis;
     // Capture keeps the cursor while the pointer wanders off the four pixels
@@ -405,7 +414,7 @@ export class TableView implements NodeView {
       if (drag.moved) {
         if (movesAnything(drag.index, drag.gap)) this.apply(drag.axis, drag.index, drag.gap);
       } else {
-        this.select(drag.axis, drag.index);
+        this.select(drag.axis, drag.index, drag.extend);
       }
     } finally {
       this.endDrag();
@@ -438,21 +447,29 @@ export class TableView implements NodeView {
     if (this.hovering) this.scheduleMeasure();
   }
 
-  /** Put the caret's selection over a whole row or column, as a click on the rail means. */
-  private select(axis: Axis, index: number): void {
+  /**
+   * Put the caret's selection over a whole row or column, as a click on the
+   * rail means; with Shift, over every one from the row or column already
+   * selected in this table to this one.
+   */
+  private select(axis: Axis, index: number, extend = false): void {
     const pos = this.getPos();
     if (pos === undefined) return;
     const table = this.node;
     if (!this.rectangular(table)) return;
     const width = table.child(0).childCount;
     const doc = this.view.state.doc;
+    const current = this.view.state.selection;
+    const held = extend && current instanceof CellSelection && current.$anchorCell.start(-1) === pos + 1
+      && (axis === 'row' ? current.isRowSelection() : current.isColSelection())
+      ? current.$anchorCell : null;
     const selection = axis === 'row'
       ? CellSelection.rowSelection(
-        doc.resolve(cellPos(table, pos, index, 0)),
+        held ?? doc.resolve(cellPos(table, pos, index, 0)),
         doc.resolve(cellPos(table, pos, index, width - 1)),
       )
       : CellSelection.colSelection(
-        doc.resolve(cellPos(table, pos, 0, index)),
+        held ?? doc.resolve(cellPos(table, pos, 0, index)),
         doc.resolve(cellPos(table, pos, table.childCount - 1, index)),
       );
     this.view.dispatch(this.view.state.tr.setSelection(selection));

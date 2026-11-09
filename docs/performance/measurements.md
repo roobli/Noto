@@ -15,8 +15,10 @@ The same harness runs in CI through
 [`.github/workflows/bench.yml`](../../.github/workflows/bench.yml), for every
 tag the release workflow builds and on request. Each run's summary names the
 version, the commit and the runner, and the JSON report is kept as an
-artifact. The runner is a GitHub-hosted `macos-14`, a virtual Apple silicon Mac
+artifact. The runner is a GitHub-hosted `macos-15`, a virtual Apple silicon Mac
 that is slower and noisier than a desk machine, so compare CI runs with CI runs.
+The results below from before November 2026 ran on `macos-14`, which GitHub
+retired on 2 November 2026; compare them only with each other.
 
 How noisy: two runs of the same commit (`d9d0fc0`, 29 September 2026) put
 the 8 MB document's open at 9,157 and 7,202 ms and its save at 4,517 and
