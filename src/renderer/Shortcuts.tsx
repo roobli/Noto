@@ -24,7 +24,7 @@ import { useEffect, useRef, useState } from 'react';
  * new ones marked New, gathered at the top, and the title bar's ? carries a
  * dot until the list is opened again.
  */
-export const GUIDE_EDITION = 5;
+export const GUIDE_EDITION = 6;
 
 /** What a Try It button does: the window leads there, or does it. */
 export type GuideTry =
@@ -56,10 +56,12 @@ export function shortcutGroups(mac: boolean): Group[] {
       title: 'Finding your way',
       entries: [
         { keys: mac ? [mod('P', mac), shift(mac) + mod('O', mac), mod('.', mac)] : [mod('P', mac), mod('.', mac)], what: 'Quick open. Tab cycles files, folders and the text inside notes.', tryIt: 'quick-open' },
-        { keys: [shift(mac) + mod('P', mac)], what: 'The command palette: every command, by name, with its key.', tryIt: 'palette' },
+        { keys: [shift(mac) + mod('P', mac)], what: 'The command palette: every command in the menus, by name or by its menu, with its key.', since: 6, tryIt: 'palette' },
         { keys: ['Folders'], what: 'Choosing a folder narrows the other two tabs to it. Backspace on an empty box leaves it.' },
         { keys: ['New note', shift(mac) + '↩'], what: 'Type a name nothing matches and quick open offers to make it, as a note or a folder, in the folder it is narrowed to. A new folder is narrowed to at once, ready for its first note.', since: 5, tryIt: 'quick-open' },
         { keys: ['/ or ~/'], what: 'Type or paste a note\'s whole path into quick open to open it from anywhere on the disk, outside the open folder too.', since: 5, tryIt: 'quick-open' },
+        { keys: ['docker es'], what: 'Words in quick open are matched one by one, in the name or the folder, in any order.', since: 6, tryIt: 'quick-open' },
+        { keys: ['Back to it'], what: 'A note comes back where you left it, at the paragraph you were reading; a launch reopens the note that was in front.', since: 6 },
         { keys: ['type:', 'scope:'], what: 'Say what to search and where, in the box: type:content, scope:works/jobs. Tab finishes them.' },
         { keys: [mod('[', mac), mod(']', mac)], what: 'Narrow or widen quick open, which it remembers.' },
         { keys: ['[['], what: 'Typing two brackets asks which note you mean, and writes the link where they are.' },
@@ -81,6 +83,9 @@ export function shortcutGroups(mac: boolean): Group[] {
         { keys: [shift(mac) + mod('V', mac)], what: 'Paste the text alone, read as markdown.' },
         { keys: ['⌫'], what: 'Straight after a smart quote, dash or ellipsis is put in, Backspace gives back what you typed. Settings → Markdown turns each one off.', since: 5 },
         { keys: [alt(mac) + '↑', alt(mac) + '↓'], what: 'Move the block, the list item, or the table row.' },
+        { keys: ['$8,000 - $50,000'], what: 'Prices stay text and $x$ is maths: one dollar opens maths only before a non-space and closes it only after one, as in Pandoc.', since: 6 },
+        { keys: ['Right-click'], what: 'Format, Paragraph and Insert, with Copy as Markdown over a selection, as the menu bar has them.', since: 6 },
+        { keys: ['F8', 'F9', mod('\\', mac)], what: 'Focus Mode, Typewriter Mode and Clear Format, on Typora\'s keys.', since: 6 },
         { keys: [mod('=', mac), mod('-', mac)], what: 'Raise or lower the heading level.' },
       ],
     },
@@ -111,6 +116,7 @@ export function shortcutGroups(mac: boolean): Group[] {
       title: 'Moving notes',
       entries: [
         { keys: [shift(mac) + mod('N', mac)], what: 'A new folder beside the note in front, named on its row. New Folder Here on a folder\'s right-click menu, the vault\'s own row included, makes one inside it.', since: 5 },
+        { keys: ['↑ ↓ ← →', 'F2'], what: 'Walk the file tree from the keyboard: Right opens a folder, Left closes it or goes up, Home and End, F2 renames, and typing a name jumps to it.', since: 6 },
         { keys: ['Drag'], what: 'Drag a row onto a folder, or onto a note to put it in that note\'s folder. Hold at the top or bottom edge to scroll; hold over a closed folder to open it.', since: 2 },
         { keys: [mod('click', mac), shift(mac) + 'click'], what: 'Choose several rows; drag one to move them all, or right-click for Move and Trash. Escape lets them go.', since: 2 },
         { keys: ['Links follow'], what: 'Rename or move a note or folder and the links to it are written again. The status line says how many, with Undo.', since: 2 },
