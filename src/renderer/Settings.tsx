@@ -15,7 +15,7 @@
 
 import { MemoryPane } from './MemoryPane';
 import { copyThroughSelection } from './editor/noto/clipboard';
-import { useCallback, useEffect, useRef, useState, type ReactNode } from 'react';
+import { useCallback, useEffect, useLayoutEffect, useRef, useState, type ReactNode } from 'react';
 import {
   SETTING_RANGES,
   type ImageDestinationV1,
@@ -834,7 +834,9 @@ export function Settings({
     queueMicrotask(() => dialogRef.current?.focus({ preventScroll: true }));
   }, [open]);
 
-  useEffect(() => {
+  // Attached as the panel is drawn rather than after the paint, so an Escape
+  // pressed the moment Settings appears closes it instead of going nowhere.
+  useLayoutEffect(() => {
     if (!open) return;
     const onKeyDown = (event: KeyboardEvent) => {
       if (isComposing(event)) return;

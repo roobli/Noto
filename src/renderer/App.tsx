@@ -28,6 +28,7 @@ import type {
 import { QuickOpen, type QuickOpenMode } from './QuickOpen';
 import { FolderEmptyState } from './FolderEmptyState';
 import { useReadingAnchors } from './use-reading-anchors';
+import { useFocusReturn } from './focus-return';
 import { searchBoost, type FrecencyStoreV1 } from '../shared/search/v1/frecency';
 import { ConfirmedOpenRecorder } from '../shared/search/v1/confirmed-open';
 import type { NotoDocumentWire } from '../shared/markdown/v3/contracts';
@@ -1423,6 +1424,16 @@ function NotoWorkspace({ platform }: { platform: NotoPlatform }) {
       cleanStateRef.current = active.cleanState;
     }
   }, [activeId, docs, active]);
+
+  /* A sheet over the page gives the keys back when it closes (`focus-return.ts`). */
+  const focusNoteInFront = () => {
+    const editor = editorRef.current;
+    if (!editor) return false;
+    editor.focus();
+    return true;
+  };
+  useFocusReturn(shortcuts, focusNoteInFront);
+  useFocusReturn(tableDialog, focusNoteInFront);
 
   /* Each note keeps its place in the shared page (daily-use audit, finding 7). */
   useReadingAnchors({
