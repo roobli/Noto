@@ -3709,6 +3709,12 @@ function NotoWorkspace({ platform }: { platform: NotoPlatform }) {
         </section>
       )}
 
+      {/* What Noto says it did, said once to a screen reader. The visible
+          lines are remounted to fade in again, and a live region that is
+          remounted is not announced, so the announcing is done here, by one
+          element that stays on the page. */}
+      <p className="announcer" role="status" aria-live="polite" aria-atomic="true" data-testid="announcer">{notice ?? ''}</p>
+
       {/* Where the file lives, and what state it is in.
           Deliberately not the file name: the title bar already shows that, and
           repeating it in the corner spends the only other line the window has
@@ -3718,7 +3724,7 @@ function NotoWorkspace({ platform }: { platform: NotoPlatform }) {
           (a move whose links followed, say) still has to be said, and undone. */}
       {!opened && notice && (
         <footer className="operational-status is-bare">
-          <span key={notice} className="status-message is-notice" data-testid="status-notice" aria-live="polite">{notice}</span>
+          <span key={notice} className="status-message is-notice" data-testid="status-notice">{notice}</span>
           {noticeAction && (
             <button type="button" className="status-notice-action" data-testid="status-notice-action"
               onClick={() => { const action = noticeAction; setNotice(null); setNoticeAction(null); action.run(); }}>
@@ -3773,7 +3779,7 @@ function NotoWorkspace({ platform }: { platform: NotoPlatform }) {
             </span>
           )}
           <span key={notice ?? state} className={notice ? 'status-message is-notice' : 'status-message'}
-            data-testid={notice ? 'status-notice' : undefined} aria-live="polite">
+            data-testid={notice ? 'status-notice' : undefined}>
             {notice ?? (state === 'Opened' ? 'Exact source preserved' : state === 'Saved' ? 'Exact source saved' : '')}
           </span>
           {notice && noticeAction && (

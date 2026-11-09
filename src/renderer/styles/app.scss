@@ -378,7 +378,9 @@ button:disabled { color: var(--muted); opacity: 0.7; }
 }
 
 /* Announced, never drawn. The dot carries this for sighted readers and the
-   alert carries the exceptional states. */
+   alert carries the exceptional states. The announcer says the status line's
+   notices, which are drawn where sighted readers look. */
+.announcer,
 .file-state {
   position: absolute;
   width: 1px;
