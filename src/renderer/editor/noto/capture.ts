@@ -123,7 +123,26 @@ export interface CaptureInput {
    * every save does unless a line-ending command has been used.
    */
   readonly envelope?: NotoTargetEnvelope;
+  /**
+   * Origin block ids whose gap above is exactly the empty paragraphs before
+   * them (`blank-lines-plugin.ts`), even when there are none left.
+   */
+  readonly explicitGaps?: ReadonlySet<string>;
 }
+
+/**
+ * Blank lines to ask for before a written block (`NotoUnit.blankLinesBefore`):
+ * one break plus one per empty paragraph typed since the block above, when
+ * there are any or the reader has taken the gap over. Undefined leaves the
+ * gap to the save, which keeps the file's own.
+ */
+function blankLinesFor(emptyLines: number, origin: NotoBlockOrigin | null, wroteAbove: boolean, explicit?: ReadonlySet<string>): number | undefined {
+  if (!wroteAbove) return undefined;
+  if (emptyLines > 0 || (origin !== null && explicit?.has(origin.blockId) === true)) return 1 + emptyLines;
+  return undefined;
+}
+
+const isEmptyParagraph = (node: ProseNode): boolean => node.type.name === 'paragraph' && isUnwritableBlock(node);
 
 export interface CaptureStats {
   /** Blocks reused verbatim, costing no serialization. */
@@ -229,9 +248,15 @@ export function captureUnits(input: CaptureInput): { units: NotoUnit[]; stats: C
   let serialized = 0;
   let previousList: ListMarker | null = null;
 
+  let emptyLines = 0;
   input.doc.forEach((node, _offset, index) => {
     const origin = input.origins[index] ?? null;
-    if (isUnwritableBlock(node)) return;
+    if (isUnwritableBlock(node)) {
+      if (isEmptyParagraph(node)) emptyLines += 1;
+      return;
+    }
+    const blankLinesBefore = blankLinesFor(emptyLines, origin, units.length > 0, input.explicitGaps);
+    emptyLines = 0;
     let result = markdownFor(node, origin, input.pristine);
     let list = writtenListMarker(node, result.markdown);
     if (continuesList(previousList, list)) {
@@ -245,7 +270,7 @@ export function captureUnits(input: CaptureInput): { units: NotoUnit[]; stats: C
     // A reused block sends no text. Main already holds its bytes, so repeating
     // them would make every save carry the whole document across the process
     // boundary regardless of how little changed.
-    units.push({ origin, markdown: result.reused ? null : result.markdown });
+    units.push({ origin, markdown: result.reused ? null : result.markdown, ...(blankLinesBefore === undefined ? {} : { blankLinesBefore }) });
   });
 
   return { units, stats: { reused, serialized } };
@@ -301,14 +326,21 @@ export function captureStableWire(
   const baseOrigins = input.document.origins;
   let previousList: ListMarker | null = null;
 
+  let emptyLines = 0;
+  let wrote = false;
   for (let index = 0; index < doc.childCount; index += 1) {
     const node = doc.child(index);
     const origin = input.origins[index] ?? null;
     // Not written, so not counted either: the same as the full walk.
     if (isUnwritableBlock(node)) {
+      if (isEmptyParagraph(node)) emptyLines += 1;
       run = null;
       continue;
     }
+    const blankLinesBefore = blankLinesFor(emptyLines, origin, wrote, input.explicitGaps);
+    const spacing = blankLinesBefore === undefined ? {} : { blankLinesBefore };
+    emptyLines = 0;
+    wrote = true;
     const pin = pins.get(node);
     let unchanged = !pin && node === acceptedNodes[index];
     if (!unchanged && origin) {
@@ -326,12 +358,13 @@ export function captureStableWire(
       previousList = writtenListMarker(separate, null);
       serialized += 1;
       run = null;
-      units.push({ origin, markdown: blockToMarkdown(separate) });
+      units.push({ origin, markdown: blockToMarkdown(separate), ...spacing });
       continue;
     }
     previousList = list;
     const base = origin ? baseOrigins[origin.ordinal] : undefined;
-    if (unchanged && origin && base && sameOrigin(origin, base)) {
+    // A block that asks for its own spacing is sent on its own: a run carries none.
+    if (unchanged && origin && base && sameOrigin(origin, base) && blankLinesBefore === undefined) {
       reused += 1;
       if (run && run.keep + run.count === origin.ordinal) {
         run.count += 1;
@@ -341,7 +374,9 @@ export function captureStableWire(
       }
       continue;
     }
-    serialized += 1;
+    // Sent on its own only for the spacing it asks for, it is still reused.
+    if (unchanged && origin && base && sameOrigin(origin, base)) reused += 1;
+    else serialized += 1;
     run = null;
     // Unchanged but not a base block at its ordinal still sends no text. A
     // block with no origin has nothing to reuse and must be rendered.
@@ -349,6 +384,7 @@ export function captureStableWire(
       origin,
       markdown: unchanged && origin ? null : pin ? pin.markdown
         : blockToMarkdown(node, origin ? input.pristine.get(origin.blockId)?.markdown : undefined),
+      ...spacing,
     });
   }
 

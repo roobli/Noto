@@ -76,7 +76,8 @@ export function compactTransaction(transaction: NotoTransaction, base: NotoDocum
   for (const unit of transaction.units) {
     const origin = unit.origin;
     const baseOrigin = origin ? base.origins[origin.ordinal] : undefined;
-    if (unit.markdown === null && origin && baseOrigin && sameOrigin(origin, baseOrigin)) {
+    // A unit that asks for its own spacing stays a unit: a run carries none.
+    if (unit.markdown === null && unit.blankLinesBefore === undefined && origin && baseOrigin && sameOrigin(origin, baseOrigin)) {
       if (run && run.keep + run.count === origin.ordinal) {
         run.count += 1;
       } else {

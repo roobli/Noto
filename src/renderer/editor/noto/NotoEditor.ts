@@ -60,6 +60,8 @@ import {
   sourceHasFinalNewline,
   sourceSettleKind,
 } from '../../source-mode-text';
+import { blankLinesPlugin, explicitGaps, type GapLines } from './blank-lines-plugin';
+import { blankLinesIn } from '../../../shared/markdown/v3/blank-lines';
 import { blockMarkdownNow, captureMarkdown, captureStableWire, captureTransaction, effectiveOrigins, isUnwritableBlock, pinnedSource, type CaptureStats, type PristineBlock } from './capture';
 import type { NotoEditorPort } from './NotoEditorPort';
 import { createOriginPlugin, getBlockOrigins, rebaseOrigins, transactionKeepsTopLevelNodes } from './origin-plugin';
@@ -446,6 +448,8 @@ export class NotoEditor implements NotoEditorPort {
       // First of the key handlers, so every one after it sees where the caret is.
       caretCatchUp(),
       createOriginPlugin(document.origins),
+      // Before the keymap, so its Backspace below extra blank lines comes first.
+      blankLinesPlugin(() => this.gapLines()),
       // A getter, not a value: the setting can change while the editor is open
       // and the rules must follow without the editor being rebuilt.
       notoInputRules({
@@ -521,6 +525,19 @@ export class NotoEditor implements NotoEditorPort {
     this.priorSplit.seedFromSpans(document.text, resolved);
 
     return doc;
+  }
+
+  /** Blank lines after each block of the accepted revision, read from its text once per revision. */
+  private gapCache: { readonly revision: string; readonly lines: readonly number[] } | null = null;
+  private gapLines(): GapLines {
+    const document = this.document;
+    if (this.gapCache?.revision !== document.revisionId) {
+      const spans = document.spans;
+      const lines = spans.map((span, ordinal) => (ordinal + 1 < spans.length ? blankLinesIn(document.text.slice(span.end, spans[ordinal + 1]!.start)) : 1));
+      this.gapCache = { revision: document.revisionId, lines };
+    }
+    const { lines } = this.gapCache!;
+    return (ordinal) => lines[ordinal] ?? 1;
   }
 
   private countTimer: ReturnType<typeof setTimeout> | null = null;
@@ -1604,6 +1621,7 @@ export class NotoEditor implements NotoEditorPort {
       document: this.document,
       pristine: this.pristine,
       envelope: this.target ?? undefined,
+      explicitGaps: explicitGaps(view.state),
     };
     if (this.topLevelStable && this.acceptedNodes.length === input.doc.childCount) {
       return captureStableWire(input, this.acceptedNodes).transaction;
@@ -1645,6 +1663,7 @@ export class NotoEditor implements NotoEditorPort {
       document: this.document,
       pristine: this.pristine,
       envelope: this.target ?? undefined,
+      explicitGaps: explicitGaps(view.state),
     });
   }
 

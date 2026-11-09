@@ -115,6 +115,8 @@ const isDocumentId = (value: unknown): value is string =>
 
 const record = (value: unknown): value is Record<string, unknown> =>
   typeof value === 'object' && value !== null && !Array.isArray(value);
+/** Blank lines a save may be asked to leave between two blocks. */
+const MAX_BLANK_LINES = 1000;
 const exact = (value: Record<string, unknown>, keys: readonly string[]) =>
   Object.keys(value).length === keys.length && Object.keys(value).every((key) => keys.includes(key));
 
@@ -189,7 +191,10 @@ function isTransaction(value: unknown): boolean {
   if (value.mode === 'blocks') return exact(value, ['version', 'mode', 'documentId', 'revisionId', 'units', 'envelope'])
     && isTargetEnvelope(value.envelope)
     && Array.isArray(value.units) && value.units.length <= MAX_TRANSACTION_UNITS
-    && value.units.every((unit) => isKeptRun(unit) || (record(unit) && exact(unit, ['origin', 'markdown'])
+    && value.units.every((unit) => isKeptRun(unit) || (record(unit)
+      && (exact(unit, ['origin', 'markdown']) || (exact(unit, ['origin', 'markdown', 'blankLinesBefore'])
+        && typeof unit.blankLinesBefore === 'number' && Number.isSafeInteger(unit.blankLinesBefore)
+        && unit.blankLinesBefore >= 1 && unit.blankLinesBefore <= MAX_BLANK_LINES))
       && (unit.origin === null || isOrigin(unit.origin))
       // Null means the block is unchanged, so it carries no text. A unit with
       // no origin has nothing to be unchanged from and must carry its markdown.

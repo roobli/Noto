@@ -195,6 +195,15 @@ export interface NotoUnit {
    * unchanged from.
    */
   readonly markdown: string | null;
+  /**
+   * How many blank lines to leave between the previous unit and this one, when
+   * the reader made it so: empty lines typed between two blocks, or extra
+   * blank lines taken away. Absent, the gap is what it was when both
+   * neighbours were next to each other in the accepted file, and one blank
+   * line otherwise. Markdown reads any number of blank lines as one break, so
+   * this changes the file's spacing and nothing it means.
+   */
+  readonly blankLinesBefore?: number;
 }
 
 /**

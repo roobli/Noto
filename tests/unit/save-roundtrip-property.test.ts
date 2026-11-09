@@ -396,10 +396,12 @@ describe('save edge cases found by the property test', () => {
     const v = view(h);
     const at = blockStart(v.state.doc, 1);
     v.dispatch(v.state.tr.delete(at + 1, at + 1 + 'One.'.length));
-    expect(save(h)).toBe('# T\n\nTwo.\n');
+    // The emptied paragraph is an empty line on screen, and is saved as one:
+    // a blank line more between the heading and the next paragraph.
+    expect(save(h)).toBe('# T\n\n\nTwo.\n');
     // The next save still pairs the remaining blocks with their own bytes.
     insertAtBlockStart(h, 2, 'Still ');
-    expect(save(h)).toBe('# T\n\nStill Two.\n');
+    expect(save(h)).toBe('# T\n\n\nStill Two.\n');
     expectSavedMatchesEditor(h, 'emptied paragraph');
   });
 
@@ -949,11 +951,11 @@ describe('two lists the editor leaves adjacent', () => {
   it('an emptied paragraph between two bullet lists keeps them separate on reopen', () => {
     const h = openTracked('- a\n\nx\n\n- b\n');
     emptyBlock(h, 1);
-    expect(save(h)).toBe('- a\n\n* b\n');
+    expect(save(h)).toBe('- a\n\n\n* b\n');
     expect(fullDoc(h.saved).childCount).toBe(2);
     // The next save reuses what was written rather than flipping it back.
     insertAtBlockStart(h, 0, 'z');
-    expect(save(h)).toBe('- za\n\n* b\n');
+    expect(save(h)).toBe('- za\n\n\n* b\n');
   });
 
   it('a deleted paragraph between two ordered lists keeps them separate on reopen', () => {
@@ -967,7 +969,7 @@ describe('two lists the editor leaves adjacent', () => {
     const h = openTracked('- a\n\nx\n\n- b\n\ny\n\n- c\n');
     emptyBlock(h, 3);
     emptyBlock(h, 1);
-    expect(save(h)).toBe('- a\n\n* b\n\n- c\n');
+    expect(save(h)).toBe('- a\n\n\n* b\n\n\n- c\n');
     expect(fullDoc(h.saved).childCount).toBe(3);
   });
 
@@ -975,7 +977,7 @@ describe('two lists the editor leaves adjacent', () => {
     const h = openTracked('- a\n\nx\n\n1. b\n\ny\n\n* c\n');
     emptyBlock(h, 3);
     emptyBlock(h, 1);
-    expect(save(h)).toBe('- a\n\n1. b\n\n* c\n');
+    expect(save(h)).toBe('- a\n\n\n1. b\n\n\n* c\n');
   });
 });
 
@@ -1247,5 +1249,67 @@ describe('revert to committed', () => {
       expectSavedMatchesEditor(h, `seed ${seed} after undo`);
       expect(fullDoc(h.saved).eq(fullDoc(working)), `seed ${seed} after undo`).toBe(true);
     }
+  });
+});
+
+describe('the reader\'s blank lines between blocks', () => {
+  // Empty lines typed between two blocks were dropped on save, and a file's
+  // extra blank lines could only be taken away in source mode.
+  const splitAtEnd = (h: Harness, index: number) => {
+    const v = view(h);
+    const end = blockStart(v.state.doc, index) + v.state.doc.child(index).nodeSize - 1;
+    v.dispatch(v.state.tr.setSelection(TextSelection.create(v.state.doc, end)));
+    v.dispatch(v.state.tr.split(v.state.selection.from));
+  };
+  const backspaceAtStart = (h: Harness, index: number) => {
+    const v = view(h);
+    v.dispatch(v.state.tr.setSelection(TextSelection.create(v.state.doc, blockStart(v.state.doc, index) + 1)));
+    const event = new KeyboardEvent('keydown', { key: 'Backspace' });
+    return v.someProp('handleKeyDown', (handle) => handle(v, event)) ?? false;
+  };
+
+  it('saves empty lines typed between two blocks as that many blank lines', () => {
+    const h = openTracked('one\n\ntwo\n');
+    splitAtEnd(h, 0);
+    splitAtEnd(h, 0);
+    expect(save(h)).toBe('one\n\n\n\ntwo\n');
+    // And the next save, with the empty lines still on screen, writes the same.
+    insertAtBlockStart(h, 3, 'still ');
+    expect(save(h)).toBe('one\n\n\n\nstill two\n');
+  });
+
+  it('keeps a file\'s extra blank lines while that gap is left alone, and draws their room', () => {
+    const h = openTracked('one\n\n\n\ntwo\n\nthree\n');
+    expect(view(h).dom.querySelectorAll('.noto-blank-lines')).toHaveLength(1);
+    expect((view(h).dom.querySelector('.noto-blank-lines') as HTMLElement).dataset.lines).toBe('2');
+    insertAtBlockStart(h, 1, 'X');
+    expect(save(h)).toBe('one\n\n\n\nXtwo\n\nthree\n');
+  });
+
+  it('adds an empty line to the blank lines a file already had', () => {
+    const h = openTracked('one\n\n\n\ntwo\n');
+    splitAtEnd(h, 0);
+    expect(save(h)).toBe('one\n\n\n\n\ntwo\n');
+  });
+
+  it('takes one blank line away with Backspace at the start of the block below them', () => {
+    const h = openTracked('one\n\n\n\ntwo\n');
+    expect(backspaceAtStart(h, 1)).toBe(true);
+    expect(save(h)).toBe('one\n\n\ntwo\n');
+  });
+
+  it('takes the last extra one away too, and leaves an ordinary break', () => {
+    const h = openTracked('one\n\n\ntwo\n');
+    expect(backspaceAtStart(h, 1)).toBe(true);
+    expect(save(h)).toBe('one\n\ntwo\n');
+    // With no extra blank line left, Backspace joins the blocks as it always did.
+    backspaceAtStart(h, 1);
+    expect(save(h)).toBe('onetwo\n');
+  });
+
+  it('leaves blank lines at the start and the end of the note as they were', () => {
+    const h = openTracked('\n\none\n\ntwo\n\n\n');
+    insertAtBlockStart(h, 0, 'X');
+    expect(save(h)).toBe('\n\nXone\n\ntwo\n\n\n');
   });
 });
