@@ -87,3 +87,37 @@ describe('saving dollars that were typed as text', () => {
     expect(blockToMarkdown(block)).toBe('so $x+1$ costs $5');
   });
 });
+
+describe('a formula the editor holds that one dollar cannot write', () => {
+  // Review finding: Inline Math on a selection ending in a space, or a digit
+  // typed after a formula, saved as $x $ or $x$5 and reopened as text.
+  const math = (value: string) => notoSchema.nodes.math_inline.create(null, value ? notoSchema.text(value) : undefined);
+  const paragraph = (...kids: ProseNode[]) => notoSchema.nodes.paragraph.create(null, kids);
+  const roundTrip = (node: ProseNode) => {
+    const written = blockToMarkdown(node);
+    return { written, read: viaMicromark(written), engine: viaEngine(written) };
+  };
+
+  it('is written with two dollars, and reads back as the same formula', () => {
+    expect(roundTrip(paragraph(math('one ')))).toEqual({ written: '$$one $$', read: '[one ]', engine: '[one ]' });
+    expect(roundTrip(paragraph(math(' two')))).toEqual({ written: '$$ two$$', read: '[ two]', engine: '[ two]' });
+    expect(roundTrip(paragraph(math('x'), notoSchema.text('5 apples')))).toEqual({ written: '$$x$$5 apples', read: '[x]5 apples', engine: '[x]5 apples' });
+    const both = roundTrip(paragraph(math(' y ')));
+    expect(both.read).toBe('[ y ]');
+    expect(both.engine).toBe('[ y ]');
+  });
+
+  it('keeps one dollar where one reads back', () => {
+    expect(blockToMarkdown(paragraph(math('x'), notoSchema.text(' then')))).toBe('$x$ then');
+  });
+});
+
+describe('dropping needless escapes stays cheap and consistent', () => {
+  it('saves a long line of prices without backslashes in one pass', () => {
+    const prices = Array.from({ length: 120 }, (_, index) => `$${index + 1},000`).join(' and ');
+    const block = notoSchema.nodes.paragraph.create(null, notoSchema.text(prices));
+    const started = performance.now();
+    expect(blockToMarkdown(block)).toBe(prices);
+    expect(performance.now() - started).toBeLessThan(200);
+  });
+});

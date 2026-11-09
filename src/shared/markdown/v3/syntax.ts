@@ -1028,9 +1028,16 @@ function withoutNeedlessDollarEscapes(markdown: string): string {
   if (!markdown.includes('\\$')) return markdown;
   const shape = (text: string) => JSON.stringify(parseMarkdown(text), (key, value) => (key === 'position' ? undefined : value));
   const meant = shape(markdown);
+  // Most often every escape can go (a line or a table of prices): one parse says so.
+  const bare = markdown.replace(/\\\$/g, '$');
+  if (shape(bare) === meant) return bare;
+  // Otherwise one at a time; a block with more than the budget keeps them all,
+  // so the same text always saves the same way.
+  const escapes = markdown.split('\\$').length - 1;
+  if (escapes > DOLLAR_ESCAPES_TRIED) return markdown;
   let out = markdown;
   let from = 0;
-  for (let tried = 0; tried < DOLLAR_ESCAPES_TRIED; tried += 1) {
+  for (;;) {
     const at = out.indexOf('\\$', from);
     if (at < 0) break;
     const candidate = out.slice(0, at) + out.slice(at + 1);
