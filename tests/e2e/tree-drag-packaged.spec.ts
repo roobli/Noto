@@ -237,7 +237,8 @@ test.describe('dragging in the tree', () => {
       // Right-click one of them: the menu is for both.
       await row('a.md').click({ button: 'right' });
       await expect.poll(() => app.evaluate(() => (globalThis as { shownMenus?: Electron.Menu[] }).shownMenus!.at(-1)?.items.map((item) => item.label) ?? []))
-        .toEqual(['Move 2 Items to…', 'Copy Paths', '', 'Move 2 Items to Trash']);
+        .toEqual(['Move 2 Items to…', 'Copy Paths', '',
+          `Move 2 Items to ${process.platform === 'darwin' ? 'Trash' : process.platform === 'win32' ? 'Recycle Bin' : 'Rubbish Bin'}`]);
       await shoot(app, `${process.env.NOTO_DRAG_THEME ?? 'light'}-chosen.png`);
 
       // Dragging one of them carries both.

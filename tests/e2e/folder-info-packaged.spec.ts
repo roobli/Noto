@@ -186,7 +186,9 @@ test.describe('a folder\'s info', () => {
       // The open folder's own row has Get Info too, for the whole of it, and nothing that would remove it.
       await page.getByTestId('tree-vault').click({ button: 'right' });
       await expect.poll(() => app.evaluate(() => (globalThis as { shownMenus?: Electron.Menu[] }).shownMenus!.at(-1)?.items.map((item) => item.label) ?? []))
-        .toEqual(['New Note Here', 'New Folder Here', 'Get Info', '', 'Reveal in Finder', 'Copy Path']);
+        .toEqual(['New Note Here', 'New Folder Here', 'Get Info', '',
+          process.platform === 'darwin' ? 'Reveal in Finder' : process.platform === 'win32' ? 'Reveal in File Explorer' : 'Reveal in File Manager',
+          'Copy Path']);
       await app.evaluate(() => {
         const menu = (globalThis as { shownMenus?: Electron.Menu[] }).shownMenus!.at(-1)!;
         menu.items.find((item) => item.id === 'tree-info')!.click();
