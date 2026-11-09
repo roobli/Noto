@@ -43,16 +43,20 @@ jobs:
 
   # The packaged suite is the only thing that proves the app actually runs, and
   # it has to prove it on every platform Noto ships to.
+  #
+  # In two shards per system, which start without waiting for `check`: a
+  # whole run is about eight minutes on Windows and eleven on macOS, so each
+  # half finishes in about five. `check` is still the required status, so a
+  # change that fails it cannot merge whatever the shards say.
   e2e:
-    name: Packaged e2e (${{ matrix.os }})
-    needs: check
+    name: Packaged e2e (${{ matrix.os }}, ${{ matrix.shard }}/2)
     runs-on: ${{ matrix.os }}
-    # A full run takes about thirty minutes on the slowest system; a hung app
-    # should fail the job, not hold a runner for six hours.
-    timeout-minutes: 60
+    # A hung app should fail the job, not hold a runner for six hours.
+    timeout-minutes: 30
     strategy:
       fail-fast: false
       matrix:
+        shard: [1, 2]
         # 24.04, not ubuntu-latest: the installers job is pinned for the same
         # reason, and a moving runner image makes an e2e-only failure
         # impossible to attribute to the change under test. macos-15, not
@@ -89,7 +93,7 @@ jobs:
           sudo apt-get update
           sudo apt-get install -y xvfb libnss3 libatk1.0-0 libatk-bridge2.0-0 libgtk-3-0 libgbm1 libasound2t64
           pnpm package:e2e
-          xvfb-run --auto-servernum pnpm exec playwright test
+          xvfb-run --auto-servernum pnpm exec playwright test --shard=${{ matrix.shard }}/2
 
       # Bash on Windows too, so a package that fails stops the step. Under
       # PowerShell the suite ran on regardless, and 308 tests failed against an
@@ -99,7 +103,7 @@ jobs:
         shell: bash
         run: |
           pnpm package:e2e
-          pnpm exec playwright test
+          pnpm exec playwright test --shard=${{ matrix.shard }}/2
 
       # Checks what was decided at package time rather than at run time: the
       # fuses, what went into the asar, and the platform's own metadata. The
@@ -116,7 +120,7 @@ jobs:
         if: failure()
         uses: actions/upload-artifact@v4
         with:
-          name: playwright-${{ matrix.os }}
+          name: playwright-${{ matrix.os }}-${{ matrix.shard }}
           path: test-results
           retention-days: 7
 
