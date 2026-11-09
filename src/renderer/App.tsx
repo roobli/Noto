@@ -849,6 +849,8 @@ function NotoWorkspace({ platform }: { platform: NotoPlatform }) {
    * so the stepping commands mean the same search after it has been closed.
    */
   const findOptionsRef = useRef({ caseSensitive: false, wholeWord: false, regex: false });
+  /** The last query the find bar ran, for Find Next and Previous with the bar closed. */
+  const lastQueryRef = useRef('');
   const cleanStateRef = useRef<'Opened' | 'Saved'>('Opened');
   const dirtyDocumentIds = useMemo(
     () => new Set([...docs.values()].filter((doc) => doc.dirty).map((doc) => doc.document.documentId)),
@@ -2937,7 +2939,7 @@ function NotoWorkspace({ platform }: { platform: NotoPlatform }) {
          * query is run first. That is also what makes this work after the bar
          * has been closed: closing it clears the highlights but not the query.
          */
-        const query = findRef.current.query ?? '';
+        const query = lastQueryRef.current || (findRef.current.query ?? '');
         if (query.length === 0) {
           setFind((current) => ({ ...current, open: true }));
           break;
@@ -3384,7 +3386,11 @@ function NotoWorkspace({ platform }: { platform: NotoPlatform }) {
             onSearch={(options) => {
               const { query, ...rest } = options;
               findOptionsRef.current = rest;
-              setFind((current) => (current.query === query ? current : { ...current, query }));
+              // Kept aside for Find Next with the bar closed. Not written back
+              // into the bar's own query: echoed as its initial query, a search
+              // that landed after the next keystroke put the bar back to what it
+              // said before, and the last letter typed was lost.
+              lastQueryRef.current = query;
               return editorRef.current?.search(options) ?? { matches: 0, active: -1 };
             }}
             onGo={(direction) => editorRef.current?.goToMatch(direction) ?? { matches: 0, active: -1 }}

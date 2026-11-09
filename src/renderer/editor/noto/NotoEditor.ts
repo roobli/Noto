@@ -1123,6 +1123,7 @@ export class NotoEditor implements NotoEditorPort {
     this.enrichEverywhere();
     view.dispatch(setSearch(view.state.tr, { options }));
     const state = getSearchState(view.state);
+    this.revealActiveMatch();
     return { matches: state.matches.length, active: state.active };
   }
 
@@ -1133,7 +1134,38 @@ export class NotoEditor implements NotoEditorPort {
     view.dispatch(goToMatch(view.state.tr, direction));
     view.dispatch(selectActiveMatch(view.state, view.state.tr));
     const state = getSearchState(view.state);
+    this.revealActiveMatch();
     return { matches: state.matches.length, active: state.active };
+  }
+
+  /**
+   * Scroll the page to the current match.
+   *
+   * The find bar keeps the keys, so the document's selection is not where the
+   * browser's is, and ProseMirror scrolls to a selection only when the
+   * browser's selection is inside the editor: Enter, Next and Previous moved
+   * the count and left the page where it was. The match is put a third of the
+   * way down the page, and put there again a frame later, once a part of a
+   * long note that was only a stand-in has been drawn.
+   */
+  private revealActiveMatch(): void {
+    const view = this.view;
+    if (!view) return;
+    const reveal = () => {
+      const state = getSearchState(view.state);
+      const match = state.matches[state.active];
+      if (!match) return;
+      const scroller = view.dom.closest<HTMLElement>('.canvas-scroll') ?? view.dom.parentElement;
+      if (!scroller) return;
+      let coords: { top: number; bottom: number };
+      try { coords = view.coordsAtPos(match.from); } catch { return; }
+      const box = scroller.getBoundingClientRect();
+      const margin = Math.min(80, box.height / 6);
+      if (coords.top >= box.top + margin && coords.bottom <= box.bottom - margin) return;
+      scroller.scrollTop += coords.top - (box.top + box.height / 3);
+    };
+    reveal();
+    requestAnimationFrame(() => requestAnimationFrame(reveal));
   }
 
   /** Replace the current match, or every match. Returns how many changed. */
