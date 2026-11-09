@@ -8,7 +8,7 @@
  */
 
 import path from 'node:path';
-import { mkdir, readFile, rename, writeFile } from 'node:fs/promises';
+import { mkdir, readFile, rename, stat, writeFile } from 'node:fs/promises';
 import type { RecentFileV1 } from '../../shared/workspace/v1/contracts';
 
 const MAX_RECENT = 20;
@@ -18,6 +18,26 @@ function isRecentFile(value: unknown): value is RecentFileV1 {
     && typeof (value as RecentFileV1).path === 'string'
     && typeof (value as RecentFileV1).name === 'string'
     && Number.isSafeInteger((value as RecentFileV1).openedAt);
+}
+
+/**
+ * The note to bring back with a folder at launch: the newest recent note
+ * inside `folder` that is still a file. A note opened from elsewhere does
+ * not count, and one deleted since is passed over rather than reported.
+ */
+export async function lastNoteInside(entries: readonly RecentFileV1[], folder: string): Promise<string | null> {
+  const root = path.resolve(folder);
+  for (const entry of [...entries].sort((a, b) => b.openedAt - a.openedAt)) {
+    const relative = path.relative(root, path.resolve(entry.path));
+    if (!relative || relative === '..' || relative.startsWith(`..${path.sep}`) || path.isAbsolute(relative)) continue;
+    if (!/\.(md|markdown)$/i.test(entry.path)) continue;
+    try {
+      if ((await stat(entry.path)).isFile()) return entry.path;
+    } catch {
+      // Moved or deleted since; the next one may still be there.
+    }
+  }
+  return null;
 }
 
 export class RecentFiles {

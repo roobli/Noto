@@ -45,7 +45,7 @@ import {
   resolveEditorChromeTone,
   syncEditorTitleBarOverlay,
 } from './windows/editor-window-chrome';
-import { RecentFiles } from './workspace/recent-files';
+import { lastNoteInside, RecentFiles } from './workspace/recent-files';
 import { SettingsStore } from './workspace/settings-store';
 import { registerSettingsHandlers } from './workspace/register-settings-handlers';
 import { WorkspaceSession, MAX_TABS } from './workspace/session';
@@ -1027,14 +1027,20 @@ async function run(): Promise<void> {
     });
   } else {
     /*
-     * Nothing named, so the folder from last time comes back.
+     * Nothing named, so the folder from last time comes back, and the note
+     * that was in front of it.
      *
      * Launching from the dock gave an empty window and an invitation to open a
-     * folder, to somebody who has opened the same one every day. The folder
-     * only: which note was in front is not restored, because reopening a
-     * document is a change to it as far as the recovery journal is concerned
-     * and starting a session by touching a file nobody asked for is not worth
-     * the convenience.
+     * folder, to somebody who has opened the same one every day, and then a
+     * blank page in it (daily-use audit, finding 9). Typora puts you back in
+     * the note you left. Opening a note only reads it and its recovery
+     * journal; a journal that holds unsaved work is shown as it would be on
+     * any open, which is the moment the reader most needs to see it. The
+     * note is the newest recent one inside the folder and still on disk,
+     * so a note opened from elsewhere does not pull its folder along.
+     *
+     * Not recorded as a read in the vault's memory: main opens it here, not
+     * the reader, and only the reader's opens reach the read record.
      *
      * Not marked as chosen, because the reader is not choosing it now. That
      * leaves the rail obeying its own setting instead of springing open.
@@ -1053,6 +1059,12 @@ async function run(): Promise<void> {
         if (!last) return;
         await session?.openFolderPath(last.path, false)
           .catch(() => logger.log('workspace_restore_folder_failed', {}));
+        await recent.load();
+        const note = await lastNoteInside(recent.list(), last.path);
+        if (note) {
+          await session?.openPath(note).then(refreshMenu)
+            .catch(() => logger.log('workspace_restore_note_failed', {}));
+        }
       })();
     });
   }

@@ -26,6 +26,8 @@ import type {
   WorkspaceCodeViewV1,
 } from '../shared/workspace/v1/contracts';
 import { QuickOpen, type QuickOpenMode } from './QuickOpen';
+import { FolderEmptyState } from './FolderEmptyState';
+import { useReadingAnchors } from './use-reading-anchors';
 import { searchBoost, type FrecencyStoreV1 } from '../shared/search/v1/frecency';
 import { ConfirmedOpenRecorder } from '../shared/search/v1/confirmed-open';
 import type { NotoDocumentWire } from '../shared/markdown/v3/contracts';
@@ -1422,6 +1424,17 @@ function NotoWorkspace({ platform }: { platform: NotoPlatform }) {
     }
   }, [activeId, docs, active]);
 
+  /* Each note keeps its place in the shared page (daily-use audit, finding 7). */
+  useReadingAnchors({
+    canvasId: 'document-canvas',
+    activeId,
+    activePath: active?.opened.path ?? null,
+    editors: editorsRef,
+    editorsReady,
+    paused: sourceMode || codeView !== null,
+    jumping: () => pendingMatchRef.current !== null,
+  });
+
   const activateTab = useCallback((filePath: string) => {
     void window.notoWorkspace.activateTab({ version: 1, requestId: rid('tab-activate'), path: filePath });
   }, []);
@@ -2011,6 +2024,9 @@ function NotoWorkspace({ platform }: { platform: NotoPlatform }) {
     }
   }, []);
   ensureFileIndexRef.current = ensureFileIndex;
+  /* The empty page of an open folder offers its index note, which it finds in the index. */
+  const showsFolderEmpty = folder.root !== null && active === null && codeView === null;
+  useEffect(() => { if (showsFolderEmpty) void ensureFileIndex(); }, [showsFolderEmpty, folder.root, ensureFileIndex]);
 
   /**
    * Resolve a `[[wiki link]]` against the index.
@@ -3461,6 +3477,18 @@ function NotoWorkspace({ platform }: { platform: NotoPlatform }) {
             ? null
             : state === 'Opening'
               ? <div className="opening-state">Starting…</div>
+              : folder.root !== null
+                ? <FolderEmptyState
+                    name={folder.name ?? folder.root}
+                    root={folder.root}
+                    recent={recent}
+                    entries={fileIndex.entries}
+                    onOpen={(filePath) => void openPath(filePath, null, { caret: true })}
+                    onNewNote={() => void window.notoWorkspace.newFile({ version: 1, requestId: rid('new-file') })}
+                    onQuickOpen={() => { void ensureFileIndex(); setQuickOpen({ open: true, mode: 'files' }); }}
+                    quickOpenKey={platform === 'darwin' ? '⌘P' : 'Ctrl+P'}
+                    newNoteKey={platform === 'darwin' ? '⌘N' : 'Ctrl+N'}
+                  />
               : <section className="empty-state" data-testid="empty-state">
                   <p className="empty-lead">Open a folder or a file.</p>
                   <div className="empty-actions">

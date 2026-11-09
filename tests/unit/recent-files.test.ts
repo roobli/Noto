@@ -11,7 +11,7 @@ import { mkdtemp, readFile, rm } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import path from 'node:path';
 import { afterEach, describe, expect, it } from 'vitest';
-import { RecentFiles } from '../../src/main/workspace/recent-files';
+import { lastNoteInside, RecentFiles } from '../../src/main/workspace/recent-files';
 
 describe('RecentFiles', () => {
   let directory: string;
@@ -76,5 +76,31 @@ describe('RecentFiles', () => {
     expect(reopened.list().map((entry) => entry.path)).toEqual(['/notes/b.md', '/notes/a.md']);
     const onDisk = JSON.parse(await readFile(path.join(directory, 'recent-files.json'), 'utf8')) as { path: string }[];
     expect(onDisk.map((entry) => entry.path)).toEqual(['/notes/b.md', '/notes/a.md']);
+  });
+});
+
+describe('the note to reopen with a folder', () => {
+  // Daily-use audit finding 9: launching put the folder back and no note.
+  it('is the newest recent note inside the folder that is still there', async () => {
+    const root = await mkdtemp(path.join(tmpdir(), 'noto-last-note-'));
+    try {
+      const { mkdir, writeFile } = await import('node:fs/promises');
+      await mkdir(path.join(root, 'vault', '..drafts'), { recursive: true });
+      const inside = path.join(root, 'vault', 'a.md');
+      const dotted = path.join(root, 'vault', '..drafts', 'b.md');
+      const outside = path.join(root, 'elsewhere.md');
+      const gone = path.join(root, 'vault', 'gone.md');
+      await writeFile(inside, '# a\n');
+      await writeFile(dotted, '# b\n');
+      await writeFile(outside, '# c\n');
+      const entry = (file: string, openedAt: number) => ({ path: file, name: path.basename(file), openedAt });
+      const vault = path.join(root, 'vault');
+      expect(await lastNoteInside([entry(outside, 9), entry(gone, 8), entry(inside, 7)], vault)).toBe(inside);
+      expect(await lastNoteInside([entry(inside, 1), entry(dotted, 2)], vault)).toBe(dotted);
+      expect(await lastNoteInside([entry(outside, 3)], vault)).toBeNull();
+      expect(await lastNoteInside([entry(path.join(vault, 'pic.png'), 3)], vault)).toBeNull();
+    } finally {
+      await rm(root, { recursive: true, force: true });
+    }
   });
 });

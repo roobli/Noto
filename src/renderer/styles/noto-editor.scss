@@ -1076,6 +1076,31 @@
   letter-spacing: 0.01em;
 }
 
+/* The open folder's name on its empty page: where you are, set like the
+   note title it stands in for, a step down so the actions still lead. */
+.empty-state .empty-folder-name {
+  margin: 0;
+  color: var(--ink);
+  font-size: 17px;
+  font-weight: 600;
+  letter-spacing: 0;
+  overflow-wrap: anywhere;
+}
+
+.empty-state .empty-actions kbd {
+  margin-left: 6px;
+  font: inherit;
+  font-size: 11px;
+  font-variant-numeric: tabular-nums;
+  opacity: 0.6;
+}
+
+.empty-state .recent-where {
+  margin-left: 8px;
+  color: color-mix(in srgb, var(--muted) 72%, var(--paper));
+  font-size: 11px;
+}
+
 .empty-state .empty-error {
   margin: 0;
   color: var(--danger);
