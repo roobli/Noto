@@ -1,5 +1,5 @@
 {
-  "lockfileSha256": "639be663064a8952ee0b4db9e9cfd46d218a3bc5b6d9b7948cd621040d4b8c27",
+  "lockfileSha256": "34a5bb7b50f51786c97f3fc69f26c7ddaf188a68096258b315274deb846c209d",
   "packages": [
     {
       "name": "@antfu/install-pkg",
@@ -649,6 +649,15 @@
       "version": "0.1.24",
       "license": "MIT",
       "repository": "git+https://github.com/roobli/md.git",
+      "noticeFiles": [
+        "LICENSE"
+      ]
+    },
+    {
+      "name": "@roobli/vault",
+      "version": "0.1.0",
+      "license": "AGPL-3.0-only",
+      "repository": "git+https://github.com/roobli/vault.git",
       "noticeFiles": [
         "LICENSE"
       ]
