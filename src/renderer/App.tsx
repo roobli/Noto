@@ -655,10 +655,14 @@ function NotoWorkspace({ platform }: { platform: NotoPlatform }) {
     open: boolean;
     view: TagBrowserView;
     tags: readonly WorkspaceTagSummaryV1[];
-    notes: readonly WorkspaceTagNoteV1[];
     loading: boolean;
     truncated: boolean;
-  }>({ open: false, view: { kind: 'tags' }, tags: [], notes: [], loading: false, truncated: false });
+  }>({ open: false, view: { kind: 'tags' }, tags: [], loading: false, truncated: false });
+  /** The notes that carry a tag, for the tag browser's right pane. */
+  const loadTagNotes = useCallback(async (tag: string): Promise<readonly WorkspaceTagNoteV1[]> => {
+    const reply = await window.notoWorkspace.notesByTag({ version: 1, requestId: rid('notes-by-tag'), tag });
+    return reply.ok ? reply.value.notes : [];
+  }, []);
   const [noteTags, setNoteTags] = useState<string[]>([]);
 
   const [recentFolders, setRecentFolders] = useState<readonly RecentFileV1[]>([]);
@@ -2169,40 +2173,14 @@ function NotoWorkspace({ platform }: { platform: NotoPlatform }) {
     if (!settings.fileTags) return;
     setPrefs((current) => ({ ...current, open: false }));
     setQuickOpen((current) => ({ ...current, open: false }));
+    setTagBrowser((current) => ({ ...current, open: true, view: tag ? { kind: 'notes', tag } : { kind: 'tags' }, loading: true }));
+    const index = await window.notoWorkspace.tagIndex({ version: 1, requestId: rid('tag-index') });
     setTagBrowser((current) => ({
       ...current,
-      open: true,
-      view: tag ? { kind: 'notes', tag } : { kind: 'tags' },
-      loading: true,
-      notes: tag ? current.notes : [],
-    }));
-    const index = await window.notoWorkspace.tagIndex({ version: 1, requestId: rid('tag-index') });
-    if (!index.ok) {
-      setTagBrowser((current) => ({ ...current, loading: false, tags: [], truncated: false }));
-      return;
-    }
-    if (tag) {
-      const notes = await window.notoWorkspace.notesByTag({
-        version: 1, requestId: rid('notes-by-tag'), tag,
-      });
-      setTagBrowser({
-        open: true,
-        view: { kind: 'notes', tag: notes.ok ? notes.value.tag : tag },
-        tags: index.value.tags,
-        notes: notes.ok ? notes.value.notes : [],
-        loading: false,
-        truncated: index.value.truncated,
-      });
-      return;
-    }
-    setTagBrowser({
-      open: true,
-      view: { kind: 'tags' },
-      tags: index.value.tags,
-      notes: [],
+      tags: index.ok ? index.value.tags : [],
+      truncated: index.ok ? index.value.truncated : false,
       loading: false,
-      truncated: index.value.truncated,
-    });
+    }));
   }, [settings.fileTags]);
 
   const noteLinks = useCallback(async (target: string) => {
@@ -3637,15 +3615,13 @@ function NotoWorkspace({ platform }: { platform: NotoPlatform }) {
         open={tagBrowser.open}
         view={tagBrowser.view}
         tags={tagBrowser.tags}
-        notes={tagBrowser.notes}
         loading={tagBrowser.loading}
         truncated={tagBrowser.truncated}
-        onOpenTag={(tag) => { void openTagBrowser(tag); }}
+        loadNotes={loadTagNotes}
         onOpenNote={(path) => {
           setTagBrowser((current) => ({ ...current, open: false }));
-          void openPath(path);
+          void openPath(path, null, { caret: true });
         }}
-        onBack={() => { void openTagBrowser(); }}
         onClose={() => {
           setTagBrowser((current) => ({ ...current, open: false }));
           editorRef.current?.focus();

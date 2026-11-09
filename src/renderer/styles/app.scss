@@ -2835,7 +2835,7 @@ section.plugin-group > .plugin-market-row.is-set-aside {
   .vault-menu-list, .guide-scrim, .settings-page, .settings-shell, .command-palette,
   .command-palette-scrim, .quick-scrim, .quick-open, .table-dialog-scrim,
   .table-dialog, .reload-confirm-scrim, .reload-confirm, .shortcuts,
-  .noto-git-popover
+  .noto-git-popover, .tag-browser-scrim, .tag-browser
 ) {
   animation: none;
 }
@@ -3924,49 +3924,42 @@ section.plugin-group > .plugin-market-row.is-set-aside {
   &:active { background: color-mix(in srgb, var(--accent) 14%, transparent); }
 }
 
+/* Browse Tags: the sheet Quick Open is, two panes of it. It was drawn on
+   --surface and ruled with --rule, neither of which the theme defines, so the
+   page showed through its rows; it sits on --overlay with hairlines now. */
 .tag-browser-scrim {
+  animation: noto-fade var(--motion-micro) var(--ease-out);
   position: fixed;
   inset: 0;
-  z-index: 40;
-  display: flex;
-  align-items: flex-start;
-  justify-content: center;
-  padding: 12vh 16px 16px;
-  background: color-mix(in srgb, var(--ink) 18%, transparent);
+  z-index: 70;
+  background: var(--scrim);
 }
 
 .tag-browser {
-  width: min(560px, calc(100vw - 32px));
-  max-height: min(70vh, 640px);
+  animation: noto-arrive var(--motion-default) var(--ease-out);
+  --quick-gutter: clamp(24px, 6vw, 96px);
+  position: absolute;
+  top: clamp(40px, 11vh, 128px);
+  left: 50%;
+  translate: -50% 0;
   display: flex;
   flex-direction: column;
-  background: var(--surface);
+  width: min(860px, calc(100vw - 2 * var(--quick-gutter)));
+  height: min(560px, calc(100vh - clamp(40px, 11vh, 128px) - 48px));
   color: var(--ink);
-  border-radius: 12px;
-  box-shadow: 0 18px 48px color-mix(in srgb, var(--shadow) 28%, transparent);
+  border: 1px solid var(--hairline);
+  border-radius: 10px;
+  background: var(--overlay);
+  box-shadow: 0 24px 64px -16px color-mix(in srgb, var(--shadow) 42%, transparent);
   overflow: hidden;
 }
 
 .tag-browser-bar {
   display: flex;
   align-items: center;
-  gap: 8px;
-  padding: 12px 14px 8px;
-  border-bottom: 1px solid var(--rule);
+  padding: 10px 14px;
+  border-bottom: 1px solid var(--hairline);
 }
-
-.tag-browser-back {
-  appearance: none;
-  border: 0;
-  background: transparent;
-  color: var(--muted);
-  font: inherit;
-  font-size: 16px;
-  cursor: pointer;
-  padding: 4px 6px;
-}
-
-.tag-browser-back:hover { color: var(--ink); }
 
 .tag-browser-input {
   flex: 1;
@@ -3979,11 +3972,22 @@ section.plugin-group > .plugin-market-row.is-set-aside {
   font-size: 15px;
 }
 
-.tag-browser-list {
+.tag-browser-panes {
   flex: 1;
+  min-height: 0;
+  display: grid;
+  grid-template-columns: minmax(200px, 2fr) 3fr;
+}
+
+.tag-browser-list,
+.tag-browser-notes {
+  min-height: 0;
   overflow: auto;
+  overscroll-behavior: contain;
   padding: 6px;
 }
+
+.tag-browser-notes { border-left: 1px solid var(--hairline); }
 
 .tag-browser-row {
   appearance: none;
@@ -3992,37 +3996,62 @@ section.plugin-group > .plugin-market-row.is-set-aside {
   justify-content: space-between;
   gap: 12px;
   width: 100%;
+  min-height: 28px;
   border: 0;
   background: transparent;
   color: var(--ink);
   text-align: left;
   font: inherit;
-  padding: 8px 10px;
-  border-radius: 8px;
-  cursor: pointer;
+  font-size: 13px;
+  padding: 4px 10px;
+  border-radius: 5px;
+  cursor: default;
 }
 
-.tag-browser-row.is-active,
-.tag-browser-row:hover {
-  background: var(--raised);
-}
+/* The row Enter acts on, as Quick Open marks it; the tag whose notes are
+   shown keeps a quieter mark while the keys are in the notes. */
+.tag-browser-row.is-active { background: var(--surface-active); }
+.tag-browser-row.is-active.is-resting { background: color-mix(in srgb, var(--surface-active) 55%, transparent); }
 
 .tag-browser-name {
+  min-width: 0;
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
 }
 
+.tag-browser-hash { color: var(--muted); margin-right: 1px; }
+.tag-browser-hit { color: inherit; background: color-mix(in srgb, var(--accent) 22%, transparent); border-radius: 2px; }
+
 .tag-browser-count,
 .tag-browser-folder {
+  flex-shrink: 0;
+  max-width: 55%;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
   color: var(--muted);
   font-size: 12px;
-  flex-shrink: 0;
+  font-variant-numeric: tabular-nums;
 }
+
+.tag-browser-group,
+.tag-browser-notes-head {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  margin: 8px 10px 4px;
+  color: var(--muted);
+  font-size: 11px;
+  letter-spacing: 0.02em;
+}
+
+.tag-browser-notes-head strong { color: var(--ink); font-size: 13px; font-weight: 600; letter-spacing: 0; }
 
 .tag-browser-empty {
   margin: 24px 12px;
   color: var(--muted);
+  font-size: 13px;
   text-align: center;
 }
 
@@ -4031,18 +4060,24 @@ section.plugin-group > .plugin-market-row.is-set-aside {
   flex-wrap: wrap;
   gap: 12px;
   justify-content: space-between;
-  padding: 8px 14px;
-  border-top: 1px solid var(--rule);
+  padding: 7px 14px;
+  border-top: 1px solid var(--hairline);
   color: var(--muted);
   font-size: 12px;
+}
+
+/* A narrow window has room for one pane: the notes of the tag under the
+   cursor go under the list rather than beside it. */
+@media (max-width: 700px) {
+  .tag-browser-panes { grid-template-columns: 1fr; grid-template-rows: 3fr 2fr; }
+  .tag-browser-notes { border-left: 0; border-top: 1px solid var(--hairline); }
 }
 
 .tag-browser-footer kbd {
   font: inherit;
   font-size: 11px;
-  padding: 0 4px;
-  border: 1px solid var(--rule);
-  border-radius: 4px;
+  padding: 0 3px;
+  margin-right: 2px;
 }
 
 
