@@ -53,6 +53,45 @@ export function useReadingAnchors({
     if (!place || !restoreReadingAnchor(view, canvas, place)) canvas.scrollTop = 0;
   }, [activeId, activePath, editorsReady, paused]);
 
+  /*
+   * Source Code Mode draws the note as its text in the same page, so leaving
+   * it landed far from where the reader was (daily-use audit, finding 8). The
+   * place on the way in is put back on the way out, two frames on, once the
+   * rendered note is laid out again; if the caret has been moved out of that
+   * view in the meantime, the caret is brought into view instead.
+   */
+  const entry = useRef<{ readonly id: string; readonly place: ReadingAnchor } | null>(null);
+  const wasPaused = useRef(paused);
+  useLayoutEffect(() => {
+    const before = wasPaused.current;
+    wasPaused.current = paused;
+    const canvas = globalThis.document.getElementById(canvasId);
+    const id = activeId;
+    if (!canvas || id === null || before === paused) return undefined;
+    if (paused) {
+      // The place the page last had, kept by the scroll listener: by now the
+      // source text may already stand in the rendered note's stead.
+      const place = places.current.get(id) ?? null;
+      entry.current = place ? { id, place } : null;
+      return undefined;
+    }
+    const back = entry.current;
+    entry.current = null;
+    if (!back || back.id !== id) return undefined;
+    let frame = requestAnimationFrame(() => {
+      frame = requestAnimationFrame(() => {
+        const view = editors.current.get(id)?.getView();
+        if (!view) return;
+        restoreReadingAnchor(view, canvas, back.place);
+        places.current.set(id, back.place);
+        const head = view.coordsAtPos(view.state.selection.head);
+        const box = canvas.getBoundingClientRect();
+        if (head.bottom < box.top || head.top > box.bottom) view.dispatch(view.state.tr.scrollIntoView());
+      });
+    });
+    return () => cancelAnimationFrame(frame);
+  }, [paused, activeId, canvasId]);
+
   useEffect(() => {
     const canvas = globalThis.document.getElementById(canvasId);
     if (!canvas) return undefined;

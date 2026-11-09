@@ -11,7 +11,7 @@ import { mkdirSync, mkdtempSync, realpathSync, rmSync, writeFileSync } from 'nod
 import os from 'node:os';
 import path from 'node:path';
 import { expect, test, _electron as electron, type ElectronApplication, type Page } from '@playwright/test';
-import { packagedExecutable } from './packaged-app';
+import { packagedExecutable, placeCaretAtEnd } from './packaged-app';
 
 const made: string[] = [];
 test.afterAll(() => {
@@ -148,6 +148,29 @@ test("an open folder with no note in front offers its own notes", async () => {
     await expect(page.getByTestId('empty-new-note')).toBeVisible();
     await page.getByTestId('empty-index-note').click();
     await expect(page.locator('.canvas-slot:not([hidden]) .ProseMirror h1')).toHaveText('Readme');
+  } finally {
+    await app.close();
+  }
+});
+
+test('Source Code Mode there and back keeps the paragraph where it was', async () => {
+  const root = vault();
+  const userData = scratch('user-data');
+  writeFileSync(path.join(userData, 'settings.json'), JSON.stringify({}));
+  const { app, page } = await launch(userData, [`--folder=${root}`, `--open=${path.join(root, 'notes', 'alpha.md')}`]);
+  try {
+    await page.waitForSelector('[data-testid="noto-editor"]', { state: 'visible', timeout: 30_000 });
+    await scrollTo(page, 'Alpha paragraph 100.');
+    const target = page.locator('.canvas-slot:not([hidden]) .ProseMirror p', { hasText: /^Alpha paragraph 104\.$/ });
+    await placeCaretAtEnd(page, target);
+    const top = () => target.evaluate((element) => Math.round(element.getBoundingClientRect().top));
+    const before = await top();
+    const toggle = () => app.evaluate(({ Menu }) => Menu.getApplicationMenu()!.getMenuItemById('source-code-mode')!.click());
+    await toggle();
+    await expect(page.locator('.canvas-slot:not([hidden]) .ProseMirror')).toBeHidden();
+    await toggle();
+    await expect(target).toBeVisible();
+    await expect.poll(async () => Math.abs((await top()) - before)).toBeLessThan(40);
   } finally {
     await app.close();
   }
