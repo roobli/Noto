@@ -16,7 +16,7 @@ import { mkdirSync, mkdtempSync, readFileSync, realpathSync, rmSync, writeFileSy
 import os from 'node:os';
 import path from 'node:path';
 import { expect, test, _electron as electron, type ElectronApplication, type Page } from '@playwright/test';
-import { packagedExecutable } from './packaged-app';
+import { dataPath, packagedExecutable } from './packaged-app';
 
 /** Screenshots for review, when asked for: `NOTO_INFO_SHOTS=/some/dir`. */
 const SHOTS = process.env.NOTO_INFO_SHOTS ?? '';
@@ -27,7 +27,9 @@ test.afterAll(() => {
 });
 
 function scratch(name: string): string {
-  const directory = realpathSync(mkdtempSync(path.join(os.tmpdir(), `noto-e2e-${name}-`)));
+  // Native: on Windows only it spells a short name such as RUNNER~1 out in
+  // full, as the paths the app reports are.
+  const directory = realpathSync.native(mkdtempSync(path.join(os.tmpdir(), `noto-e2e-${name}-`)));
   made.push(directory);
   return directory;
 }
@@ -209,7 +211,7 @@ test.describe('the info pane', () => {
           this.items.find((item) => item.label === 'Get Info')!.click();
         };
       });
-      await page.locator(`[data-testid="tree-file"][data-path="${note}"]`).click({ button: 'right' });
+      await page.locator(`[data-testid="tree-file"]${dataPath(note)}`).click({ button: 'right' });
       await expect(pane(page)).toBeVisible();
       await expect(pane(page).getByTestId('info-tab').filter({ hasText: 'Properties' })).toHaveAttribute('aria-selected', 'true');
     } finally {

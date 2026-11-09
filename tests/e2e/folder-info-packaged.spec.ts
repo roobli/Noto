@@ -26,7 +26,9 @@ test.afterAll(() => {
 });
 
 function scratch(name: string): string {
-  const directory = realpathSync(mkdtempSync(path.join(os.tmpdir(), `noto-e2e-${name}-`)));
+  // Native: on Windows only it spells a short name such as RUNNER~1 out in
+  // full, as the paths the app reports are.
+  const directory = realpathSync.native(mkdtempSync(path.join(os.tmpdir(), `noto-e2e-${name}-`)));
   made.push(directory);
   return directory;
 }

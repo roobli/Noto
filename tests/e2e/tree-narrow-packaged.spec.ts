@@ -11,7 +11,7 @@
 import { mkdir, rm, writeFile } from 'node:fs/promises';
 import path from 'node:path';
 import { expect, test, _electron as electron, type ElectronApplication, type Page } from '@playwright/test';
-import { packagedExecutable } from './packaged-app';
+import { dataPath, packagedExecutable } from './packaged-app';
 
 const SHOTS = process.env.NOTO_TREE_SHOTS ?? '';
 
@@ -67,11 +67,11 @@ async function openDeepNote(page: Page, vault: string): Promise<void> {
   let at = vault;
   for (const folder of DEEP) {
     at = path.join(at, folder);
-    const row = page.locator(`[data-testid="tree-directory"][data-path="${at}"]`);
+    const row = page.locator(`[data-testid="tree-directory"]${dataPath(at)}`);
     await row.click();
     await expect(row).toHaveAttribute('aria-expanded', 'true');
   }
-  await page.locator(`[data-testid="tree-file"][data-path="${path.join(at, ACTIVE)}"]`).click();
+  await page.locator(`[data-testid="tree-file"]${dataPath(path.join(at, ACTIVE))}`).click();
   await expect(page.locator('.tree-file-active')).toHaveAttribute('data-path', path.join(at, ACTIVE));
 }
 
@@ -148,7 +148,7 @@ test('the trail folds the folders you are in into one row, and a part leads back
     await expect(trail).toHaveAttribute('data-on', 'true');
     await expect(trail.locator('.tree-path-part.is-last')).toHaveText('源码研读');
     // Nothing in the tree holds itself: the trail does.
-    expect(await page.locator(`[data-path="${source}"]`).evaluate((row) => getComputedStyle(row).position)).toBe('relative');
+    expect(await page.locator(dataPath(source)).evaluate((row) => getComputedStyle(row).position)).toBe('relative');
     await shot(page, 'trail');
     // One row, however deep.
     expect(await trail.evaluate((element) => element.getBoundingClientRect().height)).toBeLessThanOrEqual(32);
@@ -173,7 +173,7 @@ test('a folder made the root with Option-click: full steps, a bar back up, and E
   try {
     await openDeepNote(page, vault);
     const duckdb = path.join(vault, ...DEEP.slice(0, 4));
-    await page.locator(`[data-testid="tree-directory"][data-path="${duckdb}"]`).click({ modifiers: ['Alt'] });
+    await page.locator(`[data-testid="tree-directory"]${dataPath(duckdb)}`).click({ modifiers: ['Alt'] });
     await expect(page.locator('[data-testid="tree-focusbar"]')).toBeVisible();
     await expect(page.locator('[data-testid="tree-vault"] .tree-name')).toHaveText('Duckdb');
     // Only what is inside, two levels deep now, at the resting step.

@@ -29,7 +29,9 @@ test.afterAll(() => {
 });
 
 function scratch(name: string): string {
-  const directory = realpathSync(mkdtempSync(path.join(os.tmpdir(), `noto-e2e-${name}-`)));
+  // Native: on Windows only it spells a short name such as RUNNER~1 out in
+  // full, as the paths the app reports are.
+  const directory = realpathSync.native(mkdtempSync(path.join(os.tmpdir(), `noto-e2e-${name}-`)));
   made.push(directory);
   return directory;
 }
@@ -245,6 +247,10 @@ test.describe('agents and privacy', () => {
       const marker = () => {
         const db = new DatabaseSync(index);
         try {
+          // As the write below waits: on Windows the app's own write to the
+          // index can still hold it when this reads, and a read that does not
+          // wait fails with "database is locked".
+          db.exec('PRAGMA busy_timeout = 5000');
           return (db.prepare("SELECT value FROM meta WHERE key = 'e2e-marker'").get() as { value?: string } | undefined)?.value ?? null;
         } finally {
           db.close();
