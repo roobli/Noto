@@ -91,8 +91,12 @@ jobs:
           pnpm package:e2e
           xvfb-run --auto-servernum pnpm exec playwright test
 
+      # Bash on Windows too, so a package that fails stops the step. Under
+      # PowerShell the suite ran on regardless, and 308 tests failed against an
+      # app that had never been built, hiding the one line that said why.
       - name: Package and test (macOS and Windows)
         if: runner.os != 'Linux'
+        shell: bash
         run: |
           pnpm package:e2e
           pnpm exec playwright test
