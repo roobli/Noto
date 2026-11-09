@@ -3192,6 +3192,8 @@
 @media (prefers-reduced-motion: reduce) {
   .tree-row.is-springing { animation: none; background-image: none; }
   .tree-edge::after, .tree-drop-chip { animation: none; }
+  /* A focus on a folder slides the tree in from the side it went, and a cut name rises into view: neither moves here. */
+  .tree-body[data-way], .tree-peek { animation: none; }
 }
 
 /* The face the document is set in, from the Appearance pane. The serif is

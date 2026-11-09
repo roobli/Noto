@@ -881,6 +881,7 @@ export function Settings({
               type="search"
               value={query}
               placeholder="Search"
+              aria-label="Search settings"
               spellCheck={false}
               data-testid="pref-search"
               onChange={(event) => setQuery(event.target.value)}
