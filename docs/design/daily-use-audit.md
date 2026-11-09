@@ -38,7 +38,7 @@ Commands live in the menu bar only. The palette, the context menu and the keymap
 | 16 | Rename the open note | The title bar keeps the old name | Annoys daily | Open |
 | 17 | File tree | No keyboard model: arrows, Enter and F2 do nothing | Polish | Open |
 | 18 | Editor context menu | Clipboard items only | Polish | Open: build it from the command registry |
-| 19 | Tree, sideways swipe | Names slide under pinned icons and read garbled | Polish | Open |
+| 19 | Tree, sideways swipe | Names slide under pinned icons and read garbled | Polish | Fixed 2026-11-06: the rail no longer scrolls sideways; names are cut keeping their end and shown whole on a rest |
 | 20 | Paste HTML code | `language-*` is dropped from the fence | Polish | Open |
 | 21 | Cmd+Down in a 2.9 MB note | Stops at the end of the mounted range | Polish | Open |
 

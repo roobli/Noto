@@ -13,6 +13,7 @@
  * file.
  */
 
+import { MemoryPane } from './MemoryPane';
 import { copyThroughSelection } from './editor/noto/clipboard';
 import { useCallback, useEffect, useRef, useState, type ReactNode } from 'react';
 import {
@@ -21,6 +22,7 @@ import {
   type NotoNumericSetting,
   type NotoSettingsV1,
   type NotoTheme,
+  type TreeHeldV1,
   type WidthModeV1,
   type ProseFaceV1,
   type RemoteStatusReplyV1,
@@ -30,8 +32,9 @@ import type { UpdateStatusV1 } from '../shared/updates/v1/contracts';
 import { isComposing } from './ime';
 import { ShortcutsBoard } from './ShortcutsBoard';
 import type { PluginHotkeySource } from './shortcuts/catalog';
+import { Switch } from './PrefSwitch';
 
-export type SettingsSection = 'appearance' | 'editor' | 'markdown' | 'images' | 'updates' | 'shortcuts' | 'remote' | 'plugins';
+export type SettingsSection = 'appearance' | 'editor' | 'markdown' | 'images' | 'updates' | 'memory' | 'shortcuts' | 'remote' | 'plugins';
 
 export interface SettingsProps {
   readonly open: boolean;
@@ -75,6 +78,7 @@ function SectionGlyph({ name }: { name: SettingsSection }) {
     markdown: 'M2.5 4.5h11v7h-11z M4.5 10V6.5l2 2 2-2V10 M11 6.5V10 M9.8 8.6 11 10l1.2-1.4',
     images: 'M2.5 3.5h11v9h-11z M2.5 10.2 5.9 7.4l2.4 2 2-1.7 3.2 2.7 M10.4 5.9h.01',
     updates: 'M8 2.5v6.2 M5.2 6.5 8 9.3l2.8-2.8 M3 11.5h10v2H3z',
+    memory: 'M3.2 6a2.8 2.8 0 1 0 5.6 0 2.8 2.8 0 1 0-5.6 0 M8 8l5.5 5.5 M11 11l1.4-1.4 M12.7 12.7l1.2-1.2',
     remote: 'M2.5 4.5h11v7h-11z M5.5 13.5h5 M8 11.5v2',
     plugins: 'M6 2.5v2.2a1.3 1.3 0 1 1-2.6 0V2.5 M2.5 6h11v7.5h-11z M2.5 6V3.4h1',
     shortcuts: 'M2 4.5h12v7H2z M4.3 6.8h.01 M6.4 6.8h.01 M8.5 6.8h.01 M10.6 6.8h.01 M5 9.3h6',
@@ -93,6 +97,7 @@ const SECTIONS: readonly { value: SettingsSection; label: string; keywords: stri
   { value: 'markdown', label: 'Markdown', keywords: 'smart quotes dashes ellipsis punctuation typography syntax' },
   { value: 'images', label: 'Images', keywords: 'image picture paste drop screenshot assets folder copy relative path escape url upload picgo bucket web remote iframe embed page video' },
   { value: 'updates', label: 'Updates', keywords: 'update upgrade release version github alpha stable testing channel download auto check launch' },
+  { value: 'memory', label: 'Memory', keywords: 'memory vault agent agents key keys mcp claude code codex access read private sealed privacy revoke index rebuild record history visits trash turn off' },
   { value: 'shortcuts', label: 'Shortcuts', keywords: 'shortcut shortcuts keyboard key keys hotkey chord accelerator binding command menu disable conflict', buried: true },
   { value: 'remote', label: 'Remote', keywords: 'remote control api token port script agent automation', buried: true },
   { value: 'plugins', label: 'Plugins', keywords: 'plugin extension enable disable palette', buried: true },
@@ -105,6 +110,7 @@ const LEADS: Readonly<Partial<Record<SettingsSection, string>>> = {
   markdown: 'How the punctuation you type is set.',
   images: 'Where pasted pictures go, and what loads from the web.',
   updates: 'Which builds this copy follows, and when it looks for them.',
+  memory: 'Which agents may read this folder, what they may do, and the memory they read.',
   shortcuts: 'Every key the app answers to, where it comes from, and a switch to turn it off.',
   remote: 'Let a script on this machine drive the editor.',
   plugins: 'What extends the editor, and where it comes from.',
@@ -228,6 +234,12 @@ const FACES: readonly { value: ProseFaceV1; label: string; hint: string }[] = [
   { value: 'serif', label: 'Serif', hint: 'Recommended. Songti SC, as Typora sets Chinese prose.' },
   { value: 'sans', label: 'Sans', hint: 'PingFang SC, for reading on a screen.' },
   { value: 'mono', label: 'Mono', hint: 'Menlo, for a note that is mostly code.' },
+];
+
+/** How the folders you are in are held as the tree scrolls; see `TREE_HELD`. */
+const HELD: readonly { value: TreeHeldV1; label: string; hint: string }[] = [
+  { value: 'stack', label: 'Stack', hint: 'Each folder on the way to the note in front holds its own row.' },
+  { value: 'trail', label: 'Trail', hint: 'The folders around what is in view fold into one row of names.' },
 ];
 
 const WIDTHS: readonly { value: WidthModeV1; label: string; hint: string }[] = [
@@ -478,11 +490,12 @@ function DocumentFont({ settings, onChange }: {
 
   return (
     <>
-      <Choices
+      <Tiles
         label="Document font"
         hint="Serif recommended. Presets keep their fallback stacks; a system font leads them."
         options={FACES}
         value={settings.proseFace}
+        art={faceArt}
         onPick={(value) => onChange({ proseFace: value, proseFontFamily: '' })}
         testPrefix="face"
       />
@@ -710,28 +723,84 @@ function Choices<T extends string>({ label, hint, options, value, onPick, testPr
   );
 }
 
-function Switch({ label, hint, checked, onChange, testId }: {
+/**
+ * Choices drawn as small pictures of what they do, for the settings whose
+ * result is something you look at: the theme, the face and the page's width.
+ * A word on a segmented control asks you to imagine "Wide"; a tile shows it.
+ * Still one radio group, keyed and named as the segmented control is.
+ */
+function Tiles<T extends string>({ label, hint, options, value, onPick, testPrefix, art }: {
   label: string;
   hint?: string;
-  checked: boolean;
-  onChange: (value: boolean) => void;
-  testId: string;
+  options: readonly { value: T; label: string; hint?: string }[];
+  value: T;
+  onPick: (value: T) => void;
+  testPrefix: string;
+  art: (value: T) => ReactNode;
 }) {
   return (
-    <label className="pref-row pref-switch">
+    <div className="pref-row pref-tiles-row">
       <span className="pref-label">
         {label}
         {hint && <small>{hint}</small>}
       </span>
-      <input
-        type="checkbox"
-        role="switch"
-        data-testid={testId}
-        checked={checked}
-        onChange={(event) => onChange(event.target.checked)}
-      />
-      <span className="pref-track" aria-hidden="true" />
-    </label>
+      <div className="pref-tiles" role="radiogroup" aria-label={label}>
+        {options.map((option) => (
+          <button
+            key={option.value}
+            type="button"
+            role="radio"
+            aria-checked={value === option.value}
+            title={option.hint}
+            data-testid={`${testPrefix}-${option.value}`}
+            className={value === option.value ? 'pref-tile is-on' : 'pref-tile'}
+            onClick={() => onPick(option.value)}
+          >
+            <span className="pref-tile-art" aria-hidden="true">{art(option.value)}</span>
+            <span className="pref-tile-label">{option.label}</span>
+          </button>
+        ))}
+      </div>
+    </div>
+  );
+}
+
+/** A page in miniature: the rail's ground, then three lines of text. */
+function MiniPage({ tone }: { tone: 'light' | 'dark' }) {
+  return <span className={`pref-mini is-${tone}`}><i /><i /><i /></span>;
+}
+
+const themeArt = (theme: NotoTheme) => theme === 'system'
+  ? <><MiniPage tone="light" /><MiniPage tone="dark" /></>
+  : <MiniPage tone={theme} />;
+
+const faceArt = (face: ProseFaceV1) => <span className={`pref-face-art is-${face}`}>Aa 文</span>;
+
+const widthArt = (width: WidthModeV1) => (
+  <span className={`pref-width-art is-${width}`}><span><i /><i /><i /><i /></span></span>
+);
+
+/**
+ * The page as this pane sets it, live: the theme's paper and ink, the
+ * document's face, size and leading, and the width of its column inside the
+ * window. Every control here changes something you would otherwise see only
+ * after closing Settings, so the pane shows it as you change it. Decorative to
+ * a screen reader, which hears the controls' own values instead.
+ */
+function PageSpecimen({ widthMode }: { widthMode: WidthModeV1 }) {
+  return (
+    <figure className="pref-specimen" data-testid="pref-specimen" data-width={widthMode} aria-hidden="true">
+      <span className="pref-specimen-rail"><i /><i /><i /><i /><i /></span>
+      <span className="pref-specimen-paper">
+        <span className="pref-specimen-page">
+          <span className="pref-specimen-title">On keeping notes</span>
+          <span className="pref-specimen-text">
+            A note is a plain file on your own disk, and the page is where you read it.
+            笔记就是你磁盘上的一个普通文件，Noto 只负责把它好好地摆在你面前，排版、行距和宽度都在这里定。
+          </span>
+        </span>
+      </span>
+    </figure>
   );
 }
 
@@ -873,6 +942,11 @@ export function Settings({
                 was a caption on the title bar's line, which left the pane a
                 column of rows with nothing saying what they were. */}
             <header className="pref-pane-head">
+              {/* The pane's own mark, the glyph its row carries in the list,
+                  drawn large in a ring of soft light: the one ornament the
+                  settings allow themselves, so each pane opens on something
+                  that says where you are before any of its words do. */}
+              <span className="pref-pane-emblem" aria-hidden="true"><SectionGlyph name={section} /></span>
               <h2 className="settings-title">
                 {section === 'plugins' && pluginDetailId ? (
                   <>
@@ -891,7 +965,9 @@ export function Settings({
               <>
                 {/* Glance surface: theme, type, width, then the CSS escape hatch.
                     Colour theming is the stylesheet path — not independent dials. */}
-                <Choices label="Theme" options={THEMES} value={settings.theme}
+                <PageSpecimen widthMode={settings.widthMode} />
+                <Tiles label="Theme" hint="System follows the computer between light and dark."
+                  options={THEMES} value={settings.theme} art={themeArt}
                   onPick={(value) => onChange({ theme: value })} testPrefix="theme" />
                 <Slider label="Text size" setting="fontSize" value={settings.fontSize}
                   format={(value) => `${value} px`} testId="setting-font-size"
@@ -900,8 +976,8 @@ export function Settings({
                   format={(value) => value.toFixed(2)} testId="setting-line-height"
                   onChange={(value) => onChange({ lineHeight: Number(value.toFixed(2)) })} />
                 <DocumentFont settings={settings} onChange={onChange} />
-                <Choices label="Page width" hint="Also on the View menu."
-                  options={WIDTHS} value={settings.widthMode}
+                <Tiles label="Page width" hint="Also on the View menu."
+                  options={WIDTHS} value={settings.widthMode} art={widthArt}
                   onPick={(value) => onChange({ widthMode: value })} testPrefix="width" />
                 <ThemeFile settings={settings} onChange={onChange}
                   problem={themeProblem} onReload={onReloadCss} />
@@ -926,6 +1002,17 @@ export function Settings({
                   checked={settings.alwaysOnTop}
                   onChange={(value) => onChange({ alwaysOnTop: value })}
                   testId="setting-always-on-top"
+                />
+                <p className="pref-group">File tree</p>
+                <Choices label="Folders you are in" hint="How they stay in sight at the top of the tree as it scrolls."
+                  options={HELD} value={settings.treeHeld}
+                  onPick={(value) => onChange({ treeHeld: value })} testPrefix="tree-held" />
+                <Switch
+                  label="Show .md in the tree"
+                  hint="Off leaves a note's row its name alone, which gives a deep tree in a narrow rail more room."
+                  checked={settings.treeNoteExtensions}
+                  onChange={(value) => onChange({ treeNoteExtensions: value })}
+                  testId="setting-tree-note-extensions"
                 />
               </>
             )}
@@ -984,6 +1071,13 @@ export function Settings({
                   checked={settings.gitMarks}
                   onChange={(value) => onChange({ gitMarks: value })}
                   testId="setting-git-marks"
+                />
+                <Switch
+                  label="Suggestions in notes"
+                  hint="A faint dotted line under a few words a plugin has something to say about, such as a note named but not linked; rest the pointer on them for what to do. View > Show Suggestions in Notes flips it too."
+                  checked={settings.noteMarks}
+                  onChange={(value) => onChange({ noteMarks: value })}
+                  testId="setting-note-marks"
                 />
                 <p className="pref-group">Code blocks</p>
                 <Switch
@@ -1136,6 +1230,8 @@ export function Settings({
               <ShortcutsBoard mac={mac} disabled={settings.disabledShortcuts} plugins={pluginHotkeys}
                 onChange={(change) => onChange((current) => ({ disabledShortcuts: change(current.disabledShortcuts) }))} />
             )}
+
+            {section === 'memory' && <MemoryPane />}
 
             {section === 'remote' && (
               <RemotePane on={settings.remoteControl} onChange={(value) => onChange({ remoteControl: value })} />

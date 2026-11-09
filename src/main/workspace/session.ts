@@ -15,12 +15,13 @@ import { GraphCache, linksForNote } from './note-graph';
 import { buildTagIndex, notesForTag, type TagIndex } from './tag-index';
 import type { SearchFlags } from '../../shared/search/pattern';
 import path from 'node:path';
-import { access, cp, lstat, mkdir, readFile, readdir, realpath, rename, rm, stat, writeFile } from 'node:fs/promises';
+import { access, cp, lstat, mkdir, open as openFile, readFile, readdir, realpath, rename, rm, stat, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { createHash, randomUUID } from 'node:crypto';
 import { BrowserWindow, Menu, clipboard, dialog, shell, type MenuItemConstructorOptions } from 'electron';
 import { FILE_TRUTH_CHANNELS, type FileTruthOpenReplyV1 } from '../../shared/file-truth/v1/contracts';
-import { openableExternalUrl } from '../../shared/workspace/v1/validate';
+import { NOTE_PREVIEW_MAX, openableExternalUrl } from '../../shared/workspace/v1/validate';
+import { fenceAfter } from '../../shared/markdown-fence';
 import {
   NOTO_WORKSPACE_VERSION,
   WORKSPACE_CHANNELS,
@@ -30,6 +31,24 @@ import {
   type WorkspaceTreeMenuReplyV1,
   type WorkspaceOpenExternalReplyV1,
   type WorkspaceLinksReplyV1,
+  type WorkspaceNoteHistoryReplyV1,
+  type WorkspaceNotePassageReplyV1,
+  type WorkspaceFolderHistoryReplyV1,
+  type WorkspaceFolderMemoryReplyV1,
+  type WorkspaceUndoLinksReplyV1,
+  type WorkspaceNoteMemoryReplyV1,
+  type WorkspaceKeepMemoryReplyV1,
+  type WorkspaceTrustMemoryReplyV1,
+  type WorkspaceReviewActionV1,
+  type WorkspaceReviewReplyV1,
+  type WorkspaceAgentActionV1,
+  type WorkspaceAgentsReplyV1,
+  type WorkspaceMemoryAskReplyV1,
+  type WorkspaceMemoryFolderActionV1,
+  type WorkspaceMemoryFolderReplyV1,
+  type WorkspaceMemoryPrivacyReplyV1,
+  type WorkspaceNoteVersionReplyV1,
+  type WorkspaceNotePreviewReplyV1,
   type WorkspaceTagIndexReplyV1,
   type WorkspaceNotesByTagReplyV1,
   type WorkspaceCodeViewV1,
@@ -54,7 +73,7 @@ import { inlineImages } from './inline-images';
 import { resolveAssetPath } from '../protocol/asset-guard';
 import { readResolvedAsset } from '../protocol/asset-read';
 import { CopyDestinations } from '../file-truth/v1/copy-destinations';
-import { buildTreeRowMenu, trashLabel } from './tree-row-menu';
+import { buildSelectionMenu, buildTreeRowMenu, buildVaultRowMenu, type TreeRowActions, trashLabel } from './tree-row-menu';
 import {
   findPandoc,
   importDocument,
@@ -75,7 +94,13 @@ import {
   renamedFileName,
 } from '../../shared/workspace/v1/entry-names';
 import { buildFileIndex } from './file-index';
-import { GitMarks, defaultGitRunner } from './git-marks';
+import { GitMarks, defaultGitRunner, findGit } from './git-marks';
+import { NoteHistoryReader, systemBatchGit } from './git-history';
+import { MemoryHost, insideFolder, type MemoryWorker, type ReviewRequest } from './memory-host';
+import { applyRelink, linksInto, planRelink, undoRelink, type RelinkNote, type RelinkSources } from './relink-moves';
+import { memoryScripts, type FolderList, type MemoryTrust } from './memory-trust';
+import { sizeWords } from '../../shared/size-words';
+import { addAgent, agentList, folderSensitivity, noteSensitivity, privacyMarks, revokeAgent, setFolderSensitivity } from '@roobli/vault/policy';
 import { VaultWatcher, classifyTouched, inspectTouched } from './vault-watcher';
 import { gitBlockDiff } from './git-blocks';
 import type { WorkspaceGitBlocksV1 } from '../../shared/workspace/v1/contracts';
@@ -100,6 +125,37 @@ interface OpenDocument {
  */
 export const MAX_TABS = 24;
 
+/** Past this many, a change names no folders and the window reads every listing again. */
+const CHANGED_LISTINGS_MAX = 500;
+/** What Quick Open's preview reads of a note's opening: a screen of it, never the whole of a long one. */
+const PREVIEW_BYTES = 6144;
+/** The largest note a match far down in it is shown from. */
+const PREVIEW_SCAN_BYTES = 4 * 1024 * 1024;
+/** Lines shown above a match, and in all, around it. */
+const PREVIEW_BEFORE = 4;
+const PREVIEW_LINES = 28;
+
+/**
+ * The folders whose listings a change on disk may have touched, spelled as the
+ * window spells them: each changed path's folder, and the path itself in case
+ * it is a folder that came, went or was replaced. Hidden paths change nothing
+ * shown. Null when there are too many to be worth naming.
+ */
+export function changedListings(root: string, touched: readonly string[]): string[] | null {
+  const folders = new Set<string>();
+  for (const relative of touched) {
+    if (relative.split('/').some((segment) => segment.startsWith('.'))) continue;
+    const parent = path.posix.dirname(relative);
+    folders.add(parent === '.' ? root : path.join(root, ...parent.split('/')));
+    folders.add(path.join(root, ...relative.split('/')));
+    if (folders.size > CHANGED_LISTINGS_MAX) return null;
+  }
+  return [...folders];
+}
+
+/** Moves closer together than this (rows dropped at once) have their links followed in one pass. */
+const RELINK_SETTLE_MS = 150;
+
 /**
  * What an open produced, inside main.
  *
@@ -110,6 +166,15 @@ export const MAX_TABS = 24;
 export type WorkspaceSessionOpenV1 =
   | { readonly version: typeof NOTO_WORKSPACE_VERSION; readonly opened: FileTruthOpenReplyV1 }
   | { readonly version: typeof NOTO_WORKSPACE_VERSION; readonly codeView: WorkspaceCodeViewV1 };
+
+/** What keeping memory writes, said in main's question before anything is. */
+const KEPT_FILES = [
+  ['brain.yaml', 'how notes are sorted into kinds; yours to edit'],
+  ['access.yaml', 'which agents may read what; none may until you add one'],
+  ['.gitignore', 'keeps the index out of git'],
+  ['index.sqlite', 'the index of the notes, rebuilt whenever it is missing'],
+  ['events/', 'a line for each note you open, to learn what is read together'],
+] as const;
 
 export class WorkspaceSession {
   /** Keyed by resolved path: opening the same file twice reuses its tab. */
@@ -128,6 +193,20 @@ export class WorkspaceSession {
 
   /** The vault's graph, read once per version of its file. */
   private readonly graphCache = new GraphCache();
+  /** The folder's memory, once main is given a way to start it; see `useMemory`. */
+  private memory: MemoryHost | null = null;
+  private memoryTrust: MemoryTrust | null = null;
+  /** The vault's command line shipped with Noto, for an agent's MCP setup. */
+  private memoryCli: string | null = null;
+  /** Folders whose read record is not kept on this computer, by real path. */
+  private unrecorded: FolderList | null = null;
+  /** A Stop Keeping Memory sheet is open: a second press does not stack another. */
+  private turningOff = false;
+  /** One reader for the window, so a note's history is walked once until HEAD moves. */
+  private readonly history = new NoteHistoryReader(
+    defaultGitRunner,
+    async () => { const binary = await findGit(); return binary === null ? null : systemBatchGit(binary); },
+  );
 
   /**
    * Whether the reader asked for the current folder.
@@ -480,6 +559,7 @@ export class WorkspaceSession {
   closeAll(): void {
     this.git.close();
     this.vaultWatcher.close();
+    this.memory?.dispose();
     if (this.gutterTimer !== null) clearTimeout(this.gutterTimer);
     for (const document of this.documents.values()) document.store.close();
     this.documents.clear();
@@ -544,7 +624,16 @@ export class WorkspaceSession {
 
   private async adoptFolder(root: string, chosen = true): Promise<WorkspaceFolderEventV1> {
     this.folderRoot = root;
+    // Moves gathered in the last folder are that folder's: none follows into this one.
+    if (this.pendingTimer !== null) clearTimeout(this.pendingTimer);
+    this.pendingTimer = null;
+    this.pendingMoves = [];
+    this.relinked = null;
     this.folderChosen = chosen;
+    if (this.memory) {
+      const memory = this.memory;
+      void realpath(root).then((real) => { if (this.folderRoot === root) memory.setFolder(real); }, () => memory.setFolder(null));
+    }
     // A new folder invalidates the old index rather than serving it stale.
     this.indexCache = null;
     this.tagIndexCache = null;
@@ -568,7 +657,7 @@ export class WorkspaceSession {
    * renderer asking about somewhere, and only somewhere inside the folder the
    * reader opened is an answerable question.
    */
-  async treeMenu(target: string, kind: 'file' | 'directory'): Promise<WorkspaceTreeMenuReplyV1> {
+  async treeMenu(target: string, kind: 'file' | 'directory', also: readonly string[] = []): Promise<WorkspaceTreeMenuReplyV1> {
     const window = this.getWindow();
     const root = this.folderRoot;
     if (!window || root === null) return { version: NOTO_WORKSPACE_VERSION, accepted: false };
@@ -586,8 +675,53 @@ export class WorkspaceSession {
       return { version: NOTO_WORKSPACE_VERSION, accepted: false };
     }
 
+    // The open folder's own row: its info and what can be made in it, and nothing that would remove it.
+    if (real === realRoot) {
+      const own = buildVaultRowMenu(real, {
+        newNote: (target) => { void this.newFile(target).catch(() => {}); },
+        newFolder: (target) => this.send(WORKSPACE_CHANNELS.renameRow, { version: NOTO_WORKSPACE_VERSION, path: target, intent: 'new-folder' }),
+        info: () => this.send(WORKSPACE_CHANNELS.showFolderInfo, { version: NOTO_WORKSPACE_VERSION, path: path.resolve(target) }),
+        reveal: (target) => shell.showItemInFolder(target),
+        copyPath: (target) => clipboard.writeText(target),
+      });
+      setImmediate(() => Menu.buildFromTemplate(own).popup({ window }));
+      return { version: NOTO_WORKSPACE_VERSION, accepted: true };
+    }
+
+    // Several rows chosen together: one menu for all of them, each checked as the one pressed was.
+    if (also.length > 0) {
+      const chosen = [real];
+      for (const other of also) {
+        const resolved = await realpath(path.resolve(other)).catch(() => null);
+        if (resolved && resolved !== realRoot && isInside(realRoot, resolved) && !chosen.includes(resolved)) chosen.push(resolved);
+      }
+      // A row inside a chosen folder goes with the folder.
+      const top = chosen.filter((entry) => !chosen.some((other) => other !== entry && isInside(other, entry)));
+      if (top.length > 1) {
+        const many = buildSelectionMenu(top.length, {
+          move: () => { void this.moveManyWithDialog(top); },
+          trash: () => { void this.confirmTrashMany(top); },
+          copyPaths: () => clipboard.writeText(top.join('\n')),
+        });
+        setImmediate(() => Menu.buildFromTemplate(many).popup({ window }));
+        return { version: NOTO_WORKSPACE_VERSION, accepted: true };
+      }
+    }
+
     const items = buildTreeRowMenu(real, kind, {
       open: (target) => { void this.openPath(target).catch(() => {}); },
+      // Opened first, so the pane has the note to be about; then the window shows it.
+      info: (chosen) => {
+        // A folder is not opened: the pane turns to it, and turns back when a note is chosen.
+        // It is named as the window named it, which may reach the folder through a link.
+        if (kind === 'directory') {
+          this.send(WORKSPACE_CHANNELS.showFolderInfo, { version: NOTO_WORKSPACE_VERSION, path: path.resolve(target) });
+          return;
+        }
+        void this.openPath(chosen).then(() => {
+          this.send(WORKSPACE_CHANNELS.menuCommand, { version: NOTO_WORKSPACE_VERSION, command: 'show-note-info' });
+        }).catch(() => {});
+      },
       // The directory has already been resolved and checked against the open
       // folder above, so the note goes where the reader pressed and nowhere
       // else.
@@ -605,11 +739,55 @@ export class WorkspaceSession {
       trash: (target, kind) => { void this.confirmTrash(target, kind); },
       reveal: (target) => shell.showItemInFolder(target),
       copyPath: (target) => clipboard.writeText(target),
+      // Named as the window named it, as Get Info names a folder, so the tree finds its own row.
+      ...(kind === 'directory' ? {
+        privacy: await this.folderPrivacy(real),
+        focus: () => this.send(WORKSPACE_CHANNELS.focusFolder, { version: NOTO_WORKSPACE_VERSION, path: path.resolve(target) }),
+      } : {}),
     });
     setImmediate(() => Menu.buildFromTemplate(items).popup({ window }));
     return { version: NOTO_WORKSPACE_VERSION, accepted: true };
   }
 
+
+  /**
+   * A folder's privacy in a folder that keeps memory, for its menu: the level
+   * it has now, and a way to set it in `.noto/access.yaml`. Undefined for the
+   * folder itself, outside memory, or when the file cannot be read.
+   */
+  private async folderPrivacy(real: string): Promise<TreeRowActions['privacy']> {
+    const root = this.memory?.folder() ?? null;
+    if (root === null || !(await stat(path.join(root, '.noto')).then(() => true, () => false))) return undefined;
+    const rel = insideFolder(root, real);
+    if (rel === null) return undefined;
+    try {
+      const { level } = folderSensitivity(root, rel);
+      return {
+        level,
+        set: (next) => {
+          try {
+            setFolderSensitivity(root, rel, next);
+            this.logger.log('memory_privacy_set', { level: next });
+            this.send(WORKSPACE_CHANNELS.memoryChanged, { version: NOTO_WORKSPACE_VERSION });
+          } catch (error) {
+            this.logger.log('memory_privacy_not_set', { level: next });
+            // The policy says why in words for the person: which part to change by hand.
+            const window = this.getWindow();
+            if (window) {
+              void dialog.showMessageBox(window, {
+                type: 'warning', buttons: ['OK'],
+                message: `"${path.basename(real)}" was left as it was.`,
+                detail: (error as Error).message,
+              });
+            }
+          }
+        },
+      };
+    } catch {
+      // A dot folder, or a name the policy cannot hold: no Privacy for it.
+      return undefined;
+    }
+  }
 
   /**
    * Rename, duplicate, trash, or make a folder.
@@ -666,6 +844,11 @@ export class WorkspaceSession {
     // Trashing closes the notes it takes with it, edits and all, so the
     // question says so when any of them has edits nobody saved.
     const losing = this.unsavedPaths.filter((open) => open === target || isInside(target, open)).length;
+    // What would be left leading nowhere, said before it is: links do not follow a note into the trash.
+    const realRoot = this.folderRoot === null ? null : await realpath(this.folderRoot).catch(() => null);
+    const into = realRoot === null ? { notes: 0, links: 0 } : await linksInto(realRoot, target, this.linkSources()).catch(() => ({ notes: 0, links: 0 }));
+    const linked = into.notes === 0 ? ''
+      : ` ${into.notes === 1 ? 'One note links' : `${into.notes} notes link`} to ${kind === 'directory' ? 'what is in it' : 'it'}; ${into.links === 1 ? 'that link' : 'those links'} will lead nowhere until it is put back.`;
     const answer = await dialog.showMessageBox(window, {
       type: 'warning',
       buttons: [trashLabel(process.platform), 'Cancel'],
@@ -674,14 +857,176 @@ export class WorkspaceSession {
       message: kind === 'directory'
         ? `Move the folder "${name}" and everything in it to the trash?`
         : `Move "${name}" to the trash?`,
-      detail: losing === 0
+      detail: (losing === 0
         ? 'You can put it back from there.'
         : kind === 'file'
           ? 'It has unsaved changes, which are lost: the trash keeps only what was saved.'
-          : `${losing === 1 ? 'A note' : `${losing} notes`} in it ${losing === 1 ? 'has' : 'have'} unsaved changes, which are lost: the trash keeps only what was saved.`,
+          : `${losing === 1 ? 'A note' : `${losing} notes`} in it ${losing === 1 ? 'has' : 'have'} unsaved changes, which are lost: the trash keeps only what was saved.`) + linked,
     });
     if (answer.response !== 0) return;
     await this.manageEntry({ action: 'trash', target, name: null });
+  }
+
+  /**
+   * Move several rows to one folder chosen in the system's dialog, each checked
+   * as one row is; their links follow in one pass. What could not go is said
+   * once, with why.
+   */
+  private async moveManyWithDialog(reals: readonly string[]): Promise<void> {
+    const window = this.getWindow();
+    if (!window || reals.length === 0) return;
+    const chosen = await dialog.showOpenDialog(window, {
+      title: `Move ${reals.length} items to`,
+      defaultPath: path.dirname(reals[0]!),
+      properties: ['openDirectory', 'createDirectory'],
+    });
+    if (chosen.canceled || chosen.filePaths.length === 0) return;
+    const destination = await this.inRoot(chosen.filePaths[0]!, true);
+    if (destination === null) return;
+    const left: string[] = [];
+    for (const real of reals) {
+      const reply = await this.moveInto(real, destination);
+      if (!reply.done) left.push(path.basename(real));
+    }
+    this.logger.log('entries_moved', { moved: reals.length - left.length, left: left.length });
+    if (left.length > 0) {
+      await dialog.showMessageBox(window, {
+        type: 'info',
+        message: `${left.length === 1 ? 'One item' : `${left.length} items`} stayed where ${left.length === 1 ? 'it was' : 'they were'}.`,
+        detail: `${left.slice(0, 6).join(', ')}${left.length > 6 ? ', and more' : ''}: the name is taken there, a note has unsaved changes, or a folder would go inside itself.`,
+      });
+    }
+  }
+
+  /** Ask once before moving several rows to the trash, saying what is lost and what would lead nowhere. */
+  private async confirmTrashMany(reals: readonly string[]): Promise<void> {
+    const window = this.getWindow();
+    if (!window || reals.length === 0) return;
+    const losing = this.unsavedPaths.filter((open) => reals.some((real) => open === real || isInside(real, open))).length;
+    const realRoot = this.folderRoot === null ? null : await realpath(this.folderRoot).catch(() => null);
+    const into = realRoot === null ? { notes: 0, links: 0 } : await linksInto(realRoot, reals, this.linkSources()).catch(() => ({ notes: 0, links: 0 }));
+    const parts = [losing === 0 ? 'You can put them back from there.'
+      : `${losing === 1 ? 'A note' : `${losing} notes`} among them ${losing === 1 ? 'has' : 'have'} unsaved changes, which are lost.`];
+    if (into.notes > 0) parts.push(`${into.notes === 1 ? 'One note links' : `${into.notes} notes link`} to them; ${into.links === 1 ? 'that link' : 'those links'} will lead nowhere until they are put back.`);
+    const answer = await dialog.showMessageBox(window, {
+      type: 'warning',
+      buttons: [`Move ${reals.length} Items to ${trashLabel(process.platform).replace(/^Move to /, '')}`, 'Cancel'],
+      defaultId: 1,
+      cancelId: 1,
+      message: `Move ${reals.length} items to the trash?`,
+      detail: parts.join(' '),
+    });
+    if (answer.response !== 0) return;
+    for (const real of reals) await this.manageEntry({ action: 'trash', target: real, name: null });
+  }
+
+  /**
+   * A note whose history may be read: one inside the open folder, or one the
+   * reader opened on its own, with no folder around it. Null for anything else.
+   */
+  private async readableNote(target: string): Promise<string | null> {
+    const inside = await this.inRoot(target);
+    if (inside !== null) return inside;
+    const resolved = path.resolve(target);
+    if (!this.documents.has(resolved)) return null;
+    return realpath(resolved).catch(() => null);
+  }
+
+  /** The links written after the last move, to take back while nothing has changed them since; `pass` names it to Undo. */
+  private relinked: { root: string; pass: number; notes: readonly RelinkNote[] } | null = null;
+  private relinkPass = 0;
+  /** One move's links after another's, never two at once over the same notes. */
+  private relinking: Promise<void> = Promise.resolve();
+  /** Moves made in a burst (several rows dropped at once), gathered into one pass, one notice and one Undo. */
+  private pendingMoves: { from: string; to: string }[] = [];
+  private pendingTimer: ReturnType<typeof setTimeout> | null = null;
+
+  /** The folder's index, when its memory is open, to name the notes worth reading for a move. */
+  private linkSources(): RelinkSources | undefined {
+    const memory = this.memory;
+    return memory ? (words) => memory.linkSources(words) : undefined;
+  }
+
+  /** Real paths of the notes with unsaved edits in the window: never written under. */
+  private async busyReal(): Promise<Set<string>> {
+    return new Set(await Promise.all(this.unsavedPaths.map((open) => realpath(open).catch(() => open))));
+  }
+
+  /**
+   * Write again the links a move broke (`relink-moves.ts`), and say so with a
+   * way back. Moves that come within `RELINK_SETTLE_MS` of each other are one
+   * pass; a row moved and moved again is one move, from where it was first.
+   */
+  private followLinks(moves: readonly { from: string; to: string }[]): void {
+    for (const move of moves) {
+      // Moved again: one move, from where it was first.
+      const earlier = this.pendingMoves.find((pending) => pending.to === move.from);
+      if (earlier) { earlier.to = move.to; continue; }
+      // Moved from inside a folder that just moved: from where it was before the folder went.
+      const inside = this.pendingMoves.find((pending) => isInside(pending.to, move.from));
+      this.pendingMoves.push(inside ? { from: path.join(inside.from, path.relative(inside.to, move.from)), to: move.to } : { ...move });
+    }
+    if (this.pendingTimer !== null) clearTimeout(this.pendingTimer);
+    this.pendingTimer = setTimeout(() => this.flushMoves(), RELINK_SETTLE_MS);
+  }
+
+  private flushMoves(): void {
+    if (this.pendingTimer !== null) clearTimeout(this.pendingTimer);
+    this.pendingTimer = null;
+    const moves = this.pendingMoves.filter((move) => move.from !== move.to);
+    this.pendingMoves = [];
+    if (moves.length === 0) return;
+    this.relinking = this.relinking.then(async () => {
+      const root = this.folderRoot;
+      if (root === null) return;
+      const realRoot = await realpath(root).catch(() => null);
+      if (realRoot === null) return;
+      const started = Date.now();
+      const plan = await planRelink(realRoot, moves, await this.busyReal(), this.linkSources());
+      const outcome = await applyRelink(realRoot, plan);
+      const pass = ++this.relinkPass;
+      // A pass that wrote nothing leaves the last one's Undo as it was.
+      if (outcome.written.length > 0) this.relinked = { root: realRoot, pass, notes: outcome.written };
+      const links = outcome.written.reduce((sum, note) => sum + note.links, 0);
+      const held = plan.busy.length;
+      const left = outcome.changed.length;
+      this.logger.log('links_followed', { notes: outcome.written.length, links, held, left, ms: Date.now() - started });
+      if (outcome.written.length > 0 || held > 0 || left > 0) {
+        this.send(WORKSPACE_CHANNELS.linksFollowed, {
+          version: NOTO_WORKSPACE_VERSION, pass: outcome.written.length > 0 ? pass : 0, notes: outcome.written.length, links, held, left,
+        });
+      }
+    }).catch((error: unknown) => {
+      this.logger.log('links_follow_failed', { reason: (error as Error).message });
+    });
+  }
+
+  /**
+   * Take back the links pass `pass` wrote, wherever nothing has changed them
+   * since. Only the last pass that wrote anything can be: the notice for an
+   * older one has nothing left to take back. In the same queue as the passes,
+   * so it never writes a note a pass is writing.
+   */
+  async undoLinks(pass: number): Promise<WorkspaceUndoLinksReplyV1> {
+    const nothing = { version: NOTO_WORKSPACE_VERSION, restored: 0, kept: 0 } as const;
+    let reply: WorkspaceUndoLinksReplyV1 = nothing;
+    this.relinking = this.relinking.then(async () => {
+      const last = this.relinked;
+      if (last === null || last.pass !== pass || last.root !== await realpath(this.folderRoot ?? '').catch(() => null)) return;
+      this.relinked = null;
+      const { restored, kept } = await undoRelink(last.root, last.notes);
+      this.logger.log('links_follow_undone', { restored, kept });
+      reply = { version: NOTO_WORKSPACE_VERSION, restored, kept };
+    }).catch(() => {});
+    await this.relinking;
+    return reply;
+  }
+
+  /** A folder whose info may be read: the open one, or one inside it, by its real path. Null for anything else. */
+  private async readableFolder(target: string): Promise<string | null> {
+    const real = await this.inRoot(target, true);
+    if (real === null) return null;
+    return (await stat(real).catch(() => null))?.isDirectory() ? real : null;
   }
 
   /** The real path, if it is inside the open folder. Null for anything else. */
@@ -744,6 +1089,8 @@ export class WorkspaceSession {
     if (this.busyUnder(real)) return this.refuse('busy');
 
     try {
+      // A pass still writing the last move's links reads the folder as it was: let it finish first.
+      await this.relinking;
       await rename(real, destination);
     } catch {
       return this.refuse('failed');
@@ -783,6 +1130,8 @@ export class WorkspaceSession {
     if (this.busyUnder(real)) return this.refuse('busy');
 
     try {
+      // A pass still writing the last move's links reads the folder as it was: let it finish first.
+      await this.relinking;
       await rename(real, target);
     } catch {
       return this.refuse('failed');
@@ -814,6 +1163,8 @@ export class WorkspaceSession {
     if (this.busyUnder(real)) return this.refuse('busy');
 
     try {
+      // A pass still writing the last move's links reads the folder as it was: let it finish first.
+      await this.relinking;
       await rename(real, target);
     } catch {
       return this.refuse('failed');
@@ -925,6 +1276,8 @@ export class WorkspaceSession {
    * the old path kept a renamed note called by its old name in the title bar.
    */
   private async followMove(from: string, to: string): Promise<void> {
+    // The links that reached it by its old place follow it, after the move has answered.
+    this.followLinks([{ from, to }]);
     const moved = [...this.documents.keys()].filter((openPath) => openPath === from || isInside(from, openPath));
     if (moved.length === 0) return;
 
@@ -1282,11 +1635,13 @@ export class WorkspaceSession {
     this.announceTreeChanged();
   }
 
-  announceTreeChanged(): void {
+  announceTreeChanged(directories: readonly string[] | null = null): void {
     // A rename or new note can change which tags exist; drop the scan so the
     // next Browse Tags sees the vault as it is now.
     this.tagIndexCache = null;
-    this.send(WORKSPACE_CHANNELS.treeChanged, { version: NOTO_WORKSPACE_VERSION });
+    this.send(WORKSPACE_CHANNELS.treeChanged, directories === null
+      ? { version: NOTO_WORKSPACE_VERSION }
+      : { version: NOTO_WORKSPACE_VERSION, directories });
     // A rename, a trash or a new note changes what git reports.
     this.git.refresh();
   }
@@ -1348,6 +1703,458 @@ export class WorkspaceSession {
     const index = await buildTagIndex(files.entries);
     if (this.folderRoot) this.tagIndexCache = { root: this.folderRoot, index };
     return index;
+  }
+
+  /**
+   * Give the session a way to start the memory's worker, the record of
+   * which folders may run their memory's scripts, the command line an agent's
+   * setup runs, and which folders keep no read record. Main does, once, at
+   * startup.
+   */
+  useMemory({ startWorker, trust, cli = null, unrecorded = null }: {
+    readonly startWorker: () => MemoryWorker;
+    readonly trust: MemoryTrust;
+    readonly cli?: string | null;
+    readonly unrecorded?: FolderList | null;
+  }): void {
+    this.memory?.dispose();
+    this.memoryTrust = trust;
+    this.memoryCli = cli;
+    this.unrecorded = unrecorded;
+    this.memory = new MemoryHost({
+      startWorker,
+      mayOpen: (root) => trust.mayOpen(root),
+      onChanged: () => this.send(WORKSPACE_CHANNELS.memoryChanged, { version: NOTO_WORKSPACE_VERSION }),
+      log: (event, fields) => this.logger.log(event, fields),
+    });
+    const root = this.folderRoot;
+    if (root) void realpath(root).then((real) => this.memory?.setFolder(real), () => {});
+  }
+
+  /**
+   * Begin keeping memory for the open folder, once the person has read what
+   * will be written and said yes. Main asks, in a sheet of its own, so a
+   * plugin that calls this cannot say yes for them.
+   */
+  async keepMemory(): Promise<WorkspaceKeepMemoryReplyV1> {
+    const reply = (outcome: WorkspaceKeepMemoryReplyV1['outcome'], made: readonly string[] = []): WorkspaceKeepMemoryReplyV1 => ({
+      version: NOTO_WORKSPACE_VERSION, outcome, made,
+    });
+    const memory = this.memory;
+    const root = memory?.folder() ?? null;
+    const window = this.getWindow();
+    if (!memory || root === null || !window) return reply('failed');
+    // A folder that keeps memory already is opened (or asked about its
+    // scripts) instead; nothing about it is Noto's to have made.
+    if (await stat(path.join(root, '.noto')).then(() => true, () => false)) {
+      this.send(WORKSPACE_CHANNELS.memoryChanged, { version: NOTO_WORKSPACE_VERSION });
+      return reply('made');
+    }
+    const answer = await dialog.showMessageBox(window, {
+      type: 'question',
+      buttons: ['Keep Memory', 'Cancel'],
+      defaultId: 0,
+      cancelId: 1,
+      message: `Keep memory for "${path.basename(root)}"?`,
+      detail: [
+        'Noto will make a .noto folder in it with:',
+        '',
+        ...KEPT_FILES.map(([file, why]) => `${file}: ${why}`),
+        '',
+        'Nothing is sent anywhere. Deleting the .noto folder turns all of it off.',
+      ].join('\n'),
+    });
+    if (answer.response !== 0) return reply('cancelled');
+    const made = await memory.keep();
+    this.logger.log('memory_keep', { outcome: made === null ? 'failed' : 'made', files: made?.length ?? 0 });
+    if (made === null) return reply('failed');
+    // Noto wrote all of it, so nothing in it came from somewhere else.
+    this.memoryTrust?.trust(root);
+    return reply('made', made);
+  }
+
+  /**
+   * Let the open folder's memory run the scripts in its `.noto/scripts`,
+   * once the person has seen them named and said yes; see `memory-trust.ts`.
+   */
+  async trustMemory(): Promise<WorkspaceTrustMemoryReplyV1> {
+    const reply = (trusted: boolean): WorkspaceTrustMemoryReplyV1 => ({ version: NOTO_WORKSPACE_VERSION, trusted });
+    const trust = this.memoryTrust;
+    const root = this.memory?.folder() ?? null;
+    const window = this.getWindow();
+    if (!trust || root === null || !window) return reply(false);
+    if (trust.mayOpen(root)) return reply(true);
+    const scripts = memoryScripts(root);
+    const shown = scripts.slice(0, 12);
+    const answer = await dialog.showMessageBox(window, {
+      type: 'warning',
+      buttons: ['Run Scripts', 'Cancel'],
+      defaultId: 1,
+      cancelId: 1,
+      message: `Let the memory of "${path.basename(root)}" run its scripts?`,
+      detail: [
+        `It runs ${scripts.length === 1 ? 'this script' : `these ${scripts.length} scripts`} from .noto/scripts when it reads the notes:`,
+        '',
+        ...shown,
+        ...(scripts.length > shown.length ? [`and ${scripts.length - shown.length} more`] : []),
+        '',
+        'A script can do anything a program on this computer can. Allow them only if you wrote them or trust where the folder came from. History and Properties work without them.',
+      ].join('\n'),
+    });
+    if (answer.response !== 0) return reply(false);
+    trust.trust(root);
+    this.logger.log('memory_trusted', { scripts: scripts.length });
+    this.send(WORKSPACE_CHANNELS.memoryChanged, { version: NOTO_WORKSPACE_VERSION });
+    return reply(true);
+  }
+
+  /**
+   * The folder's agents (Settings → Memory → Agents), and adding one or
+   * taking a key back. Both change who may read the folder, so main asks the
+   * person in a sheet of its own, saying what the agent will be able to do,
+   * before anything is written; a plugin that calls this cannot say yes.
+   * `.noto/access.yaml` is changed line by line, keeping its comments, and a
+   * running MCP server reads it again before its next answer.
+   */
+  async memoryAgents(action: WorkspaceAgentActionV1): Promise<WorkspaceAgentsReplyV1> {
+    const root = this.memory?.folder() ?? null;
+    const reply = (fields: Partial<WorkspaceAgentsReplyV1>): WorkspaceAgentsReplyV1 => ({
+      version: NOTO_WORKSPACE_VERSION, state: 'ok', outcome: 'done', error: null, agents: [], key: null,
+      setup: root && this.memoryCli ? { script: this.memoryCli, root } : null, ...fields,
+    });
+    if (root === null) return reply({ state: 'outside', setup: null });
+    if (!(await stat(path.join(root, '.noto')).then(() => true, () => false))) return reply({ state: 'no-memory', setup: null });
+    const window = this.getWindow();
+    let key: string | null = null;
+    let outcome: WorkspaceAgentsReplyV1['outcome'] = 'done';
+    let error: string | null = null;
+    try {
+      if (action.kind === 'add') {
+        if (!window) return reply({ outcome: 'failed', error: 'There is no window to ask in.' });
+        // The agent's server opens this memory as Noto does, scripts and all, but with no one there to ask.
+        const scripts = memoryScripts(root);
+        if (scripts.length > 0 && !this.memoryTrust?.mayOpen(root)) {
+          return reply({ outcome: 'failed', error: `This folder's memory runs scripts you have not allowed yet (${scripts.join(', ')}), and an agent's server would run them too. Allow them from Note Info first.` });
+        }
+        const writeIn = action.writeIn?.replace(/\/+$/, '') ?? null;
+        const answer = await dialog.showMessageBox(window, {
+          type: 'question',
+          buttons: ['Add Agent', 'Cancel'],
+          // A held or second press of Return after the form must not be the yes.
+          defaultId: 1,
+          cancelId: 1,
+          message: `Give "${action.name}" a key to "${path.basename(root)}"?`,
+          detail: [
+            action.reads === 'private' ? 'It may read open and private notes, never sealed ones.' : 'It may read open notes only.',
+            action.may === 'read' ? 'It may read and search.'
+              : action.may === 'propose' ? 'It may also propose changes, which wait in Review for you.'
+                : `It may also write directly in the folder "${writeIn}"; everywhere else it proposes.`,
+            ...(scripts.length > 0 ? [`Its server runs this folder's scripts, as Noto does: ${scripts.join(', ')}.`] : []),
+            '',
+            'The key is shown once. You can take it back at any time in Settings → Memory.',
+          ].join('\n'),
+        });
+        if (answer.response !== 0) outcome = 'cancelled';
+        else {
+          key = addAgent(root, { name: action.name, reads: action.reads, may: action.may, ...(action.writeIn ? { writeIn: action.writeIn } : {}) }).key;
+          this.logger.log('memory_agent_added', { reads: action.reads, may: action.may });
+        }
+      } else if (action.kind === 'revoke') {
+        if (!window) return reply({ outcome: 'failed', error: 'There is no window to ask in.' });
+        const anyone = action.name === 'default';
+        const answer = await dialog.showMessageBox(window, {
+          type: 'warning',
+          buttons: [anyone ? 'Turn Off' : 'Take Key Back', 'Cancel'],
+          defaultId: 1,
+          cancelId: 1,
+          message: anyone ? `Let no agent without a key read "${path.basename(root)}"?` : `Take "${action.name}"'s key back?`,
+          detail: anyone
+            ? 'Only agents you gave a key will read the folder.'
+            : 'It stops reading the folder at its next request. You can add it again with a new key.',
+        });
+        if (answer.response !== 0) outcome = 'cancelled';
+        else {
+          if (!revokeAgent(root, action.name)) throw new Error(`There is no agent named "${action.name}" in .noto/access.yaml.`);
+          this.logger.log('memory_agent_revoked', { anyone });
+        }
+      }
+    } catch (failure) {
+      outcome = 'failed';
+      error = (failure as Error).message;
+    }
+    if (outcome === 'done' && action.kind !== 'list') this.send(WORKSPACE_CHANNELS.memoryChanged, { version: NOTO_WORKSPACE_VERSION });
+    const readers = new Map((await this.memory!.readers() ?? []).map((row) => [row.actor, row]));
+    const agents = agentList(root).map((agent) => ({
+      name: agent.name, keys: agent.keys, reads: agent.reads, verbs: [...agent.verbs], writes: [...agent.writes],
+      revoked: agent.revoked, implicit: agent.implicit,
+      lastRead: readers.get(agent.name)?.last ?? null, readCount: readers.get(agent.name)?.count ?? 0,
+    }));
+    return reply({ outcome, error, agents, key });
+  }
+
+  /** Whether opening a note in the folder at `root` (the tree's root) is written in its read record. */
+  recordsReads(root: string): boolean {
+    const real = root === this.folderRoot ? this.memory?.folder() ?? root : root;
+    return !(this.unrecorded?.has(real) ?? false);
+  }
+
+  /**
+   * What `.noto/access.yaml` says, for the window to draw: the folders given
+   * a level by name, the folder's own default, and whether the note in front
+   * is made private by its own frontmatter. From the files alone: the index
+   * is not opened, so this is asked on every note brought to the front.
+   */
+  async memoryPrivacy(note: string | null): Promise<WorkspaceMemoryPrivacyReplyV1> {
+    const none: WorkspaceMemoryPrivacyReplyV1 = { version: NOTO_WORKSPACE_VERSION, root: null, vault: 'open', folders: [], note: null };
+    const root = this.memory?.folder() ?? null;
+    const tree = this.folderRoot;
+    if (root === null || tree === null || !(await stat(path.join(root, '.noto')).then(() => true, () => false))) return none;
+    try {
+      const marks = privacyMarks(root);
+      let front: WorkspaceMemoryPrivacyReplyV1['note'] = null;
+      const real = note === null ? null : await realpath(note).catch(() => null);
+      const rel = real === null ? null : insideFolder(root, real);
+      // A note: a regular Markdown file, never any file the window names.
+      if (rel !== null && /\.(md|markdown)$/i.test(rel) && (await stat(real!).then((info) => info.isFile(), () => false))) {
+        const own = noteSensitivity(root, rel);
+        if (own.stricter && (own.own === 'private' || own.own === 'sealed') && own.folder !== 'sealed') front = { level: own.own, folder: own.folder };
+      }
+      return {
+        version: NOTO_WORKSPACE_VERSION,
+        root: tree,
+        vault: marks.default,
+        // Under the real folder, where the tree's rows are: under the window's
+        // name for it, a folder opened through a link wore no locks.
+        folders: marks.folders.map((item) => ({ path: path.join(root, ...item.folder.split('/')), level: item.level })),
+        note: front,
+      };
+    } catch {
+      return none;
+    }
+  }
+
+  /**
+   * The open folder's memory itself, for Settings → Memory: what its index
+   * holds, building it again, whether this computer keeps its read record,
+   * and stopping keeping memory, which moves `.noto` to the Trash once main's
+   * own sheet has said what is in it.
+   */
+  async memoryFolder(action: WorkspaceMemoryFolderActionV1): Promise<WorkspaceMemoryFolderReplyV1> {
+    const memory = this.memory;
+    const root = memory?.folder() ?? null;
+    const reply = (fields: Partial<WorkspaceMemoryFolderReplyV1>): WorkspaceMemoryFolderReplyV1 => ({
+      version: NOTO_WORKSPACE_VERSION, state: 'outside', outcome: 'done', error: null, index: null,
+      recording: root === null || !(this.unrecorded?.has(root) ?? false), ...fields,
+    });
+    if (!memory || root === null) return reply({});
+    const noto = path.join(root, '.noto');
+    if (!(await stat(noto).then(() => true, () => false))) return reply({ state: 'no-memory' });
+    let outcome: WorkspaceMemoryFolderReplyV1['outcome'] = 'done';
+    let error: string | null = null;
+    try {
+      if (action.kind === 'record') {
+        if (action.on) this.unrecorded?.delete(root);
+        else this.unrecorded?.add(root);
+        this.logger.log('memory_record_set', { on: action.on });
+      } else if (action.kind === 'rebuild') {
+        if (memoryScripts(root).length > 0 && !this.memoryTrust?.mayOpen(root)) {
+          outcome = 'failed';
+          error = "This folder's memory runs scripts you have not allowed yet. Allow them from Note Info first.";
+        } else {
+          // It runs on; the window hears when it is done, and asks again.
+          void memory.rebuild().then((done) => this.logger.log('memory_rebuild', { done }));
+        }
+      } else if (action.kind === 'turn-off') {
+        const window = this.getWindow();
+        if (!window) return reply({ outcome: 'failed', error: 'There is no window to ask in.' });
+        if (this.turningOff) return reply({ outcome: 'cancelled' });
+        // The Trash would take the link and leave what it points to: say so rather than claim otherwise.
+        if ((await lstat(noto)).isSymbolicLink()) {
+          return reply({ outcome: 'failed', error: "This folder's .noto is a link to another place. Remove the link by hand to stop keeping memory here." });
+        }
+        this.turningOff = true;
+        try {
+          const answer = await dialog.showMessageBox(window, {
+            type: 'warning',
+            buttons: ['Move to Trash', 'Cancel'],
+            defaultId: 1,
+            cancelId: 1,
+            message: `Stop keeping memory for "${path.basename(root)}"?`,
+            detail: [
+              'Noto moves the folder\'s .noto folder to the Trash. In it:',
+              ...(await memoryContents(root)).map((line) => `  ${line}`),
+              '',
+              'Agents stop reading the folder at their next request. Your notes are not touched, and putting .noto back from the Trash turns all of it on again.',
+            ].join('\n'),
+          });
+          if (answer.response !== 0) outcome = 'cancelled';
+          // What the sheet described must still be what is there: the same folder, its .noto still in it.
+          else if (memory.folder() !== root || !(await stat(noto).then(() => true, () => false))) {
+            outcome = 'failed';
+            error = 'The folder changed while the sheet was open; nothing was moved.';
+          } else if (!(await memory.turnOff(root, async (folder) => { await shell.trashItem(folder); }))) {
+            outcome = 'failed';
+            error = 'The folder changed while its memory closed; nothing was moved.';
+          } else {
+            // Kept memory again later, the folder starts with the read record on.
+            this.unrecorded?.delete(root);
+            this.logger.log('memory_turned_off', {});
+            this.send(WORKSPACE_CHANNELS.memoryChanged, { version: NOTO_WORKSPACE_VERSION });
+            return reply({ state: 'no-memory' });
+          }
+        } finally {
+          this.turningOff = false;
+        }
+      }
+    } catch (failure) {
+      outcome = 'failed';
+      error = (failure as Error).message;
+    }
+    if (outcome === 'done' && action.kind === 'record') this.send(WORKSPACE_CHANNELS.memoryChanged, { version: NOTO_WORKSPACE_VERSION });
+    const status = await memory.status();
+    return reply({ state: status.state, index: status.index, outcome, error });
+  }
+
+  /** A question of the folder's memory in words; see `memory-host.ts`. `note` is the note in front, on disk, or null. */
+  async memoryAsk(cue: string, note: string | null): Promise<WorkspaceMemoryAskReplyV1> {
+    const memory = this.memory;
+    if (!memory) return { version: NOTO_WORKSPACE_VERSION, state: 'unavailable', value: null };
+    const root = memory.folder();
+    const real = note === null ? null : await realpath(note).catch(() => null);
+    const rel = real === null || root === null ? null : insideFolder(root, real);
+    const outcome = await memory.recall(cue.trim(), rel);
+    this.logger.log('memory_ask', { state: outcome.state, items: outcome.value?.items.length ?? 0 });
+    return { version: NOTO_WORKSPACE_VERSION, ...outcome };
+  }
+
+  /**
+   * Review's question of the folder's memory; see `memory-host.ts`. Accepting,
+   * linking and taking a write back are told which notes have unsaved edits
+   * in the window, and leave those alone: a write under them would be lost
+   * or would lose them. Anything that wrote tells the window to ask again.
+   */
+  async memoryReview(action: WorkspaceReviewActionV1): Promise<WorkspaceReviewReplyV1> {
+    const memory = this.memory;
+    if (!memory) return { version: NOTO_WORKSPACE_VERSION, state: 'unavailable', value: null, error: null };
+    const root = memory.folder();
+    // Named from the real folder, as the vault names notes. The window may have
+    // opened the folder through a link or a Windows short name, and a note
+    // open in it has its real path, so against the window's name for the
+    // folder an open note was outside it and nothing was left alone.
+    // NFC: macOS may spell a name with its accents apart where git puts them together.
+    const busy = root === null ? [] : [...await this.busyReal()].flatMap((open) => {
+      const rel = insideFolder(root, open);
+      return rel === null ? [] : [rel.normalize('NFC')];
+    });
+    let request: ReviewRequest;
+    if (action.kind === 'mentions') {
+      // The note in front by its path on disk, as the vault names it; one outside the folder has none.
+      const real = await realpath(action.note).catch(() => null);
+      const rel = real === null || root === null ? null : insideFolder(root, real);
+      if (rel === null) return { version: NOTO_WORKSPACE_VERSION, state: 'outside', value: null, error: null };
+      request = { kind: 'mentions', rel };
+    } else {
+      request = action.kind === 'accept' || action.kind === 'link' || action.kind === 'undo' ? { ...action, busy } : action;
+    }
+    const outcome = await memory.review(request);
+    // A write that timed out may still have landed: the window asks again either way.
+    const writes = ['accept', 'reject', 'link', 'dismiss', 'undismiss', 'undo'].includes(action.kind);
+    if (writes) this.send(WORKSPACE_CHANNELS.memoryChanged, { version: NOTO_WORKSPACE_VERSION });
+    this.logger.log('memory_review', { action: action.kind, state: outcome.state });
+    return { version: NOTO_WORKSPACE_VERSION, state: outcome.state, value: outcome.value as WorkspaceReviewReplyV1['value'], error: outcome.error };
+  }
+
+  /** What the folder's memory knows about a note; see `memory-host.ts`. */
+  async noteMemory(target: string): Promise<WorkspaceNoteMemoryReplyV1> {
+    const real = await this.readableNote(target);
+    if (real === null || this.memory === null) {
+      return { version: NOTO_WORKSPACE_VERSION, state: real === null ? 'outside' : 'unavailable', memory: null };
+    }
+    return this.memory.about(real);
+  }
+
+  /** The newest commits under a folder; see `git-history.ts`. */
+  async folderHistory(target: string): Promise<WorkspaceFolderHistoryReplyV1> {
+    const real = await this.readableFolder(target);
+    if (real === null) return { version: NOTO_WORKSPACE_VERSION, state: 'outside', commits: [] };
+    const started = Date.now();
+    const reply = await this.history.folder(real);
+    this.logger.log('folder_history', { outcome: reply.state, commits: reply.commits.length, ms: Date.now() - started });
+    return reply;
+  }
+
+  /** What the folder's memory knows about a folder in it; see `memory-host.ts`. */
+  async folderMemory(target: string): Promise<WorkspaceFolderMemoryReplyV1> {
+    const real = await this.readableFolder(target);
+    if (real === null || this.memory === null) {
+      return { version: NOTO_WORKSPACE_VERSION, state: real === null ? 'outside' : 'unavailable', memory: null };
+    }
+    return this.memory.aboutFolder(real);
+  }
+
+  /** Which of a note's commits changed one passage of it; see `git-history.ts`. */
+  async notePassage(target: string, text: string): Promise<WorkspaceNotePassageReplyV1> {
+    const real = await this.readableNote(target);
+    if (real === null) return { version: NOTO_WORKSPACE_VERSION, state: 'outside', lines: null, commits: [] };
+    const started = Date.now();
+    const reply = await this.history.passage(real, text);
+    this.logger.log('note_passage', { outcome: reply.state, commits: reply.commits.length, ms: Date.now() - started });
+    return reply;
+  }
+
+  /** A note's commits, following renames; see `git-history.ts`. */
+  async noteHistory(target: string): Promise<WorkspaceNoteHistoryReplyV1> {
+    const real = await this.readableNote(target);
+    if (real === null) {
+      return { version: NOTO_WORKSPACE_VERSION, state: 'outside', commits: [], more: false, uncommitted: null, file: null };
+    }
+    const started = Date.now();
+    const reply = await this.history.history(real);
+    this.logger.log('note_history', { outcome: reply.state, commits: reply.commits.length, ms: Date.now() - started });
+    return reply;
+  }
+
+  /**
+   * Quick Open's preview: the opening of a note in the open folder, or the
+   * lines around a match in it. Only a few kilobytes are read for an opening;
+   * a match far down is found in a file no bigger than PREVIEW_SCAN_BYTES. A
+   * file outside the folder, or not a note, gets nothing.
+   */
+  async notePreview(target: string, line: number | null): Promise<WorkspaceNotePreviewReplyV1> {
+    const none: WorkspaceNotePreviewReplyV1 = { version: NOTO_WORKSPACE_VERSION, text: null, from: 1, modified: null, fence: null };
+    const real = await this.inRoot(target);
+    if (real === null || !/\.(md|markdown|mdown|mkd|txt)$/i.test(real)) return none;
+    try {
+      const info = await stat(real);
+      if (!info.isFile()) return none;
+      if (line === null) {
+        const handle = await openFile(real, 'r');
+        try {
+          const buffer = Buffer.alloc(Math.min(PREVIEW_BYTES, info.size));
+          const { bytesRead } = await handle.read(buffer, 0, buffer.length, 0);
+          // A character cut at the end of the read is dropped, not shown as a replacement mark.
+          const text = buffer.subarray(0, bytesRead).toString('utf8').replace(/\uFFFD+$/, '');
+          return { version: NOTO_WORKSPACE_VERSION, text: text.slice(0, NOTE_PREVIEW_MAX), from: 1, modified: info.mtimeMs, fence: null };
+        } finally {
+          await handle.close();
+        }
+      }
+      if (info.size > PREVIEW_SCAN_BYTES) return none;
+      const lines = (await readFile(real, 'utf8')).split('\n');
+      const from = Math.max(1, Math.min(line, lines.length) - PREVIEW_BEFORE);
+      const text = lines.slice(from - 1, from - 1 + PREVIEW_LINES).join('\n').slice(0, NOTE_PREVIEW_MAX);
+      const open = fenceAfter(lines.slice(0, from - 1));
+      const fence = open ? open.char.repeat(Math.min(open.length, 32)) : null;
+      return { version: NOTO_WORKSPACE_VERSION, text, from, modified: info.mtimeMs, fence };
+    } catch {
+      return none;
+    }
+  }
+
+  async noteVersion(target: string, commit: string, at: string): Promise<WorkspaceNoteVersionReplyV1> {
+    const real = await this.readableNote(target);
+    const text = real === null ? null : await this.history.version(real, commit, at);
+    return { version: NOTO_WORKSPACE_VERSION, text };
   }
 
   async noteLinks(target: string): Promise<WorkspaceLinksReplyV1> {
@@ -1453,6 +2260,7 @@ export class WorkspaceSession {
   private async followDisk(touched: readonly string[] | null): Promise<void> {
     const root = this.folderRoot;
     if (!root) return;
+    this.memory?.changed(touched);
     let change = { structural: true, notes: true };
     if (touched !== null) {
       const indexed = this.indexCache?.root === root ? this.indexCache.reply.entries : [];
@@ -1479,7 +2287,7 @@ export class WorkspaceSession {
       this.logger.log('workspace_disk_changed', { touched: touched === null ? 'unknown' : touched.length });
       this.invalidateFolderCaches();
       this.listed.clear();
-      this.announceTreeChanged();
+      this.announceTreeChanged(touched === null ? null : changedListings(root, touched));
     } else if (change.notes) {
       // Saved text can change a note's tags, and nothing else the folder caches.
       this.tagIndexCache = null;
@@ -1646,4 +2454,29 @@ export class WorkspaceSession {
  */
 function pathTag(filePath: string): string {
   return createHash('sha256').update(filePath).digest('hex').slice(0, 12);
+}
+
+
+/** What a folder's `.noto` holds, a line each, for the sheet that asks before it goes. */
+async function memoryContents(root: string): Promise<string[]> {
+  const noto = path.join(root, '.noto');
+  const names = (await readdir(noto).catch(() => [] as string[])).sort();
+  const size = async (name: string) => (await stat(path.join(noto, name)).catch(() => null))?.size ?? 0;
+  const lines: string[] = [];
+  if (names.some((name) => name.startsWith('index.sqlite'))) {
+    let bytes = 0;
+    for (const name of names.filter((item) => item.startsWith('index.sqlite'))) bytes += await size(name);
+    lines.push(`The index (${sizeWords(bytes)}), built from your notes.`);
+  }
+  for (const name of names) {
+    if (name.startsWith('index.sqlite')) continue;
+    if (name === 'events') lines.push('The read record: which notes were opened, by you and by agents.');
+    else if (name === 'access.yaml') {
+      const keyed = (() => { try { return agentList(root).filter((agent) => agent.keys > 0).length; } catch { return 0; } })();
+      lines.push(`Who may read the folder${keyed > 0 ? `: ${keyed} ${keyed === 1 ? 'agent' : 'agents'} with a key` : ''}.`);
+    } else if (name === 'brain.yaml') lines.push('How the notes are sorted into kinds.');
+    else if (name === 'scripts') lines.push(`The folder's scripts: ${memoryScripts(root).join(', ') || 'none'}.`);
+    else lines.push(name);
+  }
+  return lines;
 }

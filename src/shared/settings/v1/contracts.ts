@@ -51,6 +51,9 @@ export const SETTING_RANGES = Object.freeze({
      persistence and coerce — not the hard drag cap (that used to be a fixed
      520, then 720). */
   railWidth: { min: 190, max: 1800, step: 1 },
+  /* The note's info pane beside the page: narrow enough to leave the page its
+     measure, wide enough for a commit's subject on one line. */
+  infoWidth: { min: 240, max: 640, step: 1 },
 } as const);
 
 /** Share of the window the rail may occupy while dragging or after a resize. */
@@ -139,6 +142,16 @@ export const PROSE_FONT_FAMILY_MAX = 80;
 export const TREE_SORTS = ['name', 'name-desc', 'modified', 'modified-old'] as const;
 
 /**
+ * How the folders you are in are held at the top of the file tree as it
+ * scrolls. `stack` holds each on its own row, the path to the note in front,
+ * as the author's Typora theme does; `trail` folds the folders around what is
+ * in view into one row of names, which costs one row instead of one a level.
+ */
+export const TREE_HELD = ['stack', 'trail'] as const;
+
+export type TreeHeldV1 = (typeof TREE_HELD)[number];
+
+/**
  * How a note's unsaved changes are laid out: the saved file and the note as
  * it is now in two columns, in two panes one above the other, or as one text
  * with what went struck through and what came marked in place.
@@ -163,6 +176,13 @@ export interface NotoSettingsV1 {
   readonly theme: NotoTheme;
   /** The order of the rows in the file tree. See `TREE_SORTS`. */
   readonly treeSort: TreeSortV1;
+  /** How the folders you are in are held at the top of the tree. See `TREE_HELD`. */
+  readonly treeHeld: TreeHeldV1;
+  /**
+   * Whether a note's row shows its `.md`. On by default, as Typora's sidebar
+   * shows it; off gives a deep tree in a narrow rail the width back.
+   */
+  readonly treeNoteExtensions: boolean;
   /**
    * The inline syntax Typora adds to markdown, each on its own switch.
    *
@@ -325,6 +345,12 @@ export interface NotoSettingsV1 {
    */
   readonly gitMarks: boolean;
   /**
+   * The marks plugins put on the note in front: a faint dotted underline
+   * under a few words, with a card of what can be done about them (a note
+   * named but not linked, say). On by default; off draws none, and loads none.
+   */
+  readonly noteMarks: boolean;
+  /**
    * Keep the line being typed at the middle of the window.
    *
    * Typora calls this typewriter mode. Off by default for the same reason,
@@ -387,6 +413,12 @@ export interface NotoSettingsV1 {
    * Settings. The graph reader and seed path stay in the build either way.
    */
   readonly railLinks: boolean;
+  /** Whether the note's info pane is open beside the page. */
+  readonly infoOpen: boolean;
+  /** The info pane's tab in front, as `pluginId:tabId`; empty for the first. */
+  readonly infoTab: string;
+  /** The info pane's width in pixels. */
+  readonly infoWidth: number;
   /**
    * GitHub Releases track: Stable (formal only) or Testing (includes alphas).
    *
@@ -418,6 +450,8 @@ export const DEFAULT_SETTINGS: NotoSettingsV1 = Object.freeze({
   proseFace: 'serif',
   proseFontFamily: '',
   treeSort: 'name',
+  treeHeld: 'stack',
+  treeNoteExtensions: true,
   quickOpenWidth: 'default',
   diffLayout: 'side',
   remoteControl: false,
@@ -448,6 +482,7 @@ export const DEFAULT_SETTINGS: NotoSettingsV1 = Object.freeze({
   todoCheckTime: true,
   focusMode: false,
   gitMarks: true,
+  noteMarks: true,
   typewriterMode: false,
   sidebarOnLaunch: false,
   railWidth: 272,
@@ -463,6 +498,9 @@ export const DEFAULT_SETTINGS: NotoSettingsV1 = Object.freeze({
   imageEscapeUrl: true,
   fileTags: true,
   railLinks: false,
+  infoOpen: false,
+  infoTab: '',
+  infoWidth: 320,
   updateChannel: 'stable',
   checkUpdatesOnLaunch: false,
   autoDownloadUpdates: false,

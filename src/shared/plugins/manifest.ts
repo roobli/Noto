@@ -165,9 +165,13 @@ export function validatePluginManifest(value: unknown): value is PluginManifest 
 
   const runtime = value.runtime as PluginRuntime;
   const inEditor = runtime !== 'isolated-service';
-  // A trusted plugin may also read git: the Changes page does, through the rail slot.
+  // A trusted plugin may also read git (the Changes page does, through the rail
+  // slot), the folder's memory (Related and Activity, in Note Info), and settle
+  // its Review queue (accept, link, take back; main leaves unsaved notes alone).
+  // Only a bundled plugin runs trusted: one the reader installs must be
+  // sandboxed (user-plugins.ts), which reaches none of these.
   const allowedCapabilities = runtime === 'trusted-renderer'
-    ? ['editor.read', 'editor.decorate', 'editor.transform', 'git.read']
+    ? ['editor.read', 'editor.decorate', 'editor.transform', 'git.read', 'vault.read', 'vault.review']
     : inEditor
       ? ['editor.read', 'editor.decorate', 'editor.transform']
       : ['filesystem.read'];

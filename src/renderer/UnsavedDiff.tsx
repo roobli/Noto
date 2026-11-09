@@ -118,6 +118,30 @@ function Gap({ change, linked, active, tone, label }: { readonly change: number;
   );
 }
 
+/** A button in the bar, for a view of two versions: Older, Restore This Version. */
+export interface DiffBarAction {
+  readonly id: string;
+  readonly label: string;
+  readonly title?: string;
+  /** Why it cannot run now; shown disabled, with this as its tooltip. */
+  readonly unavailable?: string;
+  readonly run: () => void;
+}
+
+/**
+ * Two versions of a note rather than its unsaved changes: from the info
+ * pane's history, say. The view is the same; its words and buttons differ.
+ */
+export interface DiffVersions {
+  readonly title: string;
+  readonly detail?: string;
+  readonly beforeLabel: string;
+  readonly afterLabel: string;
+  readonly actions?: readonly DiffBarAction[];
+  /** A bare key that runs an action, by its id. */
+  readonly keys?: Readonly<Record<string, string>>;
+}
+
 export interface UnsavedDiffProps {
   readonly fileName: string;
   readonly saved: string;
@@ -125,9 +149,12 @@ export interface UnsavedDiffProps {
   readonly layout: DiffLayoutV1;
   readonly onLayout: (layout: DiffLayoutV1) => void;
   readonly onClose: () => void;
+  readonly versions?: DiffVersions;
 }
 
-export function UnsavedDiff({ fileName, saved, current, layout, onLayout, onClose }: UnsavedDiffProps) {
+export function UnsavedDiff({ fileName, saved, current, layout, onLayout, onClose, versions }: UnsavedDiffProps) {
+  const beforeLabel = versions?.beforeLabel ?? 'Saved';
+  const afterLabel = versions?.afterLabel ?? 'Now';
   const diff = useMemo(() => unsavedDiff(saved, current), [saved, current]);
   const words = useMemo(() => diff.rows.map((row) => (row.kind === 'modified' ? wordDiff(row.saved!, row.current!) : null)), [diff]);
   const [opened, setOpened] = useState<ReadonlySet<number>>(new Set());
@@ -171,6 +198,13 @@ export function UnsavedDiff({ fileName, saved, current, layout, onLayout, onClos
     // A bare letter only: with a modifier it is a chord for the menu, Print
     // among them, and is left to it.
     const bare = !event.ctrlKey && !event.metaKey && !event.altKey;
+    const named = bare ? versions?.keys?.[event.key] : undefined;
+    const action = named ? versions?.actions?.find((candidate) => candidate.id === named) : undefined;
+    if (action) {
+      event.preventDefault();
+      if (!action.unavailable) action.run();
+      return;
+    }
     if ((bare && event.key === 'n') || (event.altKey && event.key === 'ArrowDown')) {
       event.preventDefault();
       step(1);
@@ -200,8 +234,8 @@ export function UnsavedDiff({ fileName, saved, current, layout, onLayout, onClos
     if (text === null) {
       if (!withGaps) return <div className="diff-filler" aria-hidden="true" />;
       return which === 'saved'
-        ? <Gap {...flags(row)} tone="added" label="added in the note" />
-        : <Gap {...flags(row)} tone="removed" label="removed from the note" />;
+        ? <Gap {...flags(row)} tone="added" label={versions ? `added by ${afterLabel}` : 'added in the note'} />
+        : <Gap {...flags(row)} tone="removed" label={versions ? `not in ${afterLabel}` : 'removed from the note'} />;
     }
     const tone = which === 'saved' ? 'removed' : 'added';
     const pieces = words[index];
@@ -212,16 +246,18 @@ export function UnsavedDiff({ fileName, saved, current, layout, onLayout, onClos
     if (diff.changes === 0) {
       return (
         <p className="diff-empty" data-testid="unsaved-diff-empty">
-          {diff.spacingOnly
-            ? 'Only the spacing between blocks, or how the file ends, differs from the saved file. Saving writes it.'
-            : 'Nothing differs from the saved file.'}
+          {versions
+            ? (diff.spacingOnly ? 'Only the spacing between blocks, or how the file ends, differs.' : 'The two versions read the same.')
+            : diff.spacingOnly
+              ? 'Only the spacing between blocks, or how the file ends, differs from the saved file. Saving writes it.'
+              : 'Nothing differs from the saved file.'}
         </p>
       );
     }
     if (layout === 'side') {
       return (
         <div className="diff-scroll diff-side">
-          <div className="diff-pair diff-heads" aria-hidden="true"><span>Saved</span><span>Now</span></div>
+          <div className="diff-pair diff-heads" aria-hidden="true"><span>{beforeLabel}</span><span>{afterLabel}</span></div>
           {items.map((item) => (item.type === 'fold'
             ? fold(item, `f${item.from}`)
             : (
@@ -237,8 +273,8 @@ export function UnsavedDiff({ fileName, saved, current, layout, onLayout, onClos
       return (
         <div className="diff-stack">
           {(['saved', 'current'] as const).map((which) => (
-            <section key={which} className="diff-pane" aria-label={which === 'saved' ? 'Saved' : 'Now'}>
-              <div className="diff-pane-head">{which === 'saved' ? 'Saved' : 'Now'}</div>
+            <section key={which} className="diff-pane" aria-label={which === 'saved' ? beforeLabel : afterLabel}>
+              <div className="diff-pane-head">{which === 'saved' ? beforeLabel : afterLabel}</div>
               <div className="diff-scroll">
                 {items.map((item) => (item.type === 'fold'
                   ? fold(item, `${which}f${item.from}`)
@@ -271,11 +307,11 @@ export function UnsavedDiff({ fileName, saved, current, layout, onLayout, onClos
   return (
     <div
       ref={rootRef}
-      className="unsaved-diff"
-      data-testid="unsaved-diff"
+      className={`unsaved-diff${versions ? ' is-versions' : ''}`}
+      data-testid={versions ? 'version-diff' : 'unsaved-diff'}
       data-layout={layout}
       role="dialog"
-      aria-label={`Unsaved changes to ${fileName}`}
+      aria-label={versions ? `${versions.title}, ${fileName}` : `Unsaved changes to ${fileName}`}
       tabIndex={-1}
       onKeyDown={onKeyDown}
       onMouseOver={(event) => pointAt(event.target)}
@@ -283,9 +319,11 @@ export function UnsavedDiff({ fileName, saved, current, layout, onLayout, onClos
     >
       <header className="diff-bar">
         <div className="diff-title">
-          <strong>Unsaved changes</strong>
+          <strong title={versions?.title}>{versions ? versions.title : 'Unsaved changes'}</strong>
+          {versions?.detail && <span className="diff-detail" data-testid="version-diff-detail" title={versions.detail}>{versions.detail}</span>}
           <span className="diff-summary" data-testid="unsaved-diff-summary">{summary(diff)}</span>
         </div>
+
         {diff.changes > 0 && (
           <div className="diff-nav" role="group" aria-label="Changes">
             <button type="button" className="icon-button" data-testid="unsaved-diff-previous"
@@ -311,6 +349,18 @@ export function UnsavedDiff({ fileName, saved, current, layout, onLayout, onClos
           <svg viewBox="0 0 16 16" aria-hidden="true"><path d="M4.25 4.25 11.75 11.75M11.75 4.25 4.25 11.75" /></svg>
         </button>
       </header>
+      {/* What can be done with the version: a row of its own under the bar, so
+          the title keeps its room and the buttons never stack. */}
+      {versions?.actions && versions.actions.length > 0 && (
+        <div className="diff-actions" role="toolbar" aria-label="Version">
+          {versions.actions.map((action) => (
+            <button key={action.id} type="button" className="diff-action" data-testid={`version-diff-${action.id}`}
+              disabled={Boolean(action.unavailable)} title={action.unavailable ?? action.title} onClick={action.run}>
+              {action.label}
+            </button>
+          ))}
+        </div>
+      )}
       {body}
     </div>
   );

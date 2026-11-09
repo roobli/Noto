@@ -30,8 +30,10 @@ test('the page follows the rail edge during the drag, and the width holds after 
     await page.setViewportSize({ width: 1400, height: 860 });
     await page.waitForSelector('[data-testid="file-tree"]', { state: 'visible', timeout: 30_000 });
     await page.getByTestId('tree-file').first().click();
+    // The rail opens when the folder arrives and its column slides out; the
+    // drag is measured from where that slide ends.
+    await expect.poll(async () => { const at = await edges(page); return Math.abs(at.page - at.rail); }).toBeLessThanOrEqual(1);
     const before = await edges(page);
-    expect(Math.abs(before.page - before.rail)).toBeLessThanOrEqual(1);
 
     const handle = (await page.getByTestId('rail-resize').boundingBox())!;
     const x = handle.x + handle.width / 2;

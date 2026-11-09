@@ -19,6 +19,7 @@ import { triggerRange, wikiLinkText } from './wiki-trigger';
 import { droppedNote } from './dropped-note';
 import { tocBlockPlugin } from './toc-block';
 import { footnoteHoverPlugin } from './footnote-hover';
+import { closeNoteMarkCard, noteMarksPlugin, setNoteMarks, type NoteMarkView } from './note-marks-plugin';
 import { sliceFromText } from './paste-text';
 import { EditorState, Selection, type Plugin, type Transaction, TextSelection } from 'prosemirror-state';
 import { EditorView } from 'prosemirror-view';
@@ -63,7 +64,7 @@ import { blockMarkdownNow, captureMarkdown, captureStableWire, captureTransactio
 import type { NotoEditorPort } from './NotoEditorPort';
 import { createOriginPlugin, getBlockOrigins, rebaseOrigins, transactionKeepsTopLevelNodes } from './origin-plugin';
 import { caretCatchUp } from './caret-catch-up';
-import { gitGutterPlugin, gitTargetAtSelection, setGitBlocks, showCommittedAtSelection, type GitRevertTarget } from './git-gutter';
+import { committedTextAt, gitGutterPlugin, gitTargetAtSelection, setGitBlocks, showCommittedAtSelection, type GitRevertTarget } from './git-gutter';
 import { gitRevertKind, gitRevertTransaction, type GitRevertContext } from './git-revert';
 import { closeGitPopover } from './git-popover';
 import type { WorkspaceGitBlocksV1 } from '../../../shared/workspace/v1/contracts';
@@ -150,6 +151,12 @@ export interface NotoEditorOptions extends Omit<InputRuleOptions, 'smartQuotes' 
   readonly onCountChanged?: (count: DocumentCount) => void;
   /** Cmd or Ctrl clicking a `[[wiki link]]`. Absent means links stay inert. */
   readonly onFollowWikiLink?: (target: string) => void;
+  /** An action was chosen on a plugin's mark (`setNoteMarks`), after any text it replaces was replaced. */
+  readonly onNoteMarkAction?: (key: string, action: string) => void;
+  /** History of This Passage was chosen: `text` is the passage as the last commit has it. Absent, it is not offered. */
+  readonly onPassageHistory?: (text: string) => void;
+  /** Whether the note's folder is in git, so a note with nothing changed still has a history to follow. */
+  readonly inGit?: () => boolean;
   /** Two brackets were typed, which is a reader asking which note they mean. */
   readonly onWikiTrigger?: () => void;
   /** Where relative images resolve from, and whether web images load. */
@@ -179,6 +186,9 @@ export interface InsertedImage {
 const TEXT_INPUT_TYPES = new Set(['text', 'search', 'url', 'email', 'tel', 'password', 'number']);
 /** Commands that only move the selection, which a read-only note still takes. */
 const SELECTION_COMMANDS = new Set(['select-all', 'select-word', 'select-line', 'select-scope', 'jump-to-selection']);
+
+/** The editor's own context item for a passage's history; a command App answers. */
+export const PASSAGE_HISTORY = 'noto.passage-history';
 
 export class NotoEditor implements NotoEditorPort {
   private view: EditorView | null = null;
@@ -472,6 +482,7 @@ export class NotoEditor implements NotoEditorPort {
       wikiLinkPlugin({ onFollow: (target) => this.options.onFollowWikiLink?.(target) }),
       indexBlockPlugin({ onFollow: (target) => this.options.onFollowWikiLink?.(target) }),
       footnoteHoverPlugin(),
+      noteMarksPlugin({ onAction: (key, action) => this.options.onNoteMarkAction?.(key, action) }),
       tocBlockPlugin({ onGo: (blockIndex) => this.focusBlock(blockIndex) }),
       linkEditorPlugin(),
       followLinkPlugin({ onFollow: (href) => this.options.onFollowLink?.(href) }),
@@ -964,14 +975,30 @@ export class NotoEditor implements NotoEditorPort {
   /** What the editor and its plugins add to a right click at a point in the page. */
   contextItemsAt(x: number, y: number): EditorContextItem[] {
     const view = this.view;
-    if (!view || this.readOnly) return [];
+    this.contextPassage = null;
+    if (!view) return [];
     // A click outside the note (a rename field, a search box) or in a field
     // drawn inside it is not about the note: no plugin has anything there.
     const hit = globalThis.document.elementFromPoint(x, y);
     if (!hit || !view.dom.contains(hit) || this.fieldFocused(view)) return [];
     const pos = view.posAtCoords({ left: x, top: y })?.pos ?? null;
+    // Reading a passage's history changes nothing, so a read-only note offers it too; last, after what edits.
+    this.contextPassage = pos === null || !this.options.onPassageHistory ? null : this.passageAt(pos);
+    const history: EditorContextItem[] = this.contextPassage === null ? [] : [{ title: 'History of This Passage', command: PASSAGE_HISTORY }];
+    if (this.readOnly) return history;
     // The table's own lines first: in a table they are what the click is about.
-    return [...tableContextItems(view.state, pos), ...editorExtensions.contextItems(view, { pos, element: hit })];
+    return [...tableContextItems(view.state, pos), ...editorExtensions.contextItems(view, { pos, element: hit }), ...history];
+  }
+
+  /** The passage a right click was on, for History of This Passage when it is chosen. */
+  private contextPassage: string | null = null;
+
+  /** The text the last commit has for the top-level block holding `pos`; null where git has none. */
+  private passageAt(pos: number): string | null {
+    const view = this.view;
+    if (!view) return null;
+    const index = view.state.doc.resolve(Math.min(pos, view.state.doc.content.size)).index(0);
+    return committedTextAt(view.state, index, this.acceptedDocument, this.options.inGit?.() ?? false);
   }
 
   /**
@@ -990,6 +1017,13 @@ export class NotoEditor implements NotoEditorPort {
   runCommand(name: string): boolean {
     const view = this.view;
     if (!view) return false;
+    if (name === PASSAGE_HISTORY) {
+      const text = this.contextPassage ?? this.passageAt(view.state.selection.from);
+      this.contextPassage = null;
+      if (text === null || !this.options.onPassageHistory) return false;
+      this.options.onPassageHistory(text);
+      return true;
+    }
     // Bold from the menu while a sidenote is being written would bold the
     // note's words behind the field, not anything in it.
     if (this.fieldFocused(view)) return false;
@@ -1209,6 +1243,18 @@ export class NotoEditor implements NotoEditorPort {
     const view = this.view;
     if (!view) return;
     view.dispatch(setGitBlocks(view.state.tr, event));
+  }
+
+  /**
+   * The marks plugins put on the note, in place of the ones it had: found by
+   * their words in the note as it stands, and drawn over it. A view change
+   * only: no history, no save.
+   */
+  setNoteMarks(marks: readonly NoteMarkView[]): void {
+    const view = this.view;
+    if (!view) return;
+    if (marks.length === 0) closeNoteMarkCard();
+    view.dispatch(setNoteMarks(view.state.tr, marks));
   }
 
   /** The block at the caret as committed, for the keyboard. False when there is nothing to show. */

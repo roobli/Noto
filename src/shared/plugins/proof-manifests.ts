@@ -105,8 +105,48 @@ export const changesManifest = {
   uiExtensions: ['rail:changes'],
 } satisfies PluginManifest;
 
+export const historyManifest = {
+  schemaVersion: 2,
+  id: 'dev.lr00rl.noto.history',
+  name: 'History',
+  version: '1.0.0',
+  runtime: 'trusted-renderer',
+  activation: {
+    startup: false,
+    events: [],
+    hotkeys: [],
+  },
+  capabilities: ['git.read', 'editor.read', 'editor.transform', 'vault.read'],
+  lifecycle: ['activate', 'deactivate'],
+  commands: [],
+  settings: [],
+  hotkeys: [],
+  editorExtensions: [],
+  uiExtensions: ['info:history', 'info:properties', 'track:commits', 'folder:commits'],
+} satisfies PluginManifest;
+
+export const memoryManifest = {
+  schemaVersion: 2,
+  id: 'dev.lr00rl.noto.memory',
+  name: 'Memory',
+  version: '1.0.0',
+  runtime: 'trusted-renderer',
+  activation: {
+    startup: false,
+    events: ['editor.ready'],
+    hotkeys: [],
+  },
+  capabilities: ['vault.read', 'vault.review'],
+  lifecycle: ['activate', 'deactivate'],
+  commands: [{ id: 'memory.ask', title: 'Memory: ask the folder a question' }],
+  settings: [],
+  hotkeys: [],
+  editorExtensions: [],
+  uiExtensions: ['info:related', 'info:activity', 'track:reads', 'rail:review', 'marks:links', 'folder:warmth', 'folder:reach'],
+} satisfies PluginManifest;
+
 /** Bundled plugins that start switched on for a reader who never touched them. */
-export const BUNDLED_ON_BY_DEFAULT: ReadonlySet<string> = new Set([sidenotesManifest.id, changesManifest.id]);
+export const BUNDLED_ON_BY_DEFAULT: ReadonlySet<string> = new Set([sidenotesManifest.id, changesManifest.id, historyManifest.id, memoryManifest.id]);
 
 export const markdownPaddingManifest = {
   schemaVersion: 2,

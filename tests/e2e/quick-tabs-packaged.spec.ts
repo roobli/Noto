@@ -139,10 +139,12 @@ test.describe('quick open, as the author built it', () => {
       await expect(palette).toBeVisible();
       await expect(palette).toHaveAttribute('data-width', 'default');
       // Measured settled: on its arrival frame the palette is drawn at 0.98
-      // of its width.
+      // of its width. With a note to preview beside the results it is 980,
+      // the results and the note in two columns.
       await finishAnimations(page);
+      await expect(palette).toHaveClass(/has-preview/);
       const narrow = await palette.evaluate((node) => Math.round(node.getBoundingClientRect().width));
-      expect(narrow).toBe(740);
+      expect(narrow).toBe(980);
 
       await page.keyboard.press(process.platform === 'darwin' ? 'Meta+]' : 'Control+]');
       await expect(palette).toHaveAttribute('data-width', 'wide');

@@ -1,0 +1,32 @@
+{
+  "schemaVersion": 2,
+  "id": "dev.lr00rl.noto.history",
+  "name": "History",
+  "version": "1.0.0",
+  "runtime": "trusted-renderer",
+  "activation": {
+    "startup": false,
+    "events": [],
+    "hotkeys": []
+  },
+  "capabilities": [
+    "git.read",
+    "editor.read",
+    "editor.transform",
+    "vault.read"
+  ],
+  "lifecycle": [
+    "activate",
+    "deactivate"
+  ],
+  "commands": [],
+  "settings": [],
+  "hotkeys": [],
+  "editorExtensions": [],
+  "uiExtensions": [
+    "info:history",
+    "info:properties",
+    "track:commits",
+    "folder:commits"
+  ]
+}

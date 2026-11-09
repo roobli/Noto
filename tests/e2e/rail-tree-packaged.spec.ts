@@ -114,31 +114,27 @@ test.describe('the rail tree', () => {
     }
   });
 
-  test('keeps the leading twisty and glyph at the edge while a long name scrolls under them', async () => {
+  test('cuts a long name to the rail and keeps its end, instead of scrolling sideways', async () => {
     const { app, page } = await launch('horizontal', { longName: true });
     try {
       await page.getByTestId('tree-directory').filter({ hasText: 'chapters' }).click();
-      const row = page.getByTestId('tree-file').filter({ hasText: 'a-name-long-enough' });
+      const row = page.locator('[data-testid="tree-file"][data-label="a-name-long-enough-to-scroll-the-rail-sideways-past-the-editor-width.md"]');
       await row.scrollIntoViewIfNeeded();
-      const scroller = page.locator('.rail-view');
-      const rail = await scroller.boundingBox();
-      if (!rail) throw new Error('Expected a visible rail');
+      // Nothing to scroll to: the rail used to scroll sideways, with the
+      // twisty and glyph pinned while the name ran under them.
+      const scroller = page.locator('#rail-view-files');
       const width = await scroller.evaluate((element) => ({ scroll: element.scrollWidth, client: element.clientWidth }));
-      expect(width.scroll).toBeGreaterThan(width.client + 100);
-      await scroller.evaluate((element) => element.scrollTo({ left: 0 }));
-      const metrics = () => row.evaluate((element) => ({
-        leading: element.querySelector('.tree-leading')!.getBoundingClientRect().left,
-        name: element.querySelector('.tree-name')!.getBoundingClientRect().left,
-      }));
-      const before = await metrics();
-      await scroller.evaluate((element) => element.scrollTo({ left: 300 }));
-      await page.waitForTimeout(50);
-      const after = await metrics();
-      // The leading column pins to the rail's left edge instead of leaving
-      // the viewport with the name it belongs to.
-      expect(after.leading).toBeGreaterThanOrEqual(rail.x - 1);
-      expect(after.leading).toBeLessThan(rail.x + 24);
-      expect(after.name).toBeLessThan(before.name - 200);
+      expect(width.scroll).toBeLessThanOrEqual(width.client);
+      // The name loses its middle and its .md, keeps its end, and ends inside the rail.
+      await expect(row).toHaveAttribute('data-cut', 'true');
+      const shown = await row.locator('.tree-name').textContent();
+      expect(shown).toContain('…');
+      expect(shown?.endsWith('width')).toBe(true);
+      const inside = await row.evaluate((element) => {
+        const rail = element.closest('.rail-view')!.getBoundingClientRect();
+        return element.querySelector('.tree-name')!.getBoundingClientRect().right <= rail.right + 0.5;
+      });
+      expect(inside).toBe(true);
     } finally {
       await app.close();
     }

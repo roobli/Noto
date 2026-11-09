@@ -10,6 +10,8 @@
 
 import {
   changesManifest,
+  historyManifest,
+  memoryManifest,
   markdownPaddingManifest,
   rendererProofManifest,
   sidenotesManifest,
@@ -21,6 +23,8 @@ import { RendererPluginHost } from '../RendererPluginHost';
 import { MarkdownPaddingPlugin, TitleShiftPlugin, type TrustedPlugin } from './index';
 import { adaptTrustedPlugin } from './adapter';
 import { ChangesPlugin } from './changes';
+import { HistoryPlugin } from './history';
+import { MemoryPlugin } from './memory';
 import { SidenotesPlugin } from './sidenotes';
 
 /** One instance per plugin, shared by its editor lease and its shell contributions. */
@@ -29,6 +33,8 @@ const trusted: readonly (readonly [PluginManifest, TrustedPlugin])[] = [
   [sidenotesManifest, new SidenotesPlugin()],
   [markdownPaddingManifest, new MarkdownPaddingPlugin()],
   [changesManifest, new ChangesPlugin()],
+  [historyManifest, new HistoryPlugin()],
+  [memoryManifest, new MemoryPlugin()],
 ];
 
 export function createRendererPluginHosts(): ReadonlyMap<string, RendererPluginHost> {

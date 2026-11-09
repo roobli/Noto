@@ -29,6 +29,8 @@ import { pathContext } from './quick-open-path';
 import { foldersOf, withinScope } from './quick-open-folders';
 import { completeQuery, parseQuery, removeToken, type Completion } from './quick-open-query';
 import { isComposing } from './ime';
+import { QuickPreview, type PreviewTarget, type PreviewValue } from './QuickPreview';
+import { readableHit } from './quick-preview';
 
 /**
  * How many results are drawn: enough to fill the panel on a tall window, so it
@@ -92,7 +94,19 @@ export interface QuickOpenProps {
   /** How wide it is drawn, and how to remember a change. */
   readonly width: QuickWidth;
   readonly onWidth: (width: QuickWidth) => void;
+  /**
+   * Reads the note in front of the list for the preview beside it: its
+   * opening, or the lines around `line`. Without it there is no preview.
+   */
+  readonly onPreview?: (path: string, line: number | null) => Promise<PreviewValue | null>;
 }
+
+/** Previews kept while the palette is open, so a note walked back to shows at once. */
+const PREVIEWS_KEPT = 60;
+/** A pause before reading, so holding an arrow key down reads only where it stops. */
+const PREVIEW_DELAY_MS = 60;
+/** How long a note's preview is shown from memory before it is read again. */
+const PREVIEW_FRESH_MS = 3000;
 
 /** The name with the matched characters marked, so a fuzzy hit shows its work. */
 function Highlighted({ text, query }: { text: string; query: string }) {
@@ -114,7 +128,7 @@ function Highlighted({ text, query }: { text: string; query: string }) {
 export function QuickOpen({
   open, disabledShortcuts = [], mode, onMode, onSearchContent, onOpenMatch,
   entries, frecency, truncated, canInsertLink, linking = false, onOpenFile, onInsertLink, onClose,
-  width, onWidth,
+  width, onWidth, onPreview,
 }: QuickOpenProps) {
   const [query, setQuery] = useState('');
   const [selected, setSelected] = useState(0);
@@ -361,12 +375,50 @@ export function QuickOpen({
     }
   };
 
+  // The note in front of the list, for the preview: the selected file, or the selected match at its line.
+  const previewTarget: PreviewTarget | null = effectiveMode === 'files'
+    ? (results[selected] ? { ...results[selected]!.entry, line: null } : null)
+    : effectiveMode === 'content' && content.matches[selected]
+      ? { path: content.matches[selected]!.path, name: content.matches[selected]!.name, relativePath: content.matches[selected]!.relativePath, line: content.matches[selected]!.lines[0]?.lineNumber ?? null }
+      : null;
+  const previewKey = previewTarget ? `${previewTarget.path}\n${previewTarget.line ?? ''}` : '';
+  const previews = useRef(new Map<string, { readonly value: PreviewValue; readonly at: number }>());
+  const [preview, setPreview] = useState<{ key: string; value: PreviewValue | null } | null>(null);
+  useEffect(() => {
+    if (!open) { previews.current.clear(); return undefined; }
+    if (!onPreview || !previewTarget) return undefined;
+    // A note walked back to shows what was read of it at once; read more than
+    // a few seconds ago, it is read again behind that, so a note changed while
+    // the palette is open shows its new text. A read that failed is not kept.
+    const kept = previews.current.get(previewKey);
+    if (kept) setPreview({ key: previewKey, value: kept.value });
+    if (kept && Date.now() - kept.at < PREVIEW_FRESH_MS) return undefined;
+    let live = true;
+    const timer = setTimeout(() => {
+      void onPreview(previewTarget.path, previewTarget.line).then((value) => value, () => null).then((value) => {
+        previews.current.delete(previewKey);
+        if (value !== null) {
+          if (previews.current.size >= PREVIEWS_KEPT) previews.current.delete(previews.current.keys().next().value!);
+          previews.current.set(previewKey, { value, at: Date.now() });
+        }
+        if (live) setPreview({ key: previewKey, value });
+      });
+    }, PREVIEW_DELAY_MS);
+    return () => { live = false; clearTimeout(timer); };
+    // The key says everything about the target that matters.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [open, previewKey, onPreview]);
+
   if (!open) return null;
+
+  // The new note's name and folder show at once; its text follows a read later, from the cache when walked back to.
+  const previewValue = preview?.key === previewKey ? preview.value : undefined;
+  const previewShown = onPreview !== undefined;
 
   return (
     <div className="quick-scrim" data-testid="quick-open-scrim" onClick={onClose}>
       <section
-        className="quick-open"
+        className={previewShown ? 'quick-open has-preview' : 'quick-open'}
         data-width={width}
         role="dialog"
         aria-modal="true"
@@ -460,6 +512,7 @@ export function QuickOpen({
           </div>
         )}
 
+        <div className="quick-body">
         <div className="quick-results" id="quick-open-results" role="listbox" ref={listRef}>
           {effectiveMode === 'folders' ? (
             folderResults.length === 0
@@ -522,18 +575,24 @@ export function QuickOpen({
                     {match.name}
                     <span className="quick-count">{match.occurrences}</span>
                   </span>
-                  {match.lines.map((line) => (
-                    <span className="quick-line" key={line.lineNumber}>
-                      <span className="quick-line-number">{line.lineNumber}</span>
-                      <span className="quick-line-text">
-                        {line.line.slice(0, line.column)}
-                        <mark className="quick-hit">
-                          {line.line.slice(line.column, line.column + line.length)}
-                        </mark>
-                        {line.line.slice(line.column + line.length)}
+                  {match.lines.map((line) => {
+                    // Read as the page reads it: escaped paths in their own letters, links by their words, a table by its cells.
+                    const shown = readableHit(line.line, line.column, line.length);
+                    return (
+                      <span className="quick-line" key={line.lineNumber}>
+                        <span className="quick-line-number">{line.lineNumber}</span>
+                        <span className="quick-line-text">
+                          {shown.at < 0 ? shown.text : (
+                            <>
+                              {shown.text.slice(0, shown.at)}
+                              <mark className="quick-hit">{shown.text.slice(shown.at, shown.at + shown.length)}</mark>
+                              {shown.text.slice(shown.at + shown.length)}
+                            </>
+                          )}
+                        </span>
                       </span>
-                    </span>
-                  ))}
+                    );
+                  })}
                   <span className="quick-path">{pathContext(match.relativePath)}</span>
                 </button>
               ))
@@ -570,6 +629,17 @@ export function QuickOpen({
                 </span>
               </button>
             ))}
+        </div>
+
+        {previewShown && (previewTarget
+          ? <QuickPreview target={previewTarget} value={previewValue} query={effectiveMode === 'content' ? terms : ''} />
+          : (
+            <aside className="quick-preview is-blank" data-testid="quick-preview">
+              <p className="quick-preview-empty">
+                {effectiveMode === 'folders' ? 'Enter searches inside the folder.' : 'The note you land on is shown here.'}
+              </p>
+            </aside>
+          ))}
         </div>
 
         <footer className="quick-hints">

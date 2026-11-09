@@ -201,6 +201,51 @@ test.describe('searching inside notes', () => {
     }
   });
 
+  test('shows the note under the cursor beside the results, and the code a match sits in as code', async () => {
+    const { app, page, folder } = await launch('preview');
+    try {
+      // A match six lines into a fenced block: the window around it starts
+      // four lines up, inside the code, and the block's closing fence must
+      // not open another.
+      await writeFile(path.join(folder, 'setup.md'), [
+        '# Setup', '', 'Install it first.', '', '```sh', 'brew install node', 'npm ci', 'npm run build', 'npm test',
+        'cd app', 'export ZEBRA_TOKEN=1', '```', '', '## After', '', '- run the tests', '',
+      ].join('\n'), 'utf8');
+      // Searched only once Noto has seen the note arrive on disk.
+      await expect(page.getByTestId('file-tree')).toContainText('setup');
+      await invokeMenu(app, 'quick-open');
+      const preview = page.getByTestId('quick-preview');
+      await page.getByTestId('quick-input').fill('release');
+      await expect(preview).toContainText('Release notes');
+      await expect(page.getByTestId('quick-preview-body')).toContainText('What changed.');
+
+      await page.getByTestId('quick-input').press('Tab');
+      await page.getByTestId('quick-input').press('Tab');
+      await page.getByTestId('quick-input').fill('ZEBRA_TOKEN');
+      await expect(page.getByTestId('quick-match')).toHaveCount(1);
+      const hit = preview.locator('.is-hit');
+      await expect(hit).toHaveClass(/quick-preview-code/);
+      await expect(hit).toContainText('export ZEBRA_TOKEN=1');
+      // After the fence closes, the note reads as prose again.
+      await expect(preview.locator('.quick-preview-h2')).toHaveText('After');
+      await expect(preview.locator('.quick-preview-li')).toHaveText('run the tests');
+
+      // A note changed while the palette is open shows its new text when
+      // walked back to, not what was read of it before.
+      await page.getByTestId('quick-input').press('Tab');
+      await page.getByTestId('quick-input').fill('index');
+      await expect(page.getByTestId('quick-preview-body')).toContainText('The start.');
+      await writeFile(path.join(folder, 'index.md'), '# Index\n\nA new start.\n', 'utf8');
+      await page.getByTestId('quick-input').fill('release');
+      await expect(preview).toContainText('Release notes');
+      await page.waitForTimeout(3200);
+      await page.getByTestId('quick-input').fill('index');
+      await expect(page.getByTestId('quick-preview-body')).toContainText('A new start.');
+    } finally {
+      await app.close();
+    }
+  });
+
   test('switches between searching names and searching bodies with Tab', async () => {
     const { app, page } = await launch('content-tab');
     try {
