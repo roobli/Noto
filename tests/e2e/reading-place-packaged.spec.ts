@@ -115,6 +115,27 @@ test('a launch reopens the last note at its place', async () => {
   }
 });
 
+test('a note closed before quitting stays closed at the next launch', async () => {
+  const root = vault();
+  const userData = scratch('user-data');
+  writeFileSync(path.join(userData, 'settings.json'), JSON.stringify({}));
+  const first = await launch(userData, [`--folder=${root}`, `--open=${path.join(root, 'notes', 'beta.md')}`]);
+  try {
+    await first.page.waitForSelector('[data-testid="noto-editor"]', { state: 'visible', timeout: 30_000 });
+    await first.app.evaluate(({ Menu }) => Menu.getApplicationMenu()!.getMenuItemById('close-tab')!.click());
+    await expect(first.page.getByTestId('empty-state')).toBeVisible();
+  } finally {
+    await first.app.close();
+  }
+  const second = await launch(userData, []);
+  try {
+    await expect(second.page.getByTestId('empty-state')).toBeVisible({ timeout: 30_000 });
+    await expect(second.page.getByTestId('empty-recent')).toContainText('beta');
+  } finally {
+    await second.app.close();
+  }
+});
+
 test("an open folder with no note in front offers its own notes", async () => {
   const root = vault();
   const userData = scratch('user-data');

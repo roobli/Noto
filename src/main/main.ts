@@ -45,7 +45,7 @@ import {
   resolveEditorChromeTone,
   syncEditorTitleBarOverlay,
 } from './windows/editor-window-chrome';
-import { lastNoteInside, RecentFiles } from './workspace/recent-files';
+import { FrontAtQuit, lastNoteInside, RecentFiles } from './workspace/recent-files';
 import { SettingsStore } from './workspace/settings-store';
 import { registerSettingsHandlers } from './workspace/register-settings-handlers';
 import { WorkspaceSession, MAX_TABS } from './workspace/session';
@@ -432,6 +432,7 @@ async function run(): Promise<void> {
   // timestamp, exactly like a recent document, so it does not need its own class.
   const recentFolders = new RecentFiles(path.join(userData, 'recent-folders.json'));
   await recentFolders.load();
+  const frontAtQuit = new FrontAtQuit(path.join(userData, 'front-at-quit.json'));
   const settings = new SettingsStore(path.join(userData, 'settings.json'));
   await settings.load();
   const updater = new AppUpdater({
@@ -464,6 +465,8 @@ async function run(): Promise<void> {
   app.on('before-quit', () => {
     if (quitHeldForUnsaved() || documentsClosed) return;
     documentsClosed = true;
+    // Before the notes close, while the one in front is still known.
+    frontAtQuit.save(session?.currentPath ?? null);
     session?.closeAll();
   });
 
@@ -1036,8 +1039,9 @@ async function run(): Promise<void> {
      * the note you left. Opening a note only reads it and its recovery
      * journal; a journal that holds unsaved work is shown as it would be on
      * any open, which is the moment the reader most needs to see it. The
-     * note is the newest recent one inside the folder and still on disk,
-     * so a note opened from elsewhere does not pull its folder along.
+     * note is the one in front at the last quit, when it is inside the
+     * folder and still on disk; none when every note had been closed; the
+     * newest recent one inside the folder when there is no record yet.
      *
      * Not recorded as a read in the vault's memory: main opens it here, not
      * the reader, and only the reader's opens reach the read record.
@@ -1060,7 +1064,10 @@ async function run(): Promise<void> {
         await session?.openFolderPath(last.path, false)
           .catch(() => logger.log('workspace_restore_folder_failed', {}));
         await recent.load();
-        const note = await lastNoteInside(recent.list(), last.path);
+        const front = await frontAtQuit.read();
+        // A note closed before quitting stays closed; with no record, the newest recent one.
+        const note = front === null ? null
+          : await lastNoteInside(front === undefined ? recent.list() : [{ path: front, name: path.basename(front), openedAt: 0 }], last.path);
         if (note) {
           await session?.openPath(note).then(refreshMenu)
             .catch(() => logger.log('workspace_restore_note_failed', {}));

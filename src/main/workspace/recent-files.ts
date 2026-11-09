@@ -8,6 +8,7 @@
  */
 
 import path from 'node:path';
+import { writeFileSync } from 'node:fs';
 import { mkdir, readFile, rename, stat, writeFile } from 'node:fs/promises';
 import type { RecentFileV1 } from '../../shared/workspace/v1/contracts';
 
@@ -38,6 +39,37 @@ export async function lastNoteInside(entries: readonly RecentFileV1[], folder: s
     }
   }
   return null;
+}
+
+/**
+ * Which note was in front when Noto last quit, so a launch reopens that one
+ * and not a note the reader had already closed. Written once, at quit, when
+ * there is no time for anything asynchronous; read once, at launch.
+ */
+export class FrontAtQuit {
+  constructor(private readonly filePath: string) {}
+
+  /** The note in front at the last quit, null when none was, undefined when this was never written. */
+  async read(): Promise<string | null | undefined> {
+    try {
+      const parsed: unknown = JSON.parse(await readFile(this.filePath, 'utf8'));
+      if (typeof parsed === 'object' && parsed !== null && 'path' in parsed) {
+        const value = (parsed as { path: unknown }).path;
+        if (value === null || typeof value === 'string') return value;
+      }
+    } catch {
+      // Never written, or unreadable: the recent list decides instead.
+    }
+    return undefined;
+  }
+
+  save(path: string | null): void {
+    try {
+      writeFileSync(this.filePath, JSON.stringify({ path }));
+    } catch {
+      // A launch then falls back to the recent list, which is close enough.
+    }
+  }
 }
 
 export class RecentFiles {

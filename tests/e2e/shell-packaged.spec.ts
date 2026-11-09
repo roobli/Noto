@@ -78,7 +78,7 @@ async function invokeMenu(app: ElectronApplication, id: string): Promise<void> {
   }, id);
 }
 
-async function launch(workspace: string, openPath?: string): Promise<RunningApp> {
+async function launch(workspace: string, openPath?: string, expectNote = Boolean(openPath)): Promise<RunningApp> {
   const userData = path.join(workspace, 'user-data');
   await mkdir(userData, { recursive: true });
   const args = [`--user-data-dir=${userData}`, `--NTO_EVIDENCE_DIR=${path.join(workspace, 'evidence')}`];
@@ -100,7 +100,7 @@ async function launch(workspace: string, openPath?: string): Promise<RunningApp>
   // layout for a moment. Waiting for the surface this launch will actually
   // present keeps that race out of every individual test.
   await page.waitForSelector(
-    openPath ? '[data-testid="noto-editor"]' : '[data-testid="empty-state"]',
+    expectNote ? '[data-testid="noto-editor"]' : '[data-testid="empty-state"]',
     { state: 'visible', timeout: 30_000 },
   );
   return { app, page, issues };
@@ -196,7 +196,8 @@ test.describe('Noto product shell', () => {
     }
   });
 
-  test('remembers the document and offers it as recent on the next launch', async () => {
+  // A launch reopens the note in front at the last quit (daily-use audit, finding 9).
+  test('reopens the document that was in front on the next launch', async () => {
     const workspace = path.join(resultRoot, 'recent');
     await rm(workspace, { recursive: true, force: true });
     await mkdir(workspace, { recursive: true });
@@ -207,12 +208,11 @@ test.describe('Noto product shell', () => {
     await expect(first.page.getByTestId('file-state')).toHaveText('Opened');
     await first.app.close();
 
-    // Same user-data directory, no path this time: the recent list is the only
-    // way the document can appear.
-    const second = await launch(workspace);
+    // Same user-data directory, no path this time: only the record of the
+    // last session can bring the document back.
+    const second = await launch(workspace, undefined, true);
     try {
-      await expect(second.page.getByTestId('empty-state')).toBeVisible();
-      await expect(second.page.getByRole('button', { name: /remembered\.md/ })).toBeVisible();
+      await expect(second.page.locator('.canvas-slot:not([hidden]) .ProseMirror h1')).toHaveText('Noto');
       expect(second.issues).toEqual([]);
     } finally {
       await second.app.close();
@@ -365,14 +365,17 @@ test.describe('opening through the interface', () => {
     const file = path.join(workspace, 'revisited.md');
     await writeFile(file, SAMPLE, 'utf8');
 
-    // First run records it as recent.
+    // First run records it as recent, and closes it before quitting, so the
+    // next launch has no note in front and shows the recent list instead.
     const first = await launch(workspace, file);
     await expect(first.page.getByTestId('file-state')).toHaveText('Opened');
+    await first.app.evaluate(({ Menu }) => Menu.getApplicationMenu()!.getMenuItemById('close-tab')!.click());
+    await expect(first.page.getByTestId('empty-state')).toBeVisible();
     await first.app.close();
 
     const { app, page, issues } = await launch(workspace);
     try {
-      const entry = page.getByRole('button', { name: /revisited\.md/ });
+      const entry = page.getByRole('button', { name: /revisited/ });
       await expect(entry).toBeVisible();
       await entry.click();
 

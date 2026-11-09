@@ -11,7 +11,7 @@ import { mkdtemp, readFile, rm } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import path from 'node:path';
 import { afterEach, describe, expect, it } from 'vitest';
-import { lastNoteInside, RecentFiles } from '../../src/main/workspace/recent-files';
+import { FrontAtQuit, lastNoteInside, RecentFiles } from '../../src/main/workspace/recent-files';
 
 describe('RecentFiles', () => {
   let directory: string;
@@ -99,6 +99,22 @@ describe('the note to reopen with a folder', () => {
       expect(await lastNoteInside([entry(inside, 1), entry(dotted, 2)], vault)).toBe(dotted);
       expect(await lastNoteInside([entry(outside, 3)], vault)).toBeNull();
       expect(await lastNoteInside([entry(path.join(vault, 'pic.png'), 3)], vault)).toBeNull();
+    } finally {
+      await rm(root, { recursive: true, force: true });
+    }
+  });
+});
+
+describe('the note in front at quit', () => {
+  it('is read back as written, and as unknown when never written', async () => {
+    const root = await mkdtemp(path.join(tmpdir(), 'noto-front-'));
+    try {
+      const store = new FrontAtQuit(path.join(root, 'front-at-quit.json'));
+      expect(await store.read()).toBeUndefined();
+      store.save('/v/a.md');
+      expect(await store.read()).toBe('/v/a.md');
+      store.save(null);
+      expect(await store.read()).toBeNull();
     } finally {
       await rm(root, { recursive: true, force: true });
     }
