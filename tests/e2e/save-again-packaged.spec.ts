@@ -34,7 +34,14 @@ test('a save asked for while one is landing writes what was typed in between', a
   // Long enough that a save takes a while to land.
   const body = Array.from({ length: 4000 }, (_, at) => `Paragraph ${at} with a few words in it so the note is long.`).join('\n\n');
   await writeFile(file, `# Long\n\n${body}\n\nEnd.\n`, 'utf8');
-  const app = await electron.launch({ executablePath: packagedExecutable(), args: [`--user-data-dir=${path.join(resultRoot, 'user-data')}`, `--open=${file}`] });
+  const app = await electron.launch({
+    executablePath: packagedExecutable(),
+    args: [`--user-data-dir=${path.join(resultRoot, 'user-data')}`, `--open=${file}`],
+    // Shown off macOS, as click-stays-put is. On Linux and Windows a window
+    // that is never shown does not draw "Saving" until the save has landed,
+    // so the first save looked already done when the second was asked for.
+    env: { ...process.env, NOTO_HEADLESS: process.platform === 'darwin' ? '1' : '0' },
+  });
   try {
     const page = await app.firstWindow();
     await page.waitForSelector('[data-testid="noto-editor"]', { state: 'visible', timeout: 30_000 });

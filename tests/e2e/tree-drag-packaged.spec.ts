@@ -7,7 +7,7 @@ import { packagedExecutable } from './packaged-app';
 /** Screenshots for review, when asked for: `NOTO_DRAG_SHOTS=/some/dir`. */
 const SHOTS = process.env.NOTO_DRAG_SHOTS ?? '';
 
-async function launch(name: string, extra: Readonly<Record<string, string>> = {}): Promise<{ app: ElectronApplication; page: Page; vault: string }> {
+async function launch(name: string, extra: Readonly<Record<string, string>> = {}, shown = false): Promise<{ app: ElectronApplication; page: Page; vault: string }> {
   const workspace = path.join(process.cwd(), 'test-results', 'tree-drag', name);
   await rm(workspace, { recursive: true, force: true });
   await mkdir(path.join(workspace, 'user-data'), { recursive: true });
@@ -24,6 +24,10 @@ async function launch(name: string, extra: Readonly<Record<string, string>> = {}
   const app = await electron.launch({
     executablePath: packagedExecutable(),
     args: [`--user-data-dir=${path.join(workspace, 'user-data')}`, ...(SHOTS ? ['--force-device-scale-factor=2'] : []), vault],
+    // `shown` puts the window on screen off macOS, as click-stays-put does:
+    // there a window that is never shown runs no animation frames, and the
+    // scroll at an edge steps on them. On macOS a hidden window runs them.
+    ...(shown ? { env: { ...process.env, NOTO_HEADLESS: process.platform === 'darwin' ? '1' : '0' } } : {}),
   });
   const page = await app.firstWindow();
   await page.setViewportSize({ width: 1280, height: 900 });
@@ -121,7 +125,7 @@ test.describe('dragging in the tree', () => {
   test('scrolls when held at an edge, so a move can cross more than a rail of rows', async () => {
     const many: Record<string, string> = {};
     for (let index = 0; index < 90; index += 1) many[`note-${String(index).padStart(2, '0')}.md`] = `# Note ${index}\n`;
-    const { app, page } = await launch('edge', many);
+    const { app, page } = await launch('edge', many, true);
     try {
       const scroller = page.locator('.rail-view');
       await expect.poll(() => scroller.evaluate((element) => element.scrollHeight > element.clientHeight + 200)).toBe(true);
