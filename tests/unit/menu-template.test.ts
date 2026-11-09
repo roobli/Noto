@@ -126,7 +126,7 @@ describe('the menu and the renderer agree on commands', () => {
       'open-dialog', 'open-folder', 'refresh-folder', 'close-tab', 'import-document', 'print', 'paste-plain',
       'reopen-closed', 'theme-none',
       // A second chord for a command the menu already names once.
-      'quick-open-period',
+      'quick-open-period', 'quick-open-typora',
     ]);
     const sent = ids.filter((id) => !mainOnly.has(id));
     for (const id of sent) {

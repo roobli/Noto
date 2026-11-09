@@ -55,7 +55,7 @@ export function shortcutGroups(mac: boolean): Group[] {
     {
       title: 'Finding your way',
       entries: [
-        { keys: [mod('P', mac), mod('.', mac)], what: 'Quick open. Tab cycles files, folders and the text inside notes.', tryIt: 'quick-open' },
+        { keys: mac ? [mod('P', mac), shift(mac) + mod('O', mac), mod('.', mac)] : [mod('P', mac), mod('.', mac)], what: 'Quick open. Tab cycles files, folders and the text inside notes.', tryIt: 'quick-open' },
         { keys: [shift(mac) + mod('P', mac)], what: 'The command palette: every command, by name, with its key.', tryIt: 'palette' },
         { keys: ['Folders'], what: 'Choosing a folder narrows the other two tabs to it. Backspace on an empty box leaves it.' },
         { keys: ['New note', shift(mac) + '↩'], what: 'Type a name nothing matches and quick open offers to make it, as a note or a folder, in the folder it is narrowed to. A new folder is narrowed to at once, ready for its first note.', since: 5, tryIt: 'quick-open' },
@@ -66,7 +66,7 @@ export function shortcutGroups(mac: boolean): Group[] {
         { keys: [shift(mac) + mod('F', mac)], what: 'Search the whole vault from the rail, and keep the results while you read.', tryIt: 'search' },
         { keys: [alt(mac) + mod('←', mac), alt(mac) + mod('→', mac)], what: 'Back and forward along the notes you have read.' },
         { keys: [shift(mac) + mod('L', mac)], what: 'Show or hide the rail.' },
-        { keys: [shift(mac) + mod('O', mac)], what: 'The outline of this note. A heading folds with the arrow keys.', tryIt: 'outline' },
+        { keys: [mac ? '⌃⌘1' : 'Ctrl Shift 1'], what: 'The outline of this note, on Typora\'s key. A heading folds with the arrow keys.', since: 6, tryIt: 'outline' },
         { keys: ['Links'], what: "Opt-in from Settings: the rail's Links view shows what links here, what this links to, and what the vault's graph thinks is near." },
         { keys: [alt(mac) + shift(mac) + mod('T', mac)], what: 'Browse tags from every note\'s frontmatter, and open the notes that share one.' },
       ],

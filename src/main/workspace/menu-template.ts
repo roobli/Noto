@@ -150,6 +150,15 @@ export function buildMenuTemplate(options: MenuTemplateOptions): MenuItemConstru
         visible: false,
         click: () => sendCommand('quick-open'),
       },
+      // Typora's Open Quickly on a Mac, kept beside Command-P for hands that
+      // learned it there. Elsewhere Typora's is Control-P, so it has no key.
+      {
+        id: 'quick-open-typora',
+        label: 'Quick Open',
+        accelerator: mac ? 'Shift+Command+O' : undefined,
+        visible: false,
+        click: () => sendCommand('quick-open'),
+      },
       // Closed in main rather than sent to the renderer: main owns which
       // documents are open, so asking the renderer which one is in front would
       // race against the tab list arriving there.
@@ -315,7 +324,7 @@ export function buildMenuTemplate(options: MenuTemplateOptions): MenuItemConstru
           command('Move Column Left', 'Alt+Shift+Left', 'move-column-left'),
           command('Move Column Right', 'Alt+Shift+Right', 'move-column-right'),
           { type: 'separator' },
-          command('Delete Row', undefined, 'table-row-delete'),
+          command('Delete Row', 'CmdOrCtrl+Shift+Backspace', 'table-row-delete'),
           command('Delete Column', undefined, 'table-column-delete'),
           command('Delete Table', undefined, 'table-delete'),
           { type: 'separator' },
@@ -391,7 +400,8 @@ export function buildMenuTemplate(options: MenuTemplateOptions): MenuItemConstru
       command('Hyperlink…', 'CmdOrCtrl+K', 'insert-link'),
       command('Image…', 'CmdOrCtrl+Shift+I', 'insert-image'),
       { type: 'separator' },
-      command('Clear Format', 'CmdOrCtrl+Shift+Backspace', 'clear-format'),
+      // Typora's: Command and the backslash. Shift-Command-Delete is its Delete Row in a table.
+      command('Clear Format', 'CmdOrCtrl+\\', 'clear-format'),
       command('Comment', undefined, 'insert-comment'),
     ],
   };
@@ -400,7 +410,8 @@ export function buildMenuTemplate(options: MenuTemplateOptions): MenuItemConstru
     label: '&View',
     submenu: [
       command('Toggle Sidebar', 'CmdOrCtrl+Shift+L', 'toggle-sidebar'),
-      command('Toggle Outline', 'CmdOrCtrl+Shift+O', 'toggle-outline'),
+      // Typora's Outline key. Shift-Command-O is its Open Quickly on a Mac, which Quick Open answers below.
+      command('Toggle Outline', mac ? 'Control+Command+1' : 'Ctrl+Shift+1', 'toggle-outline'),
       // No key of its own yet: one is chosen with the rest in the Shortcuts board.
       command('Note Info', undefined, 'toggle-note-info'),
       {
@@ -473,11 +484,9 @@ export function buildMenuTemplate(options: MenuTemplateOptions): MenuItemConstru
         click: () => sendCommand('toggle-note-marks'),
       },
       { type: 'separator' },
-      // Typora's two writing modes. It gives neither a shortcut, and neither
-      // wants one: they are settled once for a session, not reached for mid
-      // sentence.
-      command('Focus Mode', undefined, 'toggle-focus-mode'),
-      command('Typewriter Mode', undefined, 'toggle-typewriter'),
+      // Typora's two writing modes, on Typora's keys (daily-use audit, finding 13).
+      command('Focus Mode', 'F8', 'toggle-focus-mode'),
+      command('Typewriter Mode', 'F9', 'toggle-typewriter'),
       { type: 'separator' },
       // The writing width, stepped from the keyboard. The setting is a slider
       // in preferences; these are the same value under the fingers, which is
