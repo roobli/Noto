@@ -141,6 +141,8 @@ const nodes: Record<string, NodeSpec> = {
     toDOM: (node) => ['div', {
       class: 'noto-source-block',
       'data-original-kind': node.attrs.originalKind,
+      // What the block is, in words, for the label over it (noto-editor.scss).
+      'data-kind-label': SOURCE_KIND_LABELS[node.attrs.originalKind as string] ?? 'Block',
     }, 0],
   }),
 
@@ -377,6 +379,13 @@ const marks: Record<string, MarkSpec> = {
     }],
     toDOM: (mark) => ['a', { href: mark.attrs.href, title: mark.attrs.title }, 0],
   },
+};
+
+/** The words for a block shown as its markdown (Toggle Block Source). */
+const SOURCE_KIND_LABELS: Readonly<Record<string, string>> = {
+  paragraph: 'Paragraph', heading: 'Heading', blockquote: 'Quote', bullet_list: 'List', ordered_list: 'Numbered list',
+  task_list: 'Task list', code_block: 'Code block', math_block: 'Maths', table: 'Table', html_block: 'HTML',
+  horizontal_rule: 'Rule', footnote_definition: 'Footnote', link_definition: 'Link reference', alert: 'Callout',
 };
 
 export const notoSchema = new Schema({ nodes, marks });

@@ -584,34 +584,48 @@
 /* Source mode ------------------------------------------------------------- */
 
 /*
- * One block shown as raw markdown. Marked clearly enough that you know you are
- * looking at source, quiet enough that a document with one block open does not
- * feel broken.
+ * One block shown as its markdown (Toggle Block Source, ⌥⌘/).
+ *
+ * A band across the text column rather than a card: square, no accent bar
+ * down the side, ruled above and below with a dashed hairline, which is the
+ * one mark that says "this is the text as written, not the page" without
+ * reading as a code block, whose rules are solid. The source keeps the left
+ * edge the rendered block had, so toggling does not move the words sideways,
+ * and a label over it says what it is and, while the caret is in it, how to
+ * go back.
  */
 .ProseMirror .noto-source-block {
   position: relative;
-  border-left: 2px solid var(--accent);
-  border-radius: 4px;
-  background: var(--raised);
-  padding: 12px 16px;
+  margin-inline: -14px;
+  padding: calc(1.9em + 2px) 14px 0.8em;
+  border-block: 1px dashed color-mix(in srgb, var(--muted) 45%, var(--hairline));
+  border-radius: 0;
+  background: color-mix(in srgb, var(--raised) 80%, transparent);
   color: var(--ink);
-  font: 0.85em/1.6 tokens.$mono;
+  font: 0.88em/1.6 tokens.$mono;
   white-space: pre-wrap;
   overflow-wrap: anywhere;
   tab-size: 2;
 }
 
-.ProseMirror .noto-source-block::after {
-  content: attr(data-original-kind) ' source';
+.ProseMirror .noto-source-block::before {
+  content: 'Markdown · ' attr(data-kind-label);
   position: absolute;
-  top: 6px;
-  right: 10px;
-  color: var(--accent);
-  font: 10px tokens.$ui;
-  letter-spacing: 0.04em;
-  opacity: 0.75;
+  top: 0.55em;
+  left: 14px;
+  color: var(--muted);
+  font: 500 11px/1 tokens.$ui;
+  letter-spacing: 0.02em;
   pointer-events: none;
   user-select: none;
+}
+
+.app-shell[data-platform='darwin'] .ProseMirror .noto-source-block.noto-active-block::before {
+  content: 'Markdown · ' attr(data-kind-label) '   ⌥⌘/ shows it rendered';
+}
+
+.app-shell:not([data-platform='darwin']) .ProseMirror .noto-source-block.noto-active-block::before {
+  content: 'Markdown · ' attr(data-kind-label) '   Ctrl+Alt+/ shows it rendered';
 }
 
 /* Typora style marker reveal ---------------------------------------------- */
