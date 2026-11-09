@@ -1,7 +1,7 @@
 import { mkdtemp, realpath, rename, rm, writeFile } from 'node:fs/promises';
 import os from 'node:os';
 import path from 'node:path';
-import { afterEach, describe, expect, it } from 'vitest';
+import { afterEach, describe, expect, it, vi } from 'vitest';
 import { DocumentWatcher } from '../../src/main/file-truth/v1/document-watcher';
 
 const roots: string[] = [];
@@ -22,6 +22,9 @@ async function fixture(): Promise<{ root: string; file: string }> {
 
 /** Long enough for the trailing report, which exists so a burst is one report. */
 const settle = () => new Promise((resolve) => setTimeout(resolve, 700));
+
+/** Real time, for letting the file system's events arrive while the watcher's timers are fake. */
+const realSetTimeout = globalThis.setTimeout;
 
 function armed(file: string): { watcher: DocumentWatcher; counted: () => number } {
   let count = 0;
@@ -58,16 +61,26 @@ describe('DocumentWatcher', () => {
 
   it('reports a burst of writes once', async () => {
     const { file } = await fixture();
-    const { counted } = armed(file);
     // What a program streaming a file out looks like. Reading between two of
-    // its writes would give half a document. No artificial delay between
-    // writes — on loaded CI hosts a 20ms pause can stretch past the trailing
-    // debounce and produce a second report.
-    for (let i = 0; i < 10; i += 1) {
-      await writeFile(file, `# Note\n\n${'x'.repeat(i * 100)}\n`);
+    // its writes would give half a document. The settle timer is held still
+    // until every write has been heard: on a loaded CI host two writes in a
+    // row can land further apart than the settle, and the second report that
+    // follows says something about the host, not the watcher.
+    vi.useFakeTimers({ toFake: ['setTimeout', 'clearTimeout'] });
+    try {
+      const { counted } = armed(file);
+      for (let i = 0; i < 10; i += 1) {
+        await writeFile(file, `# Note\n\n${'x'.repeat(i * 100)}\n`);
+      }
+      await new Promise((resolve) => realSetTimeout(resolve, 100));
+      expect(counted()).toBe(0);
+      vi.advanceTimersByTime(300);
+      expect(counted()).toBe(1);
+      vi.advanceTimersByTime(2_000);
+      expect(counted()).toBe(1);
+    } finally {
+      vi.useRealTimers();
     }
-    await settle();
-    expect(counted()).toBe(1);
   });
 
   it('still reports while a writer keeps going, rather than waiting for it to stop', async () => {

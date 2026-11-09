@@ -55,8 +55,10 @@ jobs:
       matrix:
         # 24.04, not ubuntu-latest: the installers job is pinned for the same
         # reason, and a moving runner image makes an e2e-only failure
-        # impossible to attribute to the change under test.
-        os: [macos-14, windows-latest, ubuntu-24.04]
+        # impossible to attribute to the change under test. macos-15, not
+        # macos-latest, for the same reason; GitHub retired macos-14 on
+        # 2026-11-02, and a job asking for it fails before it starts.
+        os: [macos-15, windows-latest, ubuntu-24.04]
     steps:
       - uses: actions/checkout@v4
       - uses: pnpm/action-setup@v4
@@ -128,7 +130,7 @@ jobs:
         # 2026-10-20, and its rpm 6 builds in a directory electron-installer-
         # redhat's spec does not expect (`cp -r usr/*` finds nothing), so every
         # .rpm failed. Unpin once the installer copes with rpm >= 4.20.
-        os: [macos-14, windows-latest, ubuntu-24.04]
+        os: [macos-15, windows-latest, ubuntu-24.04]
     steps:
       - uses: actions/checkout@v4
       - uses: pnpm/action-setup@v4

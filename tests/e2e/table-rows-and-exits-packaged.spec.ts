@@ -140,7 +140,7 @@ test.describe('the edges of a note', () => {
       await save(app);
       await expect.poll(() => readFileSync(file, 'utf8')).toBe('> hello\n\nafter\n');
 
-      await page.keyboard.press('Meta+ArrowUp');
+      await page.keyboard.press(process.platform === 'darwin' ? 'Meta+ArrowUp' : 'Control+Home');
       await page.keyboard.press('ArrowUp');
       await page.keyboard.type('before');
       await save(app);
