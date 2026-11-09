@@ -45,7 +45,16 @@ export function listMenuCommands(menu: Pick<Menu, 'items'> | null): WorkspaceMen
   return out;
 }
 
-/** Choose the item with this id as the menu would. False when there is no such item, or it is off now. */
+/**
+ * Choose the item with this id as the menu would. False when there is no such
+ * item, or it is off now.
+ *
+ * The renderer can reach every item that has an id, which is exactly what a
+ * reader can click; role items (Quit, Close, About) have no id and stay out
+ * of reach. A menu item whose safety rests on a confirmation in its own click
+ * handler is fine here; one that relies on being reachable only by a person's
+ * click must not be given an id.
+ */
 export function runMenuCommand(menu: Pick<Menu, 'getMenuItemById'> | null, id: string): boolean {
   const item = menu?.getMenuItemById(id) ?? null;
   if (!item || !item.enabled || !item.visible) return false;

@@ -117,14 +117,6 @@ export class ReadingAnchorStore {
     this.timer ??= setTimeout(() => this.flush(), 1000);
   }
 
-  /** A note that moved keeps its place under its new path. */
-  move(from: string, to: string): void {
-    const anchor = this.places.get(from);
-    if (!anchor) return;
-    this.places.delete(from);
-    this.set(to, anchor);
-  }
-
   flush(): void {
     if (this.timer) clearTimeout(this.timer);
     this.timer = null;

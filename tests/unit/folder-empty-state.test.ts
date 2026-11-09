@@ -20,4 +20,9 @@ describe("an open folder's empty page", () => {
       { path: '/v/a/one.md', name: 'one', where: 'a' },
     ]);
   });
+
+  it('finds a Windows folder\'s notes whatever the slashes and the case', () => {
+    const lately = recentInside([recent('C:/Notes/Sub/one.md', 2), { path: 'c:\\notes\\two.md', name: 'two.md', openedAt: 1 }], 'C:\\Notes');
+    expect(lately.map((file) => [file.name, file.where])).toEqual([['one', 'Sub'], ['two', '']]);
+  });
 });

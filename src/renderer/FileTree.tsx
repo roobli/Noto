@@ -366,7 +366,7 @@ export function FileTree({
     const rows = bodyRef.current?.querySelectorAll<HTMLElement>('.tree-row[role="treeitem"][data-path]');
     if (!rows || rows.length === 0) return;
     if (![...rows].some((row) => row.tabIndex === 0)) rows[0]!.tabIndex = 0;
-  });
+  }, [rowTabStop, expanded, children, focus]);
 
   /*
    * The tree's width and its rows' face, which the step per level and every

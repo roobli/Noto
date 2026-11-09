@@ -16,10 +16,13 @@ const INDEX_NAMES = ['00_索引.md', 'readme.md', 'index.md', '_index.md'];
 /** How many recent notes the page lists. */
 const RECENT_SHOWN = 6;
 
+/** Where `file` sits under `root`, with forward slashes; null when outside. Case is ignored on Windows paths. */
 function insideFolder(file: string, root: string): string | null {
-  const sep = root.includes('\\') && !root.includes('/') ? '\\' : '/';
-  const prefix = root.endsWith(sep) ? root : `${root}${sep}`;
-  return file.startsWith(prefix) ? file.slice(prefix.length).split('\\').join('/') : null;
+  const windows = /^[a-z]:[\\/]|^\\\\/i.test(root);
+  const norm = (value: string) => { const slashed = value.split('\\').join('/'); return windows ? slashed.toLowerCase() : slashed; };
+  const base = norm(root).replace(/\/+$/, '');
+  const relative = file.split('\\').join('/').slice(base.length + 1);
+  return norm(file).startsWith(`${base}/`) ? relative : null;
 }
 
 /** The folder's index note at its top level, if it has one. */

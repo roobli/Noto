@@ -3034,7 +3034,8 @@ function NotoWorkspace({ platform }: { platform: NotoPlatform }) {
     // which name themselves in full (Export PDF rather than PDF under Export).
     const mac = platform === 'darwin';
     const menu = menuCommands
-      .filter((command) => command.enabled && command.id !== 'command-palette' && !command.id.startsWith('export-'))
+      // Note Info is offered above as Show or Hide Note Info, which says which it will do.
+      .filter((command) => command.enabled && command.id !== 'command-palette' && command.id !== 'toggle-note-info' && !command.id.startsWith('export-'))
       .map((command) => ({
         key: `menu:${command.id}`,
         testId: 'palette-menu-command',
@@ -3147,12 +3148,12 @@ function NotoWorkspace({ platform }: { platform: NotoPlatform }) {
             links={{
               currentPath: active?.opened.path ?? null,
               onLinks: noteLinks,
-              onOpen: (target) => { void openPath(target); },
+              onOpen: (target) => { void openPath(target); putOverlayRailAway(); },
               seedLinks,
             }}
             search={{
               onSearch: searchContent,
-              onOpenMatch: openMatch,
+              onOpenMatch: (...match: Parameters<typeof openMatch>) => { putOverlayRailAway(); return openMatch(...match); },
               currentPath: active?.opened.path ?? null,
               onClose: () => setRail({ open: true, view: 'files' }),
             }}
