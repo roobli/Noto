@@ -424,7 +424,7 @@ export function blockToMarkdown(node: ProseNode, previous?: string): string {
   if (node.type.name === 'code_block' && node.attrs.fenced === false) {
     return textOf(node).split('\n').map((line) => (line.length > 0 ? `    ${line}` : line)).join('\n');
   }
-  const markdown = renderMarkdown(blockToMdast(node), { keepDollarEscapes: previous?.includes('\\$') === true }).replace(/\n+$/, '');
+  const markdown = renderMarkdown(blockToMdast(node), { keepDollarEscapes: typeof previous === 'string' && previous.includes('\\$') }).replace(/\n+$/, '');
   // Alignment is a pure transform of the finished text, so it needs no place in
   // the mdast conversion: the reader asked for this table's source to be lined
   // up, and this is the one funnel every block's markdown passes through.

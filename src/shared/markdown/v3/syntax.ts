@@ -252,6 +252,32 @@ function dollarAlwaysEscaped(extension: ToMarkdownOptions): ToMarkdownOptions {
 }
 
 /**
+ * A formula written so that it reads back as the formula.
+ *
+ * Under Pandoc's dollar rule (`math-text-pandoc.ts`) a single-dollar span
+ * cannot begin or end with a space, nor be followed by a digit. The editor
+ * can still hold such a formula: Inline Math on a selection ending in a
+ * space, a space typed at a formula's end, a digit typed after one. Written
+ * as `$x $` or `$x$5` it came back as text. Those are written with two
+ * dollars, which the rule leaves as micromark reads them: `$$x $$`, `$$x$$5`.
+ */
+function inlineMathThatReadsBack(extension: ToMarkdownOptions): ToMarkdownOptions {
+  const write = extension.handlers?.inlineMath;
+  if (typeof write !== 'function') return extension;
+  const blank = (ch: string | undefined) => ch === undefined || ch === ' ' || ch === '\t' || ch === '\n' || ch === '\r';
+  const handle: Handle = (node, parent, state, info) => {
+    const out = write(node, parent, state, info);
+    if (out.length < 2 || out[1] === '$') return out;
+    const inner = out.slice(1, -1);
+    if (inner.length > 0 && !blank(inner[0]) && !blank(inner[inner.length - 1]) && !/^[0-9]/.test(info.after)) return out;
+    return `$$${inner}$$`;
+  };
+  const { peek } = write as { peek?: Handle };
+  const inlineMath = peek ? Object.assign(handle, { peek }) : handle;
+  return { ...extension, handlers: { ...extension.handlers, inlineMath } };
+}
+
+/**
  * A struck run whose tildes open and close where they are written.
  *
  * GFM gives `~~` the flanking rules of `*`: it cannot open with a letter before
@@ -946,7 +972,7 @@ const serializerOptions: ToMarkdownOptions = {
     // CommonMark's own flanking rules and, believing the run cannot close,
     // escapes the Chinese character after it into a numeric reference.
     nestedEmphasisAlternates(cjkFriendlyToMarkdown()),
-    tablesAsTheVaultWritesThem(strikethroughFlanks(tildeOnlyInPairs(gfmToMarkdown({ tablePipeAlign: false })))), dollarAlwaysEscaped(mathToMarkdown()), frontmatterToMarkdown(), characterReferenceVerbatim, verbatimRunsInText, listMarkerFromNode, bareAutolink, hardBreakAsTwoSpaces],
+    tablesAsTheVaultWritesThem(strikethroughFlanks(tildeOnlyInPairs(gfmToMarkdown({ tablePipeAlign: false })))), dollarAlwaysEscaped(inlineMathThatReadsBack(mathToMarkdown())), frontmatterToMarkdown(), characterReferenceVerbatim, verbatimRunsInText, listMarkerFromNode, bareAutolink, hardBreakAsTwoSpaces],
 };
 
 /**
