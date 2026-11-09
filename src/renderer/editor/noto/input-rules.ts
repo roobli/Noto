@@ -13,10 +13,11 @@ import {
   inputRules,
   smartQuotes,
   textblockTypeInputRule,
+  undoInputRule,
   wrappingInputRule,
 } from 'prosemirror-inputrules';
 import type { MarkType, NodeType } from 'prosemirror-model';
-import { TextSelection, type EditorState, type Plugin, type Transaction } from 'prosemirror-state';
+import { TextSelection, type Command, type EditorState, type Plugin, type Transaction } from 'prosemirror-state';
 import { notoSchema } from '../../../shared/markdown/v3/pm/schema';
 
 export interface InputRuleOptions {
@@ -182,10 +183,28 @@ function gatedRules(rules: readonly InputRule[], enabled: () => boolean): InputR
           state: EditorState, match: RegExpMatchArray, start: number, end: number,
         ) => Transaction | null;
       }).handler;
-      return handler(state, match, start, end);
+      return handler(state, match, start, end)?.setMeta(SUBSTITUTED, true) ?? null;
     },
   ));
 }
+
+/** Marks a transaction one of the substitutions above made, so Backspace can tell it from a block rule. */
+const SUBSTITUTED = 'notoSubstituted';
+
+/**
+ * Backspace straight after a quote, dash or ellipsis was put in for what was
+ * typed: the typed characters come back, as in macOS and Word.
+ *
+ * Only these. ProseMirror's own `undoInputRule` would also turn a heading
+ * just made from `# ` back into text, and a pair just closed back into one
+ * bracket, which Backspace has always done differently here.
+ */
+export const undoSubstitution: Command = (state, dispatch) => {
+  const rules = state.plugins.find((plugin) => (plugin.spec as { isInputRules?: boolean }).isInputRules);
+  const last = rules?.getState(state) as { transform?: Transaction } | null | undefined;
+  if (!last?.transform?.getMeta(SUBSTITUTED)) return false;
+  return undoInputRule(state, dispatch);
+};
 
 /** The text of the line before `pos`, with each inline node as one placeholder. */
 function lineBefore(state: EditorState, pos: number): string {

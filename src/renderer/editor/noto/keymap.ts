@@ -40,7 +40,7 @@ import type { Node as ProseNode, ResolvedPos } from 'prosemirror-model';
 import { moveBlock, moveColumn } from './move-block';
 import { deleteSelectedRowsOrColumns, enterInTable, exitAtEdge, tableFromRows, unwrapAtStart } from './block-edges';
 import { openLinkEditor } from './link-plugin';
-import { fenceOnEnter } from './input-rules';
+import { fenceOnEnter, undoSubstitution } from './input-rules';
 import {
   sortTasks,
   toggleTaskStatus,
@@ -719,9 +719,10 @@ export function notoBindings({ mac, onWidthStep, taskStamp }: KeymapOptions): Re
     [`${mod}-y`]: redo,
 
     Enter: enter,
-    // Whole rows or columns selected go first; then Typora's Backspace at the
-    // head of a block, tried before the ordinary one.
-    Backspace: chainCommands(deleteSelectedRowsOrColumns, unwrapAtStart),
+    // A quote or dash just put in for what was typed comes back as typed; then
+    // whole rows or columns selected; then Typora's Backspace at the head of a
+    // block, tried before the ordinary one.
+    Backspace: chainCommands(undoSubstitution, deleteSelectedRowsOrColumns, unwrapAtStart),
     Delete: deleteSelectedRowsOrColumns,
     // Out past a quote, a list, a table or a code block at the edge of the note.
     ArrowDown: exitAtEdge(1),
