@@ -91,3 +91,38 @@ describe('ranking a whole vault', () => {
     expect(rankCandidates(vault, 'note', () => plain, 0)).toEqual([]);
   });
 });
+
+describe('a query of several words', () => {
+  // Daily-use audit finding 11: `docker es` found nothing, because the space
+  // had to be matched as a character of the name.
+  it('wants every word, each in the name or the path', () => {
+    const both = scoreCandidate(keys('deploy_es.md', 'Docker/deploy_es.md'), 'docker es', plain);
+    expect(both).toBeGreaterThan(NO_MATCH);
+    expect(scoreCandidate(keys('deploy_es.md', 'Docker/deploy_es.md'), 'docker  es ', plain)).toBe(both);
+    expect(scoreCandidate(keys('deploy_es.md', 'Kube/deploy_es.md'), 'docker es', plain)).toBe(NO_MATCH);
+  });
+
+  it('matches the words in any order', () => {
+    const forward = scoreCandidate(keys('es_docker.md', 'a/es_docker.md'), 'es docker', plain);
+    const backward = scoreCandidate(keys('es_docker.md', 'a/es_docker.md'), 'docker es', plain);
+    expect(forward).toBeGreaterThan(NO_MATCH);
+    expect(backward).toBeGreaterThan(NO_MATCH);
+  });
+
+  it('ranks a note that carries both words above one that carries them scattered', () => {
+    const vault = [
+      keys('es_notes.md', 'misc/es_notes.md'),
+      keys('deploy_es.md', 'Docker/deploy_es.md'),
+      keys('docker_es.md', 'ops/docker_es.md'),
+    ];
+    const ranked = rankCandidates(vault, 'docker es', () => plain, 10);
+    expect(ranked.map((candidate) => candidate.nameKey)).toEqual(['docker_es.md', 'deploy_es.md']);
+  });
+
+  it('marks each word in a name that holds it, and none when the name holds none', () => {
+    expect(matchPositions('docker_es.md', 'es docker')).toEqual([0, 1, 2, 3, 4, 5, 7, 8]);
+    expect(matchPositions('deploy_es.md', 'es')).toEqual([7, 8]);
+    expect(matchPositions('deploy.md', 'docker zz')).toBeNull();
+    expect(matchPositions('Docker 部署', 'docker 部署')).toEqual([0, 1, 2, 3, 4, 5, 7, 8]);
+  });
+});
