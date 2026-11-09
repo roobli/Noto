@@ -1095,6 +1095,21 @@
   opacity: 0.6;
 }
 
+/* A way out to another folder, below everything about this one, as quiet as the recent rows. */
+.empty-state .empty-other-folder {
+  margin-top: 20px;
+  padding: 4px 8px;
+  color: var(--muted);
+  font: inherit;
+  font-size: 12px;
+  background: transparent;
+  border: 0;
+  border-radius: 4px;
+  cursor: pointer;
+
+  &:hover { color: var(--ink); }
+}
+
 .empty-state .recent-where {
   margin-left: 8px;
   color: color-mix(in srgb, var(--muted) 72%, var(--paper));

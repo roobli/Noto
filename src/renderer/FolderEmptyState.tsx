@@ -44,7 +44,7 @@ export function recentInside(recent: readonly RecentFileV1[], root: string, limi
 }
 
 export function FolderEmptyState({
-  name, root, recent, entries, onOpen, onNewNote, onQuickOpen, quickOpenKey, newNoteKey,
+  name, root, recent, entries, onOpen, onNewNote, onQuickOpen, onOpenFolder, quickOpenKey, newNoteKey,
 }: {
   readonly name: string;
   readonly root: string;
@@ -53,6 +53,7 @@ export function FolderEmptyState({
   readonly onOpen: (filePath: string) => void;
   readonly onNewNote: () => void;
   readonly onQuickOpen: () => void;
+  readonly onOpenFolder: () => void;
   readonly quickOpenKey: string;
   readonly newNoteKey: string;
 }) {
@@ -87,6 +88,9 @@ export function FolderEmptyState({
           ))}
         </nav>
       )}
+      <button type="button" className="empty-other-folder" data-testid="empty-open-folder" onClick={onOpenFolder}>
+        Open Another Folder…
+      </button>
     </section>
   );
 }

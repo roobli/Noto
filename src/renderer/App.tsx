@@ -3525,6 +3525,7 @@ function NotoWorkspace({ platform }: { platform: NotoPlatform }) {
                     onOpen={(filePath) => void openPath(filePath, null, { caret: true })}
                     onNewNote={() => void window.notoWorkspace.newFile({ version: 1, requestId: rid('new-file') })}
                     onQuickOpen={() => { void ensureFileIndex(); setQuickOpen({ open: true, mode: 'files' }); }}
+                    onOpenFolder={chooseFolder}
                     quickOpenKey={platform === 'darwin' ? '⌘P' : 'Ctrl+P'}
                     newNoteKey={platform === 'darwin' ? '⌘N' : 'Ctrl+N'}
                   />
