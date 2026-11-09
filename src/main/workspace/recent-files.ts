@@ -47,15 +47,18 @@ export async function lastNoteInside(entries: readonly RecentFileV1[], folder: s
  * there is no time for anything asynchronous; read once, at launch.
  */
 export class FrontAtQuit {
-  constructor(private readonly filePath: string) {}
+  constructor(private readonly filePath: string, private readonly clock: () => number = Date.now) {}
 
-  /** The note in front at the last quit, null when none was, undefined when this was never written. */
-  async read(): Promise<string | null | undefined> {
+  /**
+   * The note in front at the last quit (null when none was) and when that
+   * quit was; undefined when this was never written or cannot be read.
+   */
+  async read(): Promise<{ readonly path: string | null; readonly at: number } | undefined> {
     try {
       const parsed: unknown = JSON.parse(await readFile(this.filePath, 'utf8'));
       if (typeof parsed === 'object' && parsed !== null && 'path' in parsed) {
-        const value = (parsed as { path: unknown }).path;
-        if (value === null || typeof value === 'string') return value;
+        const { path: value, at } = parsed as { path: unknown; at?: unknown };
+        if (value === null || typeof value === 'string') return { path: value, at: typeof at === 'number' && Number.isFinite(at) ? at : 0 };
       }
     } catch {
       // Never written, or unreadable: the recent list decides instead.
@@ -65,11 +68,30 @@ export class FrontAtQuit {
 
   save(path: string | null): void {
     try {
-      writeFileSync(this.filePath, JSON.stringify({ path }));
+      writeFileSync(this.filePath, JSON.stringify({ path, at: this.clock() }));
     } catch {
       // A launch then falls back to the recent list, which is close enough.
     }
   }
+}
+
+/**
+ * The note a launch reopens in `folder`. The record of the last quit wins
+ * while it is the newest thing known: a note closed before quitting stays
+ * closed. When the record is older than the newest note opened in the folder
+ * (Noto was killed, or the session ended without a quit) or names a note no
+ * longer there, the recent list decides, as it does with no record at all.
+ */
+export async function noteToReopen(
+  record: { readonly path: string | null; readonly at: number } | undefined,
+  recent: readonly RecentFileV1[],
+  folder: string,
+): Promise<string | null> {
+  const newest = await lastNoteInside(recent, folder);
+  const newestAt = newest === null ? -Infinity : Math.max(...recent.filter((entry) => entry.path === newest).map((entry) => entry.openedAt));
+  if (record === undefined || newestAt > record.at) return newest;
+  if (record.path === null) return null;
+  return (await lastNoteInside([{ path: record.path, name: path.basename(record.path), openedAt: record.at }], folder)) ?? newest;
 }
 
 export class RecentFiles {

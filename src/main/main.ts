@@ -45,7 +45,7 @@ import {
   resolveEditorChromeTone,
   syncEditorTitleBarOverlay,
 } from './windows/editor-window-chrome';
-import { FrontAtQuit, lastNoteInside, RecentFiles } from './workspace/recent-files';
+import { FrontAtQuit, noteToReopen, RecentFiles } from './workspace/recent-files';
 import { SettingsStore } from './workspace/settings-store';
 import { registerSettingsHandlers } from './workspace/register-settings-handlers';
 import { WorkspaceSession, MAX_TABS } from './workspace/session';
@@ -1064,10 +1064,7 @@ async function run(): Promise<void> {
         await session?.openFolderPath(last.path, false)
           .catch(() => logger.log('workspace_restore_folder_failed', {}));
         await recent.load();
-        const front = await frontAtQuit.read();
-        // A note closed before quitting stays closed; with no record, the newest recent one.
-        const note = front === null ? null
-          : await lastNoteInside(front === undefined ? recent.list() : [{ path: front, name: path.basename(front), openedAt: 0 }], last.path);
+        const note = await noteToReopen(await frontAtQuit.read(), recent.list(), last.path);
         if (note) {
           await session?.openPath(note).then(refreshMenu)
             .catch(() => logger.log('workspace_restore_note_failed', {}));
