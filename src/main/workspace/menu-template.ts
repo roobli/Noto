@@ -127,6 +127,8 @@ export function buildMenuTemplate(options: MenuTemplateOptions): MenuItemConstru
     label: '&File',
     submenu: [
       command('New Note', 'CmdOrCtrl+N', 'new-file'),
+      // Finder's key for it. Beside the note in front, as New Note puts a note.
+      command('New Folder', 'CmdOrCtrl+Shift+N', 'new-folder'),
       { id: 'open-dialog', label: 'Open…', accelerator: 'CmdOrCtrl+O', click: () => actions.openDialog() },
       // Not Option and Command with O: Typora gives that pair to Ordered List,
       // and a menu accelerator wins over the editor's own keys. Opening a

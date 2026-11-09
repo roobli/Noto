@@ -16,7 +16,7 @@ import { buildTagIndex, notesForTag, type TagIndex } from './tag-index';
 import type { SearchFlags } from '../../shared/search/pattern';
 import path from 'node:path';
 import { access, cp, lstat, mkdir, open as openFile, readFile, readdir, realpath, rename, rm, stat, writeFile } from 'node:fs/promises';
-import { tmpdir } from 'node:os';
+import { homedir, tmpdir } from 'node:os';
 import { createHash, randomUUID } from 'node:crypto';
 import { BrowserWindow, Menu, clipboard, dialog, shell, type MenuItemConstructorOptions } from 'electron';
 import { FILE_TRUTH_CHANNELS, type FileTruthOpenReplyV1 } from '../../shared/file-truth/v1/contracts';
@@ -317,7 +317,8 @@ export class WorkspaceSession {
    * it. Nothing is remembered as recent unless the open actually succeeded.
    */
   async openPath(filePath: string): Promise<WorkspaceSessionOpenV1> {
-    const resolved = path.resolve(filePath);
+    // A path a person typed, as Quick Open takes one, may start at the home folder; a shell would have spelled it out.
+    const resolved = path.resolve(/^~(?:[\\/]|$)/.test(filePath) ? path.join(homedir(), filePath.slice(1)) : filePath);
     /*
      * Notes go through file-truth. Everything else the code viewer recognises
      * opens read-only, without a markdown parse and without a save token, so
@@ -679,7 +680,8 @@ export class WorkspaceSession {
     if (real === realRoot) {
       const own = buildVaultRowMenu(real, {
         newNote: (target) => { void this.newFile(target).catch(() => {}); },
-        newFolder: (target) => this.send(WORKSPACE_CHANNELS.renameRow, { version: NOTO_WORKSPACE_VERSION, path: target, intent: 'new-folder' }),
+        // Named as the window names the folder: the vault's row is drawn under that name, not under its real path.
+        newFolder: () => this.send(WORKSPACE_CHANNELS.renameRow, { version: NOTO_WORKSPACE_VERSION, path: root, intent: 'new-folder' }),
         info: () => this.send(WORKSPACE_CHANNELS.showFolderInfo, { version: NOTO_WORKSPACE_VERSION, path: path.resolve(target) }),
         reveal: (target) => shell.showItemInFolder(target),
         copyPath: (target) => clipboard.writeText(target),
@@ -809,7 +811,9 @@ export class WorkspaceSession {
     /** Only `move-into` has one; the callers inside main leave it out. */
     destination?: string | null;
   }): Promise<WorkspaceEntryReplyV1> {
-    const real = await this.inRoot(request.target);
+    // The open folder itself is a place to make things in, though never one to rename, move or trash.
+    const makes = request.action === 'new-folder' || request.action === 'new-note';
+    const real = await this.inRoot(request.target, makes);
     if (real === null) {
       this.logger.log('entry_action_refused', { action: request.action, reason: 'outside-root' });
       return this.refuse(this.folderRoot === null ? 'no-folder' : 'outside-root');
@@ -818,6 +822,7 @@ export class WorkspaceSession {
     if (request.action === 'rename') return this.renameEntry(real, request.name);
     if (request.action === 'duplicate') return this.duplicateEntry(real);
     if (request.action === 'new-folder') return this.newFolder(real, request.name);
+    if (request.action === 'new-note') return this.newNote(real, request.name);
     if (request.action === 'move') return this.moveEntry(real);
     if (request.action === 'move-into') return this.moveInto(real, request.destination ?? null);
     return this.trashEntry(real);
@@ -1196,7 +1201,8 @@ export class WorkspaceSession {
   }
 
   private async newFolder(real: string, typed: string | null): Promise<WorkspaceEntryReplyV1> {
-    if (!isEntryName(typed)) return this.refuse('bad-name');
+    // A leading dot hides a folder from the tree, as it does a renamed note.
+    if (!isEntryName(typed) || typed.startsWith('.')) return this.refuse('bad-name');
     let inside = real;
     try {
       if (!(await stat(real)).isDirectory()) inside = path.dirname(real);
@@ -1213,6 +1219,35 @@ export class WorkspaceSession {
     }
     this.logger.log('folder_created', {});
     return this.done(destination);
+  }
+
+  /**
+   * Make an empty note under the name the reader typed.
+   *
+   * What Quick Open makes from a name nothing matched, and then opens as it
+   * opens any note it found. The name gets `.md` unless it already ends in an
+   * extension Noto opens, by the rule a rename uses, so `ideas` and
+   * `Meeting 3.5` become notes the tree can show. A name already taken is an
+   * answer, never an overwrite.
+   */
+  private async newNote(real: string, typed: string | null): Promise<WorkspaceEntryReplyV1> {
+    if (!isEntryName(typed) || typed.startsWith('.')) return this.refuse('bad-name');
+    const name = renamedFileName(typed, 'Untitled.md', (extension) => isEditableFile(`x${extension}`));
+    if (!isEntryName(name)) return this.refuse('bad-name');
+    let inside = real;
+    try {
+      if (!(await stat(real)).isDirectory()) inside = path.dirname(real);
+    } catch {
+      return this.refuse('failed');
+    }
+    const target = path.join(inside, name);
+    try {
+      await writeFile(target, '', { encoding: 'utf8', flag: 'wx' });
+    } catch (cause) {
+      return this.refuse((cause as NodeJS.ErrnoException).code === 'EEXIST' ? 'exists' : 'failed');
+    }
+    this.logger.log('workspace_note_created', { pathTag: pathTag(target) });
+    return this.done(target);
   }
 
   /**

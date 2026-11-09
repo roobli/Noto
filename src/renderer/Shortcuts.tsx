@@ -24,7 +24,7 @@ import { useEffect, useRef, useState } from 'react';
  * new ones marked New, gathered at the top, and the title bar's ? carries a
  * dot until the list is opened again.
  */
-export const GUIDE_EDITION = 4;
+export const GUIDE_EDITION = 5;
 
 /** What a Try It button does: the window leads there, or does it. */
 export type GuideTry =
@@ -58,6 +58,8 @@ export function shortcutGroups(mac: boolean): Group[] {
         { keys: [mod('P', mac), mod('.', mac)], what: 'Quick open. Tab cycles files, folders and the text inside notes.', tryIt: 'quick-open' },
         { keys: [shift(mac) + mod('P', mac)], what: 'The command palette: every command, by name, with its key.', tryIt: 'palette' },
         { keys: ['Folders'], what: 'Choosing a folder narrows the other two tabs to it. Backspace on an empty box leaves it.' },
+        { keys: ['New note', shift(mac) + '↩'], what: 'Type a name nothing matches and quick open offers to make it, as a note or a folder, in the folder it is narrowed to. A new folder is narrowed to at once, ready for its first note.', since: 5, tryIt: 'quick-open' },
+        { keys: ['/ or ~/'], what: 'Type or paste a note\'s whole path into quick open to open it from anywhere on the disk, outside the open folder too.', since: 5, tryIt: 'quick-open' },
         { keys: ['type:', 'scope:'], what: 'Say what to search and where, in the box: type:content, scope:works/jobs. Tab finishes them.' },
         { keys: [mod('[', mac), mod(']', mac)], what: 'Narrow or widen quick open, which it remembers.' },
         { keys: ['[['], what: 'Typing two brackets asks which note you mean, and writes the link where they are.' },
@@ -77,6 +79,7 @@ export function shortcutGroups(mac: boolean): Group[] {
         { keys: [mod('D', mac), mod('L', mac)], what: 'Select the word, or the line, the caret is in.' },
         { keys: [mod('E', mac)], what: 'Select the styled run around the caret: the whole of a bold phrase.' },
         { keys: [shift(mac) + mod('V', mac)], what: 'Paste the text alone, read as markdown.' },
+        { keys: ['⌫'], what: 'Straight after a smart quote, dash or ellipsis is put in, Backspace gives back what you typed. Settings → Markdown turns each one off.', since: 5 },
         { keys: [alt(mac) + '↑', alt(mac) + '↓'], what: 'Move the block, the list item, or the table row.' },
         { keys: [mod('=', mac), mod('-', mac)], what: 'Raise or lower the heading level.' },
       ],
@@ -107,6 +110,7 @@ export function shortcutGroups(mac: boolean): Group[] {
     {
       title: 'Moving notes',
       entries: [
+        { keys: [shift(mac) + mod('N', mac)], what: 'A new folder beside the note in front, named on its row. New Folder Here on a folder\'s right-click menu, the vault\'s own row included, makes one inside it.', since: 5 },
         { keys: ['Drag'], what: 'Drag a row onto a folder, or onto a note to put it in that note\'s folder. Hold at the top or bottom edge to scroll; hold over a closed folder to open it.', since: 2 },
         { keys: [mod('click', mac), shift(mac) + 'click'], what: 'Choose several rows; drag one to move them all, or right-click for Move and Trash. Escape lets them go.', since: 2 },
         { keys: ['Links follow'], what: 'Rename or move a note or folder and the links to it are written again. The status line says how many, with Undo.', since: 2 },

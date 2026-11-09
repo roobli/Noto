@@ -1292,19 +1292,7 @@ function NotoWorkspace({ platform }: { platform: NotoPlatform }) {
       .then((result) => { if (active && result.ok) setGitMarks((current) => current ?? result.value); })
       .catch(() => { /* No marks is the ordinary answer. */ });
     const unsubscribeRename = window.notoWorkspace.onRenameRow((event) => {
-      if (!active) return;
-      const next = { path: event.path, intent: event.intent };
-      treeEditingRef.current = next;
-      setTreeEditing(next);
-      // A row is named where it sits in the file tree, so the tree has to be
-      // on screen: for a note just made, and for a rename or a new folder asked
-      // for from a page in the rail. The rail is put back as it was once the
-      // name is given.
-      const rail = railStateRef.current;
-      if (!(rail.open && rail.view === 'files')) {
-        railBeforeNamingRef.current = rail;
-        setRail({ open: true, view: 'files' });
-      }
+      if (active) beginNamingRef.current(event.path, event.intent);
     });
     const unsubscribeTabs = window.notoWorkspace.onTabsChanged((event) => {
       if (!active) return;
@@ -1792,7 +1780,7 @@ function NotoWorkspace({ platform }: { platform: NotoPlatform }) {
     }
   }, []);
 
-  const openPath = useCallback(async (filePath: string, from?: string | null) => {
+  const openPath = useCallback(async (filePath: string, from?: string | null, options?: { readonly caret?: boolean }) => {
     setOpenError(null);
     // An automatic save waiting on the note being left goes now. Its timer was
     // cleared when the note left the front, so a note left within the delay
@@ -1821,6 +1809,10 @@ function NotoWorkspace({ platform }: { platform: NotoPlatform }) {
         setSourceMode(false);
         return;
       }
+      if (options?.caret && result.value.opened) {
+        caretWantedRef.current = { id: result.value.opened.documentId, tries: 0 };
+        takeWantedCaretRef.current();
+      }
       // Counted only after the host confirms the open, and only once per
       // transition: a failed open never reaches here, opening the note
       // already in front does not bump again, and a trail step notes the
@@ -1845,6 +1837,39 @@ function NotoWorkspace({ platform }: { platform: NotoPlatform }) {
    */
   const [infoFolder, setInfoFolder] = useState<string | null>(null);
   openPathRef.current = openPath;
+
+  /*
+   * The note a chooser opened wants the caret once it is in front and its
+   * editor exists. Quick Open used to hand focus back to the editor that was
+   * in front before, which is still the old note's while the new one opens,
+   * and a hidden editor that keeps the focus still takes keys: what was typed
+   * next went into the note just left, out of sight. Now nothing has the keys
+   * for that moment, and the note takes them as soon as it is drawn. Tried
+   * again on the next frame until it has them, since its slot can still be
+   * hidden when it is first in front.
+   */
+  const caretWantedRef = useRef<{ readonly id: string; tries: number } | null>(null);
+  const takeWantedCaret = () => {
+    const wanted = caretWantedRef.current;
+    if (wanted === null || wanted.id !== activeIdRef.current) return;
+    const editor = editorsRef.current.get(wanted.id);
+    if (!editor) return;
+    // Something else took the keys in the meantime, or it never drew: the reader has moved on.
+    const elsewhere = globalThis.document.activeElement;
+    if (wanted.tries >= 30 || (elsewhere !== null && elsewhere !== globalThis.document.body && !editor.hasFocus())) {
+      caretWantedRef.current = null;
+      return;
+    }
+    wanted.tries += 1;
+    editor.focus();
+    if (editor.hasFocus()) { caretWantedRef.current = null; return; }
+    requestAnimationFrame(() => takeWantedCaretRef.current());
+  };
+  const takeWantedCaretRef = useRef(takeWantedCaret);
+  takeWantedCaretRef.current = takeWantedCaret;
+  useEffect(() => { takeWantedCaretRef.current(); }, [activeId, editorsReady]);
+  /** Set while Quick Open closes on a note it opened, so closing does not give the keys back to the note in front. */
+  const quickChoseRef = useRef(false);
   useEffect(() => {
     // A note chosen from a plugin turns a folder's info back to the note, the one in front too.
     slotState.setOpener((filePath) => { setInfoFolder(null); void openPathRef.current(filePath); });
@@ -2339,6 +2364,25 @@ function NotoWorkspace({ platform }: { platform: NotoPlatform }) {
   const tabPathsRef = useRef(new Map<string, string>());
   /** The rail as it was before a new note opened it to be named, if it did. */
   const railBeforeNamingRef = useRef<{ open: boolean; view: RailView } | null>(null);
+  /**
+   * Put a name field in the tree at `path`: on the row for a rename, under it
+   * for something new. A row is named where it sits in the file tree, so the
+   * tree has to be on screen: for a note just made, and for a rename or a new
+   * folder asked for from a page in the rail or the menu. The rail is put back
+   * as it was once the name is given.
+   */
+  const beginNaming = (path: string, intent: 'rename' | 'new-folder' | 'new-note') => {
+    const next = { path, intent };
+    treeEditingRef.current = next;
+    setTreeEditing(next);
+    const rail = railStateRef.current;
+    if (!(rail.open && rail.view === 'files')) {
+      railBeforeNamingRef.current = rail;
+      setRail({ open: true, view: 'files' });
+    }
+  };
+  const beginNamingRef = useRef(beginNaming);
+  beginNamingRef.current = beginNaming;
   /** Bumped whenever something in the tree moved, so listings are read again: those in `only`, or all of them. */
   const [treeVersion, setTreeVersion] = useState<{ token: number; only: readonly string[] | null }>({ token: 0, only: null });
 
@@ -2371,6 +2415,22 @@ function NotoWorkspace({ platform }: { platform: NotoPlatform }) {
     if (reason === 'outside-root') return 'That is no longer inside the open folder.';
     if (reason === 'no-folder') return 'Open a folder first.';
     return 'That did not work, and nothing was changed.';
+  };
+
+  /** What Quick Open makes from a name nothing matched: a note or a folder, in the folder it is narrowed to. */
+  const makeFromQuickOpen = async (
+    action: { readonly kind: 'new-note' | 'new-folder'; readonly name: string },
+    scope: string,
+  ): Promise<{ readonly made: string } | { readonly refused: string }> => {
+    const root = folder.root;
+    if (!root) return { refused: 'Open a folder first.' };
+    const separator = root.includes('\\') ? '\\' : '/';
+    const target = scope.length > 0 ? [root.replace(/[\\/]+$/, ''), ...scope.split('/')].join(separator) : root;
+    const result = await window.notoWorkspace.manageEntry({
+      version: 1, requestId: rid('entry'), action: action.kind, target, name: action.name, destination: null,
+    });
+    if (!result.ok) return { refused: actionableFileTruthMessage(result.error.message, 'That could not be made.') };
+    return result.value.done ? { made: result.value.path } : { refused: entryRefusalMessage(result.value.reason) };
   };
 
   const finishTreeEdit = useCallback((name: string | null) => {
@@ -2729,6 +2789,15 @@ function NotoWorkspace({ platform }: { platform: NotoPlatform }) {
               : actionableFileTruthMessage(result.error.message, 'The note could not be made.'));
           });
         break;
+      case 'new-folder': {
+        // Beside the note in front, as New Note puts a note; the open folder otherwise.
+        const root = folder.root;
+        if (!root) { setLocalMessage('Open a folder first, and the new folder goes in it.'); break; }
+        const note = active?.opened.path ?? null;
+        const inside = note !== null && (note.startsWith(`${root}/`) || note.startsWith(`${root}\\`));
+        beginNaming(inside ? note.replace(/[\\/][^\\/]*$/, '') : root, 'new-folder');
+        break;
+      }
       case 'toggle-focus-mode':
         changeSettings({ focusMode: !settings.focusMode });
         break;
@@ -3502,11 +3571,19 @@ function NotoWorkspace({ platform }: { platform: NotoPlatform }) {
         frecency={frecency}
         truncated={fileIndex.truncated}
         canInsertLink={document !== null}
-        onOpenFile={(filePath) => void openPath(filePath)}
+        onOpenFile={(filePath) => { quickChoseRef.current = true; void openPath(filePath, null, { caret: true }); }}
         onInsertLink={(entry) => insertWikiLink(entry, quickOpen.linking === true)}
         onPreview={previewNote}
+        onMake={folder.root ? makeFromQuickOpen : undefined}
+        folderName={folder.root ? folder.root.split(/[\\/]/).filter(Boolean).pop() ?? '' : ''}
         linking={quickOpen.linking === true}
-        onClose={() => { setQuickOpen((current) => ({ ...current, open: false })); editorRef.current?.focus(); }}
+        onClose={() => {
+          setQuickOpen((current) => ({ ...current, open: false }));
+          // Closed without a choice, the keys go back where they were; on a note it opened, that note takes them.
+          if (!quickChoseRef.current) editorRef.current?.focus();
+          else (globalThis.document.activeElement as HTMLElement | null)?.blur();
+          quickChoseRef.current = false;
+        }}
       />
 
       {paletteOpen && (

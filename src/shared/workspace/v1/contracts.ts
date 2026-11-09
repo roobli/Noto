@@ -374,6 +374,7 @@ export const WORKSPACE_MENU_COMMANDS = [
   'export-textile',
   'export-opml',
   'new-file',
+  'new-folder',
   'mark-strong',
   'mark-emphasis',
   'mark-code',
@@ -498,7 +499,7 @@ export interface WorkspaceTreeMenuReplyV1 {
  * different shape of message. The action is checked against this list on both
  * sides, so an unknown one is refused rather than falling through to a default.
  */
-export const ENTRY_ACTIONS = ['rename', 'duplicate', 'trash', 'new-folder', 'move', 'move-into'] as const;
+export const ENTRY_ACTIONS = ['rename', 'duplicate', 'trash', 'new-folder', 'move', 'move-into', 'new-note'] as const;
 
 export type WorkspaceEntryActionV1 = (typeof ENTRY_ACTIONS)[number];
 

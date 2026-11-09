@@ -227,6 +227,23 @@ function NameField({ initial, onDone }: {
   );
 }
 
+/** The row a folder being made is named on, one level under the folder it goes in. */
+function NewFolderRow({ depth, onDone }: { depth: number; onDone: (name: string | null) => void }) {
+  return (
+    <div className="tree-level" style={{ '--tree-depth': depth } as React.CSSProperties}>
+      <div className="tree-node">
+        <div className="tree-row tree-directory" data-depth={depth} data-testid="tree-new-folder">
+          <span className="tree-leading">
+            <span className="tree-twisty tree-twisty-blank" aria-hidden="true" />
+            <FolderGlyph />
+          </span>
+          <NameField initial="New Folder" onDone={onDone} />
+        </div>
+      </div>
+    </div>
+  );
+}
+
 /** The height of one row, which the sticky offsets are multiples of. */
 export const TREE_ROW_HEIGHT = 32;
 
@@ -895,17 +912,7 @@ export function FileTree({
                   {dropClass(entry.path) && <span className="tree-drop-ring" aria-hidden="true" />}
                 </button>
                 {editing?.intent === 'new-folder' && editing.path === entry.path && (
-                  <div className="tree-level" style={{ '--tree-depth': depth + 1 } as React.CSSProperties}>
-                    <div className="tree-node">
-                      <div className="tree-row tree-directory" data-depth={depth + 1}>
-                        <span className="tree-leading">
-                          <span className="tree-twisty tree-twisty-blank" aria-hidden="true" />
-                          <FolderGlyph />
-                        </span>
-                        <NameField initial="New Folder" onDone={commitEdit} />
-                      </div>
-                    </div>
-                  </div>
+                  <NewFolderRow depth={depth + 1} onDone={commitEdit} />
                 )}
                 {isOpen && renderLevel(entry.path, depth + 1)}
               </div>
@@ -1182,6 +1189,11 @@ export function FileTree({
             {focus === null && vaultMenu}
             {dropClass(top) && <span className="tree-drop-ring" aria-hidden="true" />}
           </div>
+          {/* A folder made at the top: the vault's own row is not one of the
+              rows the level draws, so the field would have had nowhere to go. */}
+          {editing?.intent === 'new-folder' && editing.path === top && (
+            <NewFolderRow depth={1} onDone={commitEdit} />
+          )}
           {renderLevel(top, 1)}
         </div>
       </nav>

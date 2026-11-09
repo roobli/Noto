@@ -2691,6 +2691,47 @@ section.plugin-group > .plugin-market-row.is-set-aside {
   text-align: center;
 }
 
+/* What can be done with what was typed besides opening a match. Below the
+   matches and set off from them by a rule, with a mark in the accent, so a
+   row that makes something never reads as one more note that was found. */
+.quick-result + .quick-actions {
+  margin-top: 4px;
+  border-top: 1px solid var(--hairline);
+  padding-top: 4px;
+}
+
+.quick-action {
+  grid-template-columns: 18px minmax(0, 1fr);
+  column-gap: 9px;
+}
+
+.quick-action > .quick-name,
+.quick-action > .quick-path { grid-column: 2; }
+
+.quick-action-glyph {
+  display: grid;
+  grid-row: 1 / span 2;
+  align-self: center;
+  place-items: center;
+  color: var(--accent);
+}
+
+.quick-action-name {
+  margin-left: 6px;
+  color: var(--ink-strong);
+  font-weight: 600;
+}
+
+/* Why the last thing asked to be made was not, where the row that asked was. */
+.quick-notice {
+  margin: 2px 4px 6px;
+  border-radius: 6px;
+  padding: 7px 10px;
+  background: color-mix(in srgb, var(--warning) 12%, transparent);
+  color: var(--ink);
+  font-size: 12px;
+}
+
 .quick-hints {
   display: flex;
   flex-wrap: wrap;

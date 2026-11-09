@@ -15,6 +15,18 @@
 /** The longest a single name may be. macOS and Linux stop at 255 bytes. */
 export const MAX_ENTRY_NAME = 200;
 
+/**
+ * What this editor opens, in one place.
+ *
+ * The tree, the search index, the Open dialog, the shell and Quick Open's
+ * new-note row all have to agree, or a file shows in one and is refused by
+ * another. It was written out twice before, once in the tree and once in the
+ * index, with a comment on each saying it had to match the other.
+ */
+export const EDITABLE_EXTENSIONS: ReadonlySet<string> = new Set([
+  '.md', '.markdown', '.mdown', '.mkd', '.txt',
+]);
+
 /* Reserved on Windows, whatever extension follows them. */
 const RESERVED = new Set([
   'con', 'prn', 'aux', 'nul',

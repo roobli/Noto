@@ -31,6 +31,7 @@ import { completeQuery, parseQuery, removeToken, type Completion } from './quick
 import { isComposing } from './ime';
 import { QuickPreview, type PreviewTarget, type PreviewValue } from './QuickPreview';
 import { readableHit } from './quick-preview';
+import { quickActions, type QuickAction } from './quick-open-make';
 
 /**
  * How many results are drawn: enough to fill the panel on a tall window, so it
@@ -99,7 +100,53 @@ export interface QuickOpenProps {
    * opening, or the lines around `line`. Without it there is no preview.
    */
   readonly onPreview?: (path: string, line: number | null) => Promise<PreviewValue | null>;
+  /**
+   * Makes the note or folder an action row offers, in `scope`, relative to
+   * the open folder. Resolves with its path once it is made, or with what to
+   * say when it was not. Without it nothing is offered to make.
+   */
+  readonly onMake?: (action: Exclude<QuickAction, { kind: 'open-path' }>, scope: string) =>
+    Promise<{ readonly made: string } | { readonly refused: string }>;
+  /** The open folder's name, for "in …" on a row that makes something at its top. */
+  readonly folderName?: string;
 }
+
+/** The mark at the head of an action row: what it makes, or that it opens from elsewhere. */
+function ActionGlyph({ kind }: { kind: QuickAction['kind'] }) {
+  return (
+    <svg viewBox="0 0 16 16" width="15" height="15" fill="none" stroke="currentColor" strokeWidth="1.4" strokeLinecap="round" strokeLinejoin="round">
+      {kind === 'new-folder' ? (
+        <>
+          <path d="M1.75 4.25a1 1 0 0 1 1-1h3.1l1.5 1.5h5.9a1 1 0 0 1 1 1v6.5a1 1 0 0 1-1 1H2.75a1 1 0 0 1-1-1z" />
+          <path d="M8 7.25v3.5M6.25 9h3.5" />
+        </>
+      ) : kind === 'new-note' ? (
+        <>
+          <path d="M3.75 1.75h5.5l3 3v9.5h-8.5z" />
+          <path d="M8 7.5v4M6 9.5h4" />
+        </>
+      ) : (
+        <>
+          <path d="M3.75 1.75h5.5l3 3v9.5h-8.5z" />
+          <path d="M6.5 10.5l3.5-3.5M7.25 7h2.75v2.75" />
+        </>
+      )}
+    </svg>
+  );
+}
+
+const ACTION_VERBS: Record<QuickAction['kind'], string> = {
+  'open-path': 'Open file',
+  'new-note': 'New note',
+  'new-folder': 'New folder',
+};
+
+/** What the preview says beside an action row, since there is nothing yet to show. */
+const ACTION_HINTS: Record<QuickAction['kind'], string> = {
+  'open-path': 'Opened from where it is. A note outside the open folder is not listed in the tree.',
+  'new-note': 'Made empty and opened, ready to write.',
+  'new-folder': 'Made, and Quick Open moves into it to name its first note.',
+};
 
 /** Previews kept while the palette is open, so a note walked back to shows at once. */
 const PREVIEWS_KEPT = 60;
@@ -128,10 +175,13 @@ function Highlighted({ text, query }: { text: string; query: string }) {
 export function QuickOpen({
   open, disabledShortcuts = [], mode, onMode, onSearchContent, onOpenMatch,
   entries, frecency, truncated, canInsertLink, linking = false, onOpenFile, onInsertLink, onClose,
-  width, onWidth, onPreview,
+  width, onWidth, onPreview, onMake, folderName = '',
 }: QuickOpenProps) {
   const [query, setQuery] = useState('');
   const [selected, setSelected] = useState(0);
+  /** Why the last thing asked to be made was not, until the box changes. */
+  const [notice, setNotice] = useState<string | null>(null);
+  const making = useRef(false);
   /** The folder the other two tabs are narrowed to, or the whole vault. */
   const [scope, setScope] = useState('');
   /** Where the caret is in the box, which is what the completion is for. */
@@ -259,7 +309,24 @@ export function QuickOpen({
     );
   }, [candidates, frecency, terms, effectiveScope]);
 
-  useEffect(() => { setSelected(0); }, [query]);
+  useEffect(() => { setSelected(0); setNotice(null); }, [query]);
+
+  /*
+   * What can be done with what was typed besides opening a match: open a
+   * note by its path from anywhere on the disk, or make the note or folder
+   * it names here. Drawn after the matches, so Enter on a query that matched
+   * still opens the match, and the only rows when nothing did.
+   */
+  const actions = useMemo<QuickAction[]>(() => (effectiveMode === 'content' || linking
+    ? []
+    : quickActions({
+      terms,
+      mode: effectiveMode,
+      scope: effectiveScope,
+      notes: candidates.map((candidate) => candidate.entry),
+      folders,
+      canMake: onMake !== undefined,
+    })), [effectiveMode, linking, terms, effectiveScope, candidates, folders, onMake]);
 
   useEffect(() => {
     listRef.current?.querySelector('[aria-selected="true"]')
@@ -279,9 +346,10 @@ export function QuickOpen({
     onClose();
   }, [onClose, onOpenMatch, terms]);
 
-  const rowCount = effectiveMode === 'content'
+  const baseCount = effectiveMode === 'content'
     ? content.matches.length
     : effectiveMode === 'folders' ? folderResults.length : results.length;
+  const rowCount = baseCount + actions.length;
 
   /*
    * What the token under the caret could become.
@@ -317,6 +385,27 @@ export function QuickOpen({
     onMode('files');
     inputRef.current?.focus();
   }, [onMode]);
+
+  const runAction = useCallback(async (action: QuickAction | undefined) => {
+    if (!action || making.current) return;
+    if (action.kind === 'open-path') {
+      onOpenFile(action.path);
+      onClose();
+      return;
+    }
+    if (!onMake) return;
+    making.current = true;
+    const outcome = await onMake(action, effectiveScope).finally(() => { making.current = false; });
+    if ('refused' in outcome) { setNotice(outcome.refused); return; }
+    // A note made is opened as a note found is. A folder made is where the
+    // next note goes, so the palette moves into it and waits for that name.
+    if (action.kind === 'new-note') {
+      onOpenFile(outcome.made);
+      onClose();
+      return;
+    }
+    enterFolder({ relativePath: effectiveScope.length > 0 ? `${effectiveScope}/${action.name}` : action.name });
+  }, [effectiveScope, enterFolder, onClose, onMake, onOpenFile]);
 
   const onKeyDown = (event: React.KeyboardEvent) => {
     // A press the input method is composing with is the input method's: Enter
@@ -369,6 +458,9 @@ export function QuickOpen({
       // A half-written operator is finished rather than searched for.
       if (/^(?:type|scope):/i.test(query.slice(0, caret).split(/\s/).at(-1) ?? '')
         && takeCompletion(completions.candidates[0])) return;
+      // Shift makes the note that was typed whatever matched it, as Obsidian's switcher does.
+      if (event.shiftKey && effectiveMode === 'files') { void runAction(actions.find((action) => action.kind === 'new-note')); return; }
+      if (selected >= baseCount) { void runAction(actions[selected - baseCount]); return; }
       if (effectiveMode === 'content') chooseMatch(content.matches[selected]);
       else if (effectiveMode === 'folders') enterFolder(folderResults[selected]);
       else choose(results[selected], event.altKey);
@@ -414,6 +506,42 @@ export function QuickOpen({
   // The new note's name and folder show at once; its text follows a read later, from the cache when walked back to.
   const previewValue = preview?.key === previewKey ? preview.value : undefined;
   const previewShown = onPreview !== undefined;
+
+  /** Where a row that makes something puts it: the folder narrowed to, or the open one. */
+  const makingIn = effectiveScope.length > 0 ? effectiveScope : folderName;
+  const selectedAction = selected >= baseCount ? actions[selected - baseCount] : undefined;
+  const selectedMakes = selectedAction !== undefined && selectedAction.kind !== 'open-path';
+  const actionRows = actions.length === 0 ? null : (
+    <div className="quick-actions" role="group" aria-label="Open or make">
+      {actions.map((action, at) => {
+        const index = baseCount + at;
+        return (
+          <button
+            key={action.kind}
+            id={`quick-result-${index}`}
+            type="button"
+            role="option"
+            aria-selected={index === selected}
+            className={index === selected ? 'quick-result quick-action is-selected' : 'quick-result quick-action'}
+            data-testid="quick-action"
+            data-kind={action.kind}
+            onMouseMove={() => setSelected(index)}
+            onClick={() => void runAction(action)}
+          >
+            <span className="quick-action-glyph" aria-hidden="true"><ActionGlyph kind={action.kind} /></span>
+            <span className="quick-name">
+              {ACTION_VERBS[action.kind]}
+              {action.kind !== 'open-path' && (
+                <span className="quick-action-name">{action.kind === 'new-note' ? action.file : action.name}</span>
+              )}
+            </span>
+            <span className="quick-path">{action.kind === 'open-path' ? action.path : makingIn ? `in ${makingIn}` : 'in the open folder'}</span>
+          </button>
+        );
+      })}
+    </div>
+  );
+  const noticeRow = notice === null ? null : <p className="quick-notice" role="status" data-testid="quick-notice">{notice}</p>;
 
   return (
     <div className="quick-scrim" data-testid="quick-open-scrim" onClick={onClose}>
@@ -473,8 +601,10 @@ export function QuickOpen({
           className="quick-input"
           data-testid="quick-input"
           spellCheck={false}
-          placeholder={entries.length === 0
+          placeholder={entries.length === 0 && !onMake
             ? 'Open a folder to search it'
+            : effectiveMode === 'files' && !linking && onMake && candidates.length === 0
+              ? 'Name a note to make it here, or paste a path to open one'
             : linking
               ? `Link to one of ${candidates.length} notes`
               : effectiveMode === 'content'
@@ -486,7 +616,7 @@ export function QuickOpen({
           role="combobox"
           aria-expanded
           aria-controls="quick-open-results"
-          aria-activedescendant={results[selected] ? `quick-result-${selected}` : undefined}
+          aria-activedescendant={selected < rowCount ? `quick-result-${selected}` : undefined}
           value={query}
           onChange={(event) => { setQuery(event.target.value); setCaret(event.target.selectionStart ?? event.target.value.length); }}
           onSelect={(event) => setCaret((event.target as HTMLInputElement).selectionStart ?? 0)}
@@ -514,8 +644,9 @@ export function QuickOpen({
 
         <div className="quick-body">
         <div className="quick-results" id="quick-open-results" role="listbox" ref={listRef}>
-          {effectiveMode === 'folders' ? (
-            folderResults.length === 0
+          {effectiveMode === 'folders' ? (<>
+            {noticeRow}
+            {folderResults.length === 0 && actionRows === null
               ? (
                 <p className="quick-empty">
                   {folders.length === 0
@@ -544,8 +675,9 @@ export function QuickOpen({
                     <Highlighted text={folder.relativePath} query={terms.trim()} />
                   </span>
                 </button>
-              ))
-          ) : effectiveMode === 'content' ? (
+              ))}
+            {actionRows}
+          </>) : effectiveMode === 'content' ? (
             content.matches.length === 0
               ? (
                 <p className="quick-empty">
@@ -596,13 +728,17 @@ export function QuickOpen({
                   <span className="quick-path">{pathContext(match.relativePath)}</span>
                 </button>
               ))
-          ) : results.length === 0
+          ) : (<>
+            {noticeRow}
+            {results.length === 0 && actionRows === null
             ? (
               <p className="quick-empty">
-                {entries.length === 0
+                {entries.length === 0 && !onMake
                   ? 'No folder is open, so there is nothing to search yet.'
                   : terms.trim().length === 0
-                    ? effectiveScope.length > 0 ? 'No notes in this folder.' : 'Nothing opened yet. Type to search.'
+                    ? effectiveScope.length > 0 || entries.length === 0
+                      ? onMake ? 'No notes here yet. Type a name to make the first one.' : 'No notes in this folder.'
+                      : 'Nothing opened yet. Type to search.'
                     : 'No note matches that.'}
               </p>
             )
@@ -629,6 +765,8 @@ export function QuickOpen({
                 </span>
               </button>
             ))}
+            {actionRows}
+          </>)}
         </div>
 
         {previewShown && (previewTarget
@@ -636,7 +774,9 @@ export function QuickOpen({
           : (
             <aside className="quick-preview is-blank" data-testid="quick-preview">
               <p className="quick-preview-empty">
-                {effectiveMode === 'folders' ? 'Enter searches inside the folder.' : 'The note you land on is shown here.'}
+                {selected >= baseCount && actions[selected - baseCount]
+                  ? ACTION_HINTS[actions[selected - baseCount]!.kind]
+                  : effectiveMode === 'folders' ? 'Enter searches inside the folder.' : 'The note you land on is shown here.'}
               </p>
             </aside>
           ))}
@@ -646,9 +786,15 @@ export function QuickOpen({
           {/* While the brackets are waiting to be filled, Enter puts the link
               in; saying it opens the note as well would be two answers to
               one key, and only one of them true. */}
-          {!linking && effectiveMode !== 'folders' && <span><kbd>↩</kbd> open</span>}
-          {effectiveMode === 'files' && canInsertLink && !linking && <span><kbd>⌥↩</kbd> insert link</span>}
-          {effectiveMode === 'folders' && <span><kbd>↩</kbd> search inside it</span>}
+          {/* Enter's word is the selected row's: a row that makes something is not one that opens. */}
+          {selectedMakes
+            ? <span><kbd>↩</kbd> make it</span>
+            : <>
+              {!linking && effectiveMode !== 'folders' && <span><kbd>↩</kbd> open</span>}
+              {effectiveMode === 'files' && canInsertLink && !linking && selected < baseCount && <span><kbd>⌥↩</kbd> insert link</span>}
+              {effectiveMode === 'folders' && <span><kbd>↩</kbd> search inside it</span>}
+            </>}
+          {actions.some((action) => action.kind === 'new-note') && <span data-testid="quick-hint-new"><kbd>⇧↩</kbd> new note</span>}
           {linking && <span data-testid="quick-linking"><kbd>↩</kbd> insert the link</span>}
           {!linking && completions.candidates.length === 0 && (
             <span><kbd>tab</kbd> {QUICK_TAB_LABELS[QUICK_TABS[(QUICK_TABS.indexOf(effectiveMode) + 1) % QUICK_TABS.length]].toLowerCase()}</span>
