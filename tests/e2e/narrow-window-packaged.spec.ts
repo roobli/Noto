@@ -39,9 +39,13 @@ test('a 720px window keeps the rail toggle, lays the rail over the page, and has
     await expect(rail).toBeVisible();
 
     // Lying over the page: out of flow, above it, and starting at the edge.
+    // A pick puts it away, so the note it opened is in view (audit finding 14).
     await page.getByTestId('tree-file').first().click();
     const editor = page.locator('.canvas-slot:not([hidden]) .ProseMirror');
     await editor.waitFor({ state: 'visible' });
+    await expect(rail).toBeHidden();
+    await toggle.click();
+    await expect(rail).toBeVisible();
     const over = await page.evaluate(() => {
       const r = document.querySelector('.workspace-rail')!;
       const layout = document.querySelector('.workspace-layout')!.getBoundingClientRect();

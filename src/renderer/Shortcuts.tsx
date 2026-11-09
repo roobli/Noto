@@ -17,7 +17,7 @@
  * edition last looked at is marked New and gathered at the top.
  */
 
-import { useEffect, useRef, useState } from 'react';
+import { useEffect, useLayoutEffect, useRef, useState } from 'react';
 
 /**
  * Raised whenever entries are added: someone who has looked before sees the
@@ -189,7 +189,8 @@ export function Shortcuts({ mac, onClose, seen = GUIDE_EDITION, onTry, unavailab
   const field = useRef<HTMLInputElement>(null);
 
   useEffect(() => { field.current?.focus(); }, []);
-  useEffect(() => {
+  // As the sheet is drawn, not after the paint, so an Escape pressed the moment it appears closes it.
+  useLayoutEffect(() => {
     const onKey = (event: KeyboardEvent) => {
       if (event.key !== 'Escape') return;
       event.preventDefault();

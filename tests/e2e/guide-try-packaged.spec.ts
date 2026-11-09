@@ -105,7 +105,7 @@ test.describe('the guide\'s ways in', () => {
       // Nothing open: these say what they need instead of closing the guide on nothing; the palette still goes.
       await expect(page.locator('[data-testid="shortcuts-later"][data-try="review"]').first()).toHaveText('Open a folder first');
       await expect(page.locator('[data-testid="shortcuts-later"][data-try="note-history"]').first()).toHaveText('Open a note first');
-      await expect(page.locator('[data-testid="shortcuts-try"][data-try="palette"]')).toBeVisible();
+      await expect(page.locator('[data-testid="shortcuts-try"][data-try="palette"]').first()).toBeVisible();
     } finally {
       await app.close();
     }

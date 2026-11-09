@@ -11,7 +11,7 @@
  * taken it somewhere else.
  */
 
-import { useEffect, useMemo, useRef, useState, type KeyboardEvent as ReactKeyboardEvent } from 'react';
+import { useEffect, useLayoutEffect, useMemo, useRef, useState, type KeyboardEvent as ReactKeyboardEvent } from 'react';
 import { filterPaletteCommands } from './command-palette-filter';
 import { isComposing } from './ime';
 
@@ -52,8 +52,9 @@ export function CommandPalette({ commands, onRun, onClose }: CommandPaletteProps
   useEffect(() => { inputRef.current?.focus(); }, []);
 
   // Escape closes it wherever the focus is, as the other dialogs do, so a key
-  // pressed before the field has the caret is not lost.
-  useEffect(() => {
+  // pressed before the field has the caret is not lost. Attached as the
+  // palette is drawn, not after the paint, for the same reason.
+  useLayoutEffect(() => {
     const onKey = (event: KeyboardEvent) => {
       if (event.key !== 'Escape') return;
       event.preventDefault();
