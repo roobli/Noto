@@ -95,6 +95,10 @@ export const WORKSPACE_CHANNELS = {
   /** One note's text as one of its commits had it. */
   noteVersion: 'noto:v1:workspace:note-version',
   notePreview: 'noto:v1:workspace:note-preview',
+  /** Every command the application menu holds, for the command palette. See `WorkspaceMenuCommandsReplyV1`. */
+  menuCommands: 'noto:v1:workspace:menu-commands',
+  /** Run one of them, as choosing it in the menu does. */
+  runMenuCommand: 'noto:v1:workspace:run-menu-command',
   /** What the folder's memory knows about one note. See `WorkspaceNoteMemoryReplyV1`. */
   noteMemory: 'noto:v1:workspace:note-memory',
   /** Begin keeping memory for the open folder, as `noto-vault init` would, once main has asked the person. */
@@ -1060,6 +1064,41 @@ export interface WorkspaceNoteVersionReplyV1 {
   readonly text: string | null;
 }
 
+/**
+ * One command of the application menu, as the command palette lists it.
+ *
+ * The menu is the one registry of what Noto can do: the palette lists what it
+ * holds and runs a choice by clicking the same item, so the two cannot drift
+ * and every command is reachable from the keyboard by name.
+ */
+export interface WorkspaceMenuCommandV1Entry {
+  /** The menu item's id, which is the command it sends. */
+  readonly id: string;
+  readonly title: string;
+  /** Where it sits in the menu bar, such as `Paragraph › Table`. */
+  readonly path: string;
+  /** The accelerator as Electron writes it, such as `CmdOrCtrl+Shift+P`; null without one. */
+  readonly accelerator: string | null;
+  readonly enabled: boolean;
+  /** For a checkbox item, whether it is on; null for a plain one. */
+  readonly checked: boolean | null;
+}
+
+export interface WorkspaceMenuCommandsReplyV1 {
+  readonly version: typeof NOTO_WORKSPACE_VERSION;
+  readonly commands: readonly WorkspaceMenuCommandV1Entry[];
+}
+
+export interface WorkspaceRunMenuCommandRequestV1 extends WorkspaceRequestV1 {
+  readonly id: string;
+}
+
+export interface WorkspaceRunMenuCommandReplyV1 {
+  readonly version: typeof NOTO_WORKSPACE_VERSION;
+  /** False when no enabled item has that id any more. */
+  readonly ran: boolean;
+}
+
 /** Quick Open's preview of the note in front of the list: its opening, or the lines around a match in it. */
 export interface WorkspaceNotePreviewRequestV1 extends WorkspaceRequestV1 {
   readonly path: string;
@@ -1519,6 +1558,8 @@ export interface NotoWorkspaceApiV1 {
   /** One note's text at one of its own commits. */
   noteVersion(request: WorkspaceNoteVersionRequestV1): Promise<WorkspaceResultV1<WorkspaceNoteVersionReplyV1>>;
   notePreview(request: WorkspaceNotePreviewRequestV1): Promise<WorkspaceResultV1<WorkspaceNotePreviewReplyV1>>;
+  menuCommands(request: WorkspaceRequestV1): Promise<WorkspaceResultV1<WorkspaceMenuCommandsReplyV1>>;
+  runMenuCommand(request: WorkspaceRunMenuCommandRequestV1): Promise<WorkspaceResultV1<WorkspaceRunMenuCommandReplyV1>>;
   /** What the folder's memory knows about one note. */
   noteMemory(request: WorkspaceFolderRequestV1): Promise<WorkspaceResultV1<WorkspaceNoteMemoryReplyV1>>;
   /** Begin keeping memory for the open folder. */

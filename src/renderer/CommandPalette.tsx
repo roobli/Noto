@@ -22,6 +22,10 @@ export interface PaletteCommand {
   /** What offers it: `File` for the built-in exports, a plugin's name otherwise. */
   readonly source: string;
   readonly testId?: string;
+  /** The keys that run it, as the platform writes them, shown at the end of its row. */
+  readonly keys?: string | null;
+  /** For a command that is on or off, whether it is on now. */
+  readonly on?: boolean | null;
 }
 
 interface CommandPaletteProps {
@@ -154,8 +158,9 @@ export function CommandPalette({ commands, onRun, onClose }: CommandPaletteProps
               onMouseMove={() => { if (index !== current) setActive(index); }}
               onClick={() => run(command)}
             >
-              <strong>{command.title}</strong>
+              <strong>{command.title}{command.on ? <span className="palette-on"> · On</span> : null}</strong>
               <span>{command.source}</span>
+              {command.keys ? <kbd className="palette-keys">{command.keys}</kbd> : null}
             </div>
           ))}
         </div>

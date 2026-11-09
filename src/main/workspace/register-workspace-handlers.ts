@@ -5,7 +5,7 @@
  * the request, and never let an exception escape as an unhandled rejection.
  */
 
-import { app, ipcMain, type BrowserWindow } from 'electron';
+import { app, ipcMain, Menu, type BrowserWindow } from 'electron';
 import {
   NOTO_WORKSPACE_VERSION,
   WORKSPACE_CHANNELS,
@@ -30,6 +30,7 @@ import {
   type WorkspaceNotePassageRequestV1,
   type WorkspaceNoteVersionRequestV1,
   type WorkspaceNotePreviewRequestV1,
+  type WorkspaceRunMenuCommandRequestV1,
   type WorkspaceEntryRequestV1,
   type WorkspaceExportRequestV1,
 } from '../../shared/workspace/v1/contracts';
@@ -53,6 +54,7 @@ import {
   isWorkspaceNotePassageRequestV1,
   isWorkspaceNoteVersionRequestV1,
   isWorkspaceNotePreviewRequestV1,
+  isWorkspaceRunMenuCommandRequestV1,
   isWorkspaceEntryRequestV1,
   isWorkspaceExportRequestV1,
 } from '../../shared/workspace/v1/validate';
@@ -62,6 +64,7 @@ import type { RecentFiles } from './recent-files';
 import type { WorkspaceSession } from './session';
 import { openedNote, openReply } from './open-reply';
 import { VaultVisits } from './vault-visits';
+import { listMenuCommands, runMenuCommand } from './menu-commands';
 
 export function registerWorkspaceHandlers(deps: {
   session: WorkspaceSession;
@@ -205,6 +208,16 @@ export function registerWorkspaceHandlers(deps: {
 
   register(WORKSPACE_CHANNELS.notePreview, isWorkspaceNotePreviewRequestV1,
     (request: WorkspaceNotePreviewRequestV1) => deps.session.notePreview(request.path, request.line));
+
+  // The command palette lists the application menu and runs a choice as the
+  // menu does (`menu-commands.ts`).
+  register(WORKSPACE_CHANNELS.menuCommands, isWorkspaceRequestV1, () => ({
+    version: NOTO_WORKSPACE_VERSION, commands: listMenuCommands(Menu.getApplicationMenu()),
+  }));
+  register(WORKSPACE_CHANNELS.runMenuCommand, isWorkspaceRunMenuCommandRequestV1,
+    (request: WorkspaceRunMenuCommandRequestV1) => ({
+      version: NOTO_WORKSPACE_VERSION, ran: runMenuCommand(Menu.getApplicationMenu(), request.id),
+    }));
 
   // Rename, duplicate, trash and new folder. Main re-resolves the target and
   // checks it against the open folder at the moment it acts, so a row that has

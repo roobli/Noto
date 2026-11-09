@@ -65,6 +65,10 @@ import {
   WorkspaceNoteVersionReplyV1,
   WorkspaceNoteVersionRequestV1,
   WorkspaceNotePreviewReplyV1,
+  WorkspaceMenuCommandV1Entry,
+  WorkspaceMenuCommandsReplyV1,
+  WorkspaceRunMenuCommandReplyV1,
+  WorkspaceRunMenuCommandRequestV1,
   WorkspaceNotePreviewRequestV1,
   WorkspaceTagIndexReplyV1,
   WorkspaceTagSummaryV1,
@@ -402,6 +406,39 @@ export function isWorkspaceNotePreviewReplyV1(value: unknown): value is Workspac
 export const isWorkspaceNotePreviewResultV1 = (
   value: unknown, id: string,
 ): value is WorkspaceResultV1<WorkspaceNotePreviewReplyV1> => isResult(value, id, isWorkspaceNotePreviewReplyV1);
+
+const MENU_TEXT_MAX = 200;
+const menuText = (value: unknown, max = MENU_TEXT_MAX): value is string => typeof value === 'string' && value.length <= max;
+
+export function isWorkspaceRunMenuCommandRequestV1(value: unknown): value is WorkspaceRunMenuCommandRequestV1 {
+  return record(value) && exact(value, ['version', 'requestId', 'id'])
+    && value.version === 1 && typeof value.requestId === 'string' && requestId.test(value.requestId)
+    && typeof value.id === 'string' && /^[a-z0-9][a-z0-9:._-]{0,95}$/i.test(value.id);
+}
+
+function isMenuCommandEntry(value: unknown): value is WorkspaceMenuCommandV1Entry {
+  return record(value) && exact(value, ['id', 'title', 'path', 'accelerator', 'enabled', 'checked'])
+    && menuText(value.id, 96) && value.id.length > 0 && menuText(value.title) && menuText(value.path, 400)
+    && (value.accelerator === null || menuText(value.accelerator, 64))
+    && typeof value.enabled === 'boolean' && (value.checked === null || typeof value.checked === 'boolean');
+}
+
+export function isWorkspaceMenuCommandsReplyV1(value: unknown): value is WorkspaceMenuCommandsReplyV1 {
+  return record(value) && exact(value, ['version', 'commands']) && value.version === 1
+    && Array.isArray(value.commands) && value.commands.length <= 1000 && value.commands.every(isMenuCommandEntry);
+}
+
+export function isWorkspaceRunMenuCommandReplyV1(value: unknown): value is WorkspaceRunMenuCommandReplyV1 {
+  return record(value) && exact(value, ['version', 'ran']) && value.version === 1 && typeof value.ran === 'boolean';
+}
+
+export const isWorkspaceMenuCommandsResultV1 = (
+  value: unknown, id: string,
+): value is WorkspaceResultV1<WorkspaceMenuCommandsReplyV1> => isResult(value, id, isWorkspaceMenuCommandsReplyV1);
+
+export const isWorkspaceRunMenuCommandResultV1 = (
+  value: unknown, id: string,
+): value is WorkspaceResultV1<WorkspaceRunMenuCommandReplyV1> => isResult(value, id, isWorkspaceRunMenuCommandReplyV1);
 
 /** A short string, as the memory's titles, paths and phrases are. */
 const text = (value: unknown, max = 4096) => typeof value === 'string' && value.length <= max;

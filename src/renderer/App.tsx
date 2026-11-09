@@ -21,7 +21,7 @@ import type {
   NotoPlatform,
 } from '../shared/file-truth/v1/contracts';
 import type {
-  RecentFileV1, WorkspaceIndexEntryV1, WorkspaceTabV1,
+  RecentFileV1, WorkspaceIndexEntryV1, WorkspaceMenuCommandV1Entry, WorkspaceTabV1,
   WorkspaceTagSummaryV1, WorkspaceTagNoteV1,
   WorkspaceCodeViewV1,
 } from '../shared/workspace/v1/contracts';
@@ -29,6 +29,7 @@ import { QuickOpen, type QuickOpenMode } from './QuickOpen';
 import { FolderEmptyState } from './FolderEmptyState';
 import { useReadingAnchors } from './use-reading-anchors';
 import { useFocusReturn } from './focus-return';
+import { acceleratorLabel } from '../shared/commands/accelerator-label';
 import { searchBoost, type FrecencyStoreV1 } from '../shared/search/v1/frecency';
 import { ConfirmedOpenRecorder } from '../shared/search/v1/confirmed-open';
 import type { NotoDocumentWire } from '../shared/markdown/v3/contracts';
@@ -2951,6 +2952,16 @@ function NotoWorkspace({ platform }: { platform: NotoPlatform }) {
    * so a reader who reaches for the palette looking for it finds it. Plugin
    * commands keep their own source label underneath.
    */
+  /** The application menu's commands, read each time the palette opens so what is on or off is current. */
+  const [menuCommands, setMenuCommands] = useState<readonly WorkspaceMenuCommandV1Entry[]>([]);
+  useEffect(() => {
+    if (!paletteOpen) return;
+    let current = true;
+    void window.notoWorkspace.menuCommands({ version: 1, requestId: rid('menu-commands') }).then((reply) => {
+      if (current && reply.ok) setMenuCommands(reply.value.commands);
+    });
+    return () => { current = false; };
+  }, [paletteOpen]);
   const paletteCommands = useMemo(() => {
     const builtin = EXPORT_PALETTE_COMMANDS.map((command) => ({
       key: `export:${command.target}`,
@@ -3000,8 +3011,24 @@ function NotoWorkspace({ platform }: { platform: NotoPlatform }) {
       key: 'info:toggle', testId: 'palette-note-info', kind: 'info' as const,
       title: settings.infoOpen ? 'Hide Note Info' : 'Show Note Info', source: 'View',
     }];
-    return [...builtin, ...unsaved, ...info, ...git, ...plugins];
-  }, [pluginSnapshots, activeId, gitBlocksVersion, editorDirty, settings.infoOpen]);
+    // Every command the menu holds, with its keys, as the menu has it now
+    // (`menu-commands.ts`). Its exports are left to the built-in ones above,
+    // which name themselves in full (Export PDF rather than PDF under Export).
+    const mac = platform === 'darwin';
+    const menu = menuCommands
+      .filter((command) => command.enabled && command.id !== 'command-palette' && !command.id.startsWith('export-'))
+      .map((command) => ({
+        key: `menu:${command.id}`,
+        testId: 'palette-menu-command',
+        kind: 'menu' as const,
+        menuId: command.id,
+        title: command.title,
+        source: command.path,
+        keys: command.accelerator ? acceleratorLabel(command.accelerator, mac) : null,
+        on: command.checked,
+      }));
+    return [...builtin, ...unsaved, ...info, ...git, ...menu, ...plugins];
+  }, [pluginSnapshots, activeId, gitBlocksVersion, editorDirty, settings.infoOpen, menuCommands, platform]);
   const paletteCommandByKey = useMemo(
     () => new Map(paletteCommands.map((command) => [command.key, command])),
     [paletteCommands],
@@ -3636,6 +3663,9 @@ function NotoWorkspace({ platform }: { platform: NotoPlatform }) {
             if (chosen.kind === 'export') exportNote(chosen.target);
             else if (chosen.kind === 'diff') openUnsavedDiff();
             else if (chosen.kind === 'info') changeSettings({ infoOpen: !settings.infoOpen });
+            else if (chosen.kind === 'menu') {
+              void window.notoWorkspace.runMenuCommand({ version: 1, requestId: rid('menu-run'), id: chosen.menuId });
+            }
             else if (chosen.kind === 'git') {
               const done = chosen.key === 'git:revert'
                 ? editorRef.current?.revertGitAtSelection()

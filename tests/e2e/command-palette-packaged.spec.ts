@@ -119,3 +119,37 @@ test('the command palette filters, moves, traps the focus, and gives it back', a
     await app.close();
   }
 });
+
+// Daily-use audit finding 15: the palette held exports, git and plugins, and
+// "focus" found nothing. It lists the menu now, with each command's keys.
+test('the command palette holds every menu command, with its keys, and runs it', async () => {
+  const workspace = path.join(process.cwd(), 'test-results', 'command-palette-menu');
+  await rm(workspace, { recursive: true, force: true });
+  const userData = path.join(workspace, 'user-data');
+  await mkdir(userData, { recursive: true });
+  const file = path.join(workspace, 'note.md');
+  await writeFile(file, '# Title\n\nBody text.\n', 'utf8');
+  const app = await electron.launch({
+    executablePath: packagedExecutable(),
+    args: [`--user-data-dir=${userData}`, `--open=${file}`],
+  });
+  try {
+    const page = await app.firstWindow();
+    await page.setViewportSize({ width: 1280, height: 900 });
+    const editor = page.locator('.canvas-slot:not([hidden]) .ProseMirror');
+    await editor.waitFor({ state: 'visible', timeout: 30_000 });
+    await placeCaret(page, editor.locator('p'));
+    await invokeMenu(app, 'command-palette');
+    const palette = page.getByTestId('command-palette');
+    await expect(palette).toBeVisible();
+    await page.keyboard.type('heading 2');
+    const row = palette.getByRole('option').filter({ hasText: 'Heading 2' }).first();
+    await expect(row).toBeVisible();
+    await expect(row.locator('.palette-keys')).toHaveText(process.platform === 'darwin' ? '⌘2' : 'Ctrl+2');
+    await page.keyboard.press('Enter');
+    await expect(palette).toHaveCount(0);
+    await expect(editor.locator('h2')).toHaveText('Body text.');
+  } finally {
+    await app.close();
+  }
+});

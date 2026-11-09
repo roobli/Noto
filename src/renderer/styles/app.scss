@@ -2500,6 +2500,20 @@ section.plugin-group > .plugin-market-row.is-set-aside {
   white-space: nowrap;
 }
 .palette-result span { color: var(--muted); font-size: 12px; }
+/* The keys sit at the right of the row, beside the name and where it lives. */
+.palette-result:has(.palette-keys) { grid-template-columns: minmax(0, 1fr) auto; column-gap: 12px; }
+.palette-result:has(.palette-keys) span { grid-column: 1; }
+.palette-result .palette-keys {
+  grid-column: 2;
+  grid-row: 1 / span 2;
+  align-self: center;
+  color: var(--muted);
+  font: inherit;
+  font-size: 12px;
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+}
+.palette-result strong .palette-on { color: var(--muted); font-weight: 400; font-size: inherit; }
 .palette-empty { margin: 0; padding: 8px 10px; color: var(--muted); font-size: 12px; }
 
 /* Quick open

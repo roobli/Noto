@@ -146,6 +146,9 @@ import type {
   WorkspaceNoteVersionRequestV1,
   WorkspaceNotePreviewReplyV1,
   WorkspaceNotePreviewRequestV1,
+  WorkspaceMenuCommandsReplyV1,
+  WorkspaceRunMenuCommandReplyV1,
+  WorkspaceRunMenuCommandRequestV1,
   WorkspaceOpenPathRequestV1,
   WorkspaceTabRequestV1,
   WorkspaceTabsEventV1,
@@ -221,6 +224,9 @@ import {
   isWorkspaceNoteVersionRequestV1,
   isWorkspaceNoteVersionResultV1,
   isWorkspaceNotePreviewRequestV1,
+  isWorkspaceMenuCommandsResultV1,
+  isWorkspaceRunMenuCommandRequestV1,
+  isWorkspaceRunMenuCommandResultV1,
   isWorkspaceNotePreviewResultV1,
   isWorkspaceOpenPathRequestV1,
   isWorkspaceTabRequestV1,
@@ -602,6 +608,12 @@ const workspaceApi: NotoWorkspaceApiV1 = Object.freeze({
   notePreview: (request: WorkspaceNotePreviewRequestV1) => isWorkspaceNotePreviewRequestV1(request)
     ? invokeWorkspace<WorkspaceNotePreviewReplyV1>(WORKSPACE_CHANNELS.notePreview, request, request.requestId, isWorkspaceNotePreviewResultV1)
     : Promise.resolve(rejectedWorkspace<WorkspaceNotePreviewReplyV1>('invalid', 'Invalid note preview request')),
+  menuCommands: (request: WorkspaceRequestV1) => isWorkspaceRequestV1(request)
+    ? invokeWorkspace<WorkspaceMenuCommandsReplyV1>(WORKSPACE_CHANNELS.menuCommands, request, request.requestId, isWorkspaceMenuCommandsResultV1)
+    : Promise.resolve(rejectedWorkspace<WorkspaceMenuCommandsReplyV1>('invalid', 'Invalid menu commands request')),
+  runMenuCommand: (request: WorkspaceRunMenuCommandRequestV1) => isWorkspaceRunMenuCommandRequestV1(request)
+    ? invokeWorkspace<WorkspaceRunMenuCommandReplyV1>(WORKSPACE_CHANNELS.runMenuCommand, request, request.requestId, isWorkspaceRunMenuCommandResultV1)
+    : Promise.resolve(rejectedWorkspace<WorkspaceRunMenuCommandReplyV1>('invalid', 'Invalid menu command request')),
   keepMemory: (request: WorkspaceRequestV1) => isWorkspaceRequestV1(request)
     ? invokeWorkspace<WorkspaceKeepMemoryReplyV1>(WORKSPACE_CHANNELS.keepMemory, request, request.requestId, isWorkspaceKeepMemoryResultV1)
     : Promise.resolve(rejectedWorkspace<WorkspaceKeepMemoryReplyV1>('invalid', 'Invalid keep memory request')),
