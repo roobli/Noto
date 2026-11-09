@@ -9,9 +9,10 @@
 # tag rather than for the release: the release is created with GITHUB_TOKEN,
 # and events made with that token start no workflows.
 #
-# The machine is a GitHub-hosted macos-14 runner: a virtual Apple silicon Mac,
+# The machine is a GitHub-hosted macos-15 runner: a virtual Apple silicon Mac,
 # slower and noisier than a desk machine. Compare runs with runs, not with
-# numbers measured elsewhere.
+# numbers measured elsewhere. Runs before November 2026 were on macos-14,
+# which GitHub has retired, so they compare only with each other.
 name: Benchmark
 
 on:
@@ -33,8 +34,8 @@ concurrency:
 
 jobs:
   bench:
-    name: Packaged open, type, idle-lag and save (macos-14)
-    runs-on: macos-14
+    name: Packaged open, type, idle-lag and save (macos-15)
+    runs-on: macos-15
     timeout-minutes: 60
     steps:
       - uses: actions/checkout@v4
