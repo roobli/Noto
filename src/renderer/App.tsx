@@ -3170,6 +3170,7 @@ function NotoWorkspace({ platform }: { platform: NotoPlatform }) {
               list: listFolder,
               onOpenFile: openFromTree,
               onRowMenu: showTreeMenu,
+              onRename: (rowPath) => beginNamingRef.current(rowPath, 'rename'),
               onChooseFolder: chooseFolder,
               onMoveEntry: moveEntryInto,
               editing: treeEditing,

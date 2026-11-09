@@ -16,6 +16,7 @@ import type { SensitivityV1, WorkspaceEntryV1, WorkspaceGitChangeV1 } from '../s
 import { branchToCurrentFile, sizeTreeGuides, startTreeGuides } from './tree-guides';
 import { EDGE_DELAY_MS, SPRING_MS, carried, dropVerdict, dropWords, edgeSpeed, edgeStrength, rangeOf } from './tree-drag';
 import { isComposing } from './ime';
+import { treeMove, type TreeRowView } from './tree-keys';
 import { TREE_STEP_MARGIN, fitLabel, nameRoom, sharedStarts, treeLabel, treeStep, type FittedName } from './tree-fit';
 
 export interface FileTreeProps {
@@ -89,6 +90,8 @@ export interface FileTreeProps {
    * tells one ask from the next, so asking for the same folder twice works.
    */
   readonly focusRequest?: { readonly path: string; readonly token: number } | null;
+  /** F2 on a row: name it again where it sits, as Rename in its menu does. */
+  readonly onRename?: (rowPath: string) => void;
 }
 
 /**
@@ -284,7 +287,7 @@ function foldersBetween(root: string, target: string | null): string[] {
 export function FileTree({
   root, rootName, activePath, list, onOpenFile, onRowMenu, onChooseFolder, onMoveEntry, vaultMenu,
   editing = null, onEditingDone, reloadToken = 0, reloadOnly = null, collapseToken = 0, gitMarks = null, privacyMarks = null,
-  heldFolders = 'stack', noteExtensions = true, focusRequest = null,
+  heldFolders = 'stack', noteExtensions = true, focusRequest = null, onRename,
 }: FileTreeProps) {
   const [children, setChildren] = useState<ReadonlyMap<string, readonly WorkspaceEntryV1[]>>(new Map());
   const [expanded, setExpanded] = useState<ReadonlySet<string>>(new Set());
@@ -350,6 +353,20 @@ export function FileTree({
     shownRef.current = null;
   }, [collapseToken, root]);
   const bodyRef = useRef<HTMLElement>(null);
+  /**
+   * The one row Tab reaches, as a tree has one stop rather than one per row:
+   * the row last walked to, else the note in front. The arrows go from there.
+   */
+  const [tabStop, setTabStop] = useState<string | null>(null);
+  const rowTabStop = tabStop ?? activePath;
+  const typedRef = useRef({ text: '', at: 0 });
+  // A tree keeps one row on the Tab path. When the row it would be is not
+  // drawn (the note in front sits in a closed folder), the first row is.
+  useLayoutEffect(() => {
+    const rows = bodyRef.current?.querySelectorAll<HTMLElement>('.tree-row[role="treeitem"][data-path]');
+    if (!rows || rows.length === 0) return;
+    if (![...rows].some((row) => row.tabIndex === 0)) rows[0]!.tabIndex = 0;
+  });
 
   /*
    * The tree's width and its rows' face, which the step per level and every
@@ -863,7 +880,7 @@ export function FileTree({
 
     const { labels, starts } = namesOf(entries);
     return (
-      <div className="tree-level" style={{ '--tree-depth': depth } as React.CSSProperties}>
+      <div className="tree-level" role="group" style={{ '--tree-depth': depth } as React.CSSProperties}>
         {entries.map((entry, index) => {
           const label = labels[index]!;
           if (entry.kind === 'directory') {
@@ -883,6 +900,9 @@ export function FileTree({
                   className={`${onPath ? 'tree-row tree-directory tree-on-path' : 'tree-row tree-directory'}${dropClass(entry.path)}${springClass(entry.path)}${draggedClass(entry.path)}${selectedClass(entry.path)}`}
                   data-testid="tree-directory"
                   data-path={entry.path}
+                  role="treeitem"
+                  aria-level={depth}
+                  tabIndex={entry.path === rowTabStop ? 0 : -1}
                   aria-selected={selected.has(entry.path) || undefined}
                   data-depth={depth}
                   data-label={label}
@@ -930,6 +950,10 @@ export function FileTree({
                 aria-selected={selected.has(entry.path) || undefined}
                 data-testid="tree-file"
                 data-path={entry.path}
+                role="treeitem"
+                aria-level={depth}
+                tabIndex={entry.path === rowTabStop ? 0 : -1}
+                data-depth={depth}
                 data-label={label}
                 data-cut={name.cut || undefined}
                 title={name.cut ? undefined : change ? `${entry.name}, ${GIT_WORDS[change]}` : entry.name}
@@ -1068,6 +1092,46 @@ export function FileTree({
    * begins, since it is the row the reader is on. True when the click was a
    * choice and nothing else should happen.
    */
+  /** The rows as the page draws them, for the keys (`tree-keys.ts`). */
+  const visibleRows = (): HTMLElement[] => Array.from(
+    bodyRef.current?.querySelectorAll<HTMLElement>('.tree-row[role="treeitem"][data-path]') ?? [],
+  );
+  const rowView = (row: HTMLElement): TreeRowView => ({
+    path: row.dataset.path!,
+    kind: row.classList.contains('tree-directory') ? 'directory' : 'file',
+    depth: Number(row.dataset.depth ?? 1),
+    open: row.classList.contains('tree-directory') ? row.getAttribute('aria-expanded') === 'true' : undefined,
+    label: row.dataset.label ?? row.textContent ?? '',
+  });
+  const walkTree = (event: React.KeyboardEvent) => {
+    if (isComposing(event.nativeEvent) || event.metaKey || event.ctrlKey || event.altKey) return;
+    const row = (event.target as Element).closest<HTMLElement>('.tree-row[role="treeitem"]');
+    if (!row) return;
+    const rows = visibleRows();
+    const at = rows.indexOf(row);
+    if (at < 0) return;
+    let typed = '';
+    if (event.key.length === 1 && event.key !== ' ') {
+      const now = Date.now();
+      const held = typedRef.current;
+      typed = now - held.at < 700 ? held.text + event.key : event.key;
+      typedRef.current = { text: typed, at: now };
+    }
+    const move = treeMove(rows.map(rowView), at, event.key, typed);
+    if (move.kind === 'none') return;
+    event.preventDefault();
+    if (move.kind === 'focus') {
+      const next = rows[move.index]!;
+      setTabStop(next.dataset.path!);
+      next.focus();
+      next.scrollIntoView({ block: 'nearest' });
+    } else if (move.kind === 'expand' || move.kind === 'collapse') {
+      toggle(move.path);
+    } else {
+      onRename?.(move.path);
+    }
+  };
+
   const choose = (event: React.MouseEvent, path: string): boolean => {
     if (event.metaKey || event.ctrlKey) {
       setSelected((current) => {
@@ -1145,11 +1209,17 @@ export function FileTree({
       {/* Keyed on the folder it is drawn from, so a change of focus draws it
           anew and slides it in from the side the focus went. */}
       <nav className="tree-body" ref={bodyRef} key={top} data-way={focusWay ?? undefined} tabIndex={-1}
+        role="tree" aria-label={`Files in ${focus === null ? vaultName : baseName(focus)}`}
+        onFocus={(event) => {
+          const row = (event.target as Element).closest<HTMLElement>('.tree-row[role="treeitem"]');
+          if (row?.dataset.path && row.dataset.path !== tabStop) setTabStop(row.dataset.path);
+        }}
         onKeyDown={(event) => {
           if ((event.target as Element).closest('.tree-name-field')) return;
           if (event.key === 'Escape' && selected.size > 0) { event.preventDefault(); setSelected(new Set()); return; }
           if (event.key === 'Escape' && focus !== null) { event.preventDefault(); focusOn(null); return; }
-          if (event.key === 'ArrowUp' && (event.metaKey || event.ctrlKey) && focus !== null) { event.preventDefault(); goUp(); }
+          if (event.key === 'ArrowUp' && (event.metaKey || event.ctrlKey) && focus !== null) { event.preventDefault(); goUp(); return; }
+          walkTree(event);
         }}
         onPointerOver={(event) => {
           const row = (event.target as Element).closest<HTMLElement>('.tree-row');
