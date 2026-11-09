@@ -4006,8 +4006,13 @@ describe('enrich skip for engine-owned spans', () => {
       'text: here.',
     ]);
 
+    // Pandoc's dollar rule: a space just inside a single dollar makes it text
+    // (`dollar-math-pandoc.test.ts`); a double-dollar span keeps its padding.
     const padded = blockFromEngineSpan('paragraph', 'Space $ x $ spaced.');
-    const padMath = [...Array(padded!.childCount)].map((_, i) => padded!.child(i))
+    expect([...Array(padded!.childCount)].map((_, i) => padded!.child(i))
+      .some((n) => n.type.name === 'math_inline')).toBe(false);
+    const paddedDouble = blockFromEngineSpan('paragraph', 'Space $$ x $$ spaced.');
+    const padMath = [...Array(paddedDouble!.childCount)].map((_, i) => paddedDouble!.child(i))
       .find((n) => n.type.name === 'math_inline');
     expect(padMath?.textContent).toBe('x');
 
@@ -4037,11 +4042,11 @@ describe('enrich skip for engine-owned spans', () => {
     expect(code?.textContent).toBe('Code $not$ keeps.');
     expect([...Array(code!.childCount)].some((_, i) => code!.child(i).type.name === 'math_inline')).toBe(false);
 
-    // Currency-style greedy match (micromark parity): first $ to next $.
+    // Prices stay text under Pandoc's dollar rule. This used to pin the bug:
+    // micromark's greedy match made math of `5 and ` (audit finding 12).
     const price = blockFromEngineSpan('paragraph', 'Price is $5 and $10.');
-    const priceMath = [...Array(price!.childCount)].map((_, i) => price!.child(i))
-      .find((n) => n.type.name === 'math_inline');
-    expect(priceMath?.textContent).toBe('5 and ');
+    expect(price?.textContent).toBe('Price is $5 and $10.');
+    expect([...Array(price!.childCount)].some((_, i) => price!.child(i).type.name === 'math_inline')).toBe(false);
 
     // Image alt with math is engine-owned (micromark plain alt string).
     expect(canSkipDialectEnrich('paragraph', '![alt $x$](url)')).toBe(true);

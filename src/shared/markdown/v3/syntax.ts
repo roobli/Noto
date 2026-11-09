@@ -15,6 +15,7 @@ import { gfmStrikethroughCjkFriendly } from 'micromark-extension-cjk-friendly-gf
 import { cjkFriendlyToMarkdown } from 'mdast-util-to-markdown-cjk-friendly';
 import { gfmFromMarkdown, gfmToMarkdown } from 'mdast-util-gfm';
 import { math } from 'micromark-extension-math';
+import { mathTextPandoc } from './math-text-pandoc';
 import { mathFromMarkdown, mathToMarkdown } from 'mdast-util-math';
 import { frontmatter } from 'micromark-extension-frontmatter';
 import { frontmatterFromMarkdown, frontmatterToMarkdown } from 'mdast-util-frontmatter';
@@ -68,7 +69,11 @@ const micromarkExtensions = [
    * come after `gfm()`; the single tilde stays Typora's subscript.
    */
   gfmStrikethroughCjkFriendly({ singleTilde: false }),
-  math({ singleDollarTextMath: true }),
+  /*
+   * Display math as micromark has it; inline math with Pandoc's dollar rule,
+   * so `$8,000 - $50,000` is prices and `$x$` is math (`math-text-pandoc.ts`).
+   */
+  { ...math({ singleDollarTextMath: true }), text: { [36]: mathTextPandoc } },
   frontmatterSyntax,
 ];
 
@@ -961,13 +966,56 @@ export function parseMarkdown(text: string): Root {
  * Only used for blocks the user actually edited. Untouched blocks are sliced
  * from the original source instead, which is what keeps saves byte exact.
  */
-export function renderMarkdown(node: Nodes): string {
+export function renderMarkdown(node: Nodes, options: RenderOptions = {}): string {
   markTextBesideStarRuns(node);
   try {
-    return toMarkdown(node, serializerOptions);
+    const markdown = toMarkdown(node, serializerOptions);
+    return options.keepDollarEscapes ? markdown : withoutNeedlessDollarEscapes(markdown);
   } finally {
     textBesideStarRuns.clear();
   }
+}
+
+export interface RenderOptions {
+  /**
+   * Escape every dollar in text, as the serializer does on its own. Set for
+   * a block whose source already escaped one, so a note written for an
+   * editor that wants `\\$` keeps the author's style when it is edited.
+   */
+  readonly keepDollarEscapes?: boolean;
+}
+
+/** At most this many escaped dollars are tried per block, so a table of prices stays cheap. */
+const DOLLAR_ESCAPES_TRIED = 64;
+
+/**
+ * Drop each `\$` the text reads the same without.
+ *
+ * The serializer escapes every dollar in text, because under micromark's rule
+ * any `$` could open math. Under Pandoc's rule (`math-text-pandoc.ts`) most
+ * prices cannot, and an edited line of them was saved as `\$8,000 - \$50,000`
+ * where the author wrote `$8,000 - $50,000`. Which dollars are safe depends on
+ * what comes after them in the block, so each escape is tried: it goes when
+ * the block parses to the same tree without it, and stays otherwise.
+ */
+function withoutNeedlessDollarEscapes(markdown: string): string {
+  if (!markdown.includes('\\$')) return markdown;
+  const shape = (text: string) => JSON.stringify(parseMarkdown(text), (key, value) => (key === 'position' ? undefined : value));
+  const meant = shape(markdown);
+  let out = markdown;
+  let from = 0;
+  for (let tried = 0; tried < DOLLAR_ESCAPES_TRIED; tried += 1) {
+    const at = out.indexOf('\\$', from);
+    if (at < 0) break;
+    const candidate = out.slice(0, at) + out.slice(at + 1);
+    if (shape(candidate) === meant) {
+      out = candidate;
+      from = at + 1;
+    } else {
+      from = at + 2;
+    }
+  }
+  return out;
 }
 
 /**

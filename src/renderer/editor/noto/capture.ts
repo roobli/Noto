@@ -146,14 +146,12 @@ function markdownFor(
   pristine: CaptureInput['pristine'],
 ): { markdown: string; reused: boolean } {
   const pin = pins.get(node);
-  if (origin) {
-    const previous = pristine.get(origin.blockId);
-    if (previous && (pin ? pin.markdown === previous.markdown : node.eq(previous.node))) {
-      return { markdown: previous.markdown, reused: true };
-    }
+  const previous = origin ? pristine.get(origin.blockId) : undefined;
+  if (previous && (pin ? pin.markdown === previous.markdown : node.eq(previous.node))) {
+    return { markdown: previous.markdown, reused: true };
   }
   if (pin) return { markdown: pin.markdown, reused: false };
-  return { markdown: blockToMarkdown(node), reused: false };
+  return { markdown: blockToMarkdown(node, previous?.markdown), reused: false };
 }
 
 /** The bytes one block would save as now. */
@@ -349,7 +347,8 @@ export function captureStableWire(
     // block with no origin has nothing to reuse and must be rendered.
     units.push({
       origin,
-      markdown: unchanged && origin ? null : pin ? pin.markdown : blockToMarkdown(node),
+      markdown: unchanged && origin ? null : pin ? pin.markdown
+        : blockToMarkdown(node, origin ? input.pristine.get(origin.blockId)?.markdown : undefined),
     });
   }
 

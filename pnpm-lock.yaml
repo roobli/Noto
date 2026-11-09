@@ -156,6 +156,9 @@ importers:
       happy-dom:
         specifier: 20.0.0
         version: 20.0.0
+      micromark-util-types:
+        specifier: 2.0.2
+        version: 2.0.2
       sass:
         specifier: 1.103.1
         version: 1.103.1

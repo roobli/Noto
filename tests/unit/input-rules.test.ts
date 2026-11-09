@@ -110,6 +110,19 @@ describe('pressing Enter after block syntax', () => {
     expect(typed('```\n', { autoPair: false }).doc.firstChild?.type).toBe(notoSchema.nodes.code_block);
   });
 
+  // Daily-use audit finding 12: typing the second price made math of the first.
+  it('leaves prices as text and still makes math, under Pandoc\'s dollar rule', () => {
+    const prices = typed('$8,000 - $50,000', { autoPair: false });
+    expect(prices.doc.firstChild?.textContent).toBe('$8,000 - $50,000');
+    let math = false;
+    prices.doc.descendants((node) => { if (node.type === notoSchema.nodes.math_inline) math = true; });
+    expect(math).toBe(false);
+    const formula = typed('so $x+1$ then', { autoPair: false });
+    let found = '';
+    formula.doc.descendants((node) => { if (node.type === notoSchema.nodes.math_inline) found = node.textContent; });
+    expect(found).toBe('x+1');
+  });
+
   it('turns $$ into a math block', () => {
     expect(typed('$$\n', { autoPair: false }).doc.firstChild?.type).toBe(notoSchema.nodes.math_block);
   });

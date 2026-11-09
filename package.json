@@ -88,6 +88,7 @@
     "@vitejs/plugin-react": "6.1.1",
     "electron": "44.0.0",
     "happy-dom": "20.0.0",
+    "micromark-util-types": "2.0.2",
     "sass": "1.103.1",
     "typescript": "7.0.2",
     "vite": "8.2.2",

@@ -781,6 +781,11 @@ function endOfSimpleInlineMath(input: string, at: number): { end: number; value:
   if (sizeOpen < 1) return null;
 
   const contentStart = i;
+  // Pandoc's dollar rule, as `math-text-pandoc.ts` applies it for micromark:
+  // one `$` opens only before a non-space, and closes only after a non-space
+  // and not before a digit, so `$8,000 - $50,000` is text.
+  const blank = (ch: string | undefined) => ch === undefined || ch === ' ' || ch === '\t' || ch === '\n' || ch === '\r';
+  if (sizeOpen === 1 && blank(input[contentStart])) return null;
   while (i < len) {
     if (input[i] !== '$') {
       i += 1;
@@ -793,7 +798,8 @@ function endOfSimpleInlineMath(input: string, at: number): { end: number; value:
       size += 1;
       i += 1;
     }
-    if (size === sizeOpen) {
+    const pandocRefuses = sizeOpen === 1 && (blank(input[closeStart - 1]) || /[0-9]/.test(input[i] ?? ''));
+    if (size === sizeOpen && !pandocRefuses) {
       const raw = input.slice(contentStart, closeStart);
       return { end: i, value: padTrimMathValue(raw) };
     }

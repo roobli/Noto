@@ -24,7 +24,7 @@ describe('a block on a list item\'s own line', () => {
     ] as const) {
       const doc = read(markdown);
       expect(shape(doc), markdown).toBe(tree);
-      expect(doc.content.content.map(blockToMarkdown).join('\n\n')).toBe(markdown);
+      expect(doc.content.content.map((block) => blockToMarkdown(block)).join('\n\n')).toBe(markdown);
     }
   });
 

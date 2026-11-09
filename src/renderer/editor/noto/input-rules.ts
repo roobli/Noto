@@ -100,9 +100,13 @@ function linkInputRule(autoPair: () => boolean): InputRule {
   });
 }
 
-/** `$x$` becomes a real inline math node, not code-marked text. */
+/**
+ * `$x$` becomes a real inline math node, not code-marked text. Pandoc's dollar
+ * rule, as the parser applies it: no space just inside either dollar, so
+ * typing the second price in `$8,000 - $50,000` leaves both prices as text.
+ */
 function inlineMathRule(): InputRule {
-  return new InputRule(/\$([^$\s][^$]*)\$$/, (state, match, start, end) => {
+  return new InputRule(/(?<!\$)\$([^$\s](?:[^$]*[^$\s])?)\$$/, (state, match, start, end) => {
     const content = match[1];
     if (content === undefined || content.length === 0) return null;
     return state.tr.replaceRangeWith(

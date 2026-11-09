@@ -859,6 +859,15 @@ describe('a dollar sign in text', () => {
     expectSavedMatchesEditor(h, 'dollar before an escaped character');
   });
 
+  // Audit finding 12: prices are text under Pandoc's dollar rule, and an
+  // edit to their line must not write backslashes the author never wrote.
+  it('saves an edited line of prices as the author wrote them', () => {
+    const h = openTracked('From $8,000 - $50,000 a year\n');
+    typeAtEnd(h, 0, ', or $5 a day.');
+    expect(save(h)).toBe('From $8,000 - $50,000 a year, or $5 a day.\n');
+    expectSavedMatchesEditor(h, 'prices stay as written');
+  });
+
   it('at the start of a styled run after math stays text', () => {
     const h = openTracked('$x$**\\$\\_a** costs \\$5.\n');
     typeAtEnd(h, 0, '!');
