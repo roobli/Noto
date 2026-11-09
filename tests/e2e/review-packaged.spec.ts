@@ -13,7 +13,7 @@
  */
 
 import { execFileSync } from 'node:child_process';
-import { existsSync, mkdirSync, mkdtempSync, readFileSync, realpathSync, rmSync, writeFileSync } from 'node:fs';
+import { existsSync, mkdirSync, mkdtempSync, readFileSync, realpathSync, rmSync, symlinkSync, writeFileSync } from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
 import { expect, test, _electron as electron, type ElectronApplication, type Page } from '@playwright/test';
@@ -153,7 +153,13 @@ test.describe('the Review page', () => {
 
   test('fixes the stale link, links names from the keyboard, leaves an unsaved note alone, and brings back a no', async () => {
     const root = reviewFolder();
-    const { app, page } = await launch(root, path.join(root, 'essay.md'));
+    // Opened through a link, so the window's name for the folder is not the
+    // one the vault and an open note go by. Against the window's name the
+    // note with unsaved edits looked outside the folder, and Link wrote under
+    // it. A junction needs no rights on Windows.
+    const link = path.join(scratch('link'), 'notes');
+    symlinkSync(root, link, process.platform === 'win32' ? 'junction' : 'dir');
+    const { app, page } = await launch(link, path.join(link, 'essay.md'));
     try {
       await toggle(page).click();
       await expect(kind(page, 'stale').getByTestId('review-count')).toHaveText('1', { timeout: 30_000 });
@@ -186,6 +192,7 @@ test.describe('the Review page', () => {
       await page.locator('.ProseMirror').click();
       await page.keyboard.press(process.platform === 'darwin' ? 'Meta+ArrowDown' : 'Control+End');
       await page.keyboard.type(' 还没存。');
+      await expect(page.getByTestId('file-state')).toHaveText('Unsaved changes');
       await kind(page, 'mention').getByTestId('review-start').click();
       await expect(view(page).getByTestId('review-queue')).toBeFocused();
       expect(await from()).toBe('essay.md');

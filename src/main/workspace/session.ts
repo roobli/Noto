@@ -1923,7 +1923,9 @@ export class WorkspaceSession {
         version: NOTO_WORKSPACE_VERSION,
         root: tree,
         vault: marks.default,
-        folders: marks.folders.map((item) => ({ path: path.join(tree, ...item.folder.split('/')), level: item.level })),
+        // Under the real folder, where the tree's rows are: under the window's
+        // name for it, a folder opened through a link wore no locks.
+        folders: marks.folders.map((item) => ({ path: path.join(root, ...item.folder.split('/')), level: item.level })),
         note: front,
       };
     } catch {
@@ -2034,17 +2036,20 @@ export class WorkspaceSession {
   async memoryReview(action: WorkspaceReviewActionV1): Promise<WorkspaceReviewReplyV1> {
     const memory = this.memory;
     if (!memory) return { version: NOTO_WORKSPACE_VERSION, state: 'unavailable', value: null, error: null };
-    const folder = this.folderRoot;
+    const root = memory.folder();
+    // Named from the real folder, as the vault names notes. The window may have
+    // opened the folder through a link or a Windows short name, and a note
+    // open in it has its real path, so against the window's name for the
+    // folder an open note was outside it and nothing was left alone.
     // NFC: macOS may spell a name with its accents apart where git puts them together.
-    const busy = folder === null ? [] : this.unsavedPaths.flatMap((open) => {
-      const rel = insideFolder(folder, open);
+    const busy = root === null ? [] : [...await this.busyReal()].flatMap((open) => {
+      const rel = insideFolder(root, open);
       return rel === null ? [] : [rel.normalize('NFC')];
     });
     let request: ReviewRequest;
     if (action.kind === 'mentions') {
       // The note in front by its path on disk, as the vault names it; one outside the folder has none.
       const real = await realpath(action.note).catch(() => null);
-      const root = memory.folder();
       const rel = real === null || root === null ? null : insideFolder(root, real);
       if (rel === null) return { version: NOTO_WORKSPACE_VERSION, state: 'outside', value: null, error: null };
       request = { kind: 'mentions', rel };

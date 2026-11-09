@@ -14,7 +14,7 @@
 
 import { spawnSync } from 'node:child_process';
 import { DatabaseSync } from 'node:sqlite';
-import { existsSync, mkdirSync, mkdtempSync, readdirSync, readFileSync, realpathSync, rmSync, writeFileSync } from 'node:fs';
+import { existsSync, mkdirSync, mkdtempSync, readdirSync, readFileSync, realpathSync, rmSync, symlinkSync, writeFileSync } from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
 import { expect, test, _electron as electron, type ElectronApplication, type Page } from '@playwright/test';
@@ -49,6 +49,13 @@ function folder(): string {
   write(root, '.noto/brain.yaml', 'kinds:\n  dated_names_are_logs: true\n');
   write(root, '.noto/access.yaml', '# Mine, by hand.\nsensitivity:\n  default: open\n  private: []\n  sealed: []\n\nprincipals: {}\n');
   return root;
+}
+
+/** `root` reached through a link, so the window's name for the folder is not its real one. A junction needs no rights on Windows. */
+function linked(root: string): string {
+  const link = path.join(scratch('link'), 'notes');
+  symlinkSync(root, link, process.platform === 'win32' ? 'junction' : 'dir');
+  return link;
 }
 
 async function launch(root: string): Promise<{ app: ElectronApplication; page: Page }> {
@@ -136,7 +143,9 @@ test.describe('agents and privacy', () => {
 
   test('makes a folder private from its own menu, ticking the level it has', async () => {
     const root = folder();
-    const { app, page } = await launch(root);
+    // Through a link: the locks were drawn under the window's name for the
+    // folder, and the tree's rows are under its real one, so none showed.
+    const { app, page } = await launch(linked(root));
     try {
       await app.evaluate(({ Menu }) => {
         const shown: Electron.Menu[] = [];
@@ -179,6 +188,9 @@ test.describe('agents and privacy', () => {
       await work.click({ button: 'right' });
       await expect.poll(async () => (await privacy())?.find((entry) => entry.checked)?.label ?? '').toMatch(/^Private/);
       // A file has no Privacy of its own: its folder's, or its frontmatter, says.
+      // Ideas is opened if it is shut: through a link the tree does not open
+      // to the note in front, which is a matter for the tree, not for privacy.
+      if (await ideas.getAttribute('aria-expanded') !== 'true') await ideas.click();
       await page.getByTestId('tree-file').filter({ hasText: 'plan.md' }).click({ button: 'right' });
       await expect.poll(async () => (await privacy()) === null).toBe(true);
     } finally {
