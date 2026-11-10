@@ -44,6 +44,15 @@ Commands live in the menu bar only. The palette, the context menu and the keymap
 
 The rail and title bar fix of the same day (gap 16 in `typora-gap.md`) came from the author's own side-by-side capture, not from this audit.
 
+## What the trial week asked for (2026-11-09, 2026-11-10)
+
+Four things the author hit while writing, and the answer each got on `next_version/20261109_daily-use`:
+
+- Blank lines. Empty lines typed between two blocks used to collapse on save, and a file's extra blank lines drew as an ordinary break. A save now writes one blank line per empty line, and a file's extra blank lines open as empty lines the caret can enter; an untouched gap saves byte for byte. The first version drew the lines as a widget with plugin state for "the reader took this gap over"; independent review found three ways that lost lines (Enter at the start of the block below, Undo after a Backspace there, and a quadratic scan per Enter), so it was rebuilt with the file's blank lines as real empty paragraphs.
+- Code wrap. Long lines now wrap by default, as Typora does, each line number placed at its line's start. A block with a long line shows a Wrap button in its corner; View > Wrap Lines in Code Blocks flips the same setting for every block.
+- Table arrows. Up and down used to walk the cells by their number (Up went left), and at the note's edge a table grew an empty line. The arrows now move by column, walk a cell's text first, and make nothing past the table's edge; the gap cursor no longer exists inside tables, which is what grew a whole column when a letter was typed at a cell's inner edge.
+- The sheets. Quick Open, What Noto Can Do, Browse Tags and the command palette were four sizes at three heights; they now share one frame and one width, which Command-[ and Command-] step in any of them. A heading chosen from the outline (or a [TOC] block) glides to a tenth of the way down the page instead of landing wherever the page could fit it.
+
 ## What it could not test
 
 Real macOS IME composition was simulated through CDP, not exercised through the native input client. Native menu accelerators were read from the live menu rather than pressed. Native context menus were captured as templates. Typora was not driven, so comparisons rest on `typora-gap.md`, the author's theme, Typora's own stylesheets and its documented defaults. Drag from Finder, multiple windows and screen readers were not exercised.
