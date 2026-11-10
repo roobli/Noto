@@ -786,7 +786,8 @@
 }
 
 .ProseMirror .noto-fence-lang,
-.ProseMirror .noto-fence-copy {
+.ProseMirror .noto-fence-copy,
+.ProseMirror .noto-fence-wrap {
   /* 20px drawn, 24 to the pointer: the corner has room above and below, and
      the two sit side by side, wider than 24 each. */
   @include hit-area.extend;
@@ -813,6 +814,18 @@
   }
   &:disabled { cursor: default; }
   &:focus-visible { outline: 2px solid color-mix(in srgb, var(--accent) 55%, transparent); outline-offset: 1px; }
+}
+
+/* Wrap, first in the corner, and only on a block with a line too long for
+   it (fence-view.ts marks it), since anywhere else it would change nothing.
+   Pressed while lines wrap: the accent, faintly, as a state rather than a
+   call to press. */
+.ProseMirror .noto-fence-wrap { display: none; }
+.ProseMirror pre[data-long-lines] .noto-fence-wrap { display: inline-flex; }
+.ProseMirror .noto-fence-wrap svg { flex: none; }
+:root:not([data-code-wrap='off']) .ProseMirror .noto-fence-wrap {
+  background: color-mix(in srgb, var(--accent) 11%, transparent);
+  color: var(--accent);
 }
 
 /* A small chevron: the word opens a list, and none when it cannot. On

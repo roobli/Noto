@@ -27,6 +27,7 @@ import type {
 } from '../shared/workspace/v1/contracts';
 import { QuickOpen, type QuickOpenMode } from './QuickOpen';
 import type { SheetWidthControl } from './sheet-width';
+import { TOGGLE_CODE_WRAP } from './editor/noto/fence-view';
 import { FolderEmptyState } from './FolderEmptyState';
 import { useReadingAnchors } from './use-reading-anchors';
 import { useFocusReturn } from './focus-return';
@@ -1083,6 +1084,13 @@ function NotoWorkspace({ platform }: { platform: NotoPlatform }) {
       return { ...current, ...resolved };
     });
   }, []);
+
+  // A code block's Wrap button asks for the setting View > Wrap Lines in Code Blocks flips.
+  useEffect(() => {
+    const toggle = () => changeSettings((current) => ({ codeWrap: !current.codeWrap }));
+    window.addEventListener(TOGGLE_CODE_WRAP, toggle);
+    return () => window.removeEventListener(TOGGLE_CODE_WRAP, toggle);
+  }, [changeSettings]);
 
   // The width every sheet is drawn at, which ⌘[ and ⌘] step in any of them.
   const sheetWidth = useMemo<SheetWidthControl>(() => ({

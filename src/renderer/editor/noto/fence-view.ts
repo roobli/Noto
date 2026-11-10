@@ -37,6 +37,12 @@ import { copyThroughSelection } from './clipboard';
 /** How long "Copied" stays before the button says "Copy" again. */
 const COPIED_MS = 1400;
 
+/** Asked of the shell by a code block's Wrap button; App.tsx flips the setting. */
+export const TOGGLE_CODE_WRAP = 'noto:toggle-code-wrap';
+
+/** Lines, the last one carried round and down. Drawn, not text: the word beside it is the label. */
+const WRAP_ICON = '<svg viewBox="0 0 16 16" width="13" height="13" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M2 4h12M2 8h9.5a2.5 2.5 0 0 1 0 5H8"/><path d="M9.5 11 8 13l1.5 2"/><path d="M2 12h3"/></svg>';
+
 /** Whether code lines wrap, which the shell sets on the root from the setting. */
 const wrapsCode = (): boolean => globalThis.document?.documentElement.dataset.codeWrap !== 'off';
 
@@ -47,6 +53,7 @@ export class FenceView implements NodeView {
   private tools: HTMLElement | null = null;
   private language: HTMLButtonElement | null = null;
   private copy: HTMLButtonElement | null = null;
+  private wrap: HTMLButtonElement | null = null;
   /** What the label says now, so a keystroke that changes nothing touches nothing. */
   private labelKey = '';
   private picker: LanguagePicker | null = null;
@@ -139,10 +146,36 @@ export class FenceView implements NodeView {
     // is what the button is for.
     this.copy.addEventListener('mousedown', (event) => event.preventDefault());
     this.copy.addEventListener('click', () => this.copyCode());
-    this.tools.append(this.language, this.copy);
+    this.wrap = document.createElement('button');
+    this.wrap.type = 'button';
+    this.wrap.className = 'noto-fence-wrap';
+    this.wrap.title = 'Wrap long lines in every code block (View > Wrap Lines in Code Blocks)';
+    this.wrap.setAttribute('aria-pressed', String(wrapsCode()));
+    this.wrap.innerHTML = WRAP_ICON;
+    this.wrap.append('Wrap');
+    this.wrap.addEventListener('mousedown', (event) => event.preventDefault());
+    this.wrap.addEventListener('click', this.toggleWrap);
+    this.tools.append(this.wrap, this.language, this.copy);
     this.dom.append(this.tools);
     this.labelKey = '';
     this.syncLanguageLabel();
+  };
+
+  private markLongLines(long: boolean): void {
+    if (long) this.dom.dataset.longLines = '';
+    else delete this.dom.dataset.longLines;
+    this.wrap?.setAttribute('aria-pressed', String(wrapsCode()));
+  }
+
+  /**
+   * Wrap long lines in every code block, or scroll them: the one setting
+   * View > Wrap Lines in Code Blocks flips, asked of the shell, which owns
+   * the settings. Every block, because a choice for one block has nowhere to
+   * live in the file without changing the file.
+   */
+  private readonly toggleWrap = (): void => {
+    this.wrap?.setAttribute('aria-pressed', String(!wrapsCode()));
+    this.dom.dispatchEvent(new CustomEvent(TOGGLE_CODE_WRAP, { bubbles: true }));
   };
 
   /** Open the language list under the label, or close it when it is open. */
@@ -176,8 +209,10 @@ export class FenceView implements NodeView {
     // While no line wraps, finding out costs one height read a frame; once
     // lines wrap, placing every number waits for a pause in the typing, so a
     // long fence is not measured line by line on every key.
+    // With wrapping off it is one width read, for whether the Wrap button
+    // has anything to do here.
     if (this.wrappedTops !== null) this.scheduleMeasureAfterTyping();
-    else if (wrapsCode()) this.scheduleMeasure();
+    else this.scheduleMeasure();
     return true;
   }
 
@@ -206,15 +241,20 @@ export class FenceView implements NodeView {
    * when none does, the plain column is put back, which costs nothing to draw.
    */
   private measureWraps(): void {
+    if (!this.dom.isConnected) return;
     const base = this.getPos();
     const text = this.node.textContent;
     const lines = lineCount(text);
+    const wrapping = wrapsCode();
     const style = getComputedStyle(this.contentDOM);
     const row = Number.parseFloat(style.lineHeight);
     const padding = (Number.parseFloat(style.paddingTop) || 0) + (Number.parseFloat(style.paddingBottom) || 0);
-    const oneRowEach = !wrapsCode() || !Number.isFinite(row) || row <= 0
+    const oneRowEach = !wrapping || !Number.isFinite(row) || row <= 0
       || this.contentDOM.scrollHeight - padding <= lines * row + row / 2;
-    if (oneRowEach || base === undefined || !this.dom.isConnected) {
+    // A line too long for the block, wrapped or scrolled: the Wrap button
+    // shows only where it would change something (noto-editor.scss).
+    this.markLongLines(wrapping ? !oneRowEach : this.contentDOM.scrollWidth > this.contentDOM.clientWidth + 1);
+    if (oneRowEach || base === undefined) {
       if (this.wrappedTops !== null) {
         this.wrappedTops = null;
         delete this.gutter.dataset.wrapped;

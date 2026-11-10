@@ -72,3 +72,42 @@ test('a long code line wraps under its one number, and View turns wrapping off',
     await app.close();
   }
 });
+
+test('a block with a long line has a Wrap button in its corner that turns wrapping off and on', async () => {
+  const root = scratch('code-wrap-button');
+  writeFileSync(path.join(root, 'code.md'), `# Code\n\n\`\`\`js\n${LONG}\n\`\`\`\n\n\`\`\`js\nconst short = 1;\n\`\`\`\n`, 'utf8');
+  const userData = scratch('user-data');
+  writeFileSync(path.join(userData, 'settings.json'), JSON.stringify({}));
+  const app = await electron.launch({ executablePath: packagedExecutable(), args: [`--user-data-dir=${userData}`, `--open=${path.join(root, 'code.md')}`] });
+  try {
+    const page = await app.firstWindow();
+    await page.setViewportSize({ width: 1100, height: 800 });
+    await page.waitForSelector('[data-testid="noto-editor"]', { state: 'visible', timeout: 30_000 });
+    const fences = page.locator('.canvas-slot:not([hidden]) .ProseMirror pre');
+    const long = fences.nth(0);
+    const short = fences.nth(1);
+    const wrapOf = (fence: typeof long) => fence.locator('.noto-fence-wrap');
+    const scrolls = () => long.locator('code').evaluate((code) => code.scrollWidth > code.clientWidth + 1);
+
+    // The corner's buttons are made when the pointer first comes over a block.
+    await short.hover();
+    await expect(short.locator('.noto-fence-copy')).toBeAttached();
+    await expect(wrapOf(short)).toBeHidden();
+    await long.hover();
+    await expect(wrapOf(long)).toBeVisible();
+    await expect(wrapOf(long)).toHaveAttribute('aria-pressed', 'true');
+
+    await wrapOf(long).click();
+    await expect.poll(() => page.evaluate(() => document.documentElement.dataset.codeWrap)).toBe('off');
+    await expect.poll(scrolls).toBe(true);
+    // Scrolled, the line is still too long for the block, so the button stays to turn it back.
+    await expect(wrapOf(long)).toBeVisible();
+    await expect(wrapOf(long)).toHaveAttribute('aria-pressed', 'false');
+
+    await wrapOf(long).click();
+    await expect.poll(() => page.evaluate(() => document.documentElement.dataset.codeWrap)).toBe('on');
+    await expect.poll(scrolls).toBe(false);
+  } finally {
+    await app.close();
+  }
+});
