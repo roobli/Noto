@@ -69,7 +69,7 @@ export function shortcutGroups(mac: boolean): Group[] {
         { keys: [shift(mac) + mod('F', mac)], what: 'Search the whole vault from the rail, and keep the results while you read.', tryIt: 'search' },
         { keys: [alt(mac) + mod('←', mac), alt(mac) + mod('→', mac)], what: 'Back and forward along the notes you have read.' },
         { keys: [shift(mac) + mod('L', mac)], what: 'Show or hide the rail.' },
-        { keys: [mac ? '⌃⌘1' : 'Ctrl Shift 1'], what: 'The outline of this note, on Typora\'s key. A heading folds with the arrow keys.', since: 6, tryIt: 'outline' },
+        { keys: [mac ? '⌃⌘1' : 'Ctrl Shift 1'], what: 'The outline of this note, on Typora\'s key. Choosing a heading puts it a tenth of the way down the page, where the eye is; a heading folds with the arrow keys.', since: 8, tryIt: 'outline' },
         { keys: ['Links'], what: "Opt-in from Settings: the rail's Links view shows what links here, what this links to, and what the vault's graph thinks is near." },
         { keys: [alt(mac) + shift(mac) + mod('T', mac)], what: 'Browse tags, most used first, with the notes of the tag under the cursor beside them. Right goes to the notes, Enter opens one.', since: 7 },
       ],

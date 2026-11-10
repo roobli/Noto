@@ -3167,7 +3167,7 @@ function NotoWorkspace({ platform }: { platform: NotoPlatform }) {
             onResize={(railWidth) => changeSettings({ railWidth: clampRailWidth(railWidth, window.innerWidth) })}
             outline={outline}
             currentHeading={currentHeading}
-            onGoToBlock={(blockIndex) => { editorRef.current?.focusBlock(blockIndex); putOverlayRailAway(); }}
+            onGoToBlock={(blockIndex) => { editorRef.current?.focusBlock(blockIndex, { at: 0.1 }); putOverlayRailAway(); }}
             tree={{
               vaultMenu: (
                 <RailFooter
