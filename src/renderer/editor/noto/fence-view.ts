@@ -62,6 +62,7 @@ export class FenceView implements NodeView {
    */
   private wrappedTops: readonly number[] | null = null;
   private measureFrame = 0;
+  private measureTimer: ReturnType<typeof setTimeout> | null = null;
   private readonly resized: ResizeObserver | null;
 
   constructor(
@@ -172,8 +173,20 @@ export class FenceView implements NodeView {
     this.node = node;
     this.render();
     // Typing can make a line wrap or stop wrapping without the count moving.
-    if (this.wrappedTops !== null || wrapsCode()) this.scheduleMeasure();
+    // While no line wraps, finding out costs one height read a frame; once
+    // lines wrap, placing every number waits for a pause in the typing, so a
+    // long fence is not measured line by line on every key.
+    if (this.wrappedTops !== null) this.scheduleMeasureAfterTyping();
+    else if (wrapsCode()) this.scheduleMeasure();
     return true;
+  }
+
+  private scheduleMeasureAfterTyping(): void {
+    if (this.measureTimer !== null) clearTimeout(this.measureTimer);
+    this.measureTimer = setTimeout(() => {
+      this.measureTimer = null;
+      this.scheduleMeasure();
+    }, 150);
   }
 
   private scheduleMeasure(): void {
@@ -283,6 +296,7 @@ export class FenceView implements NodeView {
   destroy(): void {
     if (this.copiedTimer !== null) clearTimeout(this.copiedTimer);
     if (this.measureFrame !== 0) cancelAnimationFrame(this.measureFrame);
+    if (this.measureTimer !== null) clearTimeout(this.measureTimer);
     this.resized?.disconnect();
     this.dom.removeEventListener('pointerenter', this.ensureTools);
     this.dom.removeEventListener('focusin', this.ensureTools);
