@@ -98,16 +98,6 @@
   margin: calc(0.74 * var(--doc-font-size)) 0;
 }
 
-/* A file's extra blank lines between two blocks, drawn as the room the same
-   number of empty lines would take (blank-lines-plugin.ts): one line box and
-   one paragraph gap each. The negative top margin cancels the gap above it
-   that would otherwise be counted twice. */
-.ProseMirror > .noto-blank-lines {
-  height: calc(var(--blank-lines, 1) * (var(--doc-line-height) + 0.74) * var(--doc-font-size));
-  margin: calc(-0.74 * var(--doc-font-size)) 0 0;
-  pointer-events: none;
-}
-
 .ProseMirror > :first-child { margin-top: 0; }
 
 /* The heading scale is the author's theme's, in em so it follows the text

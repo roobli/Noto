@@ -19,6 +19,7 @@ import {
   type NotoUnit,
 } from '../../../shared/markdown/v3/contracts';
 import { compactTransaction, sameOrigin } from '../../../shared/markdown/v3/revision-patch';
+import { MAX_BLANK_LINES, type GapLines } from '../../../shared/markdown/v3/blank-lines';
 
 /**
  * A top-level block with nothing to write: an empty paragraph or heading.
@@ -124,22 +125,36 @@ export interface CaptureInput {
    */
   readonly envelope?: NotoTargetEnvelope;
   /**
-   * Origin block ids whose gap above is exactly the empty paragraphs before
-   * them (`blank-lines-plugin.ts`), even when there are none left.
+   * Blank lines the accepted file has after each block, so a gap whose empty
+   * paragraphs still match it is left to the save, which keeps its bytes.
    */
-  readonly explicitGaps?: ReadonlySet<string>;
+  readonly gapLines?: GapLines;
 }
 
 /**
- * Blank lines to ask for before a written block (`NotoUnit.blankLinesBefore`):
- * one break plus one per empty paragraph typed since the block above, when
- * there are any or the reader has taken the gap over. Undefined leaves the
- * gap to the save, which keeps the file's own.
+ * Blank lines to ask for before a written block (`NotoUnit.blankLinesBefore`).
+ *
+ * A file's extra blank lines open as empty paragraphs (NotoEditor), so the
+ * page is the file: the gap is one break plus one line per empty paragraph
+ * since the block above. Undefined leaves the gap to the save, which keeps
+ * the file's own between two blocks that were neighbours in it and writes a
+ * plain break anywhere else, so it is asked for only when that would differ.
  */
-function blankLinesFor(emptyLines: number, origin: NotoBlockOrigin | null, wroteAbove: boolean, explicit?: ReadonlySet<string>): number | undefined {
+function blankLinesFor(
+  emptyLines: number,
+  above: NotoBlockOrigin | null,
+  origin: NotoBlockOrigin | null,
+  wroteAbove: boolean,
+  gapLines?: GapLines,
+): number | undefined {
   if (!wroteAbove) return undefined;
-  if (emptyLines > 0 || (origin !== null && explicit?.has(origin.blockId) === true)) return 1 + emptyLines;
-  return undefined;
+  const wanted = 1 + emptyLines;
+  const neighbours = above !== null && origin !== null && above.ordinal === origin.ordinal - 1;
+  if (!neighbours) return emptyLines > 0 ? Math.min(wanted, MAX_BLANK_LINES) : undefined;
+  const file = gapLines?.(above.ordinal) ?? 1;
+  // A plain break, or a heading's single newline, with nothing typed into it.
+  if (emptyLines === 0 && file <= 1) return undefined;
+  return wanted === file ? undefined : Math.min(wanted, MAX_BLANK_LINES);
 }
 
 const isEmptyParagraph = (node: ProseNode): boolean => node.type.name === 'paragraph' && isUnwritableBlock(node);
@@ -249,14 +264,16 @@ export function captureUnits(input: CaptureInput): { units: NotoUnit[]; stats: C
   let previousList: ListMarker | null = null;
 
   let emptyLines = 0;
+  let above: NotoBlockOrigin | null = null;
   input.doc.forEach((node, _offset, index) => {
     const origin = input.origins[index] ?? null;
     if (isUnwritableBlock(node)) {
       if (isEmptyParagraph(node)) emptyLines += 1;
       return;
     }
-    const blankLinesBefore = blankLinesFor(emptyLines, origin, units.length > 0, input.explicitGaps);
+    const blankLinesBefore = blankLinesFor(emptyLines, above, origin, units.length > 0, input.gapLines);
     emptyLines = 0;
+    above = origin;
     let result = markdownFor(node, origin, input.pristine);
     let list = writtenListMarker(node, result.markdown);
     if (continuesList(previousList, list)) {
@@ -327,6 +344,7 @@ export function captureStableWire(
   let previousList: ListMarker | null = null;
 
   let emptyLines = 0;
+  let above: NotoBlockOrigin | null = null;
   let wrote = false;
   for (let index = 0; index < doc.childCount; index += 1) {
     const node = doc.child(index);
@@ -337,9 +355,10 @@ export function captureStableWire(
       run = null;
       continue;
     }
-    const blankLinesBefore = blankLinesFor(emptyLines, origin, wrote, input.explicitGaps);
+    const blankLinesBefore = blankLinesFor(emptyLines, above, origin, wrote, input.gapLines);
     const spacing = blankLinesBefore === undefined ? {} : { blankLinesBefore };
     emptyLines = 0;
+    above = origin;
     wrote = true;
     const pin = pins.get(node);
     let unchanged = !pin && node === acceptedNodes[index];

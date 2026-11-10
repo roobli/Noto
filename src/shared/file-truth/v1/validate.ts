@@ -19,6 +19,7 @@ import type {
 } from './contracts';
 import type { NotoDocumentWire, NotoRevisionPatch } from '../../markdown/v3/contracts';
 import { MAX_TRANSACTION_UNITS } from '../../markdown/v3/revision-patch';
+import { MAX_BLANK_LINES } from '../../markdown/v3/blank-lines';
 
 const requestId = /^[A-Za-z0-9._:-]{1,96}$/;
 const hash = /^[a-f0-9]{64}$/;
@@ -115,8 +116,6 @@ const isDocumentId = (value: unknown): value is string =>
 
 const record = (value: unknown): value is Record<string, unknown> =>
   typeof value === 'object' && value !== null && !Array.isArray(value);
-/** Blank lines a save may be asked to leave between two blocks. */
-const MAX_BLANK_LINES = 1000;
 const exact = (value: Record<string, unknown>, keys: readonly string[]) =>
   Object.keys(value).length === keys.length && Object.keys(value).every((key) => keys.includes(key));
 

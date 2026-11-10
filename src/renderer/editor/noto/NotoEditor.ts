@@ -60,8 +60,7 @@ import {
   sourceHasFinalNewline,
   sourceSettleKind,
 } from '../../source-mode-text';
-import { blankLinesPlugin, explicitGaps, type GapLines } from './blank-lines-plugin';
-import { blankLinesIn } from '../../../shared/markdown/v3/blank-lines';
+import { blankLinesIn, type GapLines } from '../../../shared/markdown/v3/blank-lines';
 import { blockMarkdownNow, captureMarkdown, captureStableWire, captureTransaction, effectiveOrigins, isUnwritableBlock, pinnedSource, type CaptureStats, type PristineBlock } from './capture';
 import type { NotoEditorPort } from './NotoEditorPort';
 import { createOriginPlugin, getBlockOrigins, rebaseOrigins, transactionKeepsTopLevelNodes } from './origin-plugin';
@@ -213,6 +212,8 @@ export class NotoEditor implements NotoEditorPort {
   private extensionPlugins: readonly Plugin[] = [];
   private readonly unsubscribeExtensions: () => void;
   private activeBlock = -1;
+  /** The top-level node and node count `activeBlock` was worked out at. */
+  private activeAt = { index: -1, count: -1 };
   /* Bumped by every change, so a picture that arrives after the document moved
      under it is put where the caret is now rather than at a stale offset. */
   private docVersion = 0;
@@ -270,6 +271,16 @@ export class NotoEditor implements NotoEditorPort {
    */
   private acceptedNodes: ProseNode[] = [];
   private topLevelStable = false;
+  /**
+   * Origins for the document as opened, one per top-level node. A file's
+   * extra blank lines open as empty paragraphs between its blocks, which have
+   * none, so this is the file's origins with gaps in it.
+   */
+  private openOrigins: readonly (NotoBlockOrigin | null)[] = [];
+  /** The node each opened block became, by opened index. */
+  private openNodes: readonly ProseNode[] = [];
+  /** For each top-level node as opened, the opened index of the block at or below it. */
+  private openedAt: Int32Array = new Int32Array(0);
   /**
    * Stand-in node objects from a deferred open, by opened index. Background
    * enrichment replaces one only while it is still this exact object.
@@ -447,9 +458,7 @@ export class NotoEditor implements NotoEditorPort {
     return [
       // First of the key handlers, so every one after it sees where the caret is.
       caretCatchUp(),
-      createOriginPlugin(document.origins),
-      // Before the keymap, so its Backspace below extra blank lines comes first.
-      blankLinesPlugin(() => this.gapLines()),
+      createOriginPlugin(this.openOrigins.length > 0 ? this.openOrigins : document.origins),
       // A getter, not a value: the setting can change while the editor is open
       // and the rules must follow without the editor being rebuilt.
       notoInputRules({
@@ -487,7 +496,7 @@ export class NotoEditor implements NotoEditorPort {
       indexBlockPlugin({ onFollow: (target) => this.options.onFollowWikiLink?.(target) }),
       footnoteHoverPlugin(),
       noteMarksPlugin({ onAction: (key, action) => this.options.onNoteMarkAction?.(key, action) }),
-      tocBlockPlugin({ onGo: (blockIndex) => this.focusBlock(blockIndex) }),
+      tocBlockPlugin({ onGo: (blockIndex) => this.focusTopLevel(blockIndex) }),
       linkEditorPlugin(),
       followLinkPlugin({ onFollow: (href) => this.options.onFollowLink?.(href) }),
       mathEditingPlugin(),
@@ -511,20 +520,62 @@ export class NotoEditor implements NotoEditorPort {
    */
   private buildDoc(document: NotoDocumentWire, spans?: readonly BlockSpan[]): ProseNode {
     const resolved = spans ?? splitBlocks(document.text).spans;
-    const doc = docFromSpans(resolved);
+    const blocks = docFromSpans(resolved);
 
     this.pristine = new Map();
-    doc.forEach((node, _offset, index) => {
+    blocks.forEach((node, _offset, index) => {
       const origin = document.origins[index];
       const span = resolved[index];
       if (origin && span) this.pristine.set(origin.blockId, { node, markdown: toLf(span.markdown) });
     });
+    const doc = this.withBlankLines(blocks, document);
     this.rememberAccepted(doc);
+    this.activeAt = { index: -1, count: -1 };
 
     // Seed the prior split from the open/reload spans (no extra parse).
     this.priorSplit.seedFromSpans(document.text, resolved);
 
     return doc;
+  }
+
+  /**
+   * Open a file's extra blank lines between two blocks as empty paragraphs.
+   *
+   * Markdown reads any run of blank lines as one break, so three blank lines
+   * before a new section used to look like one and save as one. Opened as
+   * empty paragraphs, they are on the page as the lines they are: the caret
+   * goes into them, Enter adds one, Backspace takes one away, undo puts it
+   * back, and the save counts them (`capture.ts`). Blank lines at the very
+   * start and end of the note are left alone, as before.
+   */
+  private withBlankLines(blocks: ProseNode, document: NotoDocumentWire): ProseNode {
+    const lines = blocks.childCount === document.origins.length ? this.gapLines() : () => 1;
+    const children: ProseNode[] = [];
+    const origins: (NotoBlockOrigin | null)[] = [];
+    const nodes: ProseNode[] = [];
+    const openedAt: number[] = [];
+    blocks.forEach((node, _offset, index) => {
+      children.push(node);
+      origins.push(document.origins[index] ?? null);
+      nodes.push(node);
+      openedAt.push(index);
+      if (index + 1 === blocks.childCount) return;
+      for (let extra = lines(index) - 1; extra > 0; extra -= 1) {
+        children.push(notoSchema.nodes.paragraph.create());
+        origins.push(null);
+        openedAt.push(index + 1);
+      }
+    });
+    this.openOrigins = origins;
+    this.openNodes = nodes;
+    this.openedAt = Int32Array.from(openedAt);
+    return children.length === blocks.childCount ? blocks : blocks.copy(Fragment.fromArray(children));
+  }
+
+  /** The opened index of the block a top-level node index stands at, for the background enrichment. */
+  openedIndexAt(index: number): number {
+    if (this.openedAt.length === 0) return index;
+    return this.openedAt[Math.max(0, Math.min(index, this.openedAt.length - 1))]!;
   }
 
   /** Blank lines after each block of the accepted revision, read from its text once per revision. */
@@ -806,15 +857,24 @@ export class NotoEditor implements NotoEditorPort {
     }, 0);
   }
 
-  /** Told only when it changes: this runs on every transaction, typing included. */
+  /**
+   * Told only when it changes: this runs on every transaction, typing included.
+   *
+   * Counted in written blocks, the file's blocks that the outline and Source
+   * Code Mode count in, so the empty paragraphs of blank lines do not put
+   * them out by one each.
+   */
   private reportActiveBlock(): void {
     const view = this.view;
     if (!view || !this.options.onActiveBlockChanged) return;
-    const { $from } = view.state.selection;
-    const index = $from.index(0);
-    if (index === this.activeBlock) return;
-    this.activeBlock = index;
-    this.options.onActiveBlockChanged(index);
+    const { doc } = view.state;
+    const index = view.state.selection.$from.index(0);
+    if (index === this.activeAt.index && doc.childCount === this.activeAt.count) return;
+    this.activeAt = { index, count: doc.childCount };
+    const written = writtenBlocksBefore(doc, index);
+    if (written === this.activeBlock) return;
+    this.activeBlock = written;
+    this.options.onActiveBlockChanged(written);
   }
 
   private refreshDirty(): void {
@@ -954,12 +1014,21 @@ export class NotoEditor implements NotoEditorPort {
   }
 
   /**
-   * Put the caret at the start of a top level block and scroll it into view.
+   * Put the caret at the start of a written block and scroll it into view.
    *
-   * Used by the outline. Moving the selection rather than only scrolling means
-   * the user can keep typing where they landed.
+   * Used by the outline and by leaving Source Code Mode, which count the
+   * file's blocks, not the empty paragraphs between them. Moving the selection
+   * rather than only scrolling means the user can keep typing where they
+   * landed.
    */
   focusBlock(index: number): void {
+    const view = this.view;
+    if (!view || index < 0) return;
+    this.focusTopLevel(topLevelOfWritten(view.state.doc, index));
+  }
+
+  /** The same, for a top-level node index. */
+  private focusTopLevel(index: number): void {
     const view = this.view;
     if (!view || index < 0 || index >= view.state.doc.childCount) return;
     let position = 0;
@@ -1499,11 +1568,27 @@ export class NotoEditor implements NotoEditorPort {
       && current[current.length - 1 - suffix] === next[next.length - 1 - suffix]) suffix += 1;
 
     // Character positions of the replaced range in the ProseMirror document.
+    // `current` counts written blocks only, so the empty paragraphs of blank
+    // lines between them are stepped over, and kept, rather than counted.
+    const doc = view.state.doc;
+    const starts: number[] = [];
+    const ends: number[] = [];
+    doc.forEach((node, offset) => {
+      if (isUnwritableBlock(node)) return;
+      starts.push(offset);
+      ends.push(offset + node.nodeSize);
+    });
     let from = 0;
-    for (let index = 0; index < prefix; index += 1) from += view.state.doc.child(index).nodeSize;
-    let to = view.state.doc.content.size;
-    for (let index = 0; index < suffix; index += 1) {
-      to -= view.state.doc.child(view.state.doc.childCount - 1 - index).nodeSize;
+    let to = doc.content.size;
+    if (starts.length === current.length && current.length > 0) {
+      const last = current.length - suffix - 1;
+      if (last >= prefix) {
+        from = starts[prefix]!;
+        to = ends[last]!;
+      } else {
+        from = prefix > 0 ? ends[prefix - 1]! : starts[0]!;
+        to = from;
+      }
     }
 
     const replacement = withKnownFootnoteIds(
@@ -1653,7 +1738,7 @@ export class NotoEditor implements NotoEditorPort {
       document: this.document,
       pristine: this.pristine,
       envelope: this.target ?? undefined,
-      explicitGaps: explicitGaps(view.state),
+      gapLines: this.gapLines(),
     };
     if (this.topLevelStable && this.acceptedNodes.length === input.doc.childCount) {
       return captureStableWire(input, this.acceptedNodes).transaction;
@@ -1695,7 +1780,7 @@ export class NotoEditor implements NotoEditorPort {
       document: this.document,
       pristine: this.pristine,
       envelope: this.target ?? undefined,
-      explicitGaps: explicitGaps(view.state),
+      gapLines: this.gapLines(),
     });
   }
 
@@ -1849,10 +1934,11 @@ export class NotoEditor implements NotoEditorPort {
     });
     this.deferredEnrich = controller;
     const sources = new Array<ProseNode | null>(spans.length).fill(null);
-    const doc = this.view.state.doc;
-    if (doc.childCount === spans.length) {
+    // The opened blocks, not the top-level nodes: a file's extra blank lines
+    // opened as empty paragraphs between them.
+    if (this.openNodes.length === spans.length) {
       for (let index = remainderFrom; index < spans.length; index += 1) {
-        const node = doc.child(index);
+        const node = this.openNodes[index]!;
         sources[index] = node;
         this.enrichIndex.set(node, index);
       }
@@ -2071,6 +2157,25 @@ export class NotoEditor implements NotoEditorPort {
  * paired, so the next save re-renders blocks rather than reusing another
  * block's bytes.
  */
+/** Top-level nodes before `index` that are written to the file, skipping empty paragraphs. */
+export function writtenBlocksBefore(doc: ProseNode, index: number): number {
+  let written = 0;
+  const end = Math.min(index, doc.childCount);
+  for (let at = 0; at < end; at += 1) if (!isUnwritableBlock(doc.child(at))) written += 1;
+  return written;
+}
+
+/** The top-level node index of written block `index`, or the last node when there are fewer. */
+export function topLevelOfWritten(doc: ProseNode, index: number): number {
+  let written = 0;
+  for (let at = 0; at < doc.childCount; at += 1) {
+    if (isUnwritableBlock(doc.child(at))) continue;
+    if (written === index) return at;
+    written += 1;
+  }
+  return doc.childCount - 1;
+}
+
 export function alignSavedBlocks(doc: ProseNode, blockCount: number): (number | null)[] {
   const alignment = new Array<number | null>(doc.childCount).fill(null);
   if (doc.childCount === blockCount) {

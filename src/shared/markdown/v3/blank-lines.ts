@@ -1,3 +1,9 @@
+/** Blank lines a save may be asked to leave between two blocks (`NotoUnit.blankLinesBefore`). */
+export const MAX_BLANK_LINES = 1000;
+
+/** Blank lines after each block, by ordinal; one for a plain break. */
+export type GapLines = (ordinal: number) => number;
+
 /**
  * Blank lines in the whitespace between two blocks: one for a plain break
  * (`\n\n`), more for each extra empty line, none for a single newline or for
