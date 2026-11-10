@@ -1235,6 +1235,9 @@ export class NotoEditor implements NotoEditorPort {
     };
     reveal();
     requestAnimationFrame(() => requestAnimationFrame(reveal));
+    // A match in a long note's far part was measured against the stand-in
+    // drawn there, and the real blocks mount once it scrolls into view.
+    setTimeout(() => { if (this.view === view) reveal(); }, 160);
   }
 
   /** Replace the current match, or every match. Returns how many changed. */
