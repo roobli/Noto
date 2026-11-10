@@ -56,6 +56,12 @@ describe('blank lines asked for between blocks', () => {
     expect(kept.text).toBe('one\n\n \n\n\ntwo\n\n\n\nthree\n');
   });
 
+  it('widens a gap in a mixed file with the line ending that gap had', () => {
+    const document = parsed('one\r\n\r\ntwo\n\nthree\n');
+    const { text } = save(document, (units) => units.map((unit, index) => (index > 0 ? { ...unit, blankLinesBefore: 2 } : unit)));
+    expect(text).toBe('one\r\n\r\n\r\ntwo\n\n\nthree\n');
+  });
+
   it('spaces an edited block and a new one as asked', () => {
     const document = parsed('one\n\ntwo\n');
     const { text } = save(document, (units) => [units[0]!, { origin: null, markdown: 'new', blankLinesBefore: 2 }, { ...units[1]!, markdown: 'two!', blankLinesBefore: 3 }]);

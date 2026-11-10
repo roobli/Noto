@@ -1077,16 +1077,21 @@ function withBlankLines(result: NotoSerializeSuccess, units: readonly NotoUnit[]
     index === 0 ? [next.text.slice(block.start, block.end)] : [gaps[index - 1]!, next.text.slice(block.start, block.end)]
   )), next.trailing];
   const gaps = next.gaps.map((gap) => gap.text);
-  // Only when the document is the plain sum of its parts can its gaps be rewritten in place.
-  if (gaps.length !== Math.max(0, next.blocks.length - 1) || pieces(gaps).join('') !== next.text) return result;
-  let changed = false;
-  units.forEach((unit, index) => {
+  if (gaps.length !== Math.max(0, next.blocks.length - 1)) return result;
+  // A gap that already has the asked-for count keeps its bytes, which is
+  // every gap on a save that did not touch one: found before anything is joined.
+  const rewrite = units.flatMap((unit, index) => {
     const wanted = unit.blankLinesBefore;
-    if (index === 0 || wanted === undefined || blankLinesIn(gaps[index - 1]!) === wanted) return;
-    gaps[index - 1] = fromLf('\n'.repeat(wanted + 1), next.envelope.lineEnding === 'crlf' ? 'crlf' : 'lf');
-    changed = true;
+    return index === 0 || wanted === undefined || blankLinesIn(gaps[index - 1]!) === wanted ? [] : [{ index, wanted }];
   });
-  if (!changed) return result;
+  // Only when the document is the plain sum of its parts can its gaps be rewritten in place.
+  if (rewrite.length === 0 || pieces(gaps).join('') !== next.text) return result;
+  for (const { index, wanted } of rewrite) {
+    const gap = gaps[index - 1]!;
+    // A mixed file's gap keeps the ending it had.
+    const crlf = next.envelope.lineEnding === 'crlf' || (next.envelope.lineEnding === 'mixed' && gap.includes('\r\n'));
+    gaps[index - 1] = fromLf('\n'.repeat(wanted + 1), crlf ? 'crlf' : 'lf');
+  }
   const text = pieces(gaps).join('');
   let cursor = next.leading.length;
   const blocks = next.blocks.map((block, index) => {
