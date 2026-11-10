@@ -10,6 +10,8 @@
 import {
   clampSetting,
   DEFAULT_SETTINGS,
+  SHEET_WIDTHS,
+  type SheetWidthV1,
   NOTO_SETTINGS_VERSION,
   SETTING_RANGES,
   WIDTH_MODES,
@@ -139,7 +141,7 @@ export function coerceSettings(value: unknown): NotoSettingsV1 {
     treeNoteExtensions: typeof value.treeNoteExtensions === 'boolean'
       ? value.treeNoteExtensions
       : DEFAULT_SETTINGS.treeNoteExtensions,
-    quickOpenWidth: value.quickOpenWidth === 'wide' ? 'wide' : DEFAULT_SETTINGS.quickOpenWidth,
+    sheetWidth: SHEET_WIDTHS.includes(value.sheetWidth as SheetWidthV1) ? value.sheetWidth as SheetWidthV1 : DEFAULT_SETTINGS.sheetWidth,
     remoteControl: typeof value.remoteControl === 'boolean'
       ? value.remoteControl
       : DEFAULT_SETTINGS.remoteControl,
@@ -266,7 +268,7 @@ export function isSettingsWriteRequestV1(value: unknown): value is SettingsWrite
     if (key === 'proseFontFamily') return isProseFontFamily(patch.proseFontFamily);
     if (key === 'treeSort') return TREE_SORTS.includes(patch.treeSort as TreeSortV1);
     if (key === 'treeHeld') return TREE_HELD.includes(patch.treeHeld as TreeHeldV1);
-    if (key === 'quickOpenWidth') return patch.quickOpenWidth === 'default' || patch.quickOpenWidth === 'wide';
+    if (key === 'sheetWidth') return SHEET_WIDTHS.includes(patch.sheetWidth as SheetWidthV1);
     if (key === 'customCssPath') return isCssPath(patch.customCssPath);
     if (key === 'imageDestination') return IMAGE_DESTINATIONS.includes(patch.imageDestination as ImageDestinationV1);
     if (key === 'imageCustomFolder') return isImageFolder(patch.imageCustomFolder);

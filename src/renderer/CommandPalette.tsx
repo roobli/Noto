@@ -14,6 +14,7 @@
 import { useEffect, useLayoutEffect, useMemo, useRef, useState, type KeyboardEvent as ReactKeyboardEvent } from 'react';
 import { filterPaletteCommands } from './command-palette-filter';
 import { isComposing } from './ime';
+import { SheetWidthHint, stepSheetWidth, type SheetWidthControl } from './sheet-width';
 
 export interface PaletteCommand {
   /** Stable across renders and unique in the list. */
@@ -32,12 +33,14 @@ interface CommandPaletteProps {
   readonly commands: readonly PaletteCommand[];
   readonly onRun: (command: PaletteCommand) => void;
   readonly onClose: () => void;
+  /** The width all the sheets share, which ⌘[ and ⌘] step. */
+  readonly sheet?: SheetWidthControl;
 }
 
 const LIST_ID = 'command-palette-results';
 const optionId = (index: number) => `command-palette-option-${index}`;
 
-export function CommandPalette({ commands, onRun, onClose }: CommandPaletteProps) {
+export function CommandPalette({ commands, onRun, onClose, sheet }: CommandPaletteProps) {
   const [query, setQuery] = useState('');
   const [active, setActive] = useState(0);
   const dialogRef = useRef<HTMLElement>(null);
@@ -90,6 +93,7 @@ export function CommandPalette({ commands, onRun, onClose }: CommandPaletteProps
 
   // Tab and Shift+Tab go round the dialog's own controls and no further.
   const onDialogKey = (event: ReactKeyboardEvent<HTMLElement>) => {
+    if (stepSheetWidth(event, sheet)) return;
     if (event.key !== 'Tab') return;
     const focusable = Array.from(dialogRef.current?.querySelectorAll<HTMLElement>('input, button') ?? []);
     if (focusable.length === 0) return;
@@ -116,6 +120,7 @@ export function CommandPalette({ commands, onRun, onClose }: CommandPaletteProps
       <section
         ref={dialogRef}
         className="command-palette"
+        data-sheet-width={sheet?.width}
         role="dialog"
         aria-modal="true"
         aria-label="Commands"
@@ -165,6 +170,10 @@ export function CommandPalette({ commands, onRun, onClose }: CommandPaletteProps
             </div>
           ))}
         </div>
+        <footer className="palette-foot">
+          <span><kbd>↩</kbd> run</span>
+          <span className="sheet-foot-end"><SheetWidthHint control={sheet} /><span><kbd>esc</kbd> close</span></span>
+        </footer>
       </section>
     </div>
   );

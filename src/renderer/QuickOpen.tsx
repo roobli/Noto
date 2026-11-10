@@ -32,6 +32,7 @@ import { isComposing } from './ime';
 import { QuickPreview, type PreviewTarget, type PreviewValue } from './QuickPreview';
 import { readableHit } from './quick-preview';
 import { quickActions, type QuickAction } from './quick-open-make';
+import { SheetWidthHint, stepSheetWidth, type SheetWidthControl } from './sheet-width';
 
 /**
  * How many results are drawn: enough to fill the panel on a tall window, so it
@@ -61,9 +62,6 @@ export const QUICK_TAB_LABELS: Record<QuickOpenMode, string> = {
   content: 'In notes',
 };
 
-/** How wide the palette is drawn, which the reader sets with the bracket keys. */
-export type QuickWidth = 'default' | 'wide';
-
 export interface QuickOpenProps {
   readonly open: boolean;
   /** Chords switched off in the Shortcuts pane; its width keys are two of them. */
@@ -92,9 +90,8 @@ export interface QuickOpenProps {
   readonly onOpenFile: (path: string) => void;
   readonly onInsertLink: (entry: WorkspaceIndexEntryV1) => void;
   readonly onClose: () => void;
-  /** How wide it is drawn, and how to remember a change. */
-  readonly width: QuickWidth;
-  readonly onWidth: (width: QuickWidth) => void;
+  /** How wide it is drawn, the step all the sheets share, and how to change it. */
+  readonly sheet?: SheetWidthControl;
   /**
    * Reads the note in front of the list for the preview beside it: its
    * opening, or the lines around `line`. Without it there is no preview.
@@ -175,7 +172,7 @@ function Highlighted({ text, query }: { text: string; query: string }) {
 export function QuickOpen({
   open, disabledShortcuts = [], mode, onMode, onSearchContent, onOpenMatch,
   entries, frecency, truncated, canInsertLink, linking = false, onOpenFile, onInsertLink, onClose,
-  width, onWidth, onPreview, onMake, folderName = '',
+  sheet, onPreview, onMake, folderName = '',
 }: QuickOpenProps) {
   const [query, setQuery] = useState('');
   const [selected, setSelected] = useState(0);
@@ -430,12 +427,7 @@ export function QuickOpen({
     }
     // The width, on the same keys the author's own palette uses, and the same
     // keys the document's own column uses one level out.
-    if ((event.metaKey || event.ctrlKey) && (event.key === '[' || event.key === ']')
-      && !disabledShortcuts.includes(event.key === ']' ? 'Mod+]' : 'Mod+[')) {
-      event.preventDefault();
-      onWidth(event.key === ']' ? 'wide' : 'default');
-      return;
-    }
+    if (stepSheetWidth(event, sheet)) return;
     // Backspace on an empty box steps back out of the folder, which is the
     // way out of a scope that does not need a control of its own.
     if ((event.key === 'Backspace' || event.key === 'ArrowLeft') && query.length === 0 && scope.length > 0) {
@@ -547,7 +539,7 @@ export function QuickOpen({
     <div className="quick-scrim" data-testid="quick-open-scrim" onClick={onClose}>
       <section
         className={previewShown ? 'quick-open has-preview' : 'quick-open'}
-        data-width={width}
+        data-sheet-width={sheet?.width}
         role="dialog"
         aria-modal="true"
         aria-label="Quick open"
@@ -801,8 +793,7 @@ export function QuickOpen({
           )}
           {completions.candidates.length > 0 && <span><kbd>tab</kbd> finish this</span>}
           {scope.length > 0 && <span><kbd>⌫</kbd> leave the folder</span>}
-          <span><kbd>{'⌘[ ⌘]'}</kbd> width</span>
-          <span><kbd>esc</kbd> close</span>
+          <span className="sheet-foot-end"><SheetWidthHint control={sheet} /><span><kbd>esc</kbd> close</span></span>
           {effectiveMode === 'content' && content.truncated && (
             <span className="quick-truncated">Showing the first {content.matches.length}.</span>
           )}

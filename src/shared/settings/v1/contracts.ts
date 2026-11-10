@@ -28,6 +28,10 @@ export const SETTINGS_CHANNELS = {
 } as const;
 
 /** `system` follows the operating system, which is the honest default. */
+/** A sheet's width, narrowest to widest; 3 is the default. */
+export type SheetWidthV1 = 1 | 2 | 3 | 4;
+export const SHEET_WIDTHS: readonly SheetWidthV1[] = [1, 2, 3, 4];
+
 export type NotoTheme = 'light' | 'dark' | 'system';
 
 /**
@@ -198,11 +202,14 @@ export interface NotoSettingsV1 {
    * The port and the token live in main, which is what listens.
    */
   /**
-   * How wide quick open is drawn, which the bracket keys change while it is
-   * open. A preference because a reader who wants the wide one wants it every
-   * time, as they do for the document's own column.
+   * How wide the sheets are drawn (Quick Open, What Noto Can Do, Browse Tags,
+   * the command palette), one of four steps of the window, which ⌘[ and ⌘]
+   * change in any of them. One preference for all four, so a reader who
+   * wants them wide gets every one of them wide. Replaces `quickOpenWidth`,
+   * which had two widths for Quick Open alone; a file that still has it reads
+   * as the default step.
    */
-  readonly quickOpenWidth: 'default' | 'wide';
+  readonly sheetWidth: SheetWidthV1;
   /**
    * The layout the unsaved changes open in, which is the one last chosen
    * there: a reader who compares side by side does so every time.
@@ -459,7 +466,7 @@ export const DEFAULT_SETTINGS: NotoSettingsV1 = Object.freeze({
   treeSort: 'name',
   treeHeld: 'stack',
   treeNoteExtensions: true,
-  quickOpenWidth: 'default',
+  sheetWidth: 3,
   diffLayout: 'side',
   remoteControl: false,
   markHighlight: true,

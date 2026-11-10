@@ -18,13 +18,14 @@
  */
 
 import { useEffect, useLayoutEffect, useRef, useState } from 'react';
+import { SheetWidthHint, stepSheetWidth, type SheetWidthControl } from './sheet-width';
 
 /**
  * Raised whenever entries are added: someone who has looked before sees the
  * new ones marked New, gathered at the top, and the title bar's ? carries a
  * dot until the list is opened again.
  */
-export const GUIDE_EDITION = 7;
+export const GUIDE_EDITION = 8;
 
 /** What a Try It button does: the window leads there, or does it. */
 export type GuideTry =
@@ -63,7 +64,7 @@ export function shortcutGroups(mac: boolean): Group[] {
         { keys: ['docker es'], what: 'Words in quick open are matched one by one, in the name or the folder, in any order.', since: 6, tryIt: 'quick-open' },
         { keys: ['Back to it'], what: 'A note comes back where you left it, at the paragraph you were reading; a launch reopens the note that was in front.', since: 6 },
         { keys: ['type:', 'scope:'], what: 'Say what to search and where, in the box: type:content, scope:works/jobs. Tab finishes them.' },
-        { keys: [mod('[', mac), mod(']', mac)], what: 'Narrow or widen quick open, which it remembers.' },
+        { keys: [mod('[', mac), mod(']', mac)], what: 'Narrow or widen Quick Open, this guide, Browse Tags and the command palette, in four steps of the window. One width for all four, remembered.', since: 8 },
         { keys: ['[['], what: 'Typing two brackets asks which note you mean, and writes the link where they are.' },
         { keys: [shift(mac) + mod('F', mac)], what: 'Search the whole vault from the rail, and keep the results while you read.', tryIt: 'search' },
         { keys: [alt(mac) + mod('←', mac), alt(mac) + mod('→', mac)], what: 'Back and forward along the notes you have read.' },
@@ -171,6 +172,8 @@ export interface ShortcutsProps {
    * closes the list and then does nothing is worse than none.
    */
   readonly unavailable?: (action: GuideTry) => string | null;
+  /** The width all the sheets share, which ⌘[ and ⌘] step. */
+  readonly sheet?: SheetWidthControl;
 }
 
 /** What each Try It needs in the window: a note in front, or an open folder. */
@@ -187,9 +190,11 @@ const TRY_WORDS: Record<GuideTry, string> = {
   'folder-info': 'Show Me', 'settings-memory': 'Show Me', outline: 'Show Me', search: 'Try It', 'quick-open': 'Try It', palette: 'Try It',
 };
 
-export function Shortcuts({ mac, onClose, seen = GUIDE_EDITION, onTry, unavailable }: ShortcutsProps) {
+export function Shortcuts({ mac, onClose, seen = GUIDE_EDITION, onTry, unavailable, sheet }: ShortcutsProps) {
   const [query, setQuery] = useState('');
+  const [section, setSection] = useState(0);
   const field = useRef<HTMLInputElement>(null);
+  const body = useRef<HTMLDivElement>(null);
 
   useEffect(() => { field.current?.focus(); }, []);
   // As the sheet is drawn, not after the paint, so an Escape pressed the moment it appears closes it.
@@ -216,9 +221,30 @@ export function Shortcuts({ mac, onClose, seen = GUIDE_EDITION, onTry, unavailab
     }))
     .filter((group) => group.entries.length > 0);
 
+  // The section the top of the list is in, for the index beside it.
+  const followScroll = () => {
+    const list = body.current;
+    if (!list) return;
+    const sections = Array.from(list.querySelectorAll<HTMLElement>('.shortcuts-group'));
+    const top = list.scrollTop + 12;
+    let at = 0;
+    sections.forEach((element, index) => { if (element.offsetTop - list.offsetTop <= top) at = index; });
+    // At the foot of the list the last section is the one being read, however short it is.
+    if (list.scrollTop + list.clientHeight >= list.scrollHeight - 2) at = sections.length - 1;
+    setSection(Math.max(0, at));
+  };
+  const goToSection = (index: number) => {
+    const list = body.current;
+    const target = list?.querySelectorAll<HTMLElement>('.shortcuts-group')[index];
+    if (!list || !target) return;
+    list.scrollTop = target.offsetTop - list.offsetTop;
+    setSection(index);
+  };
+
   return (
     <div className="guide-scrim" data-testid="shortcuts-scrim" onMouseDown={(event) => { if (event.target === event.currentTarget) onClose(); }}>
-      <section className="shortcuts" role="dialog" aria-label="What Noto can do" data-testid="shortcuts-panel">
+      <section className="shortcuts" data-sheet-width={sheet?.width} role="dialog" aria-label="What Noto can do" data-testid="shortcuts-panel"
+        onKeyDown={(event) => { stepSheetWidth(event, sheet); }}>
         <header className="shortcuts-header">
           <h2>What Noto can do</h2>
           <input
@@ -234,7 +260,16 @@ export function Shortcuts({ mac, onClose, seen = GUIDE_EDITION, onTry, unavailab
           />
           <button type="button" className="pref-close" data-testid="shortcuts-close" onClick={onClose}>Done</button>
         </header>
-        <div className="shortcuts-body">
+        <div className="shortcuts-main">
+        {/* The sections, beside the list when the sheet is wide enough to spare the room (app.scss). */}
+        <nav className="shortcuts-index" aria-label="Sections">
+          {groups.map((group, index) => (
+            <button key={group.title} type="button" className={index === Math.min(section, groups.length - 1) ? 'is-current' : undefined}
+              aria-current={index === Math.min(section, groups.length - 1) ? 'true' : undefined}
+              onClick={() => goToSection(index)}>{group.title}</button>
+          ))}
+        </nav>
+        <div className="shortcuts-body" ref={body} onScroll={followScroll}>
           {groups.length === 0 && <p className="rail-empty">Nothing here matches that.</p>}
           {groups.map((group) => (
             <section key={group.title} className="shortcuts-group">
@@ -267,6 +302,11 @@ export function Shortcuts({ mac, onClose, seen = GUIDE_EDITION, onTry, unavailab
             </section>
           ))}
         </div>
+        </div>
+        <footer className="shortcuts-foot">
+          <span>{new Set(groups.flatMap((group) => group.entries.map((entry) => entry.what))).size} {wanted.length > 0 ? 'found' : 'things it can do'}</span>
+          <span className="sheet-foot-end"><SheetWidthHint control={sheet} /><span><kbd>esc</kbd> close</span></span>
+        </footer>
       </section>
     </div>
   );

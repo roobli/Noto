@@ -2433,6 +2433,79 @@ section.plugin-group > .plugin-market-row.is-set-aside {
 /* Command palette
    ------------------------------------------------------------------------- */
 
+/* The sheets
+   -------------------------------------------------------------------------
+   Quick Open, What Noto Can Do, Browse Tags and the command palette open at
+   one top, with one corner, and keep their height while a list filters, so
+   moving from one to another keeps the top edge where it was and typing
+   never makes the frame jump. The width is one of four steps of the window
+   (`data-sheet-width` on the root, which ⌘[ and ⌘] step in any of them;
+   sheet-width.tsx). Quick Open, a list with a note beside it, takes the
+   most room. The guide and the tags show less, so they stop shorter and, at
+   the two wide steps, a little narrower. The palette, short names with a
+   key at the end of each, stays narrowest: past about 760 the key drifts
+   away from its name. Each sheet was sized on its own before, four widths
+   from 620 to 1220 and three tops, and on a large window all of them looked
+   like small boxes in the middle of it. */
+:root {
+  --sheet-top: clamp(44px, 8vh, 96px);
+  --sheet-radius: 12px;
+  --sheet-shadow: 0 24px 64px -16px color-mix(in srgb, var(--shadow) 42%, transparent);
+  --sheet-height-full: min(calc(100vh - var(--sheet-top) - clamp(24px, 5vh, 64px)), 1400px);
+  --sheet-height-mid: min(calc(100vh - var(--sheet-top) - clamp(48px, 13vh, 180px)), 960px);
+  --sheet-height-short: min(calc(100vh - var(--sheet-top) - clamp(48px, 13vh, 180px)), 660px);
+  /* Step 3, the default. */
+  --sheet-width-full: min(calc(100vw - 32px), clamp(720px, 76vw, 1280px));
+  --sheet-width-mid: min(calc(100vw - 32px), clamp(720px, 68vw, 1080px));
+  --sheet-width-short: min(calc(100vw - 32px), 680px);
+}
+:root[data-sheet-width='1'] {
+  --sheet-width-full: min(calc(100vw - 32px), clamp(560px, 52vw, 760px));
+  --sheet-width-mid: var(--sheet-width-full);
+  --sheet-width-short: min(calc(100vw - 32px), 560px);
+}
+:root[data-sheet-width='2'] {
+  --sheet-width-full: min(calc(100vw - 32px), clamp(640px, 64vw, 980px));
+  --sheet-width-mid: var(--sheet-width-full);
+  --sheet-width-short: min(calc(100vw - 32px), 640px);
+}
+:root[data-sheet-width='4'] {
+  --sheet-width-full: min(calc(100vw - 48px), 1680px);
+  --sheet-width-mid: min(calc(100vw - 64px), clamp(760px, 80vw, 1320px));
+  --sheet-width-short: min(calc(100vw - 32px), 740px);
+}
+
+/* Every sheet's foot: what the keys do, and at its end the width and Escape. */
+:is(.quick-hints, .tag-browser-footer, .palette-foot, .shortcuts-foot) {
+  display: flex;
+  flex: 0 0 auto;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 6px 16px;
+  border-top: 1px solid var(--hairline);
+  padding: 9px 18px;
+  color: var(--muted);
+  font: 400 12px/18px tokens.$ui;
+}
+:is(.quick-hints, .tag-browser-footer, .palette-foot, .shortcuts-foot) kbd {
+  display: inline-block;
+  min-width: 18px;
+  margin: 0;
+  border: 1px solid var(--hairline);
+  border-bottom-width: 2px;
+  border-radius: 4px;
+  padding: 0 5px;
+  background: var(--paper);
+  color: var(--muted);
+  font: 400 11px/16px tokens.$mono;
+  text-align: center;
+}
+.sheet-foot-end { display: inline-flex; gap: 16px; align-items: center; margin-left: auto; }
+.sheet-width-hint { display: inline-flex; gap: 4px; align-items: center; }
+.sheet-width-pips { display: inline-flex; gap: 3px; margin-left: 4px; }
+.sheet-width-pips i { width: 12px; height: 4px; border-radius: 2px; background: var(--hairline); }
+.sheet-width-pips i.is-on { background: var(--accent); }
+
 .command-palette-scrim {
   animation: noto-fade var(--motion-micro) var(--ease-out);
   position: fixed;
@@ -2444,24 +2517,39 @@ section.plugin-group > .plugin-market-row.is-set-aside {
 .command-palette {
   animation: noto-arrive var(--motion-default) var(--ease-out);
   position: fixed;
-  top: 64px;
+  top: var(--sheet-top);
   left: 50%;
   /* The field stays put and the list scrolls under it. */
   display: flex;
   flex-direction: column;
-  width: min(620px, calc(100vw - 40px));
-  max-width: 100%;
-  max-height: calc(100vh - 112px);
+  width: var(--sheet-width-short);
+  height: var(--sheet-height-short);
   margin: 0;
   overflow: hidden;
   transform: translateX(-50%);
   border: 1px solid var(--hairline);
-  border-radius: 8px;
-  background: var(--panel);
-  padding: 10px;
+  border-radius: var(--sheet-radius);
+  background: var(--overlay);
+  padding: 0;
   color: var(--ink);
-  box-shadow: 0 18px 48px -12px color-mix(in srgb, var(--shadow) 34%, transparent);
+  box-shadow: var(--sheet-shadow);
 }
+
+.command-palette .dialog-heading {
+  margin: 0;
+  border-bottom: 1px solid var(--hairline);
+  padding: 8px 14px 8px 18px;
+}
+
+/* The field is the sheet's head, as Quick Open's is: no box of its own. */
+.command-palette .palette-input {
+  height: 38px;
+  border: 0;
+  background: transparent;
+  padding: 0;
+  font-size: 16px;
+}
+.command-palette .palette-input:focus-visible { outline: none; }
 
 .dialog-heading {
   display: flex;
@@ -2475,18 +2563,21 @@ section.plugin-group > .plugin-market-row.is-set-aside {
 .command-palette .palette-input { flex: 1 1 auto; }
 
 .palette-results {
+  flex: 1 1 auto;
   min-height: 0;
   overflow: auto;
   overscroll-behavior: contain;
+  padding: 4px 8px 8px;
 }
 
 .palette-result {
   display: grid;
   min-width: 0;
-  min-height: 28px;
+  min-height: 34px;
   margin-top: 2px;
-  border-radius: 5px;
-  padding: 4px 10px;
+  border-radius: 7px;
+  padding: 6px 12px;
+  font-size: 14px;
   cursor: default;
 }
 
@@ -2501,7 +2592,7 @@ section.plugin-group > .plugin-market-row.is-set-aside {
   text-overflow: ellipsis;
   white-space: nowrap;
 }
-.palette-result span { color: var(--muted); font-size: 12px; }
+.palette-result span { color: var(--muted); font-size: 12.5px; }
 /* The keys sit at the right of the row, beside the name and where it lives. */
 .palette-result:has(.palette-keys) { grid-template-columns: minmax(0, 1fr) auto; column-gap: 12px; }
 .palette-result:has(.palette-keys) span { grid-column: 1; }
@@ -2535,27 +2626,21 @@ section.plugin-group > .plugin-market-row.is-set-aside {
 .quick-open {
   animation: noto-arrive var(--motion-default) var(--ease-out);
   position: absolute;
-  /* A tenth of the way down, never closer to the top than the title bar's
-     height plus air; and as far from each side as the window can spare, so
-     on a laptop's window it is a panel over the page, not a band across it. */
-  --quick-gutter: clamp(24px, 6vw, 96px);
-  top: clamp(40px, 11vh, 128px);
+  /* The sheets' top and the most room of them (The sheets, above). */
+  top: var(--sheet-top);
   left: 50%;
   translate: -50% 0;
   display: flex;
   flex-direction: column;
-  width: min(740px, calc(100vw - 2 * var(--quick-gutter)));
-  /* About as tall as it is wide on a desktop window, where it was a strip
-     twelve rows high: a long list is what a search is read from, and the
-     panel stops short of the page's foot so it still reads as a panel. */
-  max-height: min(72vh, 760px);
+  width: var(--sheet-width-full);
+  height: var(--sheet-height-full);
   /* No transition on the width: it changes on ⌘[ and ⌘], from the keyboard,
      and a width that eases reflows every row on every frame of it. */
   overflow: hidden;
   border: 1px solid var(--hairline);
-  border-radius: 10px;
+  border-radius: var(--sheet-radius);
   background: var(--overlay);
-  box-shadow: 0 24px 64px -16px color-mix(in srgb, var(--shadow) 42%, transparent);
+  box-shadow: var(--sheet-shadow);
 }
 
 .quick-input-row {
@@ -2590,9 +2675,9 @@ section.plugin-group > .plugin-market-row.is-set-aside {
   border: 0;
   border-radius: 0;
   background: transparent;
-  padding: 14px 16px 14px 0;
+  padding: 16px 18px 16px 0;
   color: var(--ink);
-  font-size: 15px;
+  font-size: 16px;
 }
 
 .quick-input:focus-visible { outline: none; }
@@ -2612,9 +2697,9 @@ section.plugin-group > .plugin-market-row.is-set-aside {
   gap: 1px;
   width: 100%;
   border: 0;
-  border-radius: 6px;
+  border-radius: 7px;
   background: transparent;
-  padding: 6px 10px;
+  padding: 7px 12px;
   text-align: left;
 }
 
@@ -2633,7 +2718,7 @@ section.plugin-group > .plugin-market-row.is-set-aside {
   min-width: 0;
   overflow: hidden;
   color: var(--ink);
-  font-size: 13px;
+  font-size: 14px;
   text-overflow: ellipsis;
   white-space: nowrap;
 }
@@ -2645,7 +2730,7 @@ section.plugin-group > .plugin-market-row.is-set-aside {
   /* Quieter than the name it belongs to. It is context, not the answer. In
      the interface face: most folders here are named in Chinese, which a
      monospace face only borrows from another font, a size off. */
-  font: 400 11px/15px tokens.$ui;
+  font: 400 12px/17px tokens.$ui;
   text-overflow: ellipsis;
   white-space: nowrap;
 }
@@ -2746,25 +2831,6 @@ section.plugin-group > .plugin-market-row.is-set-aside {
   background: color-mix(in srgb, var(--warning) 12%, transparent);
   color: var(--ink);
   font-size: 12px;
-}
-
-.quick-hints {
-  display: flex;
-  flex-wrap: wrap;
-  gap: 14px;
-  flex: 0 0 auto;
-  border-top: 1px solid var(--hairline);
-  padding: 8px 14px;
-  color: var(--muted);
-  font-size: 11px;
-}
-
-.quick-hints kbd {
-  border: 1px solid var(--hairline);
-  border-radius: 3px;
-  padding: 0 4px;
-  font-family: tokens.$mono;
-  font-size: 10px;
 }
 
 .quick-truncated { margin-left: auto; color: var(--warning); }
@@ -3330,45 +3396,82 @@ section.plugin-group > .plugin-market-row.is-set-aside {
   display: flex;
   align-items: flex-start;
   justify-content: center;
-  padding: 64px 24px 32px;
+  padding: var(--sheet-top) 16px 0;
   background: var(--scrim);
 }
 
 .shortcuts {
   animation: noto-arrive var(--motion-default) var(--ease-out);
   display: grid;
-  grid-template-rows: auto minmax(0, 1fr);
-  width: min(760px, 100%);
-  max-height: min(720px, 100%);
+  grid-template-rows: auto minmax(0, 1fr) auto;
+  flex: none;
+  width: var(--sheet-width-mid);
+  height: var(--sheet-height-mid);
   border: 1px solid var(--hairline);
-  border-radius: 10px;
-  background: var(--paper);
-  box-shadow: 0 18px 48px -12px color-mix(in srgb, var(--shadow) 34%, transparent);
+  border-radius: var(--sheet-radius);
+  background: var(--overlay);
+  box-shadow: var(--sheet-shadow);
   font-family: tokens.$ui;
   overflow: hidden;
+  /* The index of sections comes in when the sheet is wide enough for it. */
+  container-type: inline-size;
+}
+
+.shortcuts-main { display: flex; min-height: 0; }
+.shortcuts-main > .shortcuts-body { flex: 1 1 auto; min-width: 0; }
+
+.shortcuts-index {
+  display: none;
+  flex: 0 0 216px;
+  flex-direction: column;
+  gap: 1px;
+  overflow: auto;
+  border-right: 1px solid var(--hairline);
+  padding: 12px 10px;
+
+  button {
+    appearance: none;
+    border: 0;
+    border-radius: 6px;
+    background: transparent;
+    padding: 6px 10px;
+    color: var(--muted);
+    font: 400 13px/1.4 tokens.$ui;
+    text-align: left;
+    cursor: pointer;
+
+    &:hover { color: var(--ink); }
+    &.is-current { background: var(--surface-active); color: var(--ink); }
+    &:focus-visible { outline: 2px solid var(--focus); outline-offset: -2px; }
+  }
+}
+
+@container (min-width: 960px) {
+  .shortcuts-index { display: flex; }
+  .shortcuts-row { grid-template-columns: 200px minmax(0, 72ch); }
 }
 
 .shortcuts-header {
   display: flex;
   align-items: center;
   gap: 12px;
-  padding: 14px 16px 12px;
+  padding: 14px 18px;
   border-bottom: 1px solid var(--hairline);
 
-  h2 { margin: 0; font-size: 14px; font-weight: 600; color: var(--ink); }
+  h2 { margin: 0; font-size: 15px; font-weight: 600; color: var(--ink); white-space: nowrap; }
 }
 
 .shortcuts-search {
   flex: 1 1 auto;
   min-width: 0;
-  height: 26px;
-  padding: 0 10px;
+  height: 34px;
+  padding: 0 12px;
   border: 1px solid var(--hairline);
-  border-radius: 6px;
+  border-radius: 7px;
   background: var(--paper);
   color: var(--ink);
   font: inherit;
-  font-size: 13px;
+  font-size: 14.5px;
 
   &:focus-visible { outline: 2px solid var(--focus); outline-offset: 1px; }
   &::-webkit-search-cancel-button { appearance: none; }
@@ -3376,7 +3479,7 @@ section.plugin-group > .plugin-market-row.is-set-aside {
 
 .shortcuts-body {
   overflow: auto;
-  padding: 6px 16px 20px;
+  padding: 6px 24px 24px;
 }
 
 .shortcuts-group {
@@ -3394,21 +3497,21 @@ section.plugin-group > .plugin-market-row.is-set-aside {
 
 .shortcuts-row {
   display: grid;
-  grid-template-columns: 168px minmax(0, 1fr);
-  gap: 12px;
+  grid-template-columns: 176px minmax(0, 1fr);
+  gap: 14px;
   align-items: baseline;
-  padding: 5px 0;
+  padding: 8px 0;
   border-top: 1px solid color-mix(in srgb, var(--hairline) 60%, transparent);
 
   &:first-child { border-top: 0; }
 
   dt { display: flex; flex-wrap: wrap; gap: 4px; }
-  dd { margin: 0; color: var(--ink); font-size: 13px; line-height: 1.5; }
+  dd { margin: 0; color: var(--ink); font-size: 14px; line-height: 1.55; }
 
   /* What it needs, quieter than what it does, and the way to it at the row's end, so the list stays short. */
   dd:has(> .shortcuts-try, > .shortcuts-later) { display: grid; grid-template-columns: minmax(0, 1fr) auto; column-gap: 14px; }
   .shortcuts-what { display: block; }
-  .shortcuts-needs { display: block; grid-column: 1; color: var(--muted); font-size: 12px; }
+  .shortcuts-needs { display: block; grid-column: 1; color: var(--muted); font-size: 12.5px; }
   /* Where a Try It cannot go yet, why, in its place and as quiet as a note. */
   .shortcuts-later {
     grid-column: 2;
@@ -3685,14 +3788,8 @@ section.plugin-group > .plugin-market-row.is-set-aside {
   font: inherit;
 }
 
-/* Quick open's three tabs, its scope chip, and the two widths. The author's
-   own palette is 740px, and 1000 wide; the same numbers, capped to the
-   window so a narrow one never has a panel wider than itself. */
-.quick-open[data-width='wide'] { width: min(1000px, calc(100vw - 2 * clamp(16px, 3vw, 48px))); }
+/* Quick open's three tabs and its scope chip. */
 
-/* The list and, beside it, the note in front of it. */
-.quick-open.has-preview { width: min(980px, calc(100vw - 2 * var(--quick-gutter))); }
-.quick-open.has-preview[data-width='wide'] { width: min(1220px, calc(100vw - 2 * clamp(16px, 3vw, 48px))); }
 
 /* The list's scroll bar shows only while the list is under the pointer: drawn
    always, it stood as a third rule between the two columns. */
@@ -3799,9 +3896,9 @@ section.plugin-group > .plugin-market-row.is-set-aside {
   border-bottom: 2px solid transparent;
   border-radius: 0;
   background: transparent;
-  padding: 4px 7px 3px;
+  padding: 5px 8px 4px;
   color: var(--muted);
-  font-size: 11.5px;
+  font-size: 12.5px;
   line-height: 1;
   cursor: pointer;
 
@@ -3937,27 +4034,26 @@ section.plugin-group > .plugin-market-row.is-set-aside {
 
 .tag-browser {
   animation: noto-arrive var(--motion-default) var(--ease-out);
-  --quick-gutter: clamp(24px, 6vw, 96px);
   position: absolute;
-  top: clamp(40px, 11vh, 128px);
+  top: var(--sheet-top);
   left: 50%;
   translate: -50% 0;
   display: flex;
   flex-direction: column;
-  width: min(860px, calc(100vw - 2 * var(--quick-gutter)));
-  height: min(560px, calc(100vh - clamp(40px, 11vh, 128px) - 48px));
+  width: var(--sheet-width-mid);
+  height: var(--sheet-height-mid);
   color: var(--ink);
   border: 1px solid var(--hairline);
-  border-radius: 10px;
+  border-radius: var(--sheet-radius);
   background: var(--overlay);
-  box-shadow: 0 24px 64px -16px color-mix(in srgb, var(--shadow) 42%, transparent);
+  box-shadow: var(--sheet-shadow);
   overflow: hidden;
 }
 
 .tag-browser-bar {
   display: flex;
   align-items: center;
-  padding: 10px 14px;
+  padding: 14px 20px;
   border-bottom: 1px solid var(--hairline);
 }
 
@@ -3969,7 +4065,7 @@ section.plugin-group > .plugin-market-row.is-set-aside {
   background: transparent;
   color: var(--ink);
   font: inherit;
-  font-size: 15px;
+  font-size: 16px;
 }
 
 .tag-browser-panes {
@@ -3984,7 +4080,7 @@ section.plugin-group > .plugin-market-row.is-set-aside {
   min-height: 0;
   overflow: auto;
   overscroll-behavior: contain;
-  padding: 6px;
+  padding: 6px 8px;
 }
 
 .tag-browser-notes { border-left: 1px solid var(--hairline); }
@@ -3996,15 +4092,15 @@ section.plugin-group > .plugin-market-row.is-set-aside {
   justify-content: space-between;
   gap: 12px;
   width: 100%;
-  min-height: 28px;
+  min-height: 34px;
   border: 0;
   background: transparent;
   color: var(--ink);
   text-align: left;
   font: inherit;
-  font-size: 13px;
-  padding: 4px 10px;
-  border-radius: 5px;
+  font-size: 14px;
+  padding: 6px 12px;
+  border-radius: 7px;
   cursor: default;
 }
 
@@ -4031,9 +4127,14 @@ section.plugin-group > .plugin-market-row.is-set-aside {
   text-overflow: ellipsis;
   white-space: nowrap;
   color: var(--muted);
-  font-size: 12px;
+  font-size: 12.5px;
   font-variant-numeric: tabular-nums;
 }
+
+/* Cut at its start, not its end: notes of one name (a daily "net") differ by
+   the end of their folder, the date and the hour, which an end cut took away. */
+.tag-browser-folder { direction: rtl; text-align: left; }
+.tag-browser-folder > bdi { direction: ltr; }
 
 .tag-browser-group,
 .tag-browser-notes-head {
@@ -4046,24 +4147,13 @@ section.plugin-group > .plugin-market-row.is-set-aside {
   letter-spacing: 0.02em;
 }
 
-.tag-browser-notes-head strong { color: var(--ink); font-size: 13px; font-weight: 600; letter-spacing: 0; }
+.tag-browser-notes-head strong { color: var(--ink); font-size: 14px; font-weight: 600; letter-spacing: 0; }
 
 .tag-browser-empty {
   margin: 24px 12px;
   color: var(--muted);
   font-size: 13px;
   text-align: center;
-}
-
-.tag-browser-footer {
-  display: flex;
-  flex-wrap: wrap;
-  gap: 12px;
-  justify-content: space-between;
-  padding: 7px 14px;
-  border-top: 1px solid var(--hairline);
-  color: var(--muted);
-  font-size: 12px;
 }
 
 /* A narrow window has room for one pane: the notes of the tag under the
@@ -4073,12 +4163,6 @@ section.plugin-group > .plugin-market-row.is-set-aside {
   .tag-browser-notes { border-left: 0; border-top: 1px solid var(--hairline); }
 }
 
-.tag-browser-footer kbd {
-  font: inherit;
-  font-size: 11px;
-  padding: 0 3px;
-  margin-right: 2px;
-}
 
 
 /* Read-only code viewer for non-Markdown files (typora-plugin-lite code-viewer). */

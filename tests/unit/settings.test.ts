@@ -75,10 +75,10 @@ describe('writing settings', () => {
 
   it('drain waits for an in-flight persist to finish', async () => {
     const { store, file } = await storeIn();
-    const pending = store.update({ quickOpenWidth: 'wide' });
+    const pending = store.update({ sheetWidth: 4 });
     await store.drain();
     await pending;
-    expect(JSON.parse(await readFile(file, 'utf8'))).toMatchObject({ quickOpenWidth: 'wide' });
+    expect(JSON.parse(await readFile(file, 'utf8'))).toMatchObject({ sheetWidth: 4 });
   });
 
   // Command and a bracket three times in quick succession is three writes in

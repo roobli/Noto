@@ -20,6 +20,7 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
 import type { WorkspaceTagNoteV1, WorkspaceTagSummaryV1 } from '../shared/workspace/v1/contracts';
 import { isComposing } from './ime';
+import { SheetWidthHint, stepSheetWidth, type SheetWidthControl } from './sheet-width';
 
 export type TagBrowserView =
   | { readonly kind: 'tags' }
@@ -36,6 +37,8 @@ export interface TagBrowserProps {
   readonly loadNotes: (tag: string) => Promise<readonly WorkspaceTagNoteV1[]>;
   readonly onOpenNote: (path: string) => void;
   readonly onClose: () => void;
+  /** The width all the sheets share, which ⌘[ and ⌘] step. */
+  readonly sheet?: SheetWidthControl;
 }
 
 const collator = new Intl.Collator(undefined, { sensitivity: 'base', numeric: true });
@@ -62,7 +65,7 @@ function Marked({ text, query }: { readonly text: string; readonly query: string
   return <>{text.slice(0, at)}<mark className="tag-browser-hit">{text.slice(at, at + wanted.length)}</mark>{text.slice(at + wanted.length)}</>;
 }
 
-export function TagBrowser({ open, view, tags, loading, truncated, loadNotes, onOpenNote, onClose }: TagBrowserProps) {
+export function TagBrowser({ open, view, tags, loading, truncated, loadNotes, onOpenNote, onClose, sheet }: TagBrowserProps) {
   const [query, setQuery] = useState('');
   const [activeTag, setActiveTag] = useState(0);
   const [activeNote, setActiveNote] = useState(0);
@@ -126,6 +129,7 @@ export function TagBrowser({ open, view, tags, loading, truncated, loadNotes, on
 
   const onKeyDown = (event: React.KeyboardEvent) => {
     if (isComposing(event)) return;
+    if (stepSheetWidth(event, sheet)) return;
     const step = (count: number, set: (update: (at: number) => number) => void, by: number) => {
       if (count > 0) set((at) => (at + by + count) % count);
     };
@@ -192,7 +196,7 @@ export function TagBrowser({ open, view, tags, loading, truncated, loadNotes, on
     <div className="tag-browser-scrim" data-testid="tag-browser" onMouseDown={(event) => {
       if (event.target === event.currentTarget) onClose();
     }}>
-      <section className="tag-browser" role="dialog" aria-modal="true" aria-label="Browse tags" onKeyDown={onKeyDown}>
+      <section className="tag-browser" data-sheet-width={sheet?.width} role="dialog" aria-modal="true" aria-label="Browse tags" onKeyDown={onKeyDown}>
         <div className="tag-browser-bar">
           <input
             ref={inputRef}
@@ -256,7 +260,7 @@ export function TagBrowser({ open, view, tags, loading, truncated, loadNotes, on
                   onClick={() => onOpenNote(note.path)}
                 >
                   <span className="tag-browser-name">{note.title}</span>
-                  {folder.length > 0 && <span className="tag-browser-folder" title={folder}>{folder}</span>}
+                  {folder.length > 0 && <span className="tag-browser-folder" title={folder}><bdi>{folder}</bdi></span>}
                 </button>
               );
             })}
@@ -264,7 +268,10 @@ export function TagBrowser({ open, view, tags, loading, truncated, loadNotes, on
         </div>
         <footer className="tag-browser-footer">
           <span>{tags.length.toLocaleString()} {tags.length === 1 ? 'tag' : 'tags'}{truncated ? ' · partial index' : ''}</span>
-          <span><kbd>↑</kbd><kbd>↓</kbd> move · <kbd>→</kbd> notes · <kbd>↩</kbd> open · <kbd>esc</kbd> close</span>
+          <span><kbd>↑</kbd> <kbd>↓</kbd> move</span>
+          <span><kbd>→</kbd> notes</span>
+          <span><kbd>↩</kbd> open</span>
+          <span className="sheet-foot-end"><SheetWidthHint control={sheet} /><span><kbd>esc</kbd> close</span></span>
         </footer>
       </section>
     </div>

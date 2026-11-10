@@ -26,6 +26,7 @@ import type {
   WorkspaceCodeViewV1,
 } from '../shared/workspace/v1/contracts';
 import { QuickOpen, type QuickOpenMode } from './QuickOpen';
+import type { SheetWidthControl } from './sheet-width';
 import { FolderEmptyState } from './FolderEmptyState';
 import { useReadingAnchors } from './use-reading-anchors';
 import { useFocusReturn } from './focus-return';
@@ -970,13 +971,14 @@ function NotoWorkspace({ platform }: { platform: NotoPlatform }) {
     }
     root.dataset.codeLineNumbers = settings.codeLineNumbers ? 'on' : 'off';
     root.dataset.codeWrap = settings.codeWrap ? 'on' : 'off';
+    root.dataset.sheetWidth = String(settings.sheetWidth);
     root.dataset.codeIndentGuides = settings.codeIndentGuides ? 'on' : 'off';
     root.dataset.codeTabMarkers = settings.codeTabMarkers ? 'on' : 'off';
     root.dataset.timelines = settings.timelines ? 'on' : 'off';
     root.dataset.focusMode = settings.focusMode ? 'on' : 'off';
     root.dataset.gitMarks = settings.gitMarks ? 'on' : 'off';
   }, [settings.fontSize, settings.lineHeight, settings.widthMode, settings.proseFace, settings.proseFontFamily,
-    settings.codeLineNumbers, settings.codeWrap, settings.codeIndentGuides, settings.codeTabMarkers,
+    settings.codeLineNumbers, settings.codeWrap, settings.sheetWidth, settings.codeIndentGuides, settings.codeTabMarkers,
     settings.timelines, settings.focusMode, settings.gitMarks]);
 
   /**
@@ -1081,6 +1083,14 @@ function NotoWorkspace({ platform }: { platform: NotoPlatform }) {
       return { ...current, ...resolved };
     });
   }, []);
+
+  // The width every sheet is drawn at, which ⌘[ and ⌘] step in any of them.
+  const sheetWidth = useMemo<SheetWidthControl>(() => ({
+    width: settings.sheetWidth,
+    onWidth: (width) => changeSettings({ sheetWidth: width }),
+    disabled: settings.disabledShortcuts,
+    mac: platform === 'darwin',
+  }), [settings.sheetWidth, settings.disabledShortcuts, changeSettings, platform]);
 
   useEffect(() => {
     const client = new RendererPluginClient(pluginHostRef.current!, window.notoDesktop.plugins, (pluginId) => {
@@ -3319,7 +3329,7 @@ function NotoWorkspace({ platform }: { platform: NotoPlatform }) {
         className={`workspace-layout ${rail.open ? 'has-rail' : ''}`}
         data-source-mode={sourceMode ? 'on' : undefined}
       >
-        {shortcuts && <Shortcuts mac={platform === 'darwin'} seen={guideSeen} onClose={closeGuide} onTry={tryGuide}
+        {shortcuts && <Shortcuts mac={platform === 'darwin'} sheet={sheetWidth} seen={guideSeen} onClose={closeGuide} onTry={tryGuide}
           unavailable={(action) => tryNeeds(action, { folder: folder.root !== null, note: active !== null })} />}
         {reloadConfirm && (
           <ReloadConfirmDialog
@@ -3616,6 +3626,7 @@ function NotoWorkspace({ platform }: { platform: NotoPlatform }) {
       )}
 
       <TagBrowser
+        sheet={sheetWidth}
         open={tagBrowser.open}
         view={tagBrowser.view}
         tags={tagBrowser.tags}
@@ -3639,8 +3650,7 @@ function NotoWorkspace({ platform }: { platform: NotoPlatform }) {
         onMode={(mode) => setQuickOpen({ open: true, mode })}
         onSearchContent={(query, scope) => searchContent(query, PLAIN_FLAGS, scope)}
         onOpenMatch={openMatch}
-        width={settings.quickOpenWidth}
-        onWidth={(quickOpenWidth) => changeSettings({ quickOpenWidth })}
+        sheet={sheetWidth}
         entries={fileIndex.entries}
         frecency={frecency}
         truncated={fileIndex.truncated}
@@ -3662,6 +3672,7 @@ function NotoWorkspace({ platform }: { platform: NotoPlatform }) {
 
       {paletteOpen && (
         <CommandPalette
+          sheet={sheetWidth}
           commands={paletteCommands}
           onClose={closePalette}
           onRun={(command) => {
