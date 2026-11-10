@@ -9,6 +9,18 @@ How releases are made, and what each channel receives, is in
 
 ## [Unreleased]
 
+## [0.1.0] - 2026-11-10
+
+The milestone the horizon named: the folder's memory lives in the window, and
+the details a week of writing surfaced are done. Note Info opens as a pane
+beside the page, with a passage's history and what the folder knows; the
+Review page settles what the memory proposes; agents and privacy are set from
+Settings, without a terminal. The daily-use round closes twelve of the Typora
+audit's findings and the asks the trial week made: blank lines kept, tables
+moved by column, one frame for the four sheets, wrapped code with a Wrap
+button, and a heading from the outline resting a tenth of the way down the
+page. Like `0.0.4`, unsigned.
+
 ### Added
 
 - **A deep folder fits a narrow window.** The file tree no longer scrolls
@@ -221,6 +233,36 @@ How releases are made, and what each channel receives, is in
   may offer lines for the point clicked, each running one of its commands;
   `docs/plugins.md` says how.
 
+- **Empty lines between two blocks are blank lines in the file.** An empty
+  line you leave between blocks saves as one blank line, one each; a file's
+  own extra blank lines open as empty lines the caret can enter, and a gap
+  you have not touched saves byte for byte. Backspace at the start of the
+  block below takes one away, and a paragraph emptied of its text counts as
+  one.
+
+- **Long lines in a code block wrap, and a Wrap button turns it off.**
+  Wrapping is on by default, as Typora's Auto wrap long lines; each line
+  number stands at its line's start. Wrap, in the corner of a block with a
+  long line, flips the setting for every block, the same switch as View →
+  Wrap Lines in Code Blocks.
+
+- **A heading chosen from the outline rests a tenth of the way down the
+  page.** The page glides there, sized by the distance and cut short by your
+  own scrolling; the first heading goes to the very top. A note's [TOC]
+  block jumps the same way.
+
+- **The file tree works from the keyboard**, as a tree with one Tab stop:
+  arrows, Home, End, F2 to rename, and typing a name to reach it.
+
+- **The command palette lists every menu command**, with its keys, and runs
+  it through the menu. The editor's right-click menu gains the Format,
+  Paragraph and Insert submenus, and Copy as Markdown.
+
+- **Typora's keys work.** F8 and F9 for Focus Mode and Typewriter Mode,
+  Control-Command-1 for the outline, Shift-Command-O for Quick Open on a
+  Mac, Command-\ for Clear Format, Shift-Command-Backspace for Delete Row.
+
+
 ### Changed
 
 - **Settings has room to breathe.** The groups are lifted cards on a
@@ -315,6 +357,28 @@ How releases are made, and what each channel receives, is in
   Cmd-Alt-S opens the card for the selected words instead of turning them
   into a note's text.
 
+- **The four sheets share one frame.** Quick Open, What Noto Can Do, Browse
+  Tags and the command palette open at one top with one corner, keep their
+  height while a list filters, and take one of four widths of the window,
+  which Command-[ and Command-] step in any of them and remember once.
+  Quick Open, a list with a note beside it, is the widest and tallest; the
+  guide and Browse Tags a little less; the palette, short names, the
+  narrowest.
+
+- **Browse Tags is a two-pane sheet.** Tags most used first, tags used once
+  gathered at the end; the tag under the cursor shows its notes beside it.
+  A long folder cuts at its start, where two notes of one name differ.
+
+- **Show one block as its markdown wears a ruled band** that says what the
+  block is and how to go back, instead of an accented card.
+
+- **Prices read as prices, and formulas still read as formulas.** Pandoc's
+  dollar rule in both parsers and while typing: `$8,000` is text, `$x$` is
+  math. About six real formulas in the author's vault now show as text
+  because of a space before a closing `$` or a digit after it; the notes
+  were not edited.
+
+
 ### Removed
 
 - **Dragging a column's edge to set its width.** Markdown has no way to keep
@@ -388,6 +452,27 @@ How releases are made, and what each channel receives, is in
   block's language field or a sidenote's card, Edit > Undo undid the last
   change to the note behind it, and the Format menu's commands reached the
   note too.
+- **The up and down arrows in a table go to the cell directly above or
+  below**, in the same column, and walk a cell's text first. They used to
+  walk the cells by their number, and no key grows a line or a column past
+  the table's edge anymore.
+
+- **Find brings each match into view** as you type and as Enter, Next and
+  Previous step; fast typing no longer loses its last letter.
+
+- **The keyboard goes back where it was** after the guide, Settings, the
+  palette, find and the other overlays close.
+
+- **Quick Open matches several words in any order**, so `docker es` finds
+  `Docker/deploy_es.md`. A launch reopens the note that was in front at
+  quit, at the paragraph it was on.
+
+- **The rail over a narrow window gets out of the way.** A pick in the tree
+  or the outline, or Escape, closes it, and the page behind dims.
+
+- **Every control a screen reader meets has a name**, checked by a packaged
+  test that walks every pane.
+
 
 ## [0.0.4] - 2026-11-03
 
