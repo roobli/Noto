@@ -13,6 +13,7 @@ import { afterEach, describe, expect, it } from 'vitest';
 import { TextSelection } from 'prosemirror-state';
 import { DOMParser, Fragment, Slice, type Node as ProseNode } from 'prosemirror-model';
 import { isUnwritableBlock } from '../../src/renderer/editor/noto/capture';
+import { moveBlock } from '../../src/renderer/editor/noto/move-block';
 import { NotoEditor } from '../../src/renderer/editor/noto/NotoEditor';
 import { parseDocument, toWire } from '../../src/shared/markdown/v3/document';
 import { blockSpansFromWire, splitBlocks } from '../../src/shared/markdown/v3/blocks';
@@ -1373,6 +1374,49 @@ describe('the reader\'s blank lines between blocks', () => {
     expect(h.editor.replaceMarkdown('a\n\n\n\nB\n\nc\n')).toBe(true);
     expect(empties(h)).toBe('a|_|_|B|c');
     expect(save(h)).toBe('a\n\n\n\nB\n\nc\n');
+  });
+
+  it('moves a block past the next block, over the blank lines between them, which stay put', () => {
+    const h = openTracked('a\n\n\n\nb\n\nc\n');
+    const v = view(h);
+    v.dispatch(v.state.tr.setSelection(TextSelection.create(v.state.doc, blockStart(v.state.doc, 3) + 1)));
+    expect(moveBlock(true)(v.state, v.dispatch)).toBe(true);
+    expect(empties(h)).toBe('b|_|_|a|c');
+    expect(save(h)).toBe('b\n\n\n\na\n\nc\n');
+    expect(moveBlock(false)(view(h).state, view(h).dispatch)).toBe(true);
+    expect(empties(h)).toBe('a|_|_|b|c');
+  });
+
+  it('saves an untouched note with blank lines between its blocks as runs, not block by block', () => {
+    const h = openTracked('a\n\n\n\nb\n\n\n\nc\n\n\n\nd\n');
+    insertAtBlockStart(h, 9, 'X');
+    const wire = h.editor.captureSave();
+    expect(wire.mode === 'blocks' ? wire.units : []).toHaveLength(2);
+    expect(save(h)).toBe('a\n\n\n\nb\n\n\n\nc\n\n\n\nXd\n');
+  });
+
+  it('leaves a gap wider than a save may ask for as it was, rather than cutting it', () => {
+    const text = `one${'\n'.repeat(1202)}two\n`;
+    const h = openTracked(text);
+    insertAtBlockStart(h, 0, 'X');
+    expect(save(h)).toBe(`X${text}`);
+  });
+
+  it('reports the caret\'s block again when a block above it is emptied', () => {
+    const reported: number[] = [];
+    const host = document.createElement('div');
+    document.body.append(host);
+    const wire = toWire(parsed('one\n\n\n\ntwo\n'));
+    const editor = new NotoEditor(host, wire, { mac: false, onActiveBlockChanged: (index) => reported.push(index) });
+    try {
+      const v = editor.getView()!;
+      v.dispatch(v.state.tr.setSelection(TextSelection.create(v.state.doc, blockStart(v.state.doc, 3) + 1)));
+      expect(reported.at(-1)).toBe(1);
+      v.dispatch(v.state.tr.delete(1, 1 + 'one'.length));
+      expect(reported.at(-1)).toBe(0);
+    } finally {
+      editor.destroy();
+    }
   });
 
   it('leaves blank lines at the start and the end of the note as they were', () => {
