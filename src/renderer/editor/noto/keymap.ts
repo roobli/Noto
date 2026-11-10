@@ -38,7 +38,7 @@ import {
 import { findWrapping } from 'prosemirror-transform';
 import type { Node as ProseNode, ResolvedPos } from 'prosemirror-model';
 import { moveBlock, moveColumn } from './move-block';
-import { deleteSelectedRowsOrColumns, enterInTable, exitAtEdge, tableFromRows, unwrapAtStart } from './block-edges';
+import { deleteSelectedRowsOrColumns, enterInTable, exitAtEdge, moveCellVertically, tableFromRows, unwrapAtStart } from './block-edges';
 import { openLinkEditor } from './link-plugin';
 import { fenceOnEnter, undoSubstitution } from './input-rules';
 import {
@@ -724,10 +724,11 @@ export function notoBindings({ mac, onWidthStep, taskStamp }: KeymapOptions): Re
     // block, tried before the ordinary one.
     Backspace: chainCommands(undoSubstitution, deleteSelectedRowsOrColumns, unwrapAtStart),
     Delete: deleteSelectedRowsOrColumns,
-    // Out past a quote, a list or a code block at the edge of the note; a
-    // table's arrows move within it (exitAtEdge).
-    ArrowDown: exitAtEdge(1),
-    ArrowUp: exitAtEdge(-1),
+    // Out past a quote, a list or a code block at the edge of the note. In a
+    // table the arrows move by column first (moveCellVertically), and at the
+    // note's edge they stay in the table (exitAtEdge).
+    ArrowDown: chainCommands(moveCellVertically(1), exitAtEdge(1)),
+    ArrowUp: chainCommands(moveCellVertically(-1), exitAtEdge(-1)),
     'Shift-Enter': insertHardBreak,
     [`${mod}-Enter`]: insertHardBreak,
 

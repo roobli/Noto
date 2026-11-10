@@ -23,7 +23,7 @@
 
 import { TextSelection, type Command } from 'prosemirror-state';
 import type { Node as ProseNode } from 'prosemirror-model';
-import { CellSelection, TableMap, deleteColumn, deleteRow, isInTable, selectionCell } from 'prosemirror-tables';
+import { CellSelection, TableMap, cellAround, deleteColumn, deleteRow, isInTable, selectionCell } from 'prosemirror-tables';
 import { notoSchema } from '../../../shared/markdown/v3/pm/schema';
 
 const { nodes } = notoSchema;
@@ -227,6 +227,42 @@ export function exitAtEdge(direction: 1 | -1): Command {
  * whole table, which is Delete Table's to do: then the keys empty the cells,
  * as they did.
  */
+/**
+ * Move the caret to the cell directly above or below, in the same column.
+ *
+ * The up and down arrows in a table used to walk the cells by their number,
+ * so Up from a cell took the caret to the cell before it, on its left, and
+ * Down to the one after it, on its right. Within the cell's own text the
+ * keys still walk the text first: only from its top line (Up) or bottom
+ * line (Down) do they leave it, which is what a single-line cell is all
+ * over. At the table's top or bottom row there is no cell that way; the key
+ * falls through, and the browser's caret steps into the block beyond the
+ * table when there is one, or stays in the cell at the note's edge.
+ */
+export const moveCellVertically = (dir: 1 | -1): Command => (state, dispatch, view) => {
+  const { selection } = state;
+  if (!(selection instanceof TextSelection) || !selection.empty) return false;
+  // The cell around the caret, by the library's own bookkeeping: a caret at
+  // the cell's inner edge resolves with its parent on the boundary, so
+  // positions read from it there are off by one cell.
+  const $cell = cellAround(selection.$head);
+  if (!$cell) return false;
+  if (view && !view.endOfTextblock(dir < 0 ? 'up' : 'down')) return false;
+  const table = $cell.node(-1);
+  const map = TableMap.get(table);
+  // The cell's place by the map, not by its index in the row: a column the
+  // reader merged spans its neighbours, which would put the index off.
+  const { left, top } = map.findCell($cell.pos - $cell.start(-1));
+  const row = top + dir;
+  const target = row >= 0 && row < map.height ? map.map[left + row * map.width] : null;
+  if (target === null || target === undefined) return false;
+  if (dispatch) {
+    const at = $cell.start(-1) + target + 1;
+    dispatch(state.tr.setSelection(TextSelection.create(state.doc, at)));
+  }
+  return true;
+};
+
 export const deleteSelectedRowsOrColumns: Command = (state, dispatch) => {
   const { selection } = state;
   if (!(selection instanceof CellSelection)) return false;

@@ -9,6 +9,7 @@
 import { afterEach, describe, expect, it } from 'vitest';
 import { TextSelection } from 'prosemirror-state';
 import { NotoEditor } from '../../src/renderer/editor/noto/NotoEditor';
+import { moveCellVertically } from '../../src/renderer/editor/noto/block-edges';
 import { parseDocument, toWire } from '../../src/shared/markdown/v3/document';
 import { blockSpansFromWire, splitBlocks } from '../../src/shared/markdown/v3/blocks';
 
@@ -65,35 +66,57 @@ const cellCount = (editor: NotoEditor) => {
   return cells;
 };
 
-describe('arrows at the edge of a table', () => {
-  it('never change the note at the note\'s edge: no line, no row, no column', () => {
-    const table = '| a | b |\n| --- | --- |\n| one | two |\n';
-    const editor = open(table);
-    const before = JSON.stringify(editor.getView()!.state.doc.toJSON());
+describe('the up and down arrows move by column, not by the cell\'s number', () => {
+  const grid = '| a | b |\n| --- | --- |\n| one | two |\n| three | four |\n';
 
-    caret(editor, positionAt(editor, 'two', true));
+  it('Down is the cell directly below, and Up the one directly above', () => {
+    const editor = open(grid);
+    // From anywhere in a single-line cell: its one line is top and bottom.
+    caret(editor, positionAt(editor, 'one', true));
+    expect(pressKey(editor, 'ArrowDown')).toBe(true);
+    expect(editor.getView()!.state.selection.$from.parent.textContent).toBe('three');
+    expect(pressKey(editor, 'ArrowUp')).toBe(true);
+    expect(editor.getView()!.state.selection.$from.parent.textContent).toBe('one');
+
+    // In the second column, Up reaches the header cell above it.
+    caret(editor, positionAt(editor, 'two', false));
+    expect(pressKey(editor, 'ArrowUp')).toBe(true);
+    expect(editor.getView()!.state.selection.$from.parent.textContent).toBe('b');
+    expect(pressKey(editor, 'ArrowDown')).toBe(true);
+    expect(editor.getView()!.state.selection.$from.parent.textContent).toBe('two');
+
+    // The command itself, without a view, moves the same way.
+    const direct = editor.getView()!.state;
+    let moved: number | null = null;
+    expect(moveCellVertically(1)(direct, (tr) => { moved = tr.selection.$from.pos; })).toBe(true);
+    expect(moved).not.toBeNull();
+  });
+
+  it('at the table\'s top or bottom row there is nothing to move to, and nothing is made', () => {
+    // This note is only the table, so the edge command spends the key there.
+    const editor = open(grid);
+    const before = JSON.stringify(editor.getView()!.state.doc.toJSON());
+    caret(editor, positionAt(editor, 'a', false));
+    pressKey(editor, 'ArrowUp');
+    caret(editor, positionAt(editor, 'four', true));
     pressKey(editor, 'ArrowDown');
+    expect(JSON.stringify(editor.getView()!.state.doc.toJSON())).toBe(before);
+    expect(cellCount(editor)).toBe(6);
+  });
+
+  it('at the note\'s edge the key is spent where the table is, and no line grows past it', () => {
+    const editor = open('| a | b |\n| --- | --- |\n| one | two |\n');
+    const before = JSON.stringify(editor.getView()!.state.doc.toJSON());
+    caret(editor, positionAt(editor, 'two', true));
+    expect(pressKey(editor, 'ArrowDown')).toBe(true);
     pressKey(editor, 'ArrowRight');
     expect(JSON.stringify(editor.getView()!.state.doc.toJSON())).toBe(before);
     expect(cellCount(editor)).toBe(4);
 
-    // Up from the start of the first cell, with the table starting the note.
     caret(editor, positionAt(editor, 'a', false));
-    pressKey(editor, 'ArrowUp');
+    expect(pressKey(editor, 'ArrowUp')).toBe(true);
     pressKey(editor, 'ArrowLeft');
     expect(JSON.stringify(editor.getView()!.state.doc.toJSON())).toBe(before);
-    expect(cellCount(editor)).toBe(4);
-  });
-
-  it('Down from the last row steps into the line that is already there, and nothing else changes', () => {
-    const editor = open('before\n\n| a | b |\n| --- | --- |\n| one | two |\n\nafter\n');
-    caret(editor, positionAt(editor, 'two', true));
-    const handled = pressKey(editor, 'ArrowDown');
-    const { selection } = editor.getView()!.state;
-    // The caret left the table; however the caret fell, the note's shape is intact.
-    expect(cellCount(editor)).toBe(4);
-    expect(editor.getView()!.state.doc.childCount).toBe(3);
-    if (handled) expect(selection.$from.parent.textContent).toBe('after');
   });
 
   it('a click at a cell\'s inner edge does not make a gap cursor there', () => {

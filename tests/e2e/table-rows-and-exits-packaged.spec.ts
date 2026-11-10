@@ -223,6 +223,33 @@ test.describe('the edges of a table', () => {
     }
   });
 
+  test('the up and down arrows go to the cell directly above or below, not to the next one', async () => {
+    const { app, page, file } = await openNote('| a | b |\n| --- | --- |\n| one | two |\n| three | four |\n');
+    try {
+      // Down from the middle of a single-line cell: the cell below it, in the
+      // same column, where the caret is put at its start.
+      const one = page.locator('.noto-table-frame td', { hasText: 'one' });
+      const box = (await one.boundingBox())!;
+      await page.mouse.click(box.x + 10, box.y + box.height / 2);
+      await page.keyboard.press('ArrowDown');
+      await page.keyboard.type('!');
+      await save(app);
+      await expect.poll(() => readFileSync(file, 'utf8')).toBe('| a | b |\n| --- | --- |\n| one | two |\n| !three | four |\n');
+
+      // Up from the second column reaches the header cell above it, not the
+      // cell before it on the left.
+      const four = page.locator('.noto-table-frame td', { hasText: 'four' });
+      const box4 = (await four.boundingBox())!;
+      await page.mouse.click(box4.x + 10, box4.y + box4.height / 2);
+      await page.keyboard.press('ArrowUp');
+      await page.keyboard.type('!');
+      await save(app);
+      await expect.poll(() => readFileSync(file, 'utf8')).toBe('| a | b |\n| --- | --- |\n| one | !two |\n| !three | four |\n');
+    } finally {
+      await app.close();
+    }
+  });
+
   test('an arrow steps into the line that is already beyond the table', async () => {
     const { app, page, file } = await openNote('before\n\n| a | b |\n| --- | --- |\n| one | two |\n\nafter\n');
     try {

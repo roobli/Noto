@@ -25,8 +25,8 @@ function inTableAt(state: EditorState, pos: number): boolean {
   return false;
 }
 
-/** Whether either end of the selection sits in a table. */
-function selectionInTable(state: EditorState): boolean {
+/** Whether either end of the selection sits in a table; shared with the table editing wrapper. */
+export function selectionInTable(state: EditorState): boolean {
   const { $from, $to } = state.selection;
   for (let depth = $from.depth; depth > 0; depth -= 1) {
     if ($from.node(depth).type.spec.tableRole === 'table') return true;
