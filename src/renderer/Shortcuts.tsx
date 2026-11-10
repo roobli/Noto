@@ -85,7 +85,7 @@ export function shortcutGroups(mac: boolean): Group[] {
         { keys: ['$8,000 - $50,000'], what: 'Prices stay text and $x$ is maths: one dollar opens maths only before a non-space and closes it only after one, as in Pandoc.', since: 6 },
         { keys: ['Right-click'], what: 'Format, Paragraph and Insert, with Copy as Markdown over a selection, as the menu bar has them.', since: 6 },
         { keys: ['F8', 'F9', mod('\\', mac)], what: 'Focus Mode, Typewriter Mode and Clear Format, on Typora\'s keys.', since: 6 },
-        { keys: ['↩ ↩'], what: 'Empty lines you leave between two blocks are kept as blank lines in the file, and a file\'s own extra blank lines take their room on the page. Backspace at the start of the block below takes one away.', since: 7 },
+        { keys: ['↩ ↩'], what: 'Empty lines between two blocks are blank lines in the file, one each. A file\'s own extra blank lines open as empty lines you can type into or delete, and a note you leave alone saves byte for byte.', since: 7 },
         { keys: [alt(mac) + mod('/', mac)], what: 'Show one block as its markdown: a ruled band labelled with what the block is, and the key to go back while the caret is in it.', since: 7 },
         { keys: ['Wrap'], what: 'Long lines in a code block wrap under their one number. View > Wrap Lines in Code Blocks turns it off.', since: 7 },
         { keys: [mod('F', mac), '↩'], what: 'Find brings each match into view as you type and as Enter, Next and Previous step through them.', since: 7 },
