@@ -37,6 +37,9 @@ import { copyThroughSelection } from './clipboard';
 /** How long "Copied" stays before the button says "Copy" again. */
 const COPIED_MS = 1400;
 
+/** Whether code lines wrap, which the shell sets on the root from the setting. */
+const wrapsCode = (): boolean => globalThis.document?.documentElement.dataset.codeWrap !== 'off';
+
 export class FenceView implements NodeView {
   readonly dom: HTMLElement;
   readonly contentDOM: HTMLElement;
@@ -53,6 +56,13 @@ export class FenceView implements NodeView {
   /** Present while the fence is a timeline. */
   private timeline: TimelineFrame | null = null;
   private copiedTimer: ReturnType<typeof setTimeout> | null = null;
+  /**
+   * Where each line starts, from the top of the code, while lines wrap; null
+   * while every line is one row and the plain column of numbers is right.
+   */
+  private wrappedTops: readonly number[] | null = null;
+  private measureFrame = 0;
+  private readonly resized: ResizeObserver | null;
 
   constructor(
     private node: ProseNode,
@@ -86,6 +96,9 @@ export class FenceView implements NodeView {
     this.contentDOM.setAttribute('spellcheck', 'false');
 
     this.dom.append(this.gutter, this.contentDOM);
+    // A width change rewraps the lines, and so does turning wrapping on.
+    this.resized = typeof ResizeObserver === 'undefined' ? null : new ResizeObserver(() => this.scheduleMeasure());
+    this.resized?.observe(this.contentDOM);
     // Tools stay off the remount path: CSS already shows them only on hover /
     // active-block / focus-within (see noto-editor.scss). Mount on demand.
     this.dom.addEventListener('pointerenter', this.ensureTools);
@@ -158,7 +171,67 @@ export class FenceView implements NodeView {
     if (node.type !== this.node.type) return false;
     this.node = node;
     this.render();
+    // Typing can make a line wrap or stop wrapping without the count moving.
+    if (this.wrappedTops !== null || wrapsCode()) this.scheduleMeasure();
     return true;
+  }
+
+  private scheduleMeasure(): void {
+    if (this.measureFrame !== 0) return;
+    this.measureFrame = requestAnimationFrame(() => {
+      this.measureFrame = 0;
+      this.measureWraps();
+    });
+  }
+
+  /**
+   * Keep one number per line when long lines wrap.
+   *
+   * The gutter is a column of numbers set one per row, so a line that wraps
+   * onto three rows pushed every number after it out of step. When any line
+   * wraps, each number is placed where its line starts, read from the editor;
+   * when none does, the plain column is put back, which costs nothing to draw.
+   */
+  private measureWraps(): void {
+    const base = this.getPos();
+    const text = this.node.textContent;
+    const lines = lineCount(text);
+    const style = getComputedStyle(this.contentDOM);
+    const row = Number.parseFloat(style.lineHeight);
+    const padding = (Number.parseFloat(style.paddingTop) || 0) + (Number.parseFloat(style.paddingBottom) || 0);
+    const oneRowEach = !wrapsCode() || !Number.isFinite(row) || row <= 0
+      || this.contentDOM.scrollHeight - padding <= lines * row + row / 2;
+    if (oneRowEach || base === undefined || !this.dom.isConnected) {
+      if (this.wrappedTops !== null) {
+        this.wrappedTops = null;
+        delete this.gutter.dataset.wrapped;
+        this.gutter.textContent = gutterText(lines);
+      }
+      return;
+    }
+    const tops: number[] = [];
+    let offset = 0;
+    try {
+      for (let line = 0; line < lines; line += 1) {
+        tops.push(this.view.coordsAtPos(base + 1 + offset, 1).top);
+        offset = text.indexOf('\n', offset) + 1;
+      }
+    } catch {
+      return;
+    }
+    const first = tops[0] ?? 0;
+    const relative = tops.map((top) => Math.round(top - first));
+    if (this.wrappedTops && relative.length === this.wrappedTops.length && relative.every((top, index) => top === this.wrappedTops![index])) return;
+    this.wrappedTops = relative;
+    this.gutter.dataset.wrapped = '';
+    const rows = relative.map((top, index) => {
+      const number = document.createElement('div');
+      number.className = 'noto-fence-number';
+      number.textContent = String(index + 1);
+      number.style.height = `${Math.max(row, (relative[index + 1] ?? top + row) - top)}px`;
+      return number;
+    });
+    this.gutter.replaceChildren(...rows);
   }
 
   /** The gutter and the tools are ours. Only the code is the editor's. */
@@ -178,6 +251,13 @@ export class FenceView implements NodeView {
 
   /** Which line a vertical offset inside the gutter falls on, counted from zero. */
   private lineAt(offsetY: number): number {
+    if (this.wrappedTops !== null) {
+      const paddingTop = Number.parseFloat(getComputedStyle(this.gutter).paddingTop) || 0;
+      const y = offsetY - paddingTop;
+      let line = 0;
+      while (line + 1 < this.wrappedTops.length && this.wrappedTops[line + 1]! <= y) line += 1;
+      return line;
+    }
     const style = getComputedStyle(this.gutter);
     const lineHeight = Number.parseFloat(style.lineHeight);
     const paddingTop = Number.parseFloat(style.paddingTop) || 0;
@@ -202,6 +282,8 @@ export class FenceView implements NodeView {
 
   destroy(): void {
     if (this.copiedTimer !== null) clearTimeout(this.copiedTimer);
+    if (this.measureFrame !== 0) cancelAnimationFrame(this.measureFrame);
+    this.resized?.disconnect();
     this.dom.removeEventListener('pointerenter', this.ensureTools);
     this.dom.removeEventListener('focusin', this.ensureTools);
     this.picker?.close(false);
@@ -295,7 +377,8 @@ export class FenceView implements NodeView {
     const lines = lineCount(this.node.textContent);
     if (lines === this.lines) return;
     this.lines = lines;
-    this.gutter.textContent = gutterText(lines);
+    if (this.wrappedTops === null) this.gutter.textContent = gutterText(lines);
+    else this.scheduleMeasure();
     this.dom.style.setProperty('--fence-digits', String(digitsForLineCount(lines)));
   }
 

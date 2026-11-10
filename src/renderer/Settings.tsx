@@ -1091,6 +1091,13 @@ export function Settings({
                   testId="setting-code-line-numbers"
                 />
                 <Switch
+                  label="Wrap long lines"
+                  hint="A line longer than its block goes on below, under its one number, instead of the block scrolling sideways. View > Wrap Lines in Code Blocks flips it too."
+                  checked={settings.codeWrap}
+                  onChange={(value) => onChange({ codeWrap: value })}
+                  testId="setting-code-wrap"
+                />
+                <Switch
                   label="Indent guides"
                   hint="A rule at each tab stop of a line's indentation."
                   checked={settings.codeIndentGuides}

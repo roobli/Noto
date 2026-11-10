@@ -171,6 +171,7 @@ export function coerceSettings(value: unknown): NotoSettingsV1 {
     codeLineNumbers: typeof value.codeLineNumbers === 'boolean'
       ? value.codeLineNumbers
       : DEFAULT_SETTINGS.codeLineNumbers,
+    codeWrap: typeof value.codeWrap === 'boolean' ? value.codeWrap : DEFAULT_SETTINGS.codeWrap,
     codeIndentGuides: typeof value.codeIndentGuides === 'boolean'
       ? value.codeIndentGuides
       : DEFAULT_SETTINGS.codeIndentGuides,
@@ -326,6 +327,7 @@ export function isSettingsReplyV1(value: unknown): value is SettingsReplyV1 {
     && isDisabledShortcuts(settings.disabledShortcuts)
     && isMarketplaceRepo(settings.pluginMarketplace)
     && typeof settings.codeLineNumbers === 'boolean'
+    && typeof settings.codeWrap === 'boolean'
     && typeof settings.codeIndentGuides === 'boolean'
     && typeof settings.codeTabMarkers === 'boolean'
     && typeof settings.timelines === 'boolean'

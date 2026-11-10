@@ -519,6 +519,7 @@ async function run(): Promise<void> {
     alwaysOnTop: windowAlwaysOnTop,
     gitMarks: settings.current().gitMarks,
     noteMarks: settings.current().noteMarks,
+    codeWrap: settings.current().codeWrap,
     treeSort: settings.current().treeSort,
     themes,
     themePath: settings.current().customCssPath,
@@ -946,6 +947,10 @@ async function run(): Promise<void> {
       }
       if (reply.settings.gitMarks !== menuState.gitMarks) {
         menuState.gitMarks = reply.settings.gitMarks;
+        refreshMenu();
+      }
+      if (reply.settings.codeWrap !== menuState.codeWrap) {
+        menuState.codeWrap = reply.settings.codeWrap;
         refreshMenu();
       }
       if (reply.settings.noteMarks !== menuState.noteMarks) {

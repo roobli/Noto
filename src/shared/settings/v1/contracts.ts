@@ -285,6 +285,13 @@ export interface NotoSettingsV1 {
    */
   readonly codeLineNumbers: boolean;
   /**
+   * Wrap a code line longer than its block onto the next line, instead of
+   * scrolling the block sideways. On, as Typora's Auto wrap long lines is,
+   * which the author's Typora left at its default; a wrapped line keeps its
+   * one number in the gutter.
+   */
+  readonly codeWrap: boolean;
+  /**
    * Vertical rules at each tab stop of a code line's indentation.
    *
    * On by default, as the author's `fence-enhance` plugin is set. Drawn on the
@@ -474,6 +481,7 @@ export const DEFAULT_SETTINGS: NotoSettingsV1 = Object.freeze({
   disabledShortcuts: [],
   pluginMarketplace: 'roobli/noto-plugins',
   codeLineNumbers: true,
+  codeWrap: true,
   codeIndentGuides: true,
   codeTabMarkers: true,
   timelines: true,

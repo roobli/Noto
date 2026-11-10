@@ -749,6 +749,15 @@
 
 :root[data-code-line-numbers='off'] .ProseMirror .noto-fence-gutter { display: none; }
 
+/* Long lines wrap unless the setting says scroll (Typora's Auto wrap long
+   lines, on by default). Wrapping happens inside a long word too, so a path
+   or a URL does not push the block wider than the page. Each number then
+   stands where its line starts (fence-view.ts places them). */
+:root:not([data-code-wrap='off']) .ProseMirror pre { white-space: pre-wrap; }
+:root:not([data-code-wrap='off']) .ProseMirror pre code { overflow-x: visible; overflow-wrap: anywhere; }
+.ProseMirror .noto-fence-gutter[data-wrapped] { white-space: normal; }
+.ProseMirror .noto-fence-gutter[data-wrapped] .noto-fence-number { overflow: hidden; }
+
 /* The language and the copy button share a corner, shown while the pointer
    is over the block or the caret is in it. Two words, not two boxes: they
    take a fill only under the pointer. The fence's own colour behind them,

@@ -969,13 +969,14 @@ function NotoWorkspace({ platform }: { platform: NotoPlatform }) {
       root.style.removeProperty('--prose-font-family');
     }
     root.dataset.codeLineNumbers = settings.codeLineNumbers ? 'on' : 'off';
+    root.dataset.codeWrap = settings.codeWrap ? 'on' : 'off';
     root.dataset.codeIndentGuides = settings.codeIndentGuides ? 'on' : 'off';
     root.dataset.codeTabMarkers = settings.codeTabMarkers ? 'on' : 'off';
     root.dataset.timelines = settings.timelines ? 'on' : 'off';
     root.dataset.focusMode = settings.focusMode ? 'on' : 'off';
     root.dataset.gitMarks = settings.gitMarks ? 'on' : 'off';
   }, [settings.fontSize, settings.lineHeight, settings.widthMode, settings.proseFace, settings.proseFontFamily,
-    settings.codeLineNumbers, settings.codeIndentGuides, settings.codeTabMarkers,
+    settings.codeLineNumbers, settings.codeWrap, settings.codeIndentGuides, settings.codeTabMarkers,
     settings.timelines, settings.focusMode, settings.gitMarks]);
 
   /**
@@ -2832,6 +2833,9 @@ function NotoWorkspace({ platform }: { platform: NotoPlatform }) {
         break;
       case 'toggle-git-marks':
         changeSettings({ gitMarks: !settings.gitMarks });
+        break;
+      case 'toggle-code-wrap':
+        changeSettings({ codeWrap: !settings.codeWrap });
         break;
       case 'toggle-typewriter':
         changeSettings({ typewriterMode: !settings.typewriterMode });

@@ -69,6 +69,8 @@ export interface MenuTemplateOptions {
     /** Whether git's changes are drawn, which is a setting. */
     readonly gitMarks?: boolean;
     readonly noteMarks?: boolean;
+    /** Whether code lines wrap, which is a setting. */
+    readonly codeWrap?: boolean;
     /** What the note in front will be written with. Per document, not a setting. */
     readonly lineEnding?: 'lf' | 'crlf' | 'mixed';
     readonly finalNewline?: boolean;
@@ -475,6 +477,13 @@ export function buildMenuTemplate(options: MenuTemplateOptions): MenuItemConstru
         type: 'checkbox',
         checked: state.gitMarks ?? true,
         click: () => sendCommand('toggle-git-marks'),
+      },
+      {
+        id: 'toggle-code-wrap',
+        label: 'Wrap Lines in Code Blocks',
+        type: 'checkbox',
+        checked: state.codeWrap ?? true,
+        click: () => sendCommand('toggle-code-wrap'),
       },
       {
         id: 'toggle-note-marks',
