@@ -67,7 +67,7 @@ export function TagBrowser({ open, view, tags, loading, truncated, loadNotes, on
   const [activeTag, setActiveTag] = useState(0);
   const [activeNote, setActiveNote] = useState(0);
   const [pane, setPane] = useState<'tags' | 'notes'>('tags');
-  const [notes, setNotes] = useState<{ readonly tag: string; readonly notes: readonly WorkspaceTagNoteV1[] } | null>(null);
+  const [notes, setNotes] = useState<{ readonly tag: string; readonly notes: readonly WorkspaceTagNoteV1[]; readonly failed?: boolean } | null>(null);
   const cache = useRef(new Map<string, readonly WorkspaceTagNoteV1[]>());
   const inputRef = useRef<HTMLInputElement>(null);
   const listRef = useRef<HTMLDivElement>(null);
@@ -104,9 +104,12 @@ export function TagBrowser({ open, view, tags, loading, truncated, loadNotes, on
     if (known) { setNotes({ tag, notes: known }); setActiveNote(0); return; }
     let live = true;
     const timer = window.setTimeout(() => {
-      void loadNotes(tag).then((found) => {
+      loadNotes(tag).then((found) => {
         cache.current.set(tag.toLocaleLowerCase(), found);
         if (live) { setNotes({ tag, notes: found }); setActiveNote(0); }
+      }, () => {
+        // Not cached, so the next visit to the tag asks again.
+        if (live) { setNotes({ tag, notes: [], failed: true }); setActiveNote(0); }
       });
     }, 70);
     return () => { live = false; window.clearTimeout(timer); };
@@ -200,8 +203,10 @@ export function TagBrowser({ open, view, tags, loading, truncated, loadNotes, on
             aria-label="Filter tags"
             role="combobox"
             aria-expanded="true"
-            aria-controls="tag-browser-tags"
-            aria-activedescendant={current ? `tag-browser-tag-${Math.min(activeTag, rows.length - 1)}` : undefined}
+            aria-controls={pane === 'notes' ? 'tag-browser-note-list' : 'tag-browser-tags'}
+            aria-activedescendant={pane === 'notes' && shown && shown.length > 0
+              ? `tag-browser-note-${Math.min(activeNote, shown.length - 1)}`
+              : current ? `tag-browser-tag-${Math.min(activeTag, rows.length - 1)}` : undefined}
             spellCheck={false}
             autoComplete="off"
             onChange={(event) => setQuery(event.target.value)}
@@ -222,7 +227,7 @@ export function TagBrowser({ open, view, tags, loading, truncated, loadNotes, on
             {!loading && ordered.once.map((entry, index) => tagRow(entry, ordered.shared.length + index))}
           </div>
           <div className={pane === 'notes' ? 'tag-browser-notes is-focused' : 'tag-browser-notes'} role="listbox"
-            aria-label={current ? `Notes tagged ${current.tag}` : 'Notes'} data-testid="tag-browser-notes" ref={notesRef}>
+            id="tag-browser-note-list" aria-label={current ? `Notes tagged ${current.tag}` : 'Notes'} data-testid="tag-browser-notes" ref={notesRef}>
             {current && (
               <p className="tag-browser-notes-head">
                 <strong>#{current.tag}</strong>
@@ -230,6 +235,9 @@ export function TagBrowser({ open, view, tags, loading, truncated, loadNotes, on
               </p>
             )}
             {current && shown === null && <p className="tag-browser-empty">Reading notes…</p>}
+            {current && notes?.tag === current.tag && notes.failed === true && (
+              <p className="tag-browser-empty" role="alert">The notes with this tag could not be read. Move off the tag and back to try again.</p>
+            )}
             {shown?.map((note, index) => {
               const folder = folderOf(note.relativePath);
               const active = pane === 'notes' && index === activeNote;
@@ -237,6 +245,7 @@ export function TagBrowser({ open, view, tags, loading, truncated, loadNotes, on
                 <button
                   type="button"
                   key={note.path}
+                  id={`tag-browser-note-${index}`}
                   role="option"
                   aria-selected={active}
                   className={active ? 'tag-browser-row tag-browser-note is-active' : 'tag-browser-row tag-browser-note'}
