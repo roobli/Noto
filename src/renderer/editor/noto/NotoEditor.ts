@@ -26,7 +26,7 @@ import { EditorView } from 'prosemirror-view';
 import { closeHistory, history, redo, undo } from 'prosemirror-history';
 import { dropCursor } from 'prosemirror-dropcursor';
 import { notoGapCursor } from './gap-cursor';
-import { tableEditing } from 'prosemirror-tables';
+import { notoTableEditing } from './table-editing';
 import { tableContextItems, tableContextPress } from './table-context';
 import { Fragment, type Node as ProseNode } from 'prosemirror-model';
 import { notoSchema } from '../../../shared/markdown/v3/pm/schema';
@@ -490,7 +490,7 @@ export class NotoEditor implements NotoEditorPort {
       // Before the table plugin, which would otherwise take a right press on
       // selected cells as the start of a new selection.
       tableContextPress(),
-      tableEditing(),
+      notoTableEditing(),
       activeNodePlugin(),
       viewportLayoutPlugin(),
       viewportStubPlugin(),
@@ -1062,23 +1062,47 @@ export class NotoEditor implements NotoEditorPort {
   }
 
   /**
-   * Put `position` at `share` of the page's height from the page's top, by
-   * smooth scroll; at the very top when the note has no room above it. Done
-   * again a moment later, since a long note draws a far block as a stand-in
-   * whose real node mounts after the first scroll.
+   * Put `position` at `share` of the page's height from the page's top; at
+   * the very top when the note has no room above it. The glide is quick,
+   * sized by the distance and capped, because a heading jump answers a
+   * choice and a long glide reads as slow; a scroll of the reader's own cuts
+   * it short. Done again a moment later, since a long note draws a far block
+   * as a stand-in whose real node mounts after the first scroll.
    */
   private revealAt(position: number, share: number): void {
     const view = this.view;
     if (!view) return;
+    let frame = 0;
+    const scrollerOf = () => view.dom.closest<HTMLElement>('.canvas-scroll') ?? view.dom.parentElement;
+    const glideTo = (target: number) => {
+      const scroller = scrollerOf();
+      if (!scroller) return;
+      cancelAnimationFrame(frame);
+      const start = scroller.scrollTop;
+      const delta = target - start;
+      if (Math.abs(delta) < 1) return;
+      if (window.matchMedia('(prefers-reduced-motion: reduce)').matches) {
+        scroller.scrollTop = target;
+        return;
+      }
+      const duration = Math.min(380, Math.max(180, Math.abs(delta) * 0.18));
+      const began = performance.now();
+      const ease = (t: number) => 1 - (1 - t) ** 3;
+      scroller.addEventListener('wheel', () => cancelAnimationFrame(frame), { once: true });
+      const step = (now: number) => {
+        const t = Math.min(1, (now - began) / duration);
+        scroller.scrollTop = start + delta * ease(t);
+        if (t < 1) frame = requestAnimationFrame(step);
+      };
+      frame = requestAnimationFrame(step);
+    };
     const reveal = () => {
-      const scroller = view.dom.closest<HTMLElement>('.canvas-scroll') ?? view.dom.parentElement;
+      const scroller = scrollerOf();
       if (!scroller) return;
       let top: number;
       try { top = view.coordsAtPos(position).top; } catch { return; }
       const box = scroller.getBoundingClientRect();
-      const target = scroller.scrollTop + top - box.top - box.height * share;
-      const smooth = !window.matchMedia('(prefers-reduced-motion: reduce)').matches;
-      scroller.scrollTo({ top: Math.max(0, target), behavior: smooth ? 'smooth' : 'auto' });
+      glideTo(Math.max(0, scroller.scrollTop + top - box.top - box.height * share));
     };
     reveal();
     setTimeout(() => { if (this.view === view) reveal(); }, 160);
