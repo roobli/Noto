@@ -24,7 +24,7 @@ import { useEffect, useLayoutEffect, useRef, useState } from 'react';
  * new ones marked New, gathered at the top, and the title bar's ? carries a
  * dot until the list is opened again.
  */
-export const GUIDE_EDITION = 6;
+export const GUIDE_EDITION = 7;
 
 /** What a Try It button does: the window leads there, or does it. */
 export type GuideTry =
@@ -70,14 +70,13 @@ export function shortcutGroups(mac: boolean): Group[] {
         { keys: [shift(mac) + mod('L', mac)], what: 'Show or hide the rail.' },
         { keys: [mac ? '⌃⌘1' : 'Ctrl Shift 1'], what: 'The outline of this note, on Typora\'s key. A heading folds with the arrow keys.', since: 6, tryIt: 'outline' },
         { keys: ['Links'], what: "Opt-in from Settings: the rail's Links view shows what links here, what this links to, and what the vault's graph thinks is near." },
-        { keys: [alt(mac) + shift(mac) + mod('T', mac)], what: 'Browse tags from every note\'s frontmatter, and open the notes that share one.' },
+        { keys: [alt(mac) + shift(mac) + mod('T', mac)], what: 'Browse tags, most used first, with the notes of the tag under the cursor beside them. Right goes to the notes, Enter opens one.', since: 7 },
       ],
     },
     {
       title: 'Writing',
       entries: [
         { keys: [mod('/', mac)], what: 'Source Code Mode: the whole note as the text it is saved as.' },
-        { keys: [alt(mac) + mod('/', mac)], what: 'Show one block as its markdown, and hide it again.' },
         { keys: [mod('D', mac), mod('L', mac)], what: 'Select the word, or the line, the caret is in.' },
         { keys: [mod('E', mac)], what: 'Select the styled run around the caret: the whole of a bold phrase.' },
         { keys: [shift(mac) + mod('V', mac)], what: 'Paste the text alone, read as markdown.' },
@@ -86,6 +85,10 @@ export function shortcutGroups(mac: boolean): Group[] {
         { keys: ['$8,000 - $50,000'], what: 'Prices stay text and $x$ is maths: one dollar opens maths only before a non-space and closes it only after one, as in Pandoc.', since: 6 },
         { keys: ['Right-click'], what: 'Format, Paragraph and Insert, with Copy as Markdown over a selection, as the menu bar has them.', since: 6 },
         { keys: ['F8', 'F9', mod('\\', mac)], what: 'Focus Mode, Typewriter Mode and Clear Format, on Typora\'s keys.', since: 6 },
+        { keys: ['↩ ↩'], what: 'Empty lines you leave between two blocks are kept as blank lines in the file, and a file\'s own extra blank lines take their room on the page. Backspace at the start of the block below takes one away.', since: 7 },
+        { keys: [alt(mac) + mod('/', mac)], what: 'Show one block as its markdown: a ruled band labelled with what the block is, and the key to go back while the caret is in it.', since: 7 },
+        { keys: ['Wrap'], what: 'Long lines in a code block wrap under their one number. View > Wrap Lines in Code Blocks turns it off.', since: 7 },
+        { keys: [mod('F', mac), '↩'], what: 'Find brings each match into view as you type and as Enter, Next and Previous step through them.', since: 7 },
         { keys: [mod('=', mac), mod('-', mac)], what: 'Raise or lower the heading level.' },
       ],
     },
