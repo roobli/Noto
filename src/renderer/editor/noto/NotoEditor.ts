@@ -282,6 +282,11 @@ export class NotoEditor implements NotoEditorPort {
   /** For each top-level node as opened, the opened index of the block at or below it. */
   private openedAt: Int32Array = new Int32Array(0);
   /**
+   * The file's blank lines could not be opened as empty lines (its blocks and
+   * origins disagree in number), so the save must not count them either.
+   */
+  private blankLinesUnopened = false;
+  /**
    * Stand-in node objects from a deferred open, by opened index. Background
    * enrichment replaces one only while it is still this exact object.
    */
@@ -549,7 +554,8 @@ export class NotoEditor implements NotoEditorPort {
    * start and end of the note are left alone, as before.
    */
   private withBlankLines(blocks: ProseNode, document: NotoDocumentWire): ProseNode {
-    const lines = blocks.childCount === document.origins.length ? this.gapLines() : () => 1;
+    this.blankLinesUnopened = blocks.childCount !== document.origins.length;
+    const lines = this.blankLinesUnopened ? () => 1 : this.gapLines();
     const children: ProseNode[] = [];
     const origins: (NotoBlockOrigin | null)[] = [];
     const nodes: ProseNode[] = [];
@@ -788,7 +794,7 @@ export class NotoEditor implements NotoEditorPort {
     // already moved: the two are a moment apart, and a key or a paste in that
     // moment lands where the caret was.
     this.host.dataset.caret = String(this.view?.state.selection.from ?? 0);
-    this.reportActiveBlock();
+    this.reportActiveBlock(transaction);
     if (transaction.getMeta(ENRICH_META) !== true) this.enrichAtSelection();
     if (!transaction.docChanged) return;
     // Background enrichment swaps a stand-in for the real node of the same
@@ -864,12 +870,16 @@ export class NotoEditor implements NotoEditorPort {
    * Code Mode count in, so the empty paragraphs of blank lines do not put
    * them out by one each.
    */
-  private reportActiveBlock(): void {
+  private reportActiveBlock(transaction?: Transaction): void {
     const view = this.view;
     if (!view || !this.options.onActiveBlockChanged) return;
     const { doc } = view.state;
-    const index = view.state.selection.$from.index(0);
-    if (index === this.activeAt.index && doc.childCount === this.activeAt.count) return;
+    const { $from } = view.state.selection;
+    const index = $from.index(0);
+    // An edit above the caret's block can empty a block or fill one, which
+    // moves the count without moving the caret.
+    const above = transaction?.docChanged === true && editedBefore(transaction, $from.depth > 0 ? $from.before(1) : 0);
+    if (!above && index === this.activeAt.index && doc.childCount === this.activeAt.count) return;
     this.activeAt = { index, count: doc.childCount };
     const written = writtenBlocksBefore(doc, index);
     if (written === this.activeBlock) return;
@@ -1741,7 +1751,7 @@ export class NotoEditor implements NotoEditorPort {
       document: this.document,
       pristine: this.pristine,
       envelope: this.target ?? undefined,
-      gapLines: this.gapLines(),
+      gapLines: this.blankLinesUnopened ? undefined : this.gapLines(),
     };
     if (this.topLevelStable && this.acceptedNodes.length === input.doc.childCount) {
       return captureStableWire(input, this.acceptedNodes).transaction;
@@ -1783,7 +1793,7 @@ export class NotoEditor implements NotoEditorPort {
       document: this.document,
       pristine: this.pristine,
       envelope: this.target ?? undefined,
-      gapLines: this.gapLines(),
+      gapLines: this.blankLinesUnopened ? undefined : this.gapLines(),
     });
   }
 
@@ -2160,6 +2170,18 @@ export class NotoEditor implements NotoEditorPort {
  * paired, so the next save re-renders blocks rather than reusing another
  * block's bytes.
  */
+/** Whether `transaction` changed anything before `pos` in the document it made. */
+function editedBefore(transaction: Transaction, pos: number): boolean {
+  const maps = transaction.mapping.maps;
+  for (let step = 0; step < maps.length; step += 1) {
+    let earliest = Infinity;
+    maps[step]!.forEach((_oldStart, _oldEnd, newStart) => { earliest = Math.min(earliest, newStart); });
+    if (earliest === Infinity) continue;
+    if (transaction.mapping.slice(step + 1).map(earliest, -1) < pos) return true;
+  }
+  return false;
+}
+
 /** Top-level nodes before `index` that are written to the file, skipping empty paragraphs. */
 export function writtenBlocksBefore(doc: ProseNode, index: number): number {
   let written = 0;

@@ -152,9 +152,14 @@ function blankLinesFor(
   const neighbours = above !== null && origin !== null && above.ordinal === origin.ordinal - 1;
   if (!neighbours) return emptyLines > 0 ? Math.min(wanted, MAX_BLANK_LINES) : undefined;
   const file = gapLines?.(above.ordinal) ?? 1;
-  // A plain break, or a heading's single newline, with nothing typed into it.
+  // A plain break, or a single newline, with nothing typed into it. The save
+  // keeps a single newline only while both blocks are untouched, and makes it
+  // a blank line otherwise, which is always safe to read back.
   if (emptyLines === 0 && file <= 1) return undefined;
-  return wanted === file ? undefined : Math.min(wanted, MAX_BLANK_LINES);
+  if (wanted === file) return undefined;
+  // Past the bound a save accepts, a gap the file already had stays as it is.
+  if (wanted > MAX_BLANK_LINES) return file > MAX_BLANK_LINES ? undefined : MAX_BLANK_LINES;
+  return wanted;
 }
 
 const isEmptyParagraph = (node: ProseNode): boolean => node.type.name === 'paragraph' && isUnwritableBlock(node);
@@ -349,10 +354,12 @@ export function captureStableWire(
   for (let index = 0; index < doc.childCount; index += 1) {
     const node = doc.child(index);
     const origin = input.origins[index] ?? null;
-    // Not written, so not counted either: the same as the full walk.
+    // Not written, so not counted either: the same as the full walk. A run
+    // goes on across empty lines that are the file's own blank lines, since
+    // it keeps the gaps between its blocks; a gap that changed asks for its
+    // spacing below, which ends the run there.
     if (isUnwritableBlock(node)) {
       if (isEmptyParagraph(node)) emptyLines += 1;
-      run = null;
       continue;
     }
     const blankLinesBefore = blankLinesFor(emptyLines, above, origin, wrote, input.gapLines);
