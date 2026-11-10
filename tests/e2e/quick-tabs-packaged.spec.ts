@@ -89,8 +89,14 @@ test.describe('quick open, as the author built it', () => {
     const { app, page } = await launch('nested');
     try {
       await invokeMenu(app, 'quick-open');
+      // Wait until the palette has the keyboard, or the Tab lands elsewhere.
+      await expect(page.getByTestId('quick-input')).toBeFocused();
       await page.keyboard.press('Tab');
+      await expect(page.getByTestId('quick-tab-folders')).toHaveAttribute('aria-selected', 'true');
       await page.getByTestId('quick-input').fill('jobs');
+      // Wait for the row Enter will take, so a slow window does not run an
+      // empty result.
+      await expect(page.getByTestId('quick-folder').first()).toContainText('jobs');
       await page.keyboard.press('Enter');
       await expect(page.getByTestId('quick-scope')).toHaveText('works/jobs');
       await expect(page.getByTestId('quick-result')).toHaveText([/hiring\.md/]);

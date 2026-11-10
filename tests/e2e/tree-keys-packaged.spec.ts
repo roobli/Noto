@@ -48,7 +48,8 @@ test('the file tree walks, opens and renames from the keyboard', async () => {
     await expect(alpha).toHaveAttribute('aria-level', '1');
 
     await alpha.focus();
-    const focused = () => page.evaluate(() => (document.activeElement as HTMLElement | null)?.dataset.path?.split('/').pop() ?? null);
+    // The tree's paths are native, so Windows carries backslashes here.
+    const focused = () => page.evaluate(() => (document.activeElement as HTMLElement | null)?.dataset.path?.split(/[\\/]/).pop() ?? null);
     await page.keyboard.press('ArrowUp');
     await expect.poll(focused).toBe('archive');
     await page.keyboard.press('ArrowRight');
