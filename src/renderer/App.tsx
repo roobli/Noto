@@ -11,7 +11,7 @@ import { fromLf } from '../shared/markdown/v3/line-endings';
 import { sourceModeText } from './source-mode-text';
 import { CommandPalette } from './CommandPalette';
 import { PLAIN_FLAGS, type SearchFlags } from '../shared/search/pattern';
-import { useCallback, useEffect, useMemo, useRef, useState, type CSSProperties } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState, useSyncExternalStore, type CSSProperties } from 'react';
 import type {
   FileTruthOpenReplyV1,
   FileTruthRecoveryRecordV1,
@@ -21,11 +21,17 @@ import type {
   NotoPlatform,
 } from '../shared/file-truth/v1/contracts';
 import type {
-  RecentFileV1, WorkspaceIndexEntryV1, WorkspaceTabV1,
+  RecentFileV1, WorkspaceIndexEntryV1, WorkspaceMenuCommandV1Entry, WorkspaceTabV1,
   WorkspaceTagSummaryV1, WorkspaceTagNoteV1,
   WorkspaceCodeViewV1,
 } from '../shared/workspace/v1/contracts';
 import { QuickOpen, type QuickOpenMode } from './QuickOpen';
+import type { SheetWidthControl } from './sheet-width';
+import { TOGGLE_CODE_WRAP } from './editor/noto/fence-view';
+import { FolderEmptyState } from './FolderEmptyState';
+import { useReadingAnchors } from './use-reading-anchors';
+import { useFocusReturn } from './focus-return';
+import { acceleratorLabel } from '../shared/commands/accelerator-label';
 import { searchBoost, type FrecencyStoreV1 } from '../shared/search/v1/frecency';
 import { ConfirmedOpenRecorder } from '../shared/search/v1/confirmed-open';
 import type { NotoDocumentWire } from '../shared/markdown/v3/contracts';
@@ -41,13 +47,14 @@ import { FindBar } from './FindBar';
 import { RecentStrip } from './RecentStrip';
 import { TagStrip } from './TagStrip';
 import { UnsavedDiff } from './UnsavedDiff';
+import { InfoPane, clampInfoWidth } from './InfoPane';
 import { TagBrowser, type TagBrowserView } from './TagBrowser';
 import { parseTagsFromMarkdown } from '../shared/tags/parse';
 import { WorkspaceRail, type RailView } from './WorkspaceRail';
 import { SourceMode } from './SourceMode';
 import { TableDialog } from './TableDialog';
 import { ReloadConfirmDialog } from './ReloadConfirmDialog';
-import { Shortcuts } from './Shortcuts';
+import { GUIDE_EDITION, Shortcuts, tryNeeds, type GuideTry } from './Shortcuts';
 import { RailFooter } from './RailFooter';
 import { Settings, type SettingsSection } from './Settings';
 import {
@@ -55,9 +62,11 @@ import {
 } from '../shared/settings/v1/contracts';
 import type { AssetRefusalV1 } from '../shared/assets/v1/contracts';
 import { copyThroughSelection } from './editor/noto/clipboard';
-import type { WorkspaceEntryRefusalV1, WorkspaceExportKindV1, WorkspaceExportRefusalV1, WorkspaceGitBlocksV1, WorkspaceGitMarksV1 } from '../shared/workspace/v1/contracts';
+import type { WorkspaceEntryRefusalV1, WorkspaceExportKindV1, WorkspaceExportRefusalV1, WorkspaceGitBlocksV1, WorkspaceGitMarksV1, WorkspaceMemoryPrivacyReplyV1 } from '../shared/workspace/v1/contracts';
+import { LockGlyph } from './FileTree';
 import { EXPORT_PALETTE_COMMANDS } from '../shared/export/targets';
 import { EMPTY_TRAIL, forget as forgetTrail, record as recordTrail, stepBack, stepForward, type Trail } from './trail';
+import { followedWords, undoneWords } from './relink-words';
 import { wikiCandidates, wikiTargetFor } from './wiki-target';
 import { seedOutboundLinks } from './seed-links';
 import { wikiLinkText } from './editor/noto/wiki-trigger';
@@ -73,13 +82,18 @@ import {
 } from './file-truth-state';
 import { RendererPluginHost } from './plugins/RendererPluginHost';
 import { sandboxedPlugin, trustedModulePlugin } from './plugins/sandbox/installed-plugin';
-import { createRendererPluginHosts } from './plugins/bundled/hosts';
+import { createRendererPluginHosts, shellPlugins } from './plugins/bundled/hosts';
+import { infoPane, noteMarks, railPages, shellContext, ShellState, type DiffRequest, type Disposer, type NoteMark, type NoteMarksEntry } from './plugins/slots';
+import { closeNoteMarkCard, type NoteMarkView } from './editor/noto/note-marks-plugin';
 import { RendererPluginClient } from './plugins/RendererPluginClient';
 import { PluginCenter } from './plugins/PluginCenter';
 import { createPluginSnapshotStream } from './plugins/plugin-snapshot-stream';
 import { restoreSettingsExitFocus, type PluginSnapshotAvailability } from './plugins/plugin-center-state';
 
 const rid = (prefix: string) => `${prefix}:${crypto.randomUUID()}`;
+
+/** Where the edition of What Noto Can Do last opened is kept: a view of this machine's, nothing to sync. */
+const GUIDE_SEEN_KEY = 'noto.guide-seen';
 
 /**
  * Why a picture was not added, said in words rather than as a code.
@@ -269,6 +283,8 @@ function NotoWorkspace({ platform }: { platform: NotoPlatform }) {
    * it and captured over each other.
    */
   const fileTruthBusyRef = useRef(false);
+  /** The note whose save was asked for while another save was landing. */
+  const saveAgainRef = useRef<string | null>(null);
   const [recoveryBarrier, setRecoveryBarrier] = useState(false);
   const [alertDismissed, setAlertDismissed] = useState(false);
   const recoveryBarrierRef = useRef(false);
@@ -294,6 +310,19 @@ function NotoWorkspace({ platform }: { platform: NotoPlatform }) {
   });
   /** The sheet of what the app can do, on the Help menu. */
   const [shortcuts, setShortcuts] = useState(false);
+  /**
+   * The edition of What Noto Can Do last opened on this machine. Anyone who
+   * has not opened it since the list became the guide saw the first; what
+   * came after is New, and the title bar's ? carries a dot until it is opened.
+   */
+  const [guideSeen, setGuideSeen] = useState<number>(() => {
+    try { return Number(window.localStorage.getItem(GUIDE_SEEN_KEY)) || 1; } catch { return 1; }
+  });
+  const closeGuide = useCallback(() => {
+    setShortcuts(false);
+    setGuideSeen(GUIDE_EDITION);
+    try { window.localStorage.setItem(GUIDE_SEEN_KEY, String(GUIDE_EDITION)); } catch { /* Shown again next time, which is harmless. */ }
+  }, []);
   /** Typora's Insert Table dialog, open or not. */
   const [tableDialog, setTableDialog] = useState(false);
   /** Dirty-buffer confirm before a reload that would discard unsaved edits. */
@@ -302,10 +331,23 @@ function NotoWorkspace({ platform }: { platform: NotoPlatform }) {
   >(null);
   /** Source Code Mode, Typora's Command-slash: the note as text, for every tab. */
   const [sourceMode, setSourceMode] = useState(false);
+  const sourceModeRef = useRef(sourceMode);
+  sourceModeRef.current = sourceMode;
   /** Pushes the source view's pending text into the document, before a save. */
   const sourceFlushRef = useRef<(() => void) | null>(null);
+  /** A note that should take the keys as soon as its editor is built: a new one just named. */
+  const focusWhenReadyRef = useRef<string | null>(null);
+  // Undo and Redo while Source Code Mode is open belong to its text.
+  const sourceHistoryRef = useRef<((direction: 'undo' | 'redo') => boolean) | null>(null);
+  // Set when a reload replaces the note under an open Source Code Mode: the
+  // view about to be replaced must not put its draft of the old text back.
+  const sourceStaleRef = useRef(false);
   /** Bumped when an editor is ready, so a source view can be given its editor. */
   const [editorsReady, setEditorsReady] = useState(0);
+  // Counts reloads from disk, so the Source Code Mode view starts over from
+  // the file's new text. A save is not one: it keeps the view, and the keys
+  // typed into it, where they are.
+  const [sourceReloads, setSourceReloads] = useState(0);
   const [pluginSnapshots, setPluginSnapshots] = useState<PluginLifecycleSnapshot[]>([]);
   /** Every plugin's keys, for the Shortcuts pane; rebuilt only when a snapshot changes. */
   const pluginHotkeys = useMemo(() => pluginSnapshots.map((snapshot) => ({
@@ -316,6 +358,43 @@ function NotoWorkspace({ platform }: { platform: NotoPlatform }) {
   })), [pluginSnapshots]);
   const pluginSnapshotsRef = useRef(pluginSnapshots);
   pluginSnapshotsRef.current = pluginSnapshots;
+
+  /*
+   * Shell contributions: what a switched-on plugin adds to the window rather
+   * than to the editor, such as a page in the rail. They follow the plugin's
+   * switch, not a note's lease, so they are there with no note open.
+   */
+  const [slotState] = useState(() => new ShellState());
+  const shellRunning = useRef(new Map<string, Disposer>());
+  useEffect(() => {
+    const enabled = new Set(pluginSnapshots.filter((snapshot) => snapshot.desiredEnabled).map((snapshot) => snapshot.id));
+    for (const { manifest, plugin } of shellPlugins()) {
+      const running = shellRunning.current.get(manifest.id);
+      if (enabled.has(manifest.id) && !running) {
+        const { context, dispose } = shellContext(manifest, slotState, railPages);
+        try {
+          const stop = plugin.shell!(context);
+          shellRunning.current.set(manifest.id, () => {
+            try { stop(); } finally { dispose(); }
+          });
+        } catch (error) {
+          dispose();
+          window.dispatchEvent(new CustomEvent('noto:notice', { detail: `${manifest.name} could not start: ${(error as Error).message}` }));
+        }
+      } else if (!enabled.has(manifest.id) && running) {
+        shellRunning.current.delete(manifest.id);
+        running();
+      }
+    }
+  }, [pluginSnapshots, slotState]);
+  useEffect(() => () => {
+    for (const stop of shellRunning.current.values()) stop();
+    shellRunning.current.clear();
+  }, []);
+  const railPageEntries = useSyncExternalStore(
+    useCallback((listener: () => void) => railPages.subscribe(listener), []),
+    () => railPages.list(),
+  );
   /**
    * Telling the plugin host that an editor exists.
    *
@@ -387,8 +466,107 @@ function NotoWorkspace({ platform }: { platform: NotoPlatform }) {
   const [folder, setFolder] = useState<{ root: string | null; name: string | null }>({ root: null, name: null });
   /** What git says about the folder's notes, as main last sent it. */
   const [gitMarks, setGitMarks] = useState<WorkspaceGitMarksV1 | null>(null);
+  /** For the editors, which ask when a right click comes rather than when they are made. */
+  const gitMarksRef = useRef<WorkspaceGitMarksV1 | null>(null);
+  gitMarksRef.current = gitMarks !== null && gitMarks.root === folder.root ? gitMarks : null;
   // Keyed for the tree's lookups, and only for the folder on screen: marks
   // that arrive for a folder the window has since left are not drawn.
+  // The shell's slots see the same folder, note and marks the tree does.
+  useEffect(() => {
+    slotState.update({
+      git: gitMarks ? {
+        root: gitMarks.root,
+        files: gitMarks.files,
+        ...(gitMarks.repository !== undefined ? { repository: gitMarks.repository } : {}),
+        ...(gitMarks.realRoot !== undefined ? { realRoot: gitMarks.realRoot } : {}),
+      } : null,
+    });
+  }, [slotState, gitMarks]);
+  // What the folder's access policy says, for the tree's locks and the note in front's own.
+  const [privacy, setPrivacy] = useState<WorkspaceMemoryPrivacyReplyV1 | null>(null);
+  const [memoryVersion, setMemoryVersion] = useState(0);
+  const notePath = opened?.path ?? null;
+  useEffect(() => {
+    let current = true;
+    void window.notoWorkspace.memoryPrivacy({ version: 1, requestId: rid('ws-privacy'), note: notePath })
+      .then((result) => { if (current && result.ok) setPrivacy(result.value); })
+      .catch(() => { /* No locks is the ordinary answer. */ });
+    return () => { current = false; };
+    // The save token: frontmatter that says `sensitivity:` counts once it is saved.
+  }, [folder.root, notePath, token, memoryVersion]);
+  const treePrivacyMarks = useMemo(() => {
+    if (!privacy || privacy.root === null || privacy.root !== folder.root) return null;
+    return { vault: privacy.vault, folders: new Map(privacy.folders.map((item) => [item.path, item.level])) };
+  }, [privacy, folder.root]);
+  const notePrivacy = privacy && privacy.root !== null && privacy.root === folder.root ? privacy.note : null;
+
+  // The marks plugins put on the note in front (`note-marks-plugin.ts`): loaded once it has
+  // stayed in front a moment, again when it is saved or a plugin says its marks moved.
+  const [marksEntries, setMarksEntries] = useState<readonly NoteMarksEntry[]>(() => noteMarks.list());
+  useEffect(() => noteMarks.subscribe(() => setMarksEntries(noteMarks.list())), []);
+  const [marksVersion, setMarksVersion] = useState(0);
+  useEffect(() => {
+    const stops = marksEntries.map((entry) => entry.marks.changes?.(() => setMarksVersion((current) => current + 1)) ?? (() => {}));
+    return () => { for (const stop of stops) stop(); };
+  }, [marksEntries]);
+  // Per document: a tab in the back keeps its marks drawn, and their actions must still find them.
+  const shownMarksRef = useRef(new Map<string, ReadonlyMap<string, { readonly entry: NoteMarksEntry; readonly mark: NoteMark }>>());
+  const noteMarkActionRef = useRef<(documentId: string, key: string, action: string) => void>(() => {});
+  // A card belongs to the note it was opened on.
+  useEffect(() => { closeNoteMarkCard(); }, [activeId]);
+  useEffect(() => {
+    const editor = activeId ? editorsRef.current.get(activeId) : undefined;
+    if (!editor) return;
+    if (!settings.noteMarks || notePath === null || marksEntries.length === 0) {
+      shownMarksRef.current.delete(activeId!);
+      editor.setNoteMarks([]);
+      return;
+    }
+    const controller = new AbortController();
+    const timer = window.setTimeout(() => {
+      void Promise.all(marksEntries.map(async (entry) => {
+        try {
+          return { entry, marks: await entry.marks.load(notePath, controller.signal) };
+        } catch {
+          // One plugin's marks failing is no reason to lose the others'.
+          return { entry, marks: [] as readonly NoteMark[] };
+        }
+      })).then((results) => {
+        if (controller.signal.aborted) return;
+        const shown = new Map<string, { readonly entry: NoteMarksEntry; readonly mark: NoteMark }>();
+        const views: NoteMarkView[] = [];
+        for (const { entry, marks } of results) {
+          for (const mark of marks) {
+            const key = `${entry.key}#${mark.key}`;
+            shown.set(key, { entry, mark });
+            views.push({
+              key, text: mark.text, before: mark.before, after: mark.after, kind: entry.marks.title, title: mark.title,
+              ...(mark.detail !== undefined ? { detail: mark.detail } : {}),
+              actions: mark.actions.map((action) => ({ id: action.id, label: action.label, ...(action.replace !== undefined ? { replace: action.replace } : {}) })),
+            });
+          }
+        }
+        shownMarksRef.current.set(activeId!, shown);
+        editorsRef.current.get(activeId!)?.setNoteMarks(views);
+      });
+    }, 400);
+    return () => {
+      controller.abort();
+      window.clearTimeout(timer);
+    };
+    // On save as well as when the memory moves: a save can bring words back that the memory never saw
+    // change (Undo after Link, saved before it read the link in), so it has nothing to say about them.
+    // One note's marks are a few milliseconds' work once the folder's scans are kept.
+  }, [activeId, notePath, token, settings.noteMarks, marksEntries, marksVersion, editorsReady]);
+  noteMarkActionRef.current = (documentId, key, actionId) => {
+    const shown = shownMarksRef.current.get(documentId)?.get(key);
+    const action = shown?.mark.actions.find((item) => item.id === actionId);
+    if (!shown || !action?.run) return;
+    void Promise.resolve().then(() => action.run!()).catch((error: unknown) => {
+      // The mark has left the page; say why nothing came of it, and it comes back with the next load.
+      setLocalMessage(`${shown.entry.marks.title}: ${error instanceof Error ? error.message : 'that did not work'}`);
+    });
+  };
   const treeGitMarks = useMemo(() => {
     if (!gitMarks || gitMarks.root === null || gitMarks.root !== folder.root || gitMarks.files.length === 0) return null;
     return { files: new Map(gitMarks.files), folders: new Set(gitMarks.folders) };
@@ -421,16 +599,25 @@ function NotoWorkspace({ platform }: { platform: NotoPlatform }) {
     setTrail((current) => recordTrail(current, activePath));
   }, [activePath]);
 
-  /* A short message from a plugin, shown in the status line for a moment. */
+  /*
+   * A short message, shown in the status line for a moment: from a plugin, or
+   * from the editor after a paste. One with an action stays longer and shows
+   * it as a button, such as the plain text in place of a tidied paste.
+   */
   const [notice, setNotice] = useState<string | null>(null);
+  const [noticeAction, setNoticeAction] = useState<{ label: string; run: () => void } | null>(null);
   useEffect(() => {
     let timer: ReturnType<typeof setTimeout> | null = null;
     const onNotice = (event: Event) => {
-      const message = (event as CustomEvent<string>).detail;
-      if (typeof message !== 'string' || message.length === 0) return;
+      const detail = (event as CustomEvent<unknown>).detail;
+      const message = typeof detail === 'string' ? detail
+        : detail && typeof (detail as { message?: unknown }).message === 'string' ? (detail as { message: string }).message : '';
+      if (message.length === 0) return;
+      const action = typeof detail === 'object' && detail !== null ? (detail as { action?: { label: string; run: () => void } }).action : undefined;
       setNotice(message);
+      setNoticeAction(action && typeof action.run === 'function' ? action : null);
       if (timer) clearTimeout(timer);
-      timer = setTimeout(() => setNotice(null), 2600);
+      timer = setTimeout(() => { setNotice(null); setNoticeAction(null); }, action ? 9000 : 2600);
     };
     window.addEventListener('noto:notice', onNotice);
     return () => {
@@ -438,6 +625,24 @@ function NotoWorkspace({ platform }: { platform: NotoPlatform }) {
       if (timer) clearTimeout(timer);
     };
   }, []);
+  // A move's links, written again in main, are said in the status line with a way back.
+  useEffect(() => window.notoWorkspace.onLinksFollowed((event) => {
+    const undo = {
+      label: 'Undo',
+      run: () => {
+        void window.notoWorkspace.undoLinks({ version: 1, requestId: rid('undo-links'), pass: event.pass }).then((result) => {
+          if (result.ok) window.dispatchEvent(new CustomEvent('noto:notice', { detail: undoneWords(result.value) }));
+        });
+      },
+    };
+    window.dispatchEvent(new CustomEvent('noto:notice', { detail: { message: followedWords(event), ...(event.pass > 0 ? { action: undo } : {}) } }));
+  }), []);
+  // A notice's action is about the note on screen when it was raised: once
+  // another note, or Source Code Mode, is in front, the button would act on
+  // a note the reader is not looking at.
+  useEffect(() => {
+    setNoticeAction(null);
+  }, [activeId, sourceMode]);
   /**
    * Quick open, and whether it was opened by typing two brackets.
    *
@@ -452,10 +657,14 @@ function NotoWorkspace({ platform }: { platform: NotoPlatform }) {
     open: boolean;
     view: TagBrowserView;
     tags: readonly WorkspaceTagSummaryV1[];
-    notes: readonly WorkspaceTagNoteV1[];
     loading: boolean;
     truncated: boolean;
-  }>({ open: false, view: { kind: 'tags' }, tags: [], notes: [], loading: false, truncated: false });
+  }>({ open: false, view: { kind: 'tags' }, tags: [], loading: false, truncated: false });
+  /** The notes that carry a tag, for the tag browser's right pane. */
+  const loadTagNotes = useCallback(async (tag: string): Promise<readonly WorkspaceTagNoteV1[]> => {
+    const reply = await window.notoWorkspace.notesByTag({ version: 1, requestId: rid('notes-by-tag'), tag });
+    return reply.ok ? reply.value.notes : [];
+  }, []);
   const [noteTags, setNoteTags] = useState<string[]>([]);
 
   const [recentFolders, setRecentFolders] = useState<readonly RecentFileV1[]>([]);
@@ -469,7 +678,7 @@ function NotoWorkspace({ platform }: { platform: NotoPlatform }) {
   /** A content-search query waiting for its document to arrive. */
   const pendingMatchRef = useRef<string | null>(null);
   const ensureFileIndexRef = useRef<() => Promise<void>>(async () => {});
-  const openPathRef = useRef<(filePath: string) => Promise<void>>(async () => {});
+  const openPathRef = useRef<(filePath: string, from?: string | null) => Promise<void>>(async () => {});
   const refreshRecentFoldersRef = useRef<() => void>(() => {});
   const [fileIndex, setFileIndex] = useState<{
     entries: readonly WorkspaceIndexEntryV1[]; truncated: boolean;
@@ -502,29 +711,54 @@ function NotoWorkspace({ platform }: { platform: NotoPlatform }) {
    */
   const [unsavedDiffView, setUnsavedDiffView] = useState<{ serial: number; documentId: string; saved: string; current: string } | null>(null);
   const unsavedDiffSerial = useRef(0);
-  const openUnsavedDiff = useCallback(() => {
+  /** The note in front as the editor holds it, unsaved edits and Source Code Mode's draft included. */
+  const currentNoteText = useCallback((): string | null => {
     const id = activeIdRef.current;
     const entry = id ? docsRef.current.get(id) : undefined;
     const editor = id ? editorsRef.current.get(id) : undefined;
-    if (!id || !entry || !editor) return;
+    if (!entry || !editor) return null;
+    return sourceModeText({
+      dirty: editor.isDirty,
+      fileText: entry.document.text,
+      reconstructed: editor.getMarkdown(),
+      hasFinalNewline: editor.envelope.hasFinalNewline,
+      pendingSource: editor.pendingSourceMarkdown,
+    });
+  }, []);
+  /**
+   * Two versions of the note in front, opened by a plugin (History, from the
+   * info pane), in the same view as the unsaved changes. One view at a time:
+   * opening either closes the other.
+   */
+  const [versionDiff, setVersionDiff] = useState<{ serial: number; pluginId: string; documentId: string | null; request: DiffRequest } | null>(null);
+  const versionDiffRef = useRef(versionDiff);
+  versionDiffRef.current = versionDiff;
+  const focusAfterDiffRef = useRef(false);
+  const closeVersionDiff = useCallback((byReader: boolean) => {
+    const open = versionDiffRef.current;
+    if (!open) return;
+    setVersionDiff(null);
+    if (byReader) open.request.onClose?.();
+  }, []);
+  const openUnsavedDiff = useCallback(() => {
+    const id = activeIdRef.current;
+    const entry = id ? docsRef.current.get(id) : undefined;
+    const current = currentNoteText();
+    if (!id || !entry || current === null) return;
+    closeVersionDiff(true);
     unsavedDiffSerial.current += 1;
     setUnsavedDiffView({
       serial: unsavedDiffSerial.current,
       documentId: id,
       saved: entry.document.text,
-      current: sourceModeText({
-        dirty: editor.isDirty,
-        fileText: entry.document.text,
-        reconstructed: editor.getMarkdown(),
-        hasFinalNewline: editor.envelope.hasFinalNewline,
-        pendingSource: editor.pendingSourceMarkdown,
-      }),
+      current,
     });
-  }, []);
+  }, [currentNoteText, closeVersionDiff]);
   // A view of one note's changes does not outlive a switch to another note.
   useEffect(() => {
     setUnsavedDiffView((view) => (view && view.documentId !== activeId ? null : view));
-  }, [activeId]);
+    if (versionDiffRef.current && versionDiffRef.current.documentId !== activeId) closeVersionDiff(false);
+  }, [activeId, closeVersionDiff]);
   // Saved while on view, by Save or by autosave: nothing is unsaved any more,
   // and what the view shows is stale.
   useEffect(() => {
@@ -535,9 +769,15 @@ function NotoWorkspace({ platform }: { platform: NotoPlatform }) {
   useEffect(() => {
     const canvas = globalThis.document.getElementById('document-canvas');
     if (!canvas) return undefined;
-    canvas.inert = unsavedDiffView !== null;
+    canvas.inert = unsavedDiffView !== null || versionDiff !== null;
+    // A version taken back while the diff was up: the note has the keys once
+    // the page can take them again, so Undo is the note's.
+    if (!canvas.inert && focusAfterDiffRef.current) {
+      focusAfterDiffRef.current = false;
+      editorRef.current?.focus();
+    }
     return () => { canvas.inert = false; };
-  }, [unsavedDiffView]);
+  }, [unsavedDiffView, versionDiff]);
   /** The last git gutter per document, for an editor that mounts after it arrived. */
   const gitBlocksRef = useRef<Map<string, WorkspaceGitBlocksV1>>(new Map());
   /** Bumped when a gutter arrives, so the palette offers its command only where there is one. */
@@ -567,9 +807,26 @@ function NotoWorkspace({ platform }: { platform: NotoPlatform }) {
       if (target?.closest('.workspace-rail, [data-testid="sidebar-toggle"], [role="dialog"], [role="menu"]')) return;
       setRail((current) => ({ ...current, open: false }));
     };
+    // Escape puts it away too, unless something inside the rail used the key
+    // (a search box clearing, a selection let go), and gives the keys to the note.
+    const onKeyDown = (event: KeyboardEvent) => {
+      if (!narrow.matches || event.key !== 'Escape' || event.defaultPrevented) return;
+      const target = event.target instanceof Element ? event.target : null;
+      if (target?.closest('[role="dialog"], [role="menu"]')) return;
+      setRail((current) => ({ ...current, open: false }));
+      editorRef.current?.focus();
+    };
     window.addEventListener('pointerdown', onPointerDown, true);
-    return () => window.removeEventListener('pointerdown', onPointerDown, true);
+    window.addEventListener('keydown', onKeyDown);
+    return () => {
+      window.removeEventListener('pointerdown', onPointerDown, true);
+      window.removeEventListener('keydown', onKeyDown);
+    };
   }, [rail.open]);
+  /** A pick in the rail laid over a narrow window puts the rail away, so the page it opened is in view (daily-use audit, finding 14). */
+  const putOverlayRailAway = useCallback(() => {
+    if (window.matchMedia(RAIL_OVERLAY_MEDIA).matches) setRail((current) => (current.open ? { ...current, open: false } : current));
+  }, []);
   /* Links is opt-in: if the setting is off while that view is showing, leave it. */
   useEffect(() => {
     if (settings.railLinks) return;
@@ -598,6 +855,8 @@ function NotoWorkspace({ platform }: { platform: NotoPlatform }) {
    * so the stepping commands mean the same search after it has been closed.
    */
   const findOptionsRef = useRef({ caseSensitive: false, wholeWord: false, regex: false });
+  /** The last query the find bar ran, for Find Next and Previous with the bar closed. */
+  const lastQueryRef = useRef('');
   const cleanStateRef = useRef<'Opened' | 'Saved'>('Opened');
   const dirtyDocumentIds = useMemo(
     () => new Set([...docs.values()].filter((doc) => doc.dirty).map((doc) => doc.document.documentId)),
@@ -712,13 +971,15 @@ function NotoWorkspace({ platform }: { platform: NotoPlatform }) {
       root.style.removeProperty('--prose-font-family');
     }
     root.dataset.codeLineNumbers = settings.codeLineNumbers ? 'on' : 'off';
+    root.dataset.codeWrap = settings.codeWrap ? 'on' : 'off';
+    root.dataset.sheetWidth = String(settings.sheetWidth);
     root.dataset.codeIndentGuides = settings.codeIndentGuides ? 'on' : 'off';
     root.dataset.codeTabMarkers = settings.codeTabMarkers ? 'on' : 'off';
     root.dataset.timelines = settings.timelines ? 'on' : 'off';
     root.dataset.focusMode = settings.focusMode ? 'on' : 'off';
     root.dataset.gitMarks = settings.gitMarks ? 'on' : 'off';
   }, [settings.fontSize, settings.lineHeight, settings.widthMode, settings.proseFace, settings.proseFontFamily,
-    settings.codeLineNumbers, settings.codeIndentGuides, settings.codeTabMarkers,
+    settings.codeLineNumbers, settings.codeWrap, settings.sheetWidth, settings.codeIndentGuides, settings.codeTabMarkers,
     settings.timelines, settings.focusMode, settings.gitMarks]);
 
   /**
@@ -787,13 +1048,27 @@ function NotoWorkspace({ platform }: { platform: NotoPlatform }) {
     typeof window !== 'undefined' ? window.innerWidth : 0
   ));
   useEffect(() => {
-    const sync = () => setViewportWidth(window.innerWidth);
-    sync();
+    // A column the window's width moves (the rail's ceiling, the pane's) goes
+    // there at once, as under a drag: eased, the rail, whose own width is
+    // already the new one, lay over the page until the column caught up.
+    let settle: ReturnType<typeof setTimeout> | null = null;
+    const sync = () => {
+      const shell = window.document.querySelector('.app-shell');
+      shell?.classList.add('is-resizing-window');
+      if (settle !== null) clearTimeout(settle);
+      settle = setTimeout(() => { settle = null; shell?.classList.remove('is-resizing-window'); }, 200);
+      setViewportWidth(window.innerWidth);
+    };
+    setViewportWidth(window.innerWidth);
     window.addEventListener('resize', sync);
-    return () => window.removeEventListener('resize', sync);
+    return () => {
+      window.removeEventListener('resize', sync);
+      if (settle !== null) clearTimeout(settle);
+    };
   }, []);
   /** Applied rail width: clamp a stored value that outgrew a narrower window. */
   const appliedRailWidth = clampRailWidth(settings.railWidth, viewportWidth);
+  const appliedInfoWidth = clampInfoWidth(settings.infoWidth, viewportWidth);
 
   const changeSettings = useCallback((
     patch: Partial<NotoSettingsV1> | ((current: NotoSettingsV1) => Partial<NotoSettingsV1>),
@@ -809,6 +1084,21 @@ function NotoWorkspace({ platform }: { platform: NotoPlatform }) {
       return { ...current, ...resolved };
     });
   }, []);
+
+  // A code block's Wrap button asks for the setting View > Wrap Lines in Code Blocks flips.
+  useEffect(() => {
+    const toggle = () => changeSettings((current) => ({ codeWrap: !current.codeWrap }));
+    window.addEventListener(TOGGLE_CODE_WRAP, toggle);
+    return () => window.removeEventListener(TOGGLE_CODE_WRAP, toggle);
+  }, [changeSettings]);
+
+  // The width every sheet is drawn at, which ⌘[ and ⌘] step in any of them.
+  const sheetWidth = useMemo<SheetWidthControl>(() => ({
+    width: settings.sheetWidth,
+    onWidth: (width) => changeSettings({ sheetWidth: width }),
+    disabled: settings.disabledShortcuts,
+    mac: platform === 'darwin',
+  }), [settings.sheetWidth, settings.disabledShortcuts, changeSettings, platform]);
 
   useEffect(() => {
     const client = new RendererPluginClient(pluginHostRef.current!, window.notoDesktop.plugins, (pluginId) => {
@@ -1021,15 +1311,21 @@ function NotoWorkspace({ platform }: { platform: NotoPlatform }) {
         return next;
       });
     });
-    const unsubscribeTree = window.notoWorkspace.onTreeChanged(() => {
+    const unsubscribeTree = window.notoWorkspace.onTreeChanged((event) => {
       if (!active) return;
-      setTreeVersion((current) => current + 1);
+      // Main names the folders whose listings may have changed when it knows; the tree reads only those.
+      setTreeVersion((current) => ({ token: current.token + 1, only: event.directories }));
       // What quick open and wiki links match against is stale too. Main walks
       // again only when the change was structural; otherwise this is its cache.
       void ensureFileIndexRef.current();
     });
     const unsubscribeGit = window.notoWorkspace.onGitMarksChanged((event) => {
       if (active) setGitMarks(event);
+    });
+    // The folder's memory opened or took in new reads: whatever asked it asks again.
+    const unsubscribeMemory = window.notoWorkspace.onMemoryChanged(() => {
+      slotState.memoryMoved();
+      setMemoryVersion((current) => current + 1);
     });
     const unsubscribeGitBlocks = window.notoWorkspace.onGitBlocksChanged((event) => {
       if (!active) return;
@@ -1042,17 +1338,7 @@ function NotoWorkspace({ platform }: { platform: NotoPlatform }) {
       .then((result) => { if (active && result.ok) setGitMarks((current) => current ?? result.value); })
       .catch(() => { /* No marks is the ordinary answer. */ });
     const unsubscribeRename = window.notoWorkspace.onRenameRow((event) => {
-      if (!active) return;
-      const next = { path: event.path, intent: event.intent };
-      treeEditingRef.current = next;
-      setTreeEditing(next);
-      // A note just made is named on its own row, so the tree has to be on
-      // screen. The rail is put back as it was once the name is given.
-      const rail = railStateRef.current;
-      if (event.intent === 'new-note' && !(rail.open && rail.view === 'files')) {
-        railBeforeNamingRef.current = rail;
-        setRail({ open: true, view: 'files' });
-      }
+      if (active) beginNamingRef.current(event.path, event.intent);
     });
     const unsubscribeTabs = window.notoWorkspace.onTabsChanged((event) => {
       if (!active) return;
@@ -1164,6 +1450,7 @@ function NotoWorkspace({ platform }: { platform: NotoPlatform }) {
       unsubscribeTree();
       unsubscribeGit();
       unsubscribeGitBlocks();
+      unsubscribeMemory();
       unsubscribeRename();
       unsubscribeTabs();
       unsubscribeFolder();
@@ -1180,6 +1467,27 @@ function NotoWorkspace({ platform }: { platform: NotoPlatform }) {
       cleanStateRef.current = active.cleanState;
     }
   }, [activeId, docs, active]);
+
+  /* A sheet over the page gives the keys back when it closes (`focus-return.ts`). */
+  const focusNoteInFront = () => {
+    const editor = editorRef.current;
+    if (!editor) return false;
+    editor.focus();
+    return true;
+  };
+  useFocusReturn(shortcuts, focusNoteInFront);
+  useFocusReturn(tableDialog, focusNoteInFront);
+
+  /* Each note keeps its place in the shared page (daily-use audit, finding 7). */
+  useReadingAnchors({
+    canvasId: 'document-canvas',
+    activeId,
+    activePath: active?.opened.path ?? null,
+    editors: editorsRef,
+    editorsReady,
+    paused: sourceMode || codeView !== null,
+    jumping: () => pendingMatchRef.current !== null,
+  });
 
   const activateTab = useCallback((filePath: string) => {
     void window.notoWorkspace.activateTab({ version: 1, requestId: rid('tab-activate'), path: filePath });
@@ -1224,7 +1532,8 @@ function NotoWorkspace({ platform }: { platform: NotoPlatform }) {
     // Same confirmed-open path as Quick Open: frecency only advances when this
     // succeeds, and a failed tree click does not pollute the ranking.
     void openPathRef.current(filePath);
-  }, []);
+    putOverlayRailAway();
+  }, [putOverlayRailAway]);
 
   const closeTab = useCallback((filePath: string) => {
     void window.notoWorkspace.closeTab({ version: 1, requestId: rid('tab-close'), path: filePath });
@@ -1364,12 +1673,19 @@ function NotoWorkspace({ platform }: { platform: NotoPlatform }) {
     // Text still settling in the source view goes into the document first,
     // so a save a moment after typing there writes what is on screen.
     sourceFlushRef.current?.();
+    if (!editor || !token) return;
     // The editor's own word on being dirty, because the flush above may have
     // just made it so and the state this closure holds is from before.
-    if (!editor || !token || pending || !(editorDirty || editor.isDirty)) return;
-    // Checked and set before anything is captured, so a second trigger in the
-    // same tick finds the first one and leaves.
-    if (fileTruthBusyRef.current) return;
+    const dirty = editorDirty || editor.isDirty;
+    // A save asked for while one is landing is kept, not dropped: it runs once
+    // that one has landed, if there is still something to save. Checked and
+    // set before anything is captured, so a second trigger in the same tick
+    // finds the first one and waits for it.
+    if (pending || fileTruthBusyRef.current) {
+      if (dirty && documentId) saveAgainRef.current = documentId;
+      return;
+    }
+    if (!dirty) return;
     fileTruthBusyRef.current = true;
     let capture: ReturnType<NotoEditor['captureSaveTicket']>;
     let base: NotoDocumentWire;
@@ -1453,6 +1769,18 @@ function NotoWorkspace({ platform }: { platform: NotoPlatform }) {
 
   saveRef.current = save;
 
+  // The save that waited for another to land, now that it has: on the same
+  // note only, and not past a refusal (a conflict, a recovery record, a
+  // failed write), which waits for the person as the first save did.
+  useEffect(() => {
+    if (pending || saveAgainRef.current === null) return;
+    const again = saveAgainRef.current;
+    saveAgainRef.current = null;
+    if (again !== activeIdRef.current) return;
+    if (recoveryBarrier || state === 'External conflict' || state === 'Stale editor revision' || state === 'Save failed') return;
+    void saveRef.current();
+  }, [pending, recoveryBarrier, state]);
+
   const saveCopy = async (): Promise<boolean> => {
     const editor = editorRef.current;
     if (!editor || !token || !opened) return false;
@@ -1520,7 +1848,7 @@ function NotoWorkspace({ platform }: { platform: NotoPlatform }) {
     }
   }, []);
 
-  const openPath = useCallback(async (filePath: string) => {
+  const openPath = useCallback(async (filePath: string, from?: string | null, options?: { readonly caret?: boolean }) => {
     setOpenError(null);
     // An automatic save waiting on the note being left goes now. Its timer was
     // cleared when the note left the front, so a note left within the delay
@@ -1530,7 +1858,7 @@ function NotoWorkspace({ platform }: { platform: NotoPlatform }) {
       void saveRef.current();
     }
     try {
-      const result = await window.notoWorkspace.openPath({ version: 1, requestId: rid('open-path'), path: filePath });
+      const result = await window.notoWorkspace.openPath({ version: 1, requestId: rid('open-path'), path: filePath, ...(from ? { from } : {}) });
       if (!result.ok) {
         // A replay that failed is over, and a note that cannot be opened is
         // not somewhere the trail should offer again.
@@ -1549,6 +1877,10 @@ function NotoWorkspace({ platform }: { platform: NotoPlatform }) {
         setSourceMode(false);
         return;
       }
+      if (options?.caret && result.value.opened) {
+        caretWantedRef.current = { id: result.value.opened.documentId, tries: 0 };
+        takeWantedCaretRef.current();
+      }
       // Counted only after the host confirms the open, and only once per
       // transition: a failed open never reaches here, opening the note
       // already in front does not bump again, and a trail step notes the
@@ -1566,7 +1898,158 @@ function NotoWorkspace({ platform }: { platform: NotoPlatform }) {
       setOpenError(actionableFileTruthMessage(error, 'That file could not be opened.'));
     }
   }, []);
+  /**
+   * The folder the info pane is about instead of the note, from Get Info on a
+   * folder in the tree. Choosing a note, opening another folder, closing the
+   * pane or bringing one of its tabs forward turns it back to the note.
+   */
+  const [infoFolder, setInfoFolder] = useState<string | null>(null);
   openPathRef.current = openPath;
+
+  /*
+   * The note a chooser opened wants the caret once it is in front and its
+   * editor exists. Quick Open used to hand focus back to the editor that was
+   * in front before, which is still the old note's while the new one opens,
+   * and a hidden editor that keeps the focus still takes keys: what was typed
+   * next went into the note just left, out of sight. Now nothing has the keys
+   * for that moment, and the note takes them as soon as it is drawn. Tried
+   * again on the next frame until it has them, since its slot can still be
+   * hidden when it is first in front.
+   */
+  const caretWantedRef = useRef<{ readonly id: string; tries: number } | null>(null);
+  const takeWantedCaret = () => {
+    const wanted = caretWantedRef.current;
+    if (wanted === null || wanted.id !== activeIdRef.current) return;
+    const editor = editorsRef.current.get(wanted.id);
+    if (!editor) return;
+    // Something else took the keys in the meantime, or it never drew: the reader has moved on.
+    const elsewhere = globalThis.document.activeElement;
+    if (wanted.tries >= 30 || (elsewhere !== null && elsewhere !== globalThis.document.body && !editor.hasFocus())) {
+      caretWantedRef.current = null;
+      return;
+    }
+    wanted.tries += 1;
+    editor.focus();
+    if (editor.hasFocus()) { caretWantedRef.current = null; return; }
+    requestAnimationFrame(() => takeWantedCaretRef.current());
+  };
+  const takeWantedCaretRef = useRef(takeWantedCaret);
+  takeWantedCaretRef.current = takeWantedCaret;
+  useEffect(() => { takeWantedCaretRef.current(); }, [activeId, editorsReady]);
+  /** Set while Quick Open closes on a note it opened, so closing does not give the keys back to the note in front. */
+  const quickChoseRef = useRef(false);
+  useEffect(() => {
+    // A note chosen from a plugin turns a folder's info back to the note, the one in front too.
+    slotState.setOpener((filePath) => { setInfoFolder(null); void openPathRef.current(filePath); });
+  }, [slotState]);
+  // What the info pane's tabs reach through their host: git's history of a
+  // note, the note's text, taking a version back, and the diff view.
+  useEffect(() => {
+    slotState.setGitReader({
+      passage: async (filePath, text) => {
+        const result = await window.notoWorkspace.notePassage({ version: 1, requestId: rid('note-passage'), path: filePath, text });
+        if (!result.ok) return null;
+        const { version: _version, ...passage } = result.value;
+        return passage;
+      },
+      history: async (filePath) => {
+        const result = await window.notoWorkspace.noteHistory({ version: 1, requestId: rid('note-history'), path: filePath });
+        if (!result.ok) return null;
+        const { version: _version, ...history } = result.value;
+        return history;
+      },
+      version: async (filePath, commit, at) => {
+        const result = await window.notoWorkspace.noteVersion({ version: 1, requestId: rid('note-version'), path: filePath, commit, at });
+        return result.ok ? result.value.text : null;
+      },
+      folder: async (folderPath) => {
+        const result = await window.notoWorkspace.folderHistory({ version: 1, requestId: rid('folder-history'), path: folderPath });
+        if (!result.ok) return null;
+        const { version: _version, ...history } = result.value;
+        return history;
+      },
+    });
+    slotState.setMemoryBackend({
+      about: async (filePath) => {
+        const result = await window.notoWorkspace.noteMemory({ version: 1, requestId: rid('note-memory'), path: filePath });
+        if (!result.ok) return null;
+        const { version: _version, ...answer } = result.value;
+        return answer;
+      },
+      keep: async () => {
+        const result = await window.notoWorkspace.keepMemory({ version: 1, requestId: rid('keep-memory') });
+        return result.ok ? result.value.outcome : 'failed';
+      },
+      trust: async () => {
+        const result = await window.notoWorkspace.trustMemory({ version: 1, requestId: rid('trust-memory') });
+        return result.ok && result.value.trusted;
+      },
+      ask: async (cue, note) => {
+        const result = await window.notoWorkspace.memoryAsk({ version: 1, requestId: rid('memory-ask'), cue, note });
+        if (!result.ok) return null;
+        const { version: _version, ...answer } = result.value;
+        return answer;
+      },
+      folder: async (folderPath) => {
+        const result = await window.notoWorkspace.folderMemory({ version: 1, requestId: rid('folder-memory'), path: folderPath });
+        if (!result.ok) return null;
+        const { version: _version, ...answer } = result.value;
+        return answer;
+      },
+    });
+    slotState.setReviewer(async (action) => {
+      const result = await window.notoWorkspace.memoryReview({ version: 1, requestId: rid('memory-review'), action });
+      if (!result.ok) return { state: 'unavailable', value: null, error: null };
+      const { version: _version, ...answer } = result.value;
+      return answer;
+    });
+    slotState.setEditorAccess({
+      text: () => (slotState.settledNote() === slotState.host.activeNote() ? currentNoteText() : null),
+      replace: (text) => {
+        const editor = editorRef.current;
+        // Only the note the pane is about, and not under Source Code Mode, whose text would win on its way out.
+        if (!editor || sourceModeRef.current || slotState.settledNote() !== slotState.host.activeNote()) return false;
+        const open = versionDiffRef.current;
+        if (open && open.documentId !== activeIdRef.current) return false;
+        if (currentNoteText() === text) return true;
+        const done = editor.applySourceBuffer(text);
+        // Under an open diff the page is inert and cannot take focus; it is given once the view goes.
+        if (done && versionDiffRef.current) focusAfterDiffRef.current = true;
+        else if (done) editor.focus();
+        return done;
+      },
+    });
+    slotState.setDiffPresenter((request, pluginId) => {
+      const open = versionDiffRef.current;
+      if (request === null) {
+        if (open && open.pluginId === pluginId) closeVersionDiff(false);
+        return;
+      }
+      setUnsavedDiffView(null);
+      setVersionDiff({ serial: (open?.serial ?? 0) + 1, pluginId, documentId: activeIdRef.current, request });
+    });
+  }, [slotState, currentNoteText, closeVersionDiff]);
+  /** A tab of the info pane to bring forward, and what to show in it. */
+  const [infoReveal, setInfoReveal] = useState<{ key: string; reveal?: string; serial: number } | null>(null);
+  const infoSerial = useRef(0);
+  useEffect(() => {
+    slotState.setTabShower((key, reveal) => {
+      setInfoFolder(null);
+      changeSettings({ infoOpen: true, infoTab: key });
+      infoSerial.current += 1;
+      setInfoReveal({ key, reveal, serial: infoSerial.current });
+    });
+  }, [slotState, changeSettings]);
+  useEffect(() => {
+    slotState.update({ folder: folder.root, active: active?.opened.path ?? null });
+  }, [slotState, folder.root, active]);
+  useEffect(() => window.notoWorkspace.onShowFolderInfo((event) => {
+    setInfoFolder(event.path);
+    changeSettings({ infoOpen: true });
+  }), [changeSettings]);
+  useEffect(() => slotState.onSettledNote(() => setInfoFolder(null)), [slotState]);
+  useEffect(() => { setInfoFolder(null); }, [folder.root]);
+  useEffect(() => { if (!settings.infoOpen) setInfoFolder(null); }, [settings.infoOpen]);
 
   /** One step along the trail, replayed as an open so nothing records it. */
   const stepTrail = useCallback((direction: -1 | 1) => {
@@ -1596,6 +2079,9 @@ function NotoWorkspace({ platform }: { platform: NotoPlatform }) {
     }
   }, []);
   ensureFileIndexRef.current = ensureFileIndex;
+  /* The empty page of an open folder offers its index note, which it finds in the index. */
+  const showsFolderEmpty = folder.root !== null && active === null && codeView === null;
+  useEffect(() => { if (showsFolderEmpty) void ensureFileIndex(); }, [showsFolderEmpty, folder.root, ensureFileIndex]);
 
   /**
    * Resolve a `[[wiki link]]` against the index.
@@ -1628,7 +2114,9 @@ function NotoWorkspace({ platform }: { platform: NotoPlatform }) {
     ).reduce((chosen, entry) => (
       searchBoost(frecency, entry.path, now) > searchBoost(frecency, chosen.path, now) ? entry : chosen
     ));
-    void openPath(best.path);
+    // Where it was reached from goes with it: a link followed is the strongest
+    // sign that two notes belong together.
+    void openPath(best.path, here);
   }, [active, folder.root, fileIndex.entries, frecency, openPath]);
   followWikiLinkRef.current = followWikiLink;
 
@@ -1673,11 +2161,13 @@ function NotoWorkspace({ platform }: { platform: NotoPlatform }) {
    * The path only names the row; main resolves it, checks it is inside the
    * open folder and draws the menu itself, so nothing the menu does runs here.
    */
-  const showTreeMenu = useCallback((rowPath: string, kind: 'file' | 'directory') => {
+  const showTreeMenu = useCallback((rowPath: string, kind: 'file' | 'directory', also?: readonly string[]) => {
     void window.notoWorkspace.treeMenu({
-      version: 1, requestId: rid('tree-menu'), path: rowPath, kind,
+      version: 1, requestId: rid('tree-menu'), path: rowPath, kind, ...(also && also.length > 0 ? { also } : {}),
     });
   }, []);
+  // The same menu for a row a plugin's page draws.
+  useEffect(() => { slotState.setFileMenu(showTreeMenu); }, [showTreeMenu]);
   countRef.current = (documentId, next) => {
     if (documentId === activeIdRef.current) setCount(next);
   };
@@ -1702,40 +2192,14 @@ function NotoWorkspace({ platform }: { platform: NotoPlatform }) {
     if (!settings.fileTags) return;
     setPrefs((current) => ({ ...current, open: false }));
     setQuickOpen((current) => ({ ...current, open: false }));
+    setTagBrowser((current) => ({ ...current, open: true, view: tag ? { kind: 'notes', tag } : { kind: 'tags' }, loading: true }));
+    const index = await window.notoWorkspace.tagIndex({ version: 1, requestId: rid('tag-index') });
     setTagBrowser((current) => ({
       ...current,
-      open: true,
-      view: tag ? { kind: 'notes', tag } : { kind: 'tags' },
-      loading: true,
-      notes: tag ? current.notes : [],
-    }));
-    const index = await window.notoWorkspace.tagIndex({ version: 1, requestId: rid('tag-index') });
-    if (!index.ok) {
-      setTagBrowser((current) => ({ ...current, loading: false, tags: [], truncated: false }));
-      return;
-    }
-    if (tag) {
-      const notes = await window.notoWorkspace.notesByTag({
-        version: 1, requestId: rid('notes-by-tag'), tag,
-      });
-      setTagBrowser({
-        open: true,
-        view: { kind: 'notes', tag: notes.ok ? notes.value.tag : tag },
-        tags: index.value.tags,
-        notes: notes.ok ? notes.value.notes : [],
-        loading: false,
-        truncated: index.value.truncated,
-      });
-      return;
-    }
-    setTagBrowser({
-      open: true,
-      view: { kind: 'tags' },
-      tags: index.value.tags,
-      notes: [],
+      tags: index.ok ? index.value.tags : [],
+      truncated: index.ok ? index.value.truncated : false,
       loading: false,
-      truncated: index.value.truncated,
-    });
+    }));
   }, [settings.fileTags]);
 
   const noteLinks = useCallback(async (target: string) => {
@@ -1865,8 +2329,10 @@ function NotoWorkspace({ platform }: { platform: NotoPlatform }) {
       const editor = editorsRef.current.get(documentId);
       if (editor?.isDirty) {
         const accepted = editor.acceptedDocument;
+        sourceStaleRef.current = true;
         editor.replaceMarkdown(accepted.text);
         editor.commit(accepted);
+        setSourceReloads((count) => count + 1);
       }
       patchDoc(documentId, { state: cleanStateRef.current, outcome: null, dirty: false });
       setLocalMessage(null);
@@ -1882,8 +2348,10 @@ function NotoWorkspace({ platform }: { platform: NotoPlatform }) {
       return;
     }
     const editor = editorsRef.current.get(documentId);
+    sourceStaleRef.current = true;
     editor?.replaceMarkdown(outcome.opened.document.text);
     editor?.commit(outcome.opened.document);
+    setSourceReloads((count) => count + 1);
     patchDoc(documentId, {
       opened: outcome.opened,
       document: outcome.opened.document,
@@ -1941,18 +2409,42 @@ function NotoWorkspace({ platform }: { platform: NotoPlatform }) {
   const tabPathsRef = useRef(new Map<string, string>());
   /** The rail as it was before a new note opened it to be named, if it did. */
   const railBeforeNamingRef = useRef<{ open: boolean; view: RailView } | null>(null);
-  /** Bumped whenever something in the tree moved, so listings are read again. */
-  const [treeVersion, setTreeVersion] = useState(0);
+  /**
+   * Put a name field in the tree at `path`: on the row for a rename, under it
+   * for something new. A row is named where it sits in the file tree, so the
+   * tree has to be on screen: for a note just made, and for a rename or a new
+   * folder asked for from a page in the rail or the menu. The rail is put back
+   * as it was once the name is given.
+   */
+  const beginNaming = (path: string, intent: 'rename' | 'new-folder' | 'new-note') => {
+    const next = { path, intent };
+    treeEditingRef.current = next;
+    setTreeEditing(next);
+    const rail = railStateRef.current;
+    if (!(rail.open && rail.view === 'files')) {
+      railBeforeNamingRef.current = rail;
+      setRail({ open: true, view: 'files' });
+    }
+  };
+  const beginNamingRef = useRef(beginNaming);
+  beginNamingRef.current = beginNaming;
+  /** Bumped whenever something in the tree moved, so listings are read again: those in `only`, or all of them. */
+  const [treeVersion, setTreeVersion] = useState<{ token: number; only: readonly string[] | null }>({ token: 0, only: null });
 
   // Turning the viewer off dismisses a code file and refreshes the tree so
   // non-Markdown rows disappear again.
   useEffect(() => {
     if (!settings.codeViewer) setCodeView(null);
-    setTreeVersion((current) => current + 1);
+    setTreeVersion((current) => ({ token: current.token + 1, only: null }));
   }, [settings.codeViewer]);
 
   /** Bumped to shut every folder but the current note's, which the tree watches for. */
   const [treeCollapse, setTreeCollapse] = useState(0);
+  /** A folder the tree should focus on, asked for from its row menu; the token tells one ask from the next. */
+  const [treeFocus, setTreeFocus] = useState<{ readonly path: string; readonly token: number } | null>(null);
+  useEffect(() => window.notoWorkspace.onFocusFolder((event) => {
+    setTreeFocus((current) => ({ path: event.path, token: (current?.token ?? 0) + 1 }));
+  }), []);
 
   /**
    * What to say when an action on a row did nothing.
@@ -1970,6 +2462,22 @@ function NotoWorkspace({ platform }: { platform: NotoPlatform }) {
     return 'That did not work, and nothing was changed.';
   };
 
+  /** What Quick Open makes from a name nothing matched: a note or a folder, in the folder it is narrowed to. */
+  const makeFromQuickOpen = async (
+    action: { readonly kind: 'new-note' | 'new-folder'; readonly name: string },
+    scope: string,
+  ): Promise<{ readonly made: string } | { readonly refused: string }> => {
+    const root = folder.root;
+    if (!root) return { refused: 'Open a folder first.' };
+    const separator = root.includes('\\') ? '\\' : '/';
+    const target = scope.length > 0 ? [root.replace(/[\\/]+$/, ''), ...scope.split('/')].join(separator) : root;
+    const result = await window.notoWorkspace.manageEntry({
+      version: 1, requestId: rid('entry'), action: action.kind, target, name: action.name, destination: null,
+    });
+    if (!result.ok) return { refused: actionableFileTruthMessage(result.error.message, 'That could not be made.') };
+    return result.value.done ? { made: result.value.path } : { refused: entryRefusalMessage(result.value.reason) };
+  };
+
   const finishTreeEdit = useCallback((name: string | null) => {
     const editing = treeEditing;
     // A second new note can arrive while the first is still being named. The
@@ -1979,14 +2487,21 @@ function NotoWorkspace({ platform }: { platform: NotoPlatform }) {
     if (latest) {
       treeEditingRef.current = null;
       setTreeEditing(null);
-    }
-    if (editing?.intent === 'new-note' && latest) {
-      // The note was made to be written in, named or not: the caret goes to
-      // it, and a rail opened only for the name closes again.
+      // A rail turned to the files only for the name goes back as it was.
       const before = railBeforeNamingRef.current;
       railBeforeNamingRef.current = null;
       if (before) setRail(before);
-      queueMicrotask(() => editorRef.current?.focus());
+    }
+    if (editing?.intent === 'new-note' && latest) {
+      // The note was made to be written in, named or not: the caret goes to it.
+      // The new note's own editor, which may not be built yet: then it takes
+      // the keys when it is, rather than the note that was in front before.
+      const target = activeIdRef.current;
+      queueMicrotask(() => {
+        const editor = target ? editorsRef.current.get(target) : undefined;
+        if (editor) editor.focus();
+        else focusWhenReadyRef.current = target;
+      });
     }
     if (!editing || name === null) return;
     void window.notoWorkspace.manageEntry({
@@ -2006,8 +2521,8 @@ function NotoWorkspace({ platform }: { platform: NotoPlatform }) {
   }, [treeEditing]);
 
   /** A row dragged onto a folder: main moves it and the tree hears about it. */
-  const moveEntryInto = useCallback((source: string, destination: string) => {
-    void window.notoWorkspace.manageEntry({
+  const moveEntryInto = useCallback((source: string, destination: string): Promise<void> => {
+    return window.notoWorkspace.manageEntry({
       version: 1,
       requestId: rid('entry'),
       action: 'move-into',
@@ -2319,11 +2834,26 @@ function NotoWorkspace({ platform }: { platform: NotoPlatform }) {
               : actionableFileTruthMessage(result.error.message, 'The note could not be made.'));
           });
         break;
+      case 'new-folder': {
+        // Beside the note in front, as New Note puts a note; the open folder otherwise.
+        const root = folder.root;
+        if (!root) { setLocalMessage('Open a folder first, and the new folder goes in it.'); break; }
+        const note = active?.opened.path ?? null;
+        const inside = note !== null && (note.startsWith(`${root}/`) || note.startsWith(`${root}\\`));
+        beginNaming(inside ? note.replace(/[\\/][^\\/]*$/, '') : root, 'new-folder');
+        break;
+      }
       case 'toggle-focus-mode':
         changeSettings({ focusMode: !settings.focusMode });
         break;
+      case 'toggle-note-marks':
+        changeSettings({ noteMarks: !settings.noteMarks });
+        break;
       case 'toggle-git-marks':
         changeSettings({ gitMarks: !settings.gitMarks });
+        break;
+      case 'toggle-code-wrap':
+        changeSettings({ codeWrap: !settings.codeWrap });
         break;
       case 'toggle-typewriter':
         changeSettings({ typewriterMode: !settings.typewriterMode });
@@ -2331,11 +2861,18 @@ function NotoWorkspace({ platform }: { platform: NotoPlatform }) {
       case 'toggle-outline':
         toggleRail('outline');
         break;
+      case 'toggle-note-info':
+        changeSettings({ infoOpen: !settings.infoOpen });
+        break;
+      case 'show-note-info':
+        setInfoFolder(null);
+        changeSettings({ infoOpen: true });
+        break;
       case 'tree-sort-name': case 'tree-sort-name-desc':
       case 'tree-sort-modified': case 'tree-sort-modified-old':
         changeSettings({ treeSort: event.command.slice('tree-sort-'.length) as TreeSortV1 });
         // The order is main's, so the tree has to ask again to see it.
-        setTreeVersion((current) => current + 1);
+        setTreeVersion((current) => ({ token: current.token + 1, only: null }));
         break;
       case 'shortcuts':
         setShortcuts((open) => !open);
@@ -2359,11 +2896,22 @@ function NotoWorkspace({ platform }: { platform: NotoPlatform }) {
           setLocalMessage('That source edit is no longer a single block, so it cannot be rendered yet.');
         }
         break;
-      case 'undo':
-        editorRef.current?.history('undo');
+      case 'select-all': {
+        // The note's own Select All while the note has the keys; anywhere
+        // else, the browser's, which selects within the field that has them.
+        const editor = editorRef.current;
+        if (sourceMode || codeView || !editor?.hasFocus() || !editor.runCommand('select-all')) {
+          window.document.execCommand('selectAll');
+        }
         break;
+      }
+      case 'undo':
       case 'redo':
-        editorRef.current?.history('redo');
+        // Source Code Mode's own history while it is open, unless another
+        // field (find, a rename, the palette) has the keys: that field's
+        // undo is the one meant, and the note's editor hands it on.
+        if (sourceHistoryRef.current && !otherFieldFocused()) sourceHistoryRef.current(event.command);
+        else editorRef.current?.history(event.command);
         break;
       case 'settings':
         // Cmd+, again is muscle memory for leave: toggle closed from any section.
@@ -2391,7 +2939,7 @@ function NotoWorkspace({ platform }: { platform: NotoPlatform }) {
          * query is run first. That is also what makes this work after the bar
          * has been closed: closing it clears the highlights but not the query.
          */
-        const query = findRef.current.query ?? '';
+        const query = lastQueryRef.current || (findRef.current.query ?? '');
         if (query.length === 0) {
           setFind((current) => ({ ...current, open: true }));
           break;
@@ -2424,6 +2972,16 @@ function NotoWorkspace({ platform }: { platform: NotoPlatform }) {
    * so a reader who reaches for the palette looking for it finds it. Plugin
    * commands keep their own source label underneath.
    */
+  /** The application menu's commands, read each time the palette opens so what is on or off is current. */
+  const [menuCommands, setMenuCommands] = useState<readonly WorkspaceMenuCommandV1Entry[]>([]);
+  useEffect(() => {
+    if (!paletteOpen) return;
+    let current = true;
+    void window.notoWorkspace.menuCommands({ version: 1, requestId: rid('menu-commands') }).then((reply) => {
+      if (current && reply.ok) setMenuCommands(reply.value.commands);
+    });
+    return () => { current = false; };
+  }, [paletteOpen]);
   const paletteCommands = useMemo(() => {
     const builtin = EXPORT_PALETTE_COMMANDS.map((command) => ({
       key: `export:${command.target}`,
@@ -2469,8 +3027,29 @@ function NotoWorkspace({ platform }: { platform: NotoPlatform }) {
     const unsaved = editorDirty
       ? [{ key: 'diff:unsaved', testId: 'palette-unsaved-diff', kind: 'diff' as const, title: 'Show Unsaved Changes', source: 'File' }]
       : [];
-    return [...builtin, ...unsaved, ...git, ...plugins];
-  }, [pluginSnapshots, activeId, gitBlocksVersion, editorDirty]);
+    const info = [{
+      key: 'info:toggle', testId: 'palette-note-info', kind: 'info' as const,
+      title: settings.infoOpen ? 'Hide Note Info' : 'Show Note Info', source: 'View',
+    }];
+    // Every command the menu holds, with its keys, as the menu has it now
+    // (`menu-commands.ts`). Its exports are left to the built-in ones above,
+    // which name themselves in full (Export PDF rather than PDF under Export).
+    const mac = platform === 'darwin';
+    const menu = menuCommands
+      // Note Info is offered above as Show or Hide Note Info, which says which it will do.
+      .filter((command) => command.enabled && command.id !== 'command-palette' && command.id !== 'toggle-note-info' && !command.id.startsWith('export-'))
+      .map((command) => ({
+        key: `menu:${command.id}`,
+        testId: 'palette-menu-command',
+        kind: 'menu' as const,
+        menuId: command.id,
+        title: command.title,
+        source: command.path,
+        keys: command.accelerator ? acceleratorLabel(command.accelerator, mac) : null,
+        on: command.checked,
+      }));
+    return [...builtin, ...unsaved, ...info, ...git, ...menu, ...plugins];
+  }, [pluginSnapshots, activeId, gitBlocksVersion, editorDirty, settings.infoOpen, menuCommands, platform]);
   const paletteCommandByKey = useMemo(
     () => new Map(paletteCommands.map((command) => [command.key, command])),
     [paletteCommands],
@@ -2509,16 +3088,50 @@ function NotoWorkspace({ platform }: { platform: NotoPlatform }) {
   const fileManagerName = platform === 'darwin' ? 'Finder'
     : platform === 'win32' ? 'File Explorer' : 'the file manager';
 
+  /** Quick Open's preview of a note: its opening, or the lines around a match in it. */
+  const previewNote = useCallback((filePath: string, line: number | null) => window.notoWorkspace.notePreview({
+    version: 1, requestId: rid('note-preview'), path: filePath, line,
+  }).then((reply) => (reply.ok ? reply.value : null)), []);
+
+  /** What a Try It in What Noto Can Do leads to: the same as its menu command, or the place it is. */
+  const tryGuide = (action: GuideTry) => {
+    setPrefs((current) => ({ ...current, open: false }));
+    switch (action) {
+      case 'note-info': setInfoFolder(null); changeSettings({ infoOpen: true }); break;
+      case 'note-history': slotState.showTab('dev.lr00rl.noto.history:history'); break;
+      case 'ask': slotState.showTab('dev.lr00rl.noto.memory:related', 'ask'); break;
+      case 'review': setRail({ open: true, view: 'page:dev.lr00rl.noto.memory:review' }); break;
+      case 'changes': setRail({ open: true, view: 'page:dev.lr00rl.noto.changes:changes' }); break;
+      case 'folder-info': {
+        // The folder of the note in front, or the open folder itself.
+        const note = active?.opened.path ?? null;
+        const root = folder.root;
+        const where = note && root && note.startsWith(root) ? note.replace(/[\\/][^\\/]*$/, '') : root;
+        if (where) { setInfoFolder(where); changeSettings({ infoOpen: true }); }
+        break;
+      }
+      case 'settings-memory': openSettings('memory'); break;
+      case 'outline': setRail({ open: true, view: 'outline' }); break;
+      case 'search': setRail({ open: true, view: 'search' }); break;
+      case 'quick-open': void ensureFileIndex(); setQuickOpen({ open: true, mode: 'files' }); break;
+      case 'palette': setPaletteOpen(true); break;
+    }
+  };
+
   return (
     <div className="app-shell"
       // Only macOS puts window controls over the page, so only macOS needs the
       // title bar to leave room for them. The value is the one bootstrap
       // validated, which the shell already has.
       data-platform={platform}
+      data-rail={rail.open ? 'open' : undefined}
       data-testid="noto-app" data-file-state={state}
       /* The open rail's width: the shell's first column, and the title bar's,
          so the filename can be centred over the page. */
-      style={{ '--shell-rail': rail.open ? `${appliedRailWidth}px` : '0px' } as CSSProperties}
+      style={{
+        '--shell-rail': rail.open ? `${appliedRailWidth}px` : '0px',
+        '--shell-info': settings.infoOpen ? `${appliedInfoWidth}px` : '0px',
+      } as CSSProperties}
       data-plugin-lifecycle={pluginSnapshot?.lifecycle ?? 'disabled'}
       data-plugin-registrations={pluginSnapshot?.rendererRegistrations ?? 0}>
       <a className="skip-link" href="#document-canvas">Skip to document</a>
@@ -2537,23 +3150,24 @@ function NotoWorkspace({ platform }: { platform: NotoPlatform }) {
             links={{
               currentPath: active?.opened.path ?? null,
               onLinks: noteLinks,
-              onOpen: (target) => { void openPath(target); },
+              onOpen: (target) => { void openPath(target); putOverlayRailAway(); },
               seedLinks,
             }}
             search={{
               onSearch: searchContent,
-              onOpenMatch: openMatch,
+              onOpenMatch: (...match: Parameters<typeof openMatch>) => { putOverlayRailAway(); return openMatch(...match); },
               currentPath: active?.opened.path ?? null,
               onClose: () => setRail({ open: true, view: 'files' }),
             }}
             view={rail.view}
+            pages={railPageEntries}
             showLinks={settings.railLinks}
             onView={(view) => setRail({ open: true, view })}
             width={appliedRailWidth}
             onResize={(railWidth) => changeSettings({ railWidth: clampRailWidth(railWidth, window.innerWidth) })}
             outline={outline}
             currentHeading={currentHeading}
-            onGoToBlock={(blockIndex) => editorRef.current?.focusBlock(blockIndex)}
+            onGoToBlock={(blockIndex) => { editorRef.current?.focusBlock(blockIndex, { at: 0.1 }); putOverlayRailAway(); }}
             tree={{
               vaultMenu: (
                 <RailFooter
@@ -2578,13 +3192,19 @@ function NotoWorkspace({ platform }: { platform: NotoPlatform }) {
               list: listFolder,
               onOpenFile: openFromTree,
               onRowMenu: showTreeMenu,
+              onRename: (rowPath) => beginNamingRef.current(rowPath, 'rename'),
               onChooseFolder: chooseFolder,
               onMoveEntry: moveEntryInto,
               editing: treeEditing,
               onEditingDone: finishTreeEdit,
-              reloadToken: treeVersion,
+              reloadToken: treeVersion.token,
+              reloadOnly: treeVersion.only,
               collapseToken: treeCollapse,
               gitMarks: treeGitMarks,
+              privacyMarks: treePrivacyMarks,
+              heldFolders: settings.treeHeld,
+              noteExtensions: settings.treeNoteExtensions,
+              focusRequest: treeFocus,
             }}
             onCollapseTree={() => setTreeCollapse((current) => current + 1)}
           />
@@ -2644,6 +3264,19 @@ function NotoWorkspace({ platform }: { platform: NotoPlatform }) {
         <span className="file-state" data-testid="file-state" aria-live="polite">{state}</span>
 
         <div className="title-actions">
+          {/* What Noto can do, a press away rather than only in the Help menu,
+              with a dot while it holds something not yet seen. */}
+          <button type="button" className={guideSeen < GUIDE_EDITION ? 'icon-button guide-toggle has-news' : 'icon-button guide-toggle'}
+            data-testid="guide-toggle" aria-expanded={shortcuts}
+            aria-label={guideSeen < GUIDE_EDITION ? 'What Noto can do, with new things' : 'What Noto can do'}
+            title={guideSeen < GUIDE_EDITION ? 'What Noto can do: new things since you last looked' : 'What Noto can do'}
+            onClick={() => (shortcuts ? closeGuide() : setShortcuts(true))}>
+            <svg viewBox="0 0 16 16" aria-hidden="true">
+              <circle cx="8" cy="8" r="6.1" />
+              <path d="M6.2 6.3a1.9 1.9 0 0 1 3.7.6c0 1.3-1.9 1.6-1.9 2.9" />
+              <circle cx="8" cy="11.6" r="0.55" className="guide-dot-fill" />
+            </svg>
+          </button>
           <button ref={settingsButtonRef} type="button" className="icon-button" data-testid="settings-toggle"
             aria-expanded={prefs.open}
             aria-controls="settings-panel"
@@ -2704,7 +3337,8 @@ function NotoWorkspace({ platform }: { platform: NotoPlatform }) {
         className={`workspace-layout ${rail.open ? 'has-rail' : ''}`}
         data-source-mode={sourceMode ? 'on' : undefined}
       >
-        {shortcuts && <Shortcuts mac={platform === 'darwin'} onClose={() => setShortcuts(false)} />}
+        {shortcuts && <Shortcuts mac={platform === 'darwin'} sheet={sheetWidth} seen={guideSeen} onClose={closeGuide} onTry={tryGuide}
+          unavailable={(action) => tryNeeds(action, { folder: folder.root !== null, note: active !== null })} />}
         {reloadConfirm && (
           <ReloadConfirmDialog
             offerSaveCopy={reloadConfirm.offerSaveCopy}
@@ -2752,7 +3386,11 @@ function NotoWorkspace({ platform }: { platform: NotoPlatform }) {
             onSearch={(options) => {
               const { query, ...rest } = options;
               findOptionsRef.current = rest;
-              setFind((current) => (current.query === query ? current : { ...current, query }));
+              // Kept aside for Find Next with the bar closed. Not written back
+              // into the bar's own query: echoed as its initial query, a search
+              // that landed after the next keystroke put the bar back to what it
+              // said before, and the last letter typed was lost.
+              lastQueryRef.current = query;
               return editorRef.current?.search(options) ?? { matches: 0, active: -1 };
             }}
             onGo={(direction) => editorRef.current?.goToMatch(direction) ?? { matches: 0, active: -1 }}
@@ -2765,7 +3403,26 @@ function NotoWorkspace({ platform }: { platform: NotoPlatform }) {
           />
         )}
 
-        <main id="document-canvas" className="canvas-scroll" tabIndex={-1} aria-label="Document canvas">
+        <main
+          id="document-canvas"
+          className="canvas-scroll"
+          tabIndex={-1}
+          aria-label="Document canvas"
+          onMouseDown={(event) => {
+            // A press in the page around the text (its margins, above the
+            // first block, below the last) puts the caret in the note, at the
+            // nearest place, instead of taking the keys away from it.
+            if (event.button !== 0 || sourceMode || codeView) return;
+            const canvas = event.currentTarget;
+            if (event.clientX >= canvas.getBoundingClientRect().left + canvas.clientWidth) return;
+            const target = event.target as Element;
+            if (target.closest('.ProseMirror, a, button, input, textarea, select, [role="button"], [contenteditable="true"], .noto-git-gutter, .tag-strip, .file-truth-alert')) return;
+            const editor = editorRef.current;
+            if (!editor) return;
+            event.preventDefault();
+            editor.pressAtPoint(event.clientX, event.clientY);
+          }}
+        >
           {codeView ? <CodeViewer view={codeView} /> : null}
           {/* Every open document keeps its editor mounted, with only the
               active one visible. Unmounting the others would destroy their
@@ -2780,11 +3437,13 @@ function NotoWorkspace({ platform }: { platform: NotoPlatform }) {
             >
               {sourceMode && doc.document.documentId === activeId && editorsRef.current.get(doc.document.documentId) && (
                 <SourceModeView
-                  key={`${doc.document.documentId}:${doc.document.revisionId}:${editorsReady}`}
+                  key={`${doc.document.documentId}:${sourceReloads}:${editorsReady}`}
                   editor={editorsRef.current.get(doc.document.documentId)!}
                   fileText={doc.document.text}
                   startBlock={activeBlock}
                   registerFlush={(flush) => { sourceFlushRef.current = flush; }}
+                  registerHistory={(step) => { sourceHistoryRef.current = step; }}
+                  stale={sourceStaleRef}
                 />
               )}
               <div hidden={sourceMode} className="canvas-rendered">
@@ -2817,6 +3476,10 @@ function NotoWorkspace({ platform }: { platform: NotoPlatform }) {
                   }
                 }}
                 onFollowWikiLink={(target) => followWikiLinkRef.current(target)}
+                onNoteMarkAction={(key, action) => noteMarkActionRef.current(doc.document.documentId, key, action)}
+                // History opened on its tab, told the passage: it lists only the commits that changed those lines.
+                onPassageHistory={(text) => slotState.showTab('dev.lr00rl.noto.history:history', `passage:${text}`)}
+                inGit={() => gitMarksRef.current?.repository === true}
                 onWikiTrigger={() => {
                   // Only where there is something to choose from: an empty
                   // index would open a palette with nothing in it.
@@ -2836,6 +3499,10 @@ function NotoWorkspace({ platform }: { platform: NotoPlatform }) {
                 onWidthStep={(direction) => stepWidthRef.current(direction)}
                 onReady={(editor) => {
                   editorsRef.current.set(doc.document.documentId, editor);
+                  if (focusWhenReadyRef.current === doc.document.documentId) {
+                    focusWhenReadyRef.current = null;
+                    queueMicrotask(() => editor.focus());
+                  }
                   const gitBlocks = gitBlocksRef.current.get(doc.document.documentId);
                   if (gitBlocks) editor.setGitBlocks(gitBlocks);
                   setEditorsReady((count) => count + 1);
@@ -2875,6 +3542,19 @@ function NotoWorkspace({ platform }: { platform: NotoPlatform }) {
             ? null
             : state === 'Opening'
               ? <div className="opening-state">Starting…</div>
+              : folder.root !== null
+                ? <FolderEmptyState
+                    name={folder.name ?? folder.root}
+                    root={folder.root}
+                    recent={recent}
+                    entries={fileIndex.entries}
+                    onOpen={(filePath) => void openPath(filePath, null, { caret: true })}
+                    onNewNote={() => void window.notoWorkspace.newFile({ version: 1, requestId: rid('new-file') })}
+                    onQuickOpen={() => { void ensureFileIndex(); setQuickOpen({ open: true, mode: 'files' }); }}
+                    onOpenFolder={chooseFolder}
+                    quickOpenKey={platform === 'darwin' ? '⌘P' : 'Ctrl+P'}
+                    newNoteKey={platform === 'darwin' ? '⌘N' : 'Ctrl+N'}
+                  />
               : <section className="empty-state" data-testid="empty-state">
                   <p className="empty-lead">Open a folder or a file.</p>
                   <div className="empty-actions">
@@ -2907,25 +3587,64 @@ function NotoWorkspace({ platform }: { platform: NotoPlatform }) {
             onLayout={(diffLayout) => changeSettings({ diffLayout })}
             onClose={() => {
               setUnsavedDiffView(null);
-              editorRef.current?.focus();
+              focusAfterDiffRef.current = true;
+            }}
+          />
+        )}
+        {versionDiff && (
+          <UnsavedDiff
+            key={`version-${versionDiff.serial}`}
+            fileName={filename}
+            saved={versionDiff.request.before.text}
+            current={versionDiff.request.after.text}
+            layout={settings.diffLayout}
+            onLayout={(diffLayout) => changeSettings({ diffLayout })}
+            versions={{
+              title: versionDiff.request.title,
+              detail: versionDiff.request.detail,
+              beforeLabel: versionDiff.request.before.label,
+              afterLabel: versionDiff.request.after.label,
+              actions: versionDiff.request.actions,
+              keys: versionDiff.request.keys,
+            }}
+            onClose={() => {
+              closeVersionDiff(true);
+              focusAfterDiffRef.current = true;
             }}
           />
         )}
       </div>
 
+      {settings.infoOpen && (
+        <InfoPane
+          registry={infoPane}
+          state={slotState}
+          width={appliedInfoWidth}
+          tab={settings.infoTab}
+          reveal={infoReveal}
+          onTab={(infoTab) => changeSettings({ infoTab })}
+          onResize={(infoWidth) => changeSettings({ infoWidth: clampInfoWidth(infoWidth, window.innerWidth) })}
+          onClose={() => {
+            changeSettings({ infoOpen: false });
+            editorRef.current?.focus();
+          }}
+          folderInfo={infoFolder}
+          onLeaveFolder={() => setInfoFolder(null)}
+        />
+      )}
+
       <TagBrowser
+        sheet={sheetWidth}
         open={tagBrowser.open}
         view={tagBrowser.view}
         tags={tagBrowser.tags}
-        notes={tagBrowser.notes}
         loading={tagBrowser.loading}
         truncated={tagBrowser.truncated}
-        onOpenTag={(tag) => { void openTagBrowser(tag); }}
+        loadNotes={loadTagNotes}
         onOpenNote={(path) => {
           setTagBrowser((current) => ({ ...current, open: false }));
-          void openPath(path);
+          void openPath(path, null, { caret: true });
         }}
-        onBack={() => { void openTagBrowser(); }}
         onClose={() => {
           setTagBrowser((current) => ({ ...current, open: false }));
           editorRef.current?.focus();
@@ -2939,20 +3658,29 @@ function NotoWorkspace({ platform }: { platform: NotoPlatform }) {
         onMode={(mode) => setQuickOpen({ open: true, mode })}
         onSearchContent={(query, scope) => searchContent(query, PLAIN_FLAGS, scope)}
         onOpenMatch={openMatch}
-        width={settings.quickOpenWidth}
-        onWidth={(quickOpenWidth) => changeSettings({ quickOpenWidth })}
+        sheet={sheetWidth}
         entries={fileIndex.entries}
         frecency={frecency}
         truncated={fileIndex.truncated}
         canInsertLink={document !== null}
-        onOpenFile={(filePath) => void openPath(filePath)}
+        onOpenFile={(filePath) => { quickChoseRef.current = true; void openPath(filePath, null, { caret: true }); }}
         onInsertLink={(entry) => insertWikiLink(entry, quickOpen.linking === true)}
+        onPreview={previewNote}
+        onMake={folder.root ? makeFromQuickOpen : undefined}
+        folderName={folder.root ? folder.root.split(/[\\/]/).filter(Boolean).pop() ?? '' : ''}
         linking={quickOpen.linking === true}
-        onClose={() => { setQuickOpen((current) => ({ ...current, open: false })); editorRef.current?.focus(); }}
+        onClose={() => {
+          setQuickOpen((current) => ({ ...current, open: false }));
+          // Closed without a choice, the keys go back where they were; on a note it opened, that note takes them.
+          if (!quickChoseRef.current) editorRef.current?.focus();
+          else (globalThis.document.activeElement as HTMLElement | null)?.blur();
+          quickChoseRef.current = false;
+        }}
       />
 
       {paletteOpen && (
         <CommandPalette
+          sheet={sheetWidth}
           commands={paletteCommands}
           onClose={closePalette}
           onRun={(command) => {
@@ -2961,6 +3689,10 @@ function NotoWorkspace({ platform }: { platform: NotoPlatform }) {
             if (!chosen) return;
             if (chosen.kind === 'export') exportNote(chosen.target);
             else if (chosen.kind === 'diff') openUnsavedDiff();
+            else if (chosen.kind === 'info') changeSettings({ infoOpen: !settings.infoOpen });
+            else if (chosen.kind === 'menu') {
+              void window.notoWorkspace.runMenuCommand({ version: 1, requestId: rid('menu-run'), id: chosen.menuId });
+            }
             else if (chosen.kind === 'git') {
               const done = chosen.key === 'git:revert'
                 ? editorRef.current?.revertGitAtSelection()
@@ -3003,11 +3735,30 @@ function NotoWorkspace({ platform }: { platform: NotoPlatform }) {
         </section>
       )}
 
+      {/* What Noto says it did, said once to a screen reader. The visible
+          lines are remounted to fade in again, and a live region that is
+          remounted is not announced, so the announcing is done here, by one
+          element that stays on the page. */}
+      <p className="announcer" role="status" aria-live="polite" aria-atomic="true" data-testid="announcer">{notice ?? ''}</p>
+
       {/* Where the file lives, and what state it is in.
           Deliberately not the file name: the title bar already shows that, and
           repeating it in the corner spends the only other line the window has
           on something the reader has already read. The containing folder is
           what the title bar cannot tell them, and the full path is on hover. */}
+      {/* With no note open there is no status line, but what the folder did
+          (a move whose links followed, say) still has to be said, and undone. */}
+      {!opened && notice && (
+        <footer className="operational-status is-bare">
+          <span key={notice} className="status-message is-notice" data-testid="status-notice">{notice}</span>
+          {noticeAction && (
+            <button type="button" className="status-notice-action" data-testid="status-notice-action"
+              onClick={() => { const action = noticeAction; setNotice(null); setNoticeAction(null); action.run(); }}>
+              {noticeAction.label}
+            </button>
+          )}
+        </footer>
+      )}
       {opened && (
         <footer className={readOnly ? 'operational-status has-flag' : 'operational-status'}>
           <RecentStrip tabs={tabs} dirty={dirtyDocumentIds} onActivate={activateTab} />
@@ -3024,9 +3775,20 @@ function NotoWorkspace({ platform }: { platform: NotoPlatform }) {
           {/* Read-only is a mode with no other sign on screen, and a reader
               whose typing does nothing needs to be told why rather than
               concluding the app is broken. */}
-          {(readOnly || remote.listening) && (
+          {(readOnly || remote.listening || notePrivacy) && (
             <span className="status-flags">
               {readOnly && <span className="status-flag" data-testid="read-only-flag">Read-only</span>}
+              {/* Only when the note's own frontmatter is what makes it private: a
+                  note under a locked folder has the folder's lock in the tree. */}
+              {notePrivacy && (
+                <span className="status-flag status-privacy" data-testid="privacy-flag" data-privacy={notePrivacy.level}
+                  title={notePrivacy.level === 'sealed'
+                    ? 'Sealed by its own frontmatter: no agent reads this note.'
+                    : `Private by its own frontmatter, though its folder is ${notePrivacy.folder}: only agents allowed private notes read it.`}>
+                  <LockGlyph level={notePrivacy.level} />
+                  {notePrivacy.level === 'sealed' ? 'Sealed' : 'Private'}
+                </span>
+              )}
               {/* Something outside this window can drive it, and a reader must
                   never have to wonder whether that is so. */}
               {remote.listening && (
@@ -3043,9 +3805,15 @@ function NotoWorkspace({ platform }: { platform: NotoPlatform }) {
             </span>
           )}
           <span key={notice ?? state} className={notice ? 'status-message is-notice' : 'status-message'}
-            data-testid={notice ? 'status-notice' : undefined} aria-live="polite">
+            data-testid={notice ? 'status-notice' : undefined}>
             {notice ?? (state === 'Opened' ? 'Exact source preserved' : state === 'Saved' ? 'Exact source saved' : '')}
           </span>
+          {notice && noticeAction && (
+            <button type="button" className="status-notice-action" data-testid="status-notice-action"
+              onClick={() => { const action = noticeAction; setNotice(null); setNoticeAction(null); action.run(); }}>
+              {noticeAction.label}
+            </button>
+          )}
           {/* The one number a writer looks for, at the end of the line where
               nothing else competes with it. Counted after typing stops, so it
               settles a moment behind the words rather than flickering under
@@ -3085,13 +3853,30 @@ export function BootstrapFailure({ message }: { message: string }) {
   );
 }
 
+/** Whether a text field other than Source Code Mode's own has the keys. */
+function otherFieldFocused(): boolean {
+  const active = document.activeElement;
+  if (active instanceof HTMLTextAreaElement) return !active.classList.contains('noto-source-input');
+  return active instanceof HTMLInputElement
+    && ['text', 'search', 'url', 'email', 'tel', 'password', 'number'].includes(active.type);
+}
+
 /** The source view over one editor: reads its text once, settles block-wise or via source escape. */
-function SourceModeView({ editor, fileText, startBlock, registerFlush }: {
+function SourceModeView({ editor, fileText, startBlock, registerFlush, registerHistory, stale }: {
   editor: NotoEditor;
   fileText: string;
   startBlock: number;
   registerFlush: (flush: (() => void) | null) => void;
+  registerHistory: (step: ((direction: 'undo' | 'redo') => boolean) | null) => void;
+  /** True once a reload has replaced the note this view was opened on. */
+  stale: { current: boolean };
 }) {
+  // This view opens on the text as it is now, reloaded or not. React runs the
+  // replaced view's passive unmount (where its draft would go in) before any
+  // passive mount, so by now that draft has already been dropped.
+  useEffect(() => {
+    stale.current = false;
+  }, [stale]);
   const initial = useMemo(() => sourceModeText({
     dirty: editor.isDirty,
     fileText,
@@ -3103,9 +3888,10 @@ function SourceModeView({ editor, fileText, startBlock, registerFlush }: {
     <SourceMode
       initialText={initial}
       startBlock={Math.max(0, startBlock)}
-      apply={(markdown) => editor.applySourceBuffer(markdown)}
+      apply={(markdown) => !stale.current && editor.applySourceBuffer(markdown)}
       onLeave={(block) => editor.focusBlock(block)}
       registerFlush={registerFlush}
+      registerHistory={registerHistory}
     />
   );
 }

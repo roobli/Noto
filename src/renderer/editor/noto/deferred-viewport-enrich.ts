@@ -50,6 +50,11 @@ export interface DeferredViewportEnrichHost {
     spans: readonly BlockSpan[],
     window?: { readonly from: number; readonly to: number },
   ): boolean | void;
+  /**
+   * The opened index of the block at a top-level node index. They differ
+   * when the file's extra blank lines opened as empty paragraphs.
+   */
+  openedIndexAt?(index: number): number;
 }
 
 export interface DeferredViewportEnrichOptions {
@@ -188,9 +193,10 @@ export class DeferredViewportEnrichController {
     if (!view || this.destroyed) return;
     const visible = resolveEnrichVisibleRange(view);
     if (!visible) return;
+    const opened = (index: number) => this.host.openedIndexAt?.(index) ?? index;
     const range = enrichRangeFromVisibleInclusive(
-      visible.from,
-      visible.to,
+      opened(visible.from),
+      opened(visible.to),
       this.spans.length,
       OPEN_VIEWPORT_ENRICH_PAD,
     );

@@ -39,9 +39,17 @@ interface Drag {
   readonly edges: readonly number[];
   /** Where the pointer went down, to tell a click from a drag. */
   readonly origin: number;
+  /** Shift was held: a click adds the rows or columns up to this one to the selection. */
+  readonly extend: boolean;
   moved: boolean;
   gap: number;
 }
+
+/** What a handle does, said on hover, since nothing else on it says so. */
+const HANDLE_TITLES = {
+  row: 'Drag to move the row. Click to select it, Shift-click to select the rows up to it, then Delete to remove them.',
+  column: 'Drag to move the column. Click to select it, Shift-click to select the columns up to it, then Delete to remove them.',
+} as const;
 
 /** How far the pointer travels before a press becomes a drag rather than a click. */
 const DRAG_THRESHOLD = 4;
@@ -54,6 +62,8 @@ const DRAG_THRESHOLD = 4;
  * each end puts a visible break between them.
  */
 const HANDLE_INSET = 3;
+/** Margin to the right of a table that the tools need to stand beside it, scroll bar included. */
+const SIDE_TOOLS_ROOM = 56;
 
 /** The position of one cell, counted from the table's own position. */
 function cellPos(table: ProseNode, tablePos: number, row: number, column: number): number {
@@ -164,8 +174,68 @@ export class TableView implements NodeView {
     }
 
     this.dom.append(this.rails, this.tools, this.table);
-    this.dom.addEventListener('pointerenter', this.measure);
+    this.dom.addEventListener('pointerenter', this.onEnter);
+    this.dom.addEventListener('pointerleave', this.onLeave);
+    this.dom.addEventListener('pointermove', this.onHover);
     this.dom.addEventListener('pointerdown', this.onPointerDown);
+  }
+
+  /** Whether the pointer is over the table, so its handles have to stay true to its shape. */
+  private hovering = false;
+  private remeasure: number | null = null;
+  /** The row and column under the pointer, whose handles show. */
+  private near: { row: number; column: number } | null = null;
+  private readonly onEnter = (): void => {
+    this.hovering = true;
+    this.placeTools();
+    this.measure();
+  };
+
+  /**
+   * The tools beside the table's top corner, in the page's right margin,
+   * where they cover nothing; above the table only when the window leaves no
+   * margin, where they would sit over the line before it.
+   */
+  private placeTools(): void {
+    const canvas = this.dom.closest('.canvas-scroll') ?? document.documentElement;
+    const room = canvas.getBoundingClientRect().right - this.dom.getBoundingClientRect().right;
+    this.dom.dataset.tools = room >= SIDE_TOOLS_ROOM ? 'side' : 'top';
+  }
+  private readonly onLeave = (): void => {
+    this.hovering = false;
+    this.near = null;
+    this.showNear();
+  };
+  private readonly onHover = (event: PointerEvent): void => {
+    if (this.drag) return;
+    const cell = event.target instanceof Element ? event.target.closest('td, th') : null;
+    if (!(cell instanceof HTMLTableCellElement) || !this.table.contains(cell)) return;
+    const row = (cell.parentElement as HTMLTableRowElement).rowIndex;
+    if (this.near?.row === row && this.near.column === cell.cellIndex) return;
+    this.near = { row, column: cell.cellIndex };
+    this.showNear();
+  };
+  private showNear(): void {
+    for (const handle of this.rails.querySelectorAll<HTMLElement>('.noto-table-handle')) {
+      const index = Number(handle.dataset.index);
+      const near = this.near !== null
+        && (handle.dataset.axis === 'row' ? index === this.near.row : index === this.near.column);
+      handle.classList.toggle('is-near', near);
+    }
+  }
+
+  /**
+   * Measure again once the editor has drawn the change. The handles used to
+   * be cleared on every update (a caret moved between cells, a key typed, a
+   * drop) and measured only when the pointer came back into the table, so
+   * after the first move there was nothing left to drag.
+   */
+  private scheduleMeasure(): void {
+    if (this.remeasure !== null) return;
+    this.remeasure = requestAnimationFrame(() => {
+      this.remeasure = null;
+      if (this.hovering && !this.drag) this.measure();
+    });
   }
 
   update(node: ProseNode): boolean {
@@ -179,13 +249,19 @@ export class TableView implements NodeView {
      */
     if (this.drag && node !== this.node) this.endDrag();
     this.node = node;
-    // The shape may have changed under the pointer; the next entry re-measures,
-    // and a rail measured for a table that no longer exists would lie.
-    if (!this.drag) this.clearRails();
+    // The shape may have changed under the pointer: measured again while it
+    // is there, and cleared otherwise, since a rail measured for a table that
+    // no longer exists would lie.
+    if (!this.drag) {
+      if (this.hovering) this.scheduleMeasure();
+      else this.clearRails();
+    }
     return true;
   }
 
   ignoreMutation(mutation: ViewMutationRecord): boolean {
+    // The frame's own attributes are the view's (where the tools stand), not the document's.
+    if (mutation.type === 'attributes' && mutation.target === this.dom) return true;
     return this.rails.contains(mutation.target) || this.tools.contains(mutation.target);
   }
 
@@ -196,7 +272,10 @@ export class TableView implements NodeView {
 
   destroy(): void {
     this.endDrag();
-    this.dom.removeEventListener('pointerenter', this.measure);
+    if (this.remeasure !== null) cancelAnimationFrame(this.remeasure);
+    this.dom.removeEventListener('pointerenter', this.onEnter);
+    this.dom.removeEventListener('pointerleave', this.onLeave);
+    this.dom.removeEventListener('pointermove', this.onHover);
     this.dom.removeEventListener('pointerdown', this.onPointerDown);
   }
 
@@ -229,32 +308,34 @@ export class TableView implements NodeView {
     if (!geometry) return;
     const { rows, columns } = geometry;
 
-    const handles: HTMLElement[] = [];
+    // The handles already drawn are moved rather than drawn again, so one is
+    // never swapped out under the pointer as the table is measured anew.
+    const place = (rail: HTMLElement, axis: Axis, count: number, set: (handle: HTMLElement, index: number) => void) => {
+      while (rail.children.length > count) rail.lastElementChild!.remove();
+      while (rail.children.length < count) {
+        const handle = document.createElement('div');
+        handle.className = 'noto-table-handle';
+        handle.dataset.axis = axis;
+        handle.title = HANDLE_TITLES[axis];
+        rail.append(handle);
+      }
+      Array.from(rail.children).forEach((handle, at) => set(handle as HTMLElement, at));
+    };
     // The header keeps its place, so only the body rows get a handle.
-    for (let i = 1; i + 1 < rows.length; i += 1) {
-      const handle = document.createElement('div');
-      handle.className = 'noto-table-handle';
-      handle.dataset.axis = 'row';
+    place(this.rowRail, 'row', Math.max(0, rows.length - 2), (handle, at) => {
+      const i = at + 1;
       handle.dataset.index = String(i);
       handle.style.top = `${rows[i] + HANDLE_INSET}px`;
       handle.style.height = `${rows[i + 1] - rows[i] - HANDLE_INSET * 2}px`;
-      handles.push(handle);
-    }
-    this.rowRail.replaceChildren(...handles);
-
-    const columnHandles: HTMLElement[] = [];
-    for (let i = 0; i + 1 < columns.length; i += 1) {
-      const handle = document.createElement('div');
-      handle.className = 'noto-table-handle';
-      handle.dataset.axis = 'column';
+    });
+    place(this.columnRail, 'column', Math.max(0, columns.length - 1), (handle, i) => {
       handle.dataset.index = String(i);
       handle.style.left = `${columns[i] + HANDLE_INSET}px`;
       handle.style.width = `${columns[i + 1] - columns[i] - HANDLE_INSET * 2}px`;
-      columnHandles.push(handle);
-    }
-    this.columnRail.replaceChildren(...columnHandles);
+    });
     this.columnRail.style.top = `${rows[0]}px`;
     this.rowRail.style.left = `${columns[0]}px`;
+    this.showNear();
   };
 
   private readonly onPointerDown = (event: PointerEvent): void => {
@@ -276,7 +357,7 @@ export class TableView implements NodeView {
     const origin = axis === 'row' ? event.clientY - frame.top : event.clientX - frame.left;
 
     event.preventDefault();
-    this.drag = { axis, index, edges, origin, moved: false, gap: index };
+    this.drag = { axis, index, edges, origin, extend: event.shiftKey, moved: false, gap: index };
     handle.classList.add('noto-table-handle-held');
     this.rails.dataset.dragging = axis;
     // Capture keeps the cursor while the pointer wanders off the four pixels
@@ -333,7 +414,7 @@ export class TableView implements NodeView {
       if (drag.moved) {
         if (movesAnything(drag.index, drag.gap)) this.apply(drag.axis, drag.index, drag.gap);
       } else {
-        this.select(drag.axis, drag.index);
+        this.select(drag.axis, drag.index, drag.extend);
       }
     } finally {
       this.endDrag();
@@ -362,23 +443,33 @@ export class TableView implements NodeView {
     this.drop.hidden = true;
     delete this.rails.dataset.dragging;
     this.drag = null;
+    // Ready for the next move without leaving the table first.
+    if (this.hovering) this.scheduleMeasure();
   }
 
-  /** Put the caret's selection over a whole row or column, as a click on the rail means. */
-  private select(axis: Axis, index: number): void {
+  /**
+   * Put the caret's selection over a whole row or column, as a click on the
+   * rail means; with Shift, over every one from the row or column already
+   * selected in this table to this one.
+   */
+  private select(axis: Axis, index: number, extend = false): void {
     const pos = this.getPos();
     if (pos === undefined) return;
     const table = this.node;
     if (!this.rectangular(table)) return;
     const width = table.child(0).childCount;
     const doc = this.view.state.doc;
+    const current = this.view.state.selection;
+    const held = extend && current instanceof CellSelection && current.$anchorCell.start(-1) === pos + 1
+      && (axis === 'row' ? current.isRowSelection() : current.isColSelection())
+      ? current.$anchorCell : null;
     const selection = axis === 'row'
       ? CellSelection.rowSelection(
-        doc.resolve(cellPos(table, pos, index, 0)),
+        held ?? doc.resolve(cellPos(table, pos, index, 0)),
         doc.resolve(cellPos(table, pos, index, width - 1)),
       )
       : CellSelection.colSelection(
-        doc.resolve(cellPos(table, pos, 0, index)),
+        held ?? doc.resolve(cellPos(table, pos, 0, index)),
         doc.resolve(cellPos(table, pos, table.childCount - 1, index)),
       );
     this.view.dispatch(this.view.state.tr.setSelection(selection));

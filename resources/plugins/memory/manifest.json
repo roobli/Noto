@@ -1,0 +1,40 @@
+{
+  "schemaVersion": 2,
+  "id": "dev.lr00rl.noto.memory",
+  "name": "Memory",
+  "version": "1.0.0",
+  "runtime": "trusted-renderer",
+  "activation": {
+    "startup": false,
+    "events": [
+      "editor.ready"
+    ],
+    "hotkeys": []
+  },
+  "capabilities": [
+    "vault.read",
+    "vault.review"
+  ],
+  "lifecycle": [
+    "activate",
+    "deactivate"
+  ],
+  "commands": [
+    {
+      "id": "memory.ask",
+      "title": "Memory: ask the folder a question"
+    }
+  ],
+  "settings": [],
+  "hotkeys": [],
+  "editorExtensions": [],
+  "uiExtensions": [
+    "info:related",
+    "info:activity",
+    "track:reads",
+    "rail:review",
+    "marks:links",
+    "folder:warmth",
+    "folder:reach"
+  ]
+}

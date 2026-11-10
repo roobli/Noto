@@ -172,9 +172,11 @@ describe('shell failure containment', () => {
     // React state does not change until the next render, so a second trigger in
     // the same tick would pass a `pending` check. The ref is checked and set
     // before anything is captured, and released only once the save is over.
-    const guard = saveFlow.indexOf('if (fileTruthBusyRef.current) return;');
+    // A trigger that finds a save in flight is kept for after it, not dropped.
+    const guard = saveFlow.indexOf('if (pending || fileTruthBusyRef.current) {');
     expect(guard).toBeGreaterThan(-1);
     expect(guard).toBeLessThan(saveFlow.indexOf('editor.captureSaveTicket()'));
+    expect(saveFlow.slice(guard, saveFlow.indexOf('fileTruthBusyRef.current = true;'))).toContain('saveAgainRef.current = documentId;');
     expect(saveFlow.indexOf('fileTruthBusyRef.current = true;')).toBeLessThan(saveFlow.indexOf('editor.captureSaveTicket()'));
     expect(saveFlow).toContain('fileTruthBusyRef.current = false;');
     expect(saveFlow).not.toContain('editor.abandonSave()');

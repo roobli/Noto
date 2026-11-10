@@ -165,9 +165,16 @@ export function validatePluginManifest(value: unknown): value is PluginManifest 
 
   const runtime = value.runtime as PluginRuntime;
   const inEditor = runtime !== 'isolated-service';
-  const allowedCapabilities = inEditor
-    ? ['editor.read', 'editor.decorate', 'editor.transform']
-    : ['filesystem.read'];
+  // A trusted plugin may also read git (the Changes page does, through the rail
+  // slot), the folder's memory (Related and Activity, in Note Info), and settle
+  // its Review queue (accept, link, take back; main leaves unsaved notes alone).
+  // Only a bundled plugin runs trusted: one the reader installs must be
+  // sandboxed (user-plugins.ts), which reaches none of these.
+  const allowedCapabilities = runtime === 'trusted-renderer'
+    ? ['editor.read', 'editor.decorate', 'editor.transform', 'git.read', 'vault.read', 'vault.review']
+    : inEditor
+      ? ['editor.read', 'editor.decorate', 'editor.transform']
+      : ['filesystem.read'];
   const expectedLifecycle = inEditor ? ['activate', 'deactivate'] : ['start', 'stop'];
   if (!uniqueStrings(value.capabilities, allowedCapabilities)
     || !uniqueStrings(value.lifecycle)
@@ -190,7 +197,7 @@ export function validatePluginManifest(value: unknown): value is PluginManifest 
     && hotkeys.every((hotkey) => commands.some((command) => command.id === hotkey.command))
     && activation.hotkeys.every((keys) => hotkeys.some((hotkey) => hotkey.keys === keys))
     && (runtime === 'trusted-renderer' || (value.editorExtensions as string[]).length === 0)
-    // Nothing reads UI extensions yet, and a sandboxed plugin has no page to extend.
+    // Slots are open to trusted plugins first; a sandboxed one has no page to extend yet.
     && (runtime !== 'sandboxed' || (value.uiExtensions as string[]).length === 0);
 }
 

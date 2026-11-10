@@ -122,11 +122,16 @@ test.describe('parity with Typora', () => {
       const fence = page.locator('.ProseMirror pre').first();
       await expect(fence).not.toHaveAttribute('data-lang');
       await fence.hover();
-      const field = fence.locator('.noto-fence-lang');
-      await expect(field).toHaveAttribute('placeholder', 'language');
-      await field.click();
-      await field.fill('ts');
+      const label = fence.locator('.noto-fence-lang');
+      await expect(label).toHaveAttribute('data-state', 'none');
+      await label.click();
+      const picker = page.getByTestId('language-picker');
+      await expect(picker).toBeVisible();
+      await page.keyboard.type('ts');
+      // The row says what is written: the name typed, for the language it names.
+      await expect(picker.locator('.noto-lang-option[aria-selected="true"]')).toContainText('TypeScript');
       await page.keyboard.press('Enter');
+      await expect(picker).toHaveCount(0);
       await expect(fence).toHaveAttribute('data-lang', 'ts');
       await expect(fence.locator('.token.keyword').first()).toBeVisible();
 
@@ -138,32 +143,31 @@ test.describe('parity with Typora', () => {
     }
   });
 
-  test('scrolls the rail sideways to a long name rather than cutting it', async () => {
+  test('cuts a long name to the rail keeping its end, where Typora clips it and scrolls', async () => {
+    // Noto used to scroll the rail sideways to the rest of a long name, as
+    // Typora's tree does. It now fits the tree to the rail instead: a long
+    // name is cut in the middle, keeping its end, and shown whole on a rest.
     const { app, page } = await launch('rail');
     try {
       // The note opened from the shell is in this folder, so the tree is already open to it.
-      const long = page.getByTestId('tree-file').filter({ hasText: '一个长得放不进' });
+      const long = page.locator(`[data-testid="tree-file"][data-label="${LONG_NAME}"]`);
       await expect(long).toBeVisible();
-      const rail = await page.evaluate(() => {
-        const scroller = document.querySelector<HTMLElement>('.rail-view')!;
-        const name = [...document.querySelectorAll<HTMLElement>('.tree-name')]
-          .find((element) => element.textContent?.includes('一个长得放不进'))!;
-        const row = name.closest<HTMLElement>('.tree-row')!;
+      const rail = await long.evaluate((row) => {
+        const scroller = row.closest<HTMLElement>('.rail-view')!;
+        const name = row.querySelector<HTMLElement>('.tree-name')!;
         return {
           scrollable: scroller.scrollWidth > scroller.clientWidth,
-          textOverflow: getComputedStyle(name).textOverflow,
-          nameOverflow: getComputedStyle(name).overflow,
-          rowOverflow: getComputedStyle(row).overflow,
-          // The row grows to hold the whole name; nothing clips it.
-          fits: name.getBoundingClientRect().right <= row.getBoundingClientRect().right + 0.5,
+          cut: row.dataset.cut === 'true',
+          shown: name.textContent ?? '',
+          inside: name.getBoundingClientRect().right <= scroller.getBoundingClientRect().right + 0.5,
           paddingTop: getComputedStyle(scroller).paddingTop,
         };
       });
-      expect(rail.scrollable).toBe(true);
-      expect(rail.textOverflow).not.toBe('ellipsis');
-      expect(rail.nameOverflow).toBe('visible');
-      expect(rail.rowOverflow).toBe('visible');
-      expect(rail.fits).toBe(true);
+      expect(rail.scrollable).toBe(false);
+      expect(rail.cut).toBe(true);
+      expect(rail.shown).toContain('…');
+      expect(rail.shown.endsWith('过滤')).toBe(true);
+      expect(rail.inside).toBe(true);
       expect(rail.paddingTop).toBe('0px');
     } finally {
       await app.close();

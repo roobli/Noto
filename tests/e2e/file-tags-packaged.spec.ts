@@ -115,6 +115,43 @@ test.describe('file tags', () => {
     }
   });
 
+  // The sheet was drawn on a background the theme never defined, so the page
+  // showed through its rows, and 2,118 tags came A to Z with most used once.
+  test('Browse Tags is a solid sheet, most used first, with the notes of the tag under the cursor beside it', async () => {
+    const { app, page } = await launch('browse-panes');
+    try {
+      await invokeMenu(app, 'browse-tags');
+      const sheet = page.locator('.tag-browser');
+      await expect(sheet).toBeVisible();
+      const alpha = await sheet.evaluate((element) => {
+        const colour = getComputedStyle(element).backgroundColor;
+        const parts = /rgba?\(([^)]+)\)/.exec(colour)?.[1]?.split(/[ ,/]+/).filter(Boolean) ?? [];
+        return parts.length > 3 ? Number(parts[3]) : 1;
+      });
+      expect(alpha).toBe(1);
+      const tags = page.getByTestId('tag-browser-tag');
+      await expect(tags.first()).toHaveAttribute('data-tag', 'agent');
+      await expect(page.locator('.tag-browser-group')).toContainText('Used once');
+      // The first tag's notes are already beside it; Down shows the next tag's.
+      await expect(page.getByTestId('tag-browser-note')).toHaveCount(2);
+      await page.keyboard.press('ArrowDown');
+      await expect(page.getByTestId('tag-browser-note')).toHaveCount(1);
+      await page.keyboard.press('ArrowUp');
+      await expect(page.getByTestId('tag-browser-note')).toHaveCount(2);
+      // Right to the notes, Down to the second, Enter opens it.
+      await page.keyboard.press('ArrowRight');
+      await expect(page.getByTestId('tag-browser-note').first()).toHaveAttribute('aria-selected', 'true');
+      await page.keyboard.press('ArrowDown');
+      const second = await page.getByTestId('tag-browser-note').nth(1).getAttribute('data-path');
+      await page.keyboard.press('Enter');
+      await expect(page.getByTestId('tag-browser')).toBeHidden();
+      expect(second).toBeTruthy();
+      await expect(page.locator('.canvas-slot:not([hidden]) .ProseMirror')).toBeVisible();
+    } finally {
+      await app.close();
+    }
+  });
+
   test('Browse Tags lists every tag in the vault', async () => {
     const { app, page } = await launch('browse');
     try {

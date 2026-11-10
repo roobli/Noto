@@ -15,6 +15,7 @@
 import { readdir, realpath, stat } from 'node:fs/promises';
 import path from 'node:path';
 import { isViewableCodeFile } from '../../shared/code-viewer/languages';
+import { EDITABLE_EXTENSIONS } from '../../shared/workspace/v1/entry-names';
 
 export interface FileTreeEntryV1 {
   readonly name: string;
@@ -52,18 +53,8 @@ export function sortEntries(entries: FileTreeEntryV1[], order: TreeSortV1 = 'nam
   });
 }
 
-/** Extensions the editor can actually open. Anything else is noise in a tree. */
-/**
- * What this editor opens, in one place.
- *
- * The tree, the search index, the Open dialog and the shell all have to agree,
- * or a file shows in one and is refused by another. It was written out twice
- * before, once here and once in the index, with a comment on each saying it
- * had to match the other.
- */
-export const EDITABLE_EXTENSIONS: ReadonlySet<string> = new Set([
-  '.md', '.markdown', '.mdown', '.mkd', '.txt',
-]);
+/** Extensions the editor can actually open, kept in `entry-names`. Anything else is noise in a tree. */
+export { EDITABLE_EXTENSIONS };
 
 /** Whether this editor will open the file at `filePath`. */
 export function isEditableFile(filePath: string): boolean {

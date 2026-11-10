@@ -13,67 +13,64 @@
  * long line scrolls inside the code column while the numbers stay put. Its
  * width follows the block's own line count, two digits at least.
  *
- * Tools (language field + copy) match the CSS contract: visible on hover or
- * while the caret is in the fence. They are mounted on first pointerenter /
- * focusin rather than in the constructor. Binding the shared language
- * datalist (`list=`) waits until the field is focused — resolving that id
- * against a document with tens of thousands of top-level stubs dominated
- * FenceView construction on remount (~18 ms per fence in happy-dom on huge).
+ * Tools (the language label and copy) match the CSS contract: visible on
+ * hover or while the caret is in the fence. They are mounted on first
+ * pointerenter / focusin rather than in the constructor, which keeps them off
+ * the remount path of a document with thousands of fences.
+ *
+ * The label names the fence's language, or, when the fence names none, what
+ * its code reads as (`detect-language.ts`), marked as a guess. A press on it
+ * opens the language list (`language-picker.ts`).
  */
 
 import type { Node as ProseNode } from 'prosemirror-model';
 import { TextSelection } from 'prosemirror-state';
 import type { EditorView, NodeView } from 'prosemirror-view';
 import { digitsForLineCount, gutterText, lineCount } from './fence-gutter';
-import { supportedLanguages } from './highlight';
+import { guessedLanguage } from './highlight';
+import { LanguagePicker } from './language-picker';
+import { languageName, PLAIN_TEXT } from './languages';
 import { DiagramFrame, isDiagramLanguage } from './diagram-frame';
 import { TimelineFrame, isTimelineLanguage } from './timeline';
 import { copyThroughSelection } from './clipboard';
-import { isComposing } from '../../ime';
 
 /** How long "Copied" stays before the button says "Copy" again. */
 const COPIED_MS = 1400;
 
-/** The id of the one datalist every fence's language field shares. */
-const LANGUAGE_LIST_ID = 'noto-fence-languages';
+/** Asked of the shell by a code block's Wrap button; App.tsx flips the setting. */
+export const TOGGLE_CODE_WRAP = 'noto:toggle-code-wrap';
 
-/**
- * The languages offered as you type, made once for the document.
- *
- * A native datalist rather than a menu of our own: it is a real completion
- * control the platform draws, it takes the keyboard, and it costs nothing
- * per fence. The names are what the highlighter answers to, so choosing one
- * is choosing colour, not just a label.
- */
-function languageList(): HTMLDataListElement {
-  const existing = document.getElementById(LANGUAGE_LIST_ID);
-  if (existing instanceof HTMLDataListElement) return existing;
-  const list = document.createElement('datalist');
-  list.id = LANGUAGE_LIST_ID;
-  for (const name of supportedLanguages()) {
-    const option = document.createElement('option');
-    option.value = name;
-    list.append(option);
-  }
-  document.body.append(list);
-  return list;
-}
+/** Lines, the last one carried round and down. Drawn, not text: the word beside it is the label. */
+const WRAP_ICON = '<svg viewBox="0 0 16 16" width="13" height="13" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M2 4h12M2 8h9.5a2.5 2.5 0 0 1 0 5H8"/><path d="M9.5 11 8 13l1.5 2"/><path d="M2 12h3"/></svg>';
+
+/** Whether code lines wrap, which the shell sets on the root from the setting. */
+const wrapsCode = (): boolean => globalThis.document?.documentElement.dataset.codeWrap !== 'off';
 
 export class FenceView implements NodeView {
   readonly dom: HTMLElement;
   readonly contentDOM: HTMLElement;
   private readonly gutter: HTMLElement;
   private tools: HTMLElement | null = null;
-  private language: HTMLInputElement | null = null;
+  private language: HTMLButtonElement | null = null;
   private copy: HTMLButtonElement | null = null;
-  /** Whether the language field has been bound to the shared datalist. */
-  private languageListBound = false;
+  private wrap: HTMLButtonElement | null = null;
+  /** What the label says now, so a keystroke that changes nothing touches nothing. */
+  private labelKey = '';
+  private picker: LanguagePicker | null = null;
   private lines = 0;
   /** Present while the fence is a diagram, which its language decides. */
   private diagram: DiagramFrame | null = null;
   /** Present while the fence is a timeline. */
   private timeline: TimelineFrame | null = null;
   private copiedTimer: ReturnType<typeof setTimeout> | null = null;
+  /**
+   * Where each line starts, from the top of the code, while lines wrap; null
+   * while every line is one row and the plain column of numbers is right.
+   */
+  private wrappedTops: readonly number[] | null = null;
+  private measureFrame = 0;
+  private measureTimer: ReturnType<typeof setTimeout> | null = null;
+  private readonly resized: ResizeObserver | null;
 
   constructor(
     private node: ProseNode,
@@ -107,6 +104,9 @@ export class FenceView implements NodeView {
     this.contentDOM.setAttribute('spellcheck', 'false');
 
     this.dom.append(this.gutter, this.contentDOM);
+    // A width change rewraps the lines, and so does turning wrapping on.
+    this.resized = typeof ResizeObserver === 'undefined' ? null : new ResizeObserver(() => this.scheduleMeasure());
+    this.resized?.observe(this.contentDOM);
     // Tools stay off the remount path: CSS already shows them only on hover /
     // active-block / focus-within (see noto-editor.scss). Mount on demand.
     this.dom.addEventListener('pointerenter', this.ensureTools);
@@ -119,40 +119,24 @@ export class FenceView implements NodeView {
    * for them. Safe to call repeatedly.
    */
   private readonly ensureTools = (): void => {
-    if (this.tools) return;
+    if (this.tools) {
+      // A note can turn read-only without its fences changing.
+      if (this.language) this.language.disabled = !this.view.editable;
+      return;
+    }
 
     this.tools = document.createElement('div');
     this.tools.className = 'noto-fence-tools';
     this.tools.contentEditable = 'false';
-    // The language is a field, not a label: the reader types it here, with
-    // the highlighter's names offered as they type, and the block takes the
-    // colour of what they chose. Typora puts the same field in the same
-    // corner, which is where a hand that just typed a fence expects it.
-    this.language = document.createElement('input');
+    // The language is a label until it is pressed, and then a list to choose
+    // from with a field to search it, so the corner holds a word, not a box.
+    this.language = document.createElement('button');
+    this.language.type = 'button';
     this.language.className = 'noto-fence-lang';
-    this.language.type = 'text';
-    this.language.placeholder = 'language';
-    this.language.spellcheck = false;
-    this.language.autocomplete = 'off';
-    this.language.setAttribute('aria-label', 'Code block language');
-    // Do not set `list=` here. Resolving the shared datalist id against a
-    // document full of stub placeholders dominated FenceView construction on
-    // remount; bind it when the field is actually focused.
-    this.language.addEventListener('focus', this.bindLanguageList);
-    this.language.addEventListener('change', () => this.commitLanguage());
-    this.language.addEventListener('keydown', (event) => {
-      // A press the input method is composing with is the input method's.
-      if (isComposing(event)) return;
-      if (event.key === 'Enter') {
-        event.preventDefault();
-        this.commitLanguage();
-        this.view.focus();
-      } else if (event.key === 'Escape') {
-        event.preventDefault();
-        if (this.language) this.language.value = (this.node.attrs.lang as string) || '';
-        this.view.focus();
-      }
-    });
+    this.language.setAttribute('aria-haspopup', 'dialog');
+    // The press must not move the note's selection; the click opens the list.
+    this.language.addEventListener('mousedown', (event) => event.preventDefault());
+    this.language.addEventListener('click', this.toggleLanguages);
     this.copy = document.createElement('button');
     this.copy.type = 'button';
     this.copy.className = 'noto-fence-copy';
@@ -162,22 +146,145 @@ export class FenceView implements NodeView {
     // is what the button is for.
     this.copy.addEventListener('mousedown', (event) => event.preventDefault());
     this.copy.addEventListener('click', () => this.copyCode());
-    this.tools.append(this.language, this.copy);
+    this.wrap = document.createElement('button');
+    this.wrap.type = 'button';
+    this.wrap.className = 'noto-fence-wrap';
+    this.wrap.title = 'Wrap long lines in every code block (View > Wrap Lines in Code Blocks)';
+    this.wrap.setAttribute('aria-pressed', String(wrapsCode()));
+    this.wrap.innerHTML = WRAP_ICON;
+    this.wrap.append('Wrap');
+    this.wrap.addEventListener('mousedown', (event) => event.preventDefault());
+    this.wrap.addEventListener('click', this.toggleWrap);
+    this.tools.append(this.wrap, this.language, this.copy);
     this.dom.append(this.tools);
-    this.syncLanguageField();
+    this.labelKey = '';
+    this.syncLanguageLabel();
   };
 
-  private readonly bindLanguageList = (): void => {
-    if (this.languageListBound || !this.language) return;
-    this.language.setAttribute('list', languageList().id);
-    this.languageListBound = true;
+  private markLongLines(long: boolean): void {
+    if (long) this.dom.dataset.longLines = '';
+    else delete this.dom.dataset.longLines;
+    this.wrap?.setAttribute('aria-pressed', String(wrapsCode()));
+  }
+
+  /**
+   * Wrap long lines in every code block, or scroll them: the one setting
+   * View > Wrap Lines in Code Blocks flips, asked of the shell, which owns
+   * the settings. Every block, because a choice for one block has nowhere to
+   * live in the file without changing the file.
+   */
+  private readonly toggleWrap = (): void => {
+    this.wrap?.setAttribute('aria-pressed', String(!wrapsCode()));
+    this.dom.dispatchEvent(new CustomEvent(TOGGLE_CODE_WRAP, { bubbles: true }));
+  };
+
+  /** Open the language list under the label, or close it when it is open. */
+  private readonly toggleLanguages = (): void => {
+    if (this.picker?.isOpen) {
+      this.picker.close(true);
+      return;
+    }
+    if (!this.language || !this.view.editable) return;
+    const current = String(this.node.attrs.lang ?? '').trim();
+    this.dom.classList.add('is-picking');
+    this.language.setAttribute('aria-expanded', 'true');
+    this.picker = LanguagePicker.show(this.language, {
+      current,
+      guess: guessedLanguage(this.node),
+      onPick: (lang) => this.commitLanguage(lang),
+      onClose: (returnFocus) => {
+        this.picker = null;
+        this.dom.classList.remove('is-picking');
+        this.language?.setAttribute('aria-expanded', 'false');
+        if (returnFocus) this.view.focus();
+      },
+    });
   };
 
   update(node: ProseNode): boolean {
     if (node.type !== this.node.type) return false;
     this.node = node;
     this.render();
+    // Typing can make a line wrap or stop wrapping without the count moving.
+    // While no line wraps, finding out costs one height read a frame; once
+    // lines wrap, placing every number waits for a pause in the typing, so a
+    // long fence is not measured line by line on every key.
+    // With wrapping off it is one width read, for whether the Wrap button
+    // has anything to do here.
+    if (this.wrappedTops !== null) this.scheduleMeasureAfterTyping();
+    else this.scheduleMeasure();
     return true;
+  }
+
+  private scheduleMeasureAfterTyping(): void {
+    if (this.measureTimer !== null) clearTimeout(this.measureTimer);
+    this.measureTimer = setTimeout(() => {
+      this.measureTimer = null;
+      this.scheduleMeasure();
+    }, 150);
+  }
+
+  private scheduleMeasure(): void {
+    if (this.measureFrame !== 0) return;
+    this.measureFrame = requestAnimationFrame(() => {
+      this.measureFrame = 0;
+      this.measureWraps();
+    });
+  }
+
+  /**
+   * Keep one number per line when long lines wrap.
+   *
+   * The gutter is a column of numbers set one per row, so a line that wraps
+   * onto three rows pushed every number after it out of step. When any line
+   * wraps, each number is placed where its line starts, read from the editor;
+   * when none does, the plain column is put back, which costs nothing to draw.
+   */
+  private measureWraps(): void {
+    if (!this.dom.isConnected) return;
+    const base = this.getPos();
+    const text = this.node.textContent;
+    const lines = lineCount(text);
+    const wrapping = wrapsCode();
+    const style = getComputedStyle(this.contentDOM);
+    const row = Number.parseFloat(style.lineHeight);
+    const padding = (Number.parseFloat(style.paddingTop) || 0) + (Number.parseFloat(style.paddingBottom) || 0);
+    const oneRowEach = !wrapping || !Number.isFinite(row) || row <= 0
+      || this.contentDOM.scrollHeight - padding <= lines * row + row / 2;
+    // A line too long for the block, wrapped or scrolled: the Wrap button
+    // shows only where it would change something (noto-editor.scss).
+    this.markLongLines(wrapping ? !oneRowEach : this.contentDOM.scrollWidth > this.contentDOM.clientWidth + 1);
+    if (oneRowEach || base === undefined) {
+      if (this.wrappedTops !== null) {
+        this.wrappedTops = null;
+        delete this.gutter.dataset.wrapped;
+        this.gutter.textContent = gutterText(lines);
+      }
+      return;
+    }
+    const tops: number[] = [];
+    let offset = 0;
+    try {
+      for (let line = 0; line < lines; line += 1) {
+        tops.push(this.view.coordsAtPos(base + 1 + offset, 1).top);
+        offset = text.indexOf('\n', offset) + 1;
+      }
+    } catch {
+      return;
+    }
+    const first = tops[0] ?? 0;
+    const relative = tops.map((top) => Math.round(top - first));
+    if (this.wrappedTops && relative.length === this.wrappedTops.length && relative.every((top, index) => top === this.wrappedTops![index])) return;
+    this.wrappedTops = relative;
+    this.gutter.dataset.wrapped = '';
+    const rows = relative.map((top, index) => {
+      const number = document.createElement('div');
+      number.className = 'noto-fence-number';
+      number.textContent = String(index + 1);
+      number.style.height = `${Math.max(row, (relative[index + 1] ?? top + row) - top)}px`;
+      return number;
+    });
+    this.gutter.replaceChildren(...rows);
   }
 
   /** The gutter and the tools are ours. Only the code is the editor's. */
@@ -197,6 +304,13 @@ export class FenceView implements NodeView {
 
   /** Which line a vertical offset inside the gutter falls on, counted from zero. */
   private lineAt(offsetY: number): number {
+    if (this.wrappedTops !== null) {
+      const paddingTop = Number.parseFloat(getComputedStyle(this.gutter).paddingTop) || 0;
+      const y = offsetY - paddingTop;
+      let line = 0;
+      while (line + 1 < this.wrappedTops.length && this.wrappedTops[line + 1]! <= y) line += 1;
+      return line;
+    }
     const style = getComputedStyle(this.gutter);
     const lineHeight = Number.parseFloat(style.lineHeight);
     const paddingTop = Number.parseFloat(style.paddingTop) || 0;
@@ -221,17 +335,19 @@ export class FenceView implements NodeView {
 
   destroy(): void {
     if (this.copiedTimer !== null) clearTimeout(this.copiedTimer);
+    if (this.measureFrame !== 0) cancelAnimationFrame(this.measureFrame);
+    if (this.measureTimer !== null) clearTimeout(this.measureTimer);
+    this.resized?.disconnect();
     this.dom.removeEventListener('pointerenter', this.ensureTools);
     this.dom.removeEventListener('focusin', this.ensureTools);
-    this.language?.removeEventListener('focus', this.bindLanguageList);
+    this.picker?.close(false);
     this.diagram?.destroy();
     this.timeline?.destroy();
   }
 
-  /** Write the field's value into the node, as one undoable change. */
-  private commitLanguage(): void {
-    if (!this.language) return;
-    const lang = this.language.value.trim().toLowerCase();
+  /** Write the chosen language into the node, as one undoable change. */
+  private commitLanguage(chosen: string): void {
+    const lang = chosen.trim().toLowerCase();
     if (lang === ((this.node.attrs.lang as string) || '')) return;
     const position = this.getPos();
     if (position === undefined) return;
@@ -239,20 +355,49 @@ export class FenceView implements NodeView {
     this.view.dispatch(state.tr.setNodeMarkup(position, undefined, { ...this.node.attrs, lang }));
   }
 
-  private syncLanguageField(): void {
-    if (!this.language) return;
-    const lang = (this.node.attrs.lang as string) || '';
-    // Not while the reader is typing in it: a redraw mid-word would take
-    // the word away.
-    if (document.activeElement !== this.language) this.language.value = lang;
-    this.language.size = Math.max(6, lang.length + 1);
+  /**
+   * The label: the fence's language by its name, or what the code reads as,
+   * marked as a guess, or an invitation to choose when it reads as nothing.
+   */
+  private syncLanguageLabel(): void {
+    const label = this.language;
+    if (!label) return;
+    const lang = String(this.node.attrs.lang ?? '').trim();
+    const guess = lang ? null : guessedLanguage(this.node);
+    const key = `${lang}\u0000${guess ?? ''}`;
+    if (key === this.labelKey) return;
+    this.labelKey = key;
+    const name = document.createElement('span');
+    name.className = 'noto-fence-lang-name';
+    if (lang) {
+      name.textContent = languageName(lang);
+      label.dataset.state = 'set';
+      label.title = lang === PLAIN_TEXT ? 'Plain text. Choose a language' : `\`\`\`${lang}. Choose another language`;
+      label.replaceChildren(name);
+    } else if (guess) {
+      name.textContent = languageName(guess);
+      const auto = document.createElement('span');
+      auto.className = 'noto-fence-lang-auto';
+      auto.textContent = 'auto';
+      label.dataset.state = 'guess';
+      label.title = `Reads as ${languageName(guess)}. Choose a language to write it into the fence`;
+      label.replaceChildren(name, auto);
+    } else {
+      name.textContent = 'Language';
+      label.dataset.state = 'none';
+      label.title = 'Choose a language';
+      label.replaceChildren(name);
+    }
+    label.setAttribute('aria-label', `Code block language: ${label.title}`);
+    // A note that cannot be edited shows its language and offers no list.
+    label.disabled = !this.view.editable;
   }
 
   private render(): void {
     const lang = (this.node.attrs.lang as string) || '';
     if (lang) this.dom.setAttribute('data-lang', lang);
     else this.dom.removeAttribute('data-lang');
-    this.syncLanguageField();
+    this.syncLanguageLabel();
 
     // A diagram fence (mermaid, or Typora's flow and sequence) is drawn as
     // its diagram, beside the source; a press on the drawing puts the caret at
@@ -286,7 +431,8 @@ export class FenceView implements NodeView {
     const lines = lineCount(this.node.textContent);
     if (lines === this.lines) return;
     this.lines = lines;
-    this.gutter.textContent = gutterText(lines);
+    if (this.wrappedTops === null) this.gutter.textContent = gutterText(lines);
+    else this.scheduleMeasure();
     this.dom.style.setProperty('--fence-digits', String(digitsForLineCount(lines)));
   }
 

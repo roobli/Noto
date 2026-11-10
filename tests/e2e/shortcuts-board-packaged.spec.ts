@@ -48,7 +48,11 @@ test('the Shortcuts pane lists every key, and a switch turns one off everywhere 
 
     // Off: the menu lets go of the key, and the row says so.
     expect(await menuChord('mark-strong')).toBe('CmdOrCtrl+B');
-    await strong.getByTestId('shortcut-switch').uncheck({ force: true });
+    // The track, as a person turns it off. The input under it is a 1px box,
+    // and in a test window that is never shown Settings can still be at its
+    // entrance's 0.98 scale here, which leaves Playwright no pixel to press.
+    await strong.locator('.pref-track').click();
+    await expect(strong.getByTestId('shortcut-switch')).not.toBeChecked();
     await expect(strong.locator('.shortcut-keys')).toHaveAttribute('data-off', 'true');
     await expect(page.getByTestId('shortcut-count')).toContainText('1 off');
     await expect.poll(() => menuChord('mark-strong')).toBeFalsy();

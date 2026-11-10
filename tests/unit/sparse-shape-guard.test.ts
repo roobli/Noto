@@ -52,7 +52,7 @@ afterEach(() => {
 
 describe('sparse docView shape guard', () => {
   it('pins prosemirror-view to the exact version the shape was validated on', () => {
-    expect((pkg as { dependencies: Record<string, string> }).dependencies['prosemirror-view']).toBe('1.42.3');
+    expect((pkg as { dependencies: Record<string, string> }).dependencies['prosemirror-view']).toBe('1.42.9');
   });
 
   it('falls back to stock rendering when the shape check fails, logging once', () => {

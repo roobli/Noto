@@ -32,10 +32,39 @@ const MAX_SUGGESTIONS = 5;
  */
 const PLUGIN_ITEMS_WAIT_MS = 250;
 
+/** The application menu, where the commands below come from: their names, keys and whether they are on. */
+export type MenuCommandSource = Pick<Menu, 'getMenuItemById'>;
+
+/**
+ * What the note can be made into from the click, as the application menu
+ * holds it (daily-use audit, finding 18: the menu held the clipboard only).
+ * Three submenus rather than a column of items, so the menu stays short and
+ * still reaches what Typora's does. An id the menu does not hold is left out.
+ */
+const COMMAND_GROUPS: readonly { readonly label: string; readonly ids: readonly string[] }[] = [
+  { label: 'Format', ids: ['mark-strong', 'mark-emphasis', 'mark-underline', 'mark-code', 'mark-strike', 'mark-highlight', 'mark-math', 'insert-link'] },
+  { label: 'Paragraph', ids: ['block-paragraph', 'block-heading-1', 'block-heading-2', 'block-heading-3', 'block-heading-4', 'block-quote', 'block-bullet-list', 'block-ordered-list', 'block-task-list'] },
+  { label: 'Insert', ids: ['table-insert', 'block-code', 'block-math', 'insert-footnote', 'block-rule', 'insert-toc'] },
+];
+
+function commandItem(source: MenuCommandSource, id: string): MenuItemConstructorOptions | null {
+  const item = source.getMenuItemById(id);
+  if (!item || !item.visible) return null;
+  return {
+    label: item.label,
+    accelerator: item.accelerator ?? undefined,
+    enabled: item.enabled,
+    // Shown, not bound: the menu bar already owns the keys.
+    registerAccelerator: false,
+    click: () => item.click(),
+  };
+}
+
 export function buildEditorContextMenu(
   window: BrowserWindow,
   params: ContextMenuParams,
   pluginItems: readonly WorkspaceContextItemV1[] = [],
+  commands: MenuCommandSource | null = null,
 ): MenuItemConstructorOptions[] {
   const items: MenuItemConstructorOptions[] = [];
   const { editFlags } = params;
@@ -86,6 +115,15 @@ export function buildEditorContextMenu(
   // The markdown a note is made of is text, so pasting a styled fragment as
   // text is what you want far more often than the fragment's own markup.
   items.push({ label: 'Paste as Plain Text', enabled: editFlags.canPaste, click: () => sendPasteText(window) });
+  if (commands && params.isEditable) {
+    const copyMarkdown = params.selectionText ? commandItem(commands, 'copy-as-markdown') : null;
+    if (copyMarkdown) items.push(copyMarkdown);
+    items.push({ type: 'separator' });
+    for (const group of COMMAND_GROUPS) {
+      const submenu = group.ids.map((id) => commandItem(commands, id)).filter((item) => item !== null);
+      if (submenu.length > 0) items.push({ label: group.label, submenu });
+    }
+  }
   items.push({ type: 'separator' });
   items.push({ role: 'selectAll', enabled: editFlags.canSelectAll });
 
@@ -121,7 +159,7 @@ export function installEditorContextMenu(window: BrowserWindow): void {
     if (!params.isEditable && !params.selectionText && !params.linkURL && params.mediaType !== 'image') return;
     void askPluginItems(window, params).then((pluginItems) => {
       if (window.isDestroyed()) return;
-      Menu.buildFromTemplate(buildEditorContextMenu(window, params, pluginItems)).popup({ window });
+      Menu.buildFromTemplate(buildEditorContextMenu(window, params, pluginItems, Menu.getApplicationMenu())).popup({ window });
     });
   });
 }

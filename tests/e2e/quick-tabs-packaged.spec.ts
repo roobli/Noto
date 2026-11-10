@@ -89,8 +89,14 @@ test.describe('quick open, as the author built it', () => {
     const { app, page } = await launch('nested');
     try {
       await invokeMenu(app, 'quick-open');
+      // Wait until the palette has the keyboard, or the Tab lands elsewhere.
+      await expect(page.getByTestId('quick-input')).toBeFocused();
       await page.keyboard.press('Tab');
+      await expect(page.getByTestId('quick-tab-folders')).toHaveAttribute('aria-selected', 'true');
       await page.getByTestId('quick-input').fill('jobs');
+      // Wait for the row Enter will take, so a slow window does not run an
+      // empty result.
+      await expect(page.getByTestId('quick-folder').first()).toContainText('jobs');
       await page.keyboard.press('Enter');
       await expect(page.getByTestId('quick-scope')).toHaveText('works/jobs');
       await expect(page.getByTestId('quick-result')).toHaveText([/hiring\.md/]);
@@ -137,32 +143,35 @@ test.describe('quick open, as the author built it', () => {
       await invokeMenu(app, 'quick-open-period');
       const palette = page.getByTestId('quick-open');
       await expect(palette).toBeVisible();
-      await expect(palette).toHaveAttribute('data-width', 'default');
+      await expect(palette).toHaveAttribute('data-sheet-width', '3');
       // Measured settled: on its arrival frame the palette is drawn at 0.98
-      // of its width.
+      // of its width. The third of the four widths the sheets share: 76% of
+      // the window, at least 720 and at most 1280, with 16px spare each side.
       await finishAnimations(page);
+      await expect(palette).toHaveClass(/has-preview/);
+      const expected = await page.evaluate(() => Math.round(Math.min(innerWidth - 32, Math.max(720, Math.min(innerWidth * 0.76, 1280)))));
       const narrow = await palette.evaluate((node) => Math.round(node.getBoundingClientRect().width));
-      expect(narrow).toBe(740);
+      expect(Math.abs(narrow - expected)).toBeLessThanOrEqual(1);
 
       await page.keyboard.press(process.platform === 'darwin' ? 'Meta+]' : 'Control+]');
-      await expect(palette).toHaveAttribute('data-width', 'wide');
+      await expect(palette).toHaveAttribute('data-sheet-width', '4');
       await expect.poll(() => palette.evaluate((node) => Math.round(node.getBoundingClientRect().width)))
         .toBeGreaterThan(narrow);
 
       await page.keyboard.press(process.platform === 'darwin' ? 'Meta+[' : 'Control+[');
-      await expect(palette).toHaveAttribute('data-width', 'default');
+      await expect(palette).toHaveAttribute('data-sheet-width', '3');
       await page.keyboard.press(process.platform === 'darwin' ? 'Meta+]' : 'Control+]');
-      await expect(palette).toHaveAttribute('data-width', 'wide');
+      await expect(palette).toHaveAttribute('data-sheet-width', '4');
       // Wait for main to persist the preference before tearing the window down —
       // otherwise Windows CI can close mid-write and reopen at the default width.
       await expect.poll(async () => {
         try {
           const stored = JSON.parse(await readFile(path.join(userData, 'settings.json'), 'utf8'));
-          return stored.quickOpenWidth ?? null;
+          return stored.sheetWidth ?? null;
         } catch {
           return null;
         }
-      }, { timeout: 15_000 }).toBe('wide');
+      }, { timeout: 15_000 }).toBe(4);
       await page.keyboard.press('Escape');
     } finally {
       await app.close();
@@ -178,7 +187,7 @@ test.describe('quick open, as the author built it', () => {
       await page.waitForSelector('[data-testid="file-tree"]', { state: 'visible', timeout: 30_000 });
       // Settings load async after mount; poll until the palette reflects disk.
       await invokeMenu(again, 'quick-open');
-      await expect(page.getByTestId('quick-open')).toHaveAttribute('data-width', 'wide', { timeout: 15_000 });
+      await expect(page.getByTestId('quick-open')).toHaveAttribute('data-sheet-width', '4', { timeout: 15_000 });
     } finally {
       await again.close();
     }

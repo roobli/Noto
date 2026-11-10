@@ -79,6 +79,46 @@ export const WORKSPACE_CHANNELS = {
   gitMarksChanged: 'noto:v1:workspace:git-marks-changed',
   /** Push: the note in front's blocks against HEAD. See `WorkspaceGitBlocksV1`. */
   gitBlocksChanged: 'noto:v1:workspace:git-blocks-changed',
+  /** One note's commits, following renames. See `WorkspaceNoteHistoryReplyV1`. */
+  noteHistory: 'noto:v1:workspace:note-history',
+  /** Which of a note's commits changed one passage of it. See `WorkspaceNotePassageReplyV1`. */
+  notePassage: 'noto:v1:workspace:note-passage',
+  /** The newest commits that changed anything under a folder. See `WorkspaceFolderHistoryReplyV1`. */
+  folderHistory: 'noto:v1:workspace:folder-history',
+  /** Push: after a move, the links that named the old place were written again. See `WorkspaceLinksFollowedV1`. */
+  linksFollowed: 'noto:v1:workspace:links-followed',
+  /** Take back the links written after the last move. See `WorkspaceUndoLinksReplyV1`. */
+  undoLinks: 'noto:v1:workspace:undo-links',
+  /** Push: Get Info was chosen on a folder in the tree, so the info pane turns to it. */
+  showFolderInfo: 'noto:v1:workspace:show-folder-info',
+  focusFolder: 'noto:v1:workspace:focus-folder',
+  /** One note's text as one of its commits had it. */
+  noteVersion: 'noto:v1:workspace:note-version',
+  notePreview: 'noto:v1:workspace:note-preview',
+  /** Every command the application menu holds, for the command palette. See `WorkspaceMenuCommandsReplyV1`. */
+  menuCommands: 'noto:v1:workspace:menu-commands',
+  /** Run one of them, as choosing it in the menu does. */
+  runMenuCommand: 'noto:v1:workspace:run-menu-command',
+  /** What the folder's memory knows about one note. See `WorkspaceNoteMemoryReplyV1`. */
+  noteMemory: 'noto:v1:workspace:note-memory',
+  /** Begin keeping memory for the open folder, as `noto-vault init` would, once main has asked the person. */
+  keepMemory: 'noto:v1:workspace:keep-memory',
+  /** Let the open folder's memory run its scripts, once main has asked the person, naming them. */
+  trustMemory: 'noto:v1:workspace:trust-memory',
+  /** The agents the open folder's memory names, and adding one or taking its key back. See `WorkspaceAgentActionV1`. */
+  memoryAgents: 'noto:v1:workspace:memory-agents',
+  /** Privacy as the window draws it: the tree's locks, and the note in front's own. See `WorkspaceMemoryPrivacyReplyV1`. */
+  memoryPrivacy: 'noto:v1:workspace:memory-privacy',
+  /** The open folder's memory itself: its index, the read record, and turning it off. See `WorkspaceMemoryFolderActionV1`. */
+  memoryFolder: 'noto:v1:workspace:memory-folder',
+  /** A question of the folder's memory in words, answered with its context pack. See `WorkspaceMemoryAskReplyV1`. */
+  memoryAsk: 'noto:v1:workspace:memory-ask',
+  /** What the folder's memory knows about one folder in it: warmth, reads, notes linked to nothing, broken links. */
+  folderMemory: 'noto:v1:workspace:folder-memory',
+  /** Review: the folder-wide queue of what agents proposed and what the tools found. See `WorkspaceReviewActionV1`. */
+  memoryReview: 'noto:v1:workspace:memory-review',
+  /** Push: the folder's memory opened or changed, so what was asked of it may be asked again. */
+  memoryChanged: 'noto:v1:workspace:memory-changed',
 } as const;
 
 /** One entry in the workspace tree. */
@@ -153,6 +193,8 @@ export interface WorkspaceRequestV1 {
 
 export interface WorkspaceOpenPathRequestV1 extends WorkspaceRequestV1 {
   readonly path: string;
+  /** The note this one was reached from, by a link; recorded for the vault's memory. */
+  readonly from?: string;
 }
 
 /** Activating or closing a tab, both identified by path. */
@@ -252,6 +294,7 @@ export const WORKSPACE_MENU_COMMANDS = [
   'find-previous',
   'toggle-source',
   'source-code-mode',
+  'select-all',
   'select-word',
   'select-line',
   'jump-to-selection',
@@ -335,6 +378,7 @@ export const WORKSPACE_MENU_COMMANDS = [
   'export-textile',
   'export-opml',
   'new-file',
+  'new-folder',
   'mark-strong',
   'mark-emphasis',
   'mark-code',
@@ -347,8 +391,12 @@ export const WORKSPACE_MENU_COMMANDS = [
   'block-alert-caution',
   'toggle-focus-mode',
   'toggle-git-marks',
+  'toggle-code-wrap',
+  'toggle-note-marks',
   'toggle-typewriter',
   'toggle-outline',
+  'toggle-note-info',
+  'show-note-info',
   'command-palette',
   'toggle-sidebar',
   'widen',
@@ -429,6 +477,12 @@ export interface WorkspaceNewFileReplyV1 {
 export interface WorkspaceTreeMenuRequestV1 extends WorkspaceRequestV1 {
   readonly path: string;
   readonly kind: 'file' | 'directory';
+  /**
+   * The other rows chosen with it, when it is one of several: the menu is then
+   * for all of them (move them, trash them, copy their paths). Each is checked
+   * against the open folder as `path` is.
+   */
+  readonly also?: readonly string[];
 }
 
 export interface WorkspaceTreeMenuReplyV1 {
@@ -450,7 +504,7 @@ export interface WorkspaceTreeMenuReplyV1 {
  * different shape of message. The action is checked against this list on both
  * sides, so an unknown one is refused rather than falling through to a default.
  */
-export const ENTRY_ACTIONS = ['rename', 'duplicate', 'trash', 'new-folder', 'move', 'move-into'] as const;
+export const ENTRY_ACTIONS = ['rename', 'duplicate', 'trash', 'new-folder', 'move', 'move-into', 'new-note'] as const;
 
 export type WorkspaceEntryActionV1 = (typeof ENTRY_ACTIONS)[number];
 
@@ -532,6 +586,19 @@ export interface WorkspaceGitMarksV1 {
   readonly files: ReadonlyArray<readonly [string, WorkspaceGitChangeV1]>;
   /** Folders, below the open one, holding a change somewhere inside. */
   readonly folders: readonly string[];
+  /**
+   * True once git has been read for the folder; absent otherwise (not in a
+   * repository, git missing, too slow). Lets "nothing changed" be told from
+   * "nothing known".
+   */
+  readonly repository?: true;
+  /**
+   * The folder as the file system names it, links and Windows short names
+   * resolved. Every path in `files` and `folders` is under it, as the file
+   * tree's paths are, and it differs from `root` when the folder was opened
+   * through another name for it. Sent with `repository`.
+   */
+  readonly realRoot?: string;
 }
 
 /** Bounds on a gutter message: a note over a megabyte has no gutter at all. */
@@ -847,6 +914,590 @@ export interface WorkspaceNotesByTagReplyV1 {
   readonly notes: readonly WorkspaceTagNoteV1[];
 }
 
+/** One commit in a note's history. */
+export interface NoteCommitV1 {
+  readonly hash: string;
+  /** When it was authored, in milliseconds. */
+  readonly time: number;
+  readonly author: string;
+  readonly subject: string;
+  /** What the commit did to the note; a merge shows no change of its own. */
+  readonly change: 'added' | 'modified' | 'renamed' | 'copied' | 'deleted' | 'merge';
+  /** Where the note was after the commit, from the repository's top, with forward slashes. */
+  readonly path: string;
+  /** Where it was before, when the commit moved it. */
+  readonly from: string | null;
+  /** Lines added and taken away; null for a binary file or a merge. */
+  readonly added: number | null;
+  readonly removed: number | null;
+  /** Only text between a tool's markers changed: a script's work, not the person's. */
+  readonly tooling: boolean;
+  /** The commit changed more than a hundred files: a sweep across the folder. */
+  readonly sweeping: boolean;
+}
+
+/** The note as the file system has it. Times in milliseconds. */
+export interface NoteFileFactsV1 {
+  readonly created: number;
+  readonly modified: number;
+  readonly bytes: number;
+}
+
+export interface WorkspaceNoteHistoryRequestV1 extends WorkspaceRequestV1 {
+  /** The note. Main confines it to the open folder. */
+  readonly path: string;
+}
+
+/**
+ * A note's history, newest first.
+ *
+ * `ok` has commits; `untracked` is a note git has never committed; `not-git`
+ * a note outside any repository; `slow` and `unavailable` mean git did not
+ * answer, in time or at all; `outside` a path that is not in the open folder.
+ */
+export interface WorkspaceNoteHistoryReplyV1 {
+  readonly version: typeof NOTO_WORKSPACE_VERSION;
+  readonly state: 'ok' | 'untracked' | 'not-git' | 'slow' | 'unavailable' | 'outside';
+  readonly commits: readonly NoteCommitV1[];
+  /** The note has more commits than were read. */
+  readonly more: boolean;
+  /** Lines on disk since the last commit; null when nothing differs. */
+  readonly uncommitted: { readonly added: number; readonly removed: number } | null;
+  readonly file: NoteFileFactsV1 | null;
+}
+
+export interface WorkspaceNotePassageRequestV1 extends WorkspaceRequestV1 {
+  /** The note. Main confines it to the open folder. */
+  readonly path: string;
+  /** The passage as the last commit has it: what the editor holds for a block git says is unchanged, or the committed text of a changed one. */
+  readonly text: string;
+}
+
+/**
+ * Which commits changed a passage, newest first, by git's own following of
+ * its lines (`git log -L`): the passage is found in the note as last
+ * committed, and its lines there are what git follows back. `not-found`: the
+ * passage is not in the last commit as it is (written since), so git has no
+ * lines to follow; the other states are those of `WorkspaceNoteHistoryReplyV1`.
+ */
+export interface WorkspaceNotePassageReplyV1 {
+  readonly version: typeof NOTO_WORKSPACE_VERSION;
+  readonly state: 'ok' | 'not-found' | 'untracked' | 'not-git' | 'slow' | 'unavailable' | 'outside';
+  /** The passage's lines in the last commit, from 1. */
+  readonly lines: { readonly from: number; readonly to: number } | null;
+  /** Commit hashes, newest first. */
+  readonly commits: readonly string[];
+}
+
+/** A commit that changed something under a folder. */
+export interface FolderCommitV1 {
+  readonly hash: string;
+  /** When it was authored, in milliseconds. */
+  readonly time: number;
+  readonly author: string;
+  readonly subject: string;
+  /** The first few notes it changed there, from the folder, with forward slashes. */
+  readonly notes: readonly string[];
+  /** How many files it changed there in all, notes or not. */
+  readonly files: number;
+}
+
+export interface WorkspaceFolderHistoryReplyV1 {
+  readonly version: typeof NOTO_WORKSPACE_VERSION;
+  readonly state: 'ok' | 'not-git' | 'slow' | 'unavailable' | 'outside';
+  /** Newest first. */
+  readonly commits: readonly FolderCommitV1[];
+}
+
+/**
+ * Push: a note or folder was renamed or moved, and the links that reached it
+ * by its old place (and its own relative links to the neighbours it left)
+ * were written again to reach the same notes.
+ */
+export interface WorkspaceLinksFollowedV1 {
+  readonly version: typeof NOTO_WORKSPACE_VERSION;
+  /** What Undo names to take this back; 0 when nothing was written. */
+  readonly pass: number;
+  /** Notes written again, and the links in them. */
+  readonly notes: number;
+  readonly links: number;
+  /** Notes with links to write that have unsaved edits in the window, left alone. */
+  readonly held: number;
+  /** Notes changed while they were read, or that could not be written, left as they are. */
+  readonly left: number;
+}
+
+export interface WorkspaceUndoLinksRequestV1 extends WorkspaceRequestV1 {
+  /** The pass the notice was for. */
+  readonly pass: number;
+}
+
+export interface WorkspaceUndoLinksReplyV1 {
+  readonly version: typeof NOTO_WORKSPACE_VERSION;
+  /** Notes put back as they were before the move. */
+  readonly restored: number;
+  /** Notes changed since, and kept as they are. */
+  readonly kept: number;
+}
+
+/** Push: the folder the info pane should be about, a real path inside the open folder. */
+export interface WorkspaceShowFolderInfoEventV1 {
+  readonly version: typeof NOTO_WORKSPACE_VERSION;
+  readonly path: string;
+}
+
+/** Push: the folder the file tree should focus on, as the window named it, inside the open folder. */
+export interface WorkspaceFocusFolderEventV1 {
+  readonly version: typeof NOTO_WORKSPACE_VERSION;
+  readonly path: string;
+}
+
+export interface WorkspaceNoteVersionRequestV1 extends WorkspaceRequestV1 {
+  readonly path: string;
+  readonly commit: string;
+  /** The note's path at that commit, as its history gave it. */
+  readonly at: string;
+}
+
+export interface WorkspaceNoteVersionReplyV1 {
+  readonly version: typeof NOTO_WORKSPACE_VERSION;
+  /** Null when the commit is not one of the note's, or the text is too big to show. */
+  readonly text: string | null;
+}
+
+/**
+ * One command of the application menu, as the command palette lists it.
+ *
+ * The menu is the one registry of what Noto can do: the palette lists what it
+ * holds and runs a choice by clicking the same item, so the two cannot drift
+ * and every command is reachable from the keyboard by name.
+ */
+export interface WorkspaceMenuCommandV1Entry {
+  /** The menu item's id, which is the command it sends. */
+  readonly id: string;
+  readonly title: string;
+  /** Where it sits in the menu bar, such as `Paragraph › Table`. */
+  readonly path: string;
+  /** The accelerator as Electron writes it, such as `CmdOrCtrl+Shift+P`; null without one. */
+  readonly accelerator: string | null;
+  readonly enabled: boolean;
+  /** For a checkbox item, whether it is on; null for a plain one. */
+  readonly checked: boolean | null;
+}
+
+export interface WorkspaceMenuCommandsReplyV1 {
+  readonly version: typeof NOTO_WORKSPACE_VERSION;
+  readonly commands: readonly WorkspaceMenuCommandV1Entry[];
+}
+
+export interface WorkspaceRunMenuCommandRequestV1 extends WorkspaceRequestV1 {
+  readonly id: string;
+}
+
+export interface WorkspaceRunMenuCommandReplyV1 {
+  readonly version: typeof NOTO_WORKSPACE_VERSION;
+  /** False when no enabled item has that id any more. */
+  readonly ran: boolean;
+}
+
+/** Quick Open's preview of the note in front of the list: its opening, or the lines around a match in it. */
+export interface WorkspaceNotePreviewRequestV1 extends WorkspaceRequestV1 {
+  readonly path: string;
+  /** A line to show the lines around, 1-based, for a match inside the note; null for its opening. */
+  readonly line: number | null;
+}
+
+export interface WorkspaceNotePreviewReplyV1 {
+  readonly version: typeof NOTO_WORKSPACE_VERSION;
+  /** A few kilobytes of the note; null when it is not a note in the open folder or cannot be read. */
+  readonly text: string | null;
+  /** The line the text begins on, 1-based. */
+  readonly from: number;
+  /** When the file last changed, in milliseconds; null with no text. */
+  readonly modified: number | null;
+  /**
+   * The fence of a code block the text begins inside, such as "```", when the
+   * window around a match starts within one; null at a note's opening or
+   * outside code. Without it, the block's closing fence reads as an opening.
+   */
+  readonly fence: string | null;
+}
+
+/** Where a value the vault holds about a note came from. */
+export type MemoryOriginV1 = 'note' | 'script' | 'folder' | 'config' | 'default';
+
+export interface MemoryTracedV1<T> {
+  readonly value: T;
+  readonly from: MemoryOriginV1;
+}
+
+/**
+ * Everything a folder's memory knows about one note, as `@roobli/vault`'s
+ * `about` gives it. Paths are relative to the folder, with forward slashes.
+ */
+export interface NoteMemoryV1 {
+  readonly path: string;
+  readonly title: string;
+  readonly id: string | null;
+  readonly kind: MemoryTracedV1<string>;
+  readonly known: MemoryTracedV1<string | null>;
+  readonly sensitivity: MemoryTracedV1<string>;
+  readonly status: string | null;
+  readonly tags: readonly string[];
+  readonly aliases: readonly string[];
+  readonly heat: {
+    readonly heat: number;
+    readonly reads: number;
+    readonly writes: number;
+    readonly lastRead: string | null;
+    readonly lastWrite: string | null;
+  };
+  readonly supersededBy: { readonly path: string; readonly title: string } | null;
+  readonly linksHere: readonly { readonly path: string; readonly title: string; readonly relation: string | null; readonly heat: number; readonly reads: number }[];
+  readonly linksHereCount: number;
+  readonly namedHere: readonly { readonly id: string; readonly to: string; readonly title: string; readonly score: number; readonly around: readonly [string, string, string] }[];
+  readonly namedHereCount: number;
+  readonly together: readonly { readonly path: string; readonly title: string; readonly type: string; readonly count: number; readonly weight: number; readonly last: string | null }[];
+  readonly togetherCount: number;
+  readonly aboutSame: readonly { readonly path: string; readonly title: string; readonly why: readonly string[]; readonly excerpt: string }[];
+  /** `broken` is the first few; `brokenCount` says how many there are. */
+  readonly outgoing: { readonly count: number; readonly broken: readonly { readonly target: string; readonly line: number }[]; readonly brokenCount: number };
+  readonly reads: readonly { readonly day: string; readonly count: number }[];
+  readonly readers: readonly { readonly actor: string; readonly count: number; readonly last: string }[];
+  readonly leadsHere: readonly { readonly from: string | null; readonly query: string | null; readonly count: number }[];
+  /** Commits, entries appended, and the agents that said they wrote it (over MCP, or from a hook after an edit of their own), most recent first. */
+  readonly writes: { readonly commits: number; readonly appends: number; readonly agents: readonly { readonly actor: string; readonly count: number; readonly last: string }[] };
+  readonly agents: readonly { readonly name: string; readonly canSee: boolean; readonly why: string | null }[];
+}
+
+/**
+ * `ok` carries what the memory knows; `no-memory` is a folder without a
+ * `.noto/` folder, which is never written to; `opening` means the index is
+ * being read and the answer will come; `unknown` a note the index does not
+ * hold (a new one, or one the folder's rules leave out); `unavailable` that
+ * the memory could not be read; `outside` a path not in the open folder.
+ */
+/** The files `keepMemory` made, folder-relative; null when the folder could not keep memory. */
+export interface WorkspaceKeepMemoryReplyV1 {
+  readonly version: typeof NOTO_WORKSPACE_VERSION;
+  /** `cancelled` when the person said no to main's question. */
+  readonly outcome: 'made' | 'cancelled' | 'failed';
+  /** The files made, folder-relative; empty unless `made`. */
+  readonly made: readonly string[];
+}
+
+export interface WorkspaceTrustMemoryReplyV1 {
+  readonly version: typeof NOTO_WORKSPACE_VERSION;
+  readonly trusted: boolean;
+}
+
+/**
+ * Settings → Memory → Agents. Adding an agent and taking a key back are
+ * asked of the person by main, in a sheet of its own, before anything is
+ * written; every answer carries the list as it is then.
+ */
+export type WorkspaceAgentActionV1 =
+  | { readonly kind: 'list' }
+  | {
+    readonly kind: 'add';
+    readonly name: string;
+    /** The most private notes it reads; sealed ones never. */
+    readonly reads: 'open' | 'private';
+    /** Read and search; also propose changes; also write directly in `writeIn`. */
+    readonly may: 'read' | 'propose' | 'write';
+    readonly writeIn: string | null;
+  }
+  | { readonly kind: 'revoke'; readonly name: string };
+
+export interface WorkspaceAgentRequestV1 {
+  readonly version: typeof NOTO_WORKSPACE_VERSION;
+  readonly requestId: string;
+  readonly action: WorkspaceAgentActionV1;
+}
+
+export interface AgentRowV1 {
+  readonly name: string;
+  /** 0 for `default`, whoever brings no key, and for an agent whose keys were taken back. */
+  readonly keys: number;
+  readonly reads: 'open' | 'private' | 'sealed';
+  readonly verbs: readonly string[];
+  readonly writes: readonly string[];
+  readonly revoked: string | null;
+  /** `default` when the file does not name it: what any agent without a key gets. */
+  readonly implicit: boolean;
+  /** From the read record, once the memory is open; null when it has not read anything, or is not known. */
+  readonly lastRead: string | null;
+  readonly readCount: number;
+}
+
+export interface WorkspaceAgentsReplyV1 {
+  readonly version: typeof NOTO_WORKSPACE_VERSION;
+  readonly state: 'ok' | 'no-memory' | 'outside';
+  /** What the action did: `cancelled` when the person said no in main's sheet. */
+  readonly outcome: 'done' | 'cancelled' | 'failed';
+  readonly error: string | null;
+  readonly agents: readonly AgentRowV1[];
+  /** The key just made, shown once and kept nowhere but its hash. */
+  readonly key: string | null;
+  /** How an agent starts this folder's MCP server: the command line shipped with Noto, run by Node. */
+  readonly setup: { readonly script: string; readonly root: string } | null;
+}
+
+export type SensitivityV1 = 'open' | 'private' | 'sealed';
+
+export interface WorkspaceMemoryAskRequestV1 {
+  readonly version: typeof NOTO_WORKSPACE_VERSION;
+  readonly requestId: string;
+  /** The question, in words. */
+  readonly cue: string;
+  /** The note in front, by its path on disk, whose neighbours count for more; null for none. */
+  readonly note: string | null;
+}
+
+/** One note of the context pack: why it came up, and the part of it worth reading. */
+export interface MemoryAskItemV1 {
+  readonly path: string;
+  readonly title: string;
+  readonly kind: string;
+  readonly why: readonly string[];
+  readonly excerpt: string;
+}
+
+/**
+ * What the folder's memory answers a question with: the notes most likely to
+ * matter, each with why and an excerpt, within its budget, and the same pack
+ * as Markdown, exactly as an agent asking through MCP is given it.
+ */
+export interface WorkspaceMemoryAskReplyV1 {
+  readonly version: typeof NOTO_WORKSPACE_VERSION;
+  readonly state: 'ok' | 'no-memory' | 'untrusted' | 'opening' | 'unavailable' | 'outside';
+  readonly value: {
+    readonly cue: string;
+    readonly items: readonly MemoryAskItemV1[];
+    /** Notes that scored but did not fit the budget. */
+    readonly omitted: number;
+    readonly markdown: string;
+  } | null;
+}
+
+export interface WorkspaceMemoryPrivacyRequestV1 {
+  readonly version: typeof NOTO_WORKSPACE_VERSION;
+  readonly requestId: string;
+  /** The note in front, to say whether its own frontmatter makes it stricter than its folder; null for none. */
+  readonly note: string | null;
+}
+
+/**
+ * What `.noto/access.yaml` says, as the window draws it. Read from the file
+ * and the note alone, without opening the index, so the window asks on every
+ * note it brings to the front and a window that never shows Note Info still
+ * costs nothing.
+ */
+export interface WorkspaceMemoryPrivacyReplyV1 {
+  readonly version: typeof NOTO_WORKSPACE_VERSION;
+  /** The tree's root the paths are under; null outside a folder that keeps memory. */
+  readonly root: string | null;
+  /** The level of a note no folder pattern names, which the folder's own row shows when it is not open. */
+  readonly vault: SensitivityV1;
+  /** Folders given a level by a pattern of their own, as tree row paths. */
+  readonly folders: readonly { readonly path: string; readonly level: SensitivityV1 }[];
+  /** The note in front, when its own frontmatter is what makes it private or sealed; null otherwise. */
+  readonly note: { readonly level: 'private' | 'sealed'; readonly folder: 'open' | 'private' } | null;
+}
+
+export type WorkspaceMemoryFolderActionV1 =
+  | { readonly kind: 'status' }
+  /** Build the index again from the notes; the notes and the read record are not touched. */
+  | { readonly kind: 'rebuild' }
+  /** Whether opening a note in this folder is written in its read record, on this computer. */
+  | { readonly kind: 'record'; readonly on: boolean }
+  /** Stop keeping memory: `.noto` goes to the Trash, after main's own sheet says what it holds. */
+  | { readonly kind: 'turn-off' };
+
+export interface WorkspaceMemoryFolderRequestV1 {
+  readonly version: typeof NOTO_WORKSPACE_VERSION;
+  readonly requestId: string;
+  readonly action: WorkspaceMemoryFolderActionV1;
+}
+
+export interface WorkspaceMemoryFolderReplyV1 {
+  readonly version: typeof NOTO_WORKSPACE_VERSION;
+  readonly state: 'outside' | 'no-memory' | 'untrusted' | 'opening' | 'open' | 'unavailable';
+  /** What the action did: `cancelled` when the person said no in main's sheet. */
+  readonly outcome: 'done' | 'cancelled' | 'failed';
+  readonly error: string | null;
+  /** What the index holds, while the memory is open. */
+  readonly index: {
+    readonly notes: number;
+    readonly links: number;
+    /** Lines in the read record: notes opened, by the person and by agents. */
+    readonly reads: number;
+    readonly bytes: number;
+    readonly refreshed: string | null;
+  } | null;
+  /** Whether opening a note here is written in the read record. */
+  readonly recording: boolean;
+}
+
+/** The kinds of suggestion Review lists. */
+export type ReviewKindV1 = 'stale' | 'mention' | 'together';
+
+/**
+ * A proposal's id as Review names it: the ref's name under
+ * refs/noto/proposals, a timestamp and a slug as `@roobli/vault` makes them.
+ * A ref named otherwise (anyone with git can write one) is left out.
+ */
+export const PROPOSAL_ID = /^[0-9A-Za-z\u4e00-\u9fff][0-9A-Za-z\u4e00-\u9fff._-]{0,160}$/;
+
+/**
+ * What Review asks of the folder's memory. Accepting, linking and taking a
+ * write back skip (and name) any note with unsaved edits in the window, which
+ * main adds; nothing else here writes a note.
+ */
+export type WorkspaceReviewActionV1 =
+  /** The proposals, and how many suggestions of each kind; only `counted` are worked out if not known yet. */
+  | { readonly kind: 'summary'; readonly counted: readonly ReviewKindV1[] }
+  | { readonly kind: 'suggestions'; readonly type: ReviewKindV1; readonly offset: number; readonly limit: number }
+  | { readonly kind: 'proposal-file'; readonly proposal: string; readonly path: string }
+  | { readonly kind: 'accept'; readonly proposal: string }
+  | { readonly kind: 'reject'; readonly proposal: string }
+  /** The kind is named so the memory can work its list out again if the notes changed meanwhile. */
+  | { readonly kind: 'link'; readonly type: ReviewKindV1; readonly ids: readonly string[] }
+  | { readonly kind: 'dismiss'; readonly type: ReviewKindV1; readonly ids: readonly string[] }
+  | { readonly kind: 'dismissals' }
+  | { readonly kind: 'undismiss'; readonly ids: readonly string[] | 'all' }
+  /** Take back the last write Review made (an accept or a link), where the files are still as it left them. */
+  | { readonly kind: 'undo' }
+  /**
+   * The few likeliest unlinked mentions in one note, for marking in it while
+   * it is in front: `note` is its path on disk, which main makes the vault's.
+   */
+  | { readonly kind: 'mentions'; readonly note: string };
+
+export interface WorkspaceReviewRequestV1 {
+  readonly version: typeof NOTO_WORKSPACE_VERSION;
+  readonly requestId: string;
+  readonly action: WorkspaceReviewActionV1;
+}
+
+export interface ReviewProposalV1 {
+  readonly id: string;
+  readonly subject: string;
+  readonly author: string;
+  readonly time: string;
+  readonly files: readonly { readonly status: string; readonly path: string }[];
+}
+
+export interface ReviewSummaryV1 {
+  readonly proposals: readonly ReviewProposalV1[];
+  /** Null for a kind not worked out yet. */
+  readonly counts: { readonly stale: number | null; readonly mention: number | null; readonly together: number | null };
+  readonly dismissed: number;
+}
+
+export interface ReviewSuggestionV1 {
+  readonly id: string;
+  readonly type: ReviewKindV1;
+  readonly from: string;
+  readonly to: string;
+  readonly toTitle: string;
+  readonly score: number;
+  readonly reason: string;
+  readonly line: number | null;
+  /** Before the mention, the mention, after it. */
+  readonly around: readonly [string, string, string] | null;
+}
+
+/**
+ * A mention to mark in the note in front: the words as the saved note has
+ * them, with what is around them on their line, and the link to write in
+ * their place. The same id as Review's, so saying no to it is saying no there.
+ */
+export interface ReviewMentionV1 {
+  readonly id: string;
+  readonly to: string;
+  readonly toTitle: string;
+  readonly score: number;
+  readonly around: readonly [string, string, string];
+  /** What the words become: a wiki link to `to` that still reads as they did. */
+  readonly replacement: string;
+}
+
+export interface ReviewDismissalV1 {
+  readonly id: string;
+  readonly type: string;
+  readonly from: string;
+  readonly to: string;
+  readonly time: string | null;
+}
+
+/** What each action answers, by kind. */
+export interface ReviewValuesV1 {
+  readonly summary: ReviewSummaryV1;
+  readonly suggestions: { readonly total: number; readonly items: readonly ReviewSuggestionV1[] };
+  readonly 'proposal-file': { readonly base: string | null; readonly proposed: string | null };
+  readonly accept: { readonly applied: readonly string[]; readonly unchanged: readonly string[]; readonly conflicts: readonly string[]; readonly busy: readonly string[] };
+  readonly reject: null;
+  /** Suggestion ids: linked, no longer applicable to their note as it is now, and in a note with unsaved edits. */
+  readonly link: { readonly linked: readonly string[]; readonly outdated: readonly string[]; readonly busy: readonly string[] };
+  /** `missing`: ids no longer suggested at all, so there was nothing to say no to. */
+  readonly dismiss: { readonly count: number; readonly missing: readonly string[] };
+  readonly dismissals: readonly ReviewDismissalV1[];
+  readonly undismiss: { readonly count: number };
+  /** Null when there is nothing to take back. Paths: put back, written to since, and with unsaved edits. */
+  readonly undo: { readonly restored: readonly string[]; readonly changed: readonly string[]; readonly busy: readonly string[] } | null;
+  readonly mentions: readonly ReviewMentionV1[];
+}
+
+export interface WorkspaceReviewReplyV1<K extends WorkspaceReviewActionV1['kind'] = WorkspaceReviewActionV1['kind']> {
+  readonly version: typeof NOTO_WORKSPACE_VERSION;
+  /** `failed`: the memory answered with an error, in `error`; the others are those of `WorkspaceNoteMemoryReplyV1`. */
+  readonly state: 'ok' | 'failed' | 'no-memory' | 'untrusted' | 'opening' | 'unavailable' | 'outside';
+  readonly value: ReviewValuesV1[K] | null;
+  readonly error: string | null;
+}
+
+export interface WorkspaceMemoryChangedV1 {
+  readonly version: typeof NOTO_WORKSPACE_VERSION;
+}
+
+export interface WorkspaceNoteMemoryReplyV1 {
+  readonly version: typeof NOTO_WORKSPACE_VERSION;
+  /** `untrusted`: the folder's memory runs scripts, and the person has not allowed them yet. */
+  readonly state: 'ok' | 'no-memory' | 'untrusted' | 'opening' | 'unknown' | 'unavailable' | 'outside';
+  readonly memory: NoteMemoryV1 | null;
+}
+
+/** A note as the memory counts it for a folder: see `@roobli/vault`'s `folderAbout`. */
+export interface FolderNoteV1 {
+  /** From the open folder, with forward slashes. */
+  readonly path: string;
+  readonly title: string;
+  /** Warmth now: reads and writes, each fading by its kind's half-life. */
+  readonly heat: number;
+  readonly reads: number;
+  readonly lastRead: string | null;
+}
+
+/** What the memory knows about a folder. Notes an agent may never see are counted for the person, as everywhere in Noto. */
+export interface FolderMemoryV1 {
+  /** From the open folder, without a trailing slash; `''` is the open folder itself. */
+  readonly folder: string;
+  readonly notes: number;
+  readonly warmest: readonly FolderNoteV1[];
+  readonly mostRead: readonly FolderNoteV1[];
+  /** Notes no other note links to and that link to no note. */
+  readonly orphans: { readonly count: number; readonly items: readonly FolderNoteV1[] };
+  /** Links in its notes that name nothing in the folder. */
+  readonly broken: number;
+}
+
+export interface WorkspaceFolderMemoryReplyV1 {
+  readonly version: typeof NOTO_WORKSPACE_VERSION;
+  readonly state: Exclude<WorkspaceNoteMemoryReplyV1['state'], 'unknown'>;
+  readonly memory: FolderMemoryV1 | null;
+}
+
 export interface WorkspaceLinksReplyV1 {
   readonly version: typeof NOTO_WORKSPACE_VERSION;
   readonly available: boolean;
@@ -901,6 +1552,29 @@ export interface NotoWorkspaceApiV1 {
   pathForFile(file: File): string;
   /** The graph's lists for the note at `path`; the request is the folder request, a path. */
   noteLinks(request: WorkspaceFolderRequestV1): Promise<WorkspaceResultV1<WorkspaceLinksReplyV1>>;
+  /** One note's commits, newest first, following renames. */
+  noteHistory(request: WorkspaceNoteHistoryRequestV1): Promise<WorkspaceResultV1<WorkspaceNoteHistoryReplyV1>>;
+  notePassage(request: WorkspaceNotePassageRequestV1): Promise<WorkspaceResultV1<WorkspaceNotePassageReplyV1>>;
+  folderHistory(request: WorkspaceFolderRequestV1): Promise<WorkspaceResultV1<WorkspaceFolderHistoryReplyV1>>;
+  /** One note's text at one of its own commits. */
+  noteVersion(request: WorkspaceNoteVersionRequestV1): Promise<WorkspaceResultV1<WorkspaceNoteVersionReplyV1>>;
+  notePreview(request: WorkspaceNotePreviewRequestV1): Promise<WorkspaceResultV1<WorkspaceNotePreviewReplyV1>>;
+  menuCommands(request: WorkspaceRequestV1): Promise<WorkspaceResultV1<WorkspaceMenuCommandsReplyV1>>;
+  runMenuCommand(request: WorkspaceRunMenuCommandRequestV1): Promise<WorkspaceResultV1<WorkspaceRunMenuCommandReplyV1>>;
+  /** What the folder's memory knows about one note. */
+  noteMemory(request: WorkspaceFolderRequestV1): Promise<WorkspaceResultV1<WorkspaceNoteMemoryReplyV1>>;
+  /** Begin keeping memory for the open folder. */
+  keepMemory(request: WorkspaceRequestV1): Promise<WorkspaceResultV1<WorkspaceKeepMemoryReplyV1>>;
+  /** Let the open folder's memory run its scripts. */
+  trustMemory(request: WorkspaceRequestV1): Promise<WorkspaceResultV1<WorkspaceTrustMemoryReplyV1>>;
+  /** List the folder's agents, add one, or take a key back. */
+  memoryAgents(request: WorkspaceAgentRequestV1): Promise<WorkspaceResultV1<WorkspaceAgentsReplyV1>>;
+  memoryPrivacy(request: WorkspaceMemoryPrivacyRequestV1): Promise<WorkspaceResultV1<WorkspaceMemoryPrivacyReplyV1>>;
+  memoryFolder(request: WorkspaceMemoryFolderRequestV1): Promise<WorkspaceResultV1<WorkspaceMemoryFolderReplyV1>>;
+  memoryAsk(request: WorkspaceMemoryAskRequestV1): Promise<WorkspaceResultV1<WorkspaceMemoryAskReplyV1>>;
+  folderMemory(request: WorkspaceFolderRequestV1): Promise<WorkspaceResultV1<WorkspaceFolderMemoryReplyV1>>;
+  /** Ask Review's question of the folder's memory. */
+  memoryReview<K extends WorkspaceReviewActionV1['kind']>(request: WorkspaceReviewRequestV1 & { readonly action: { readonly kind: K } }): Promise<WorkspaceResultV1<WorkspaceReviewReplyV1<K>>>;
   tagIndex(request: WorkspaceRequestV1): Promise<WorkspaceResultV1<WorkspaceTagIndexReplyV1>>;
   notesByTag(request: WorkspaceNotesByTagRequestV1): Promise<WorkspaceResultV1<WorkspaceNotesByTagReplyV1>>;
   fileIndex(request: WorkspaceRequestV1): Promise<WorkspaceResultV1<WorkspaceIndexReplyV1>>;
@@ -914,9 +1588,15 @@ export interface NotoWorkspaceApiV1 {
   searchContent(request: WorkspaceContentRequestV1): Promise<WorkspaceResultV1<WorkspaceContentReplyV1>>;
   manageEntry(request: WorkspaceEntryRequestV1): Promise<WorkspaceResultV1<WorkspaceEntryReplyV1>>;
   exportRendered(request: WorkspaceExportRequestV1): Promise<WorkspaceResultV1<WorkspaceExportReplyV1>>;
-  onTreeChanged(listener: () => void): () => void;
+  /** `directories`: the folders whose listings may have changed, when main knew them; null for all of them. */
+  onTreeChanged(listener: (event: { readonly directories: readonly string[] | null }) => void): () => void;
   gitMarks(request: WorkspaceRequestV1): Promise<WorkspaceResultV1<WorkspaceGitMarksV1>>;
   onGitMarksChanged(listener: (event: WorkspaceGitMarksV1) => void): () => void;
   onGitBlocksChanged(listener: (event: WorkspaceGitBlocksV1) => void): () => void;
+  onMemoryChanged(listener: (event: WorkspaceMemoryChangedV1) => void): () => void;
   onRenameRow(listener: (event: WorkspaceRenameRowEventV1) => void): () => void;
+  onShowFolderInfo(listener: (event: WorkspaceShowFolderInfoEventV1) => void): () => void;
+  onFocusFolder(listener: (event: WorkspaceFocusFolderEventV1) => void): () => void;
+  onLinksFollowed(listener: (event: WorkspaceLinksFollowedV1) => void): () => void;
+  undoLinks(request: WorkspaceUndoLinksRequestV1): Promise<WorkspaceResultV1<WorkspaceUndoLinksReplyV1>>;
 }

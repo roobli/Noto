@@ -71,6 +71,17 @@ export const MOD = process.platform === 'darwin' ? 'Meta' : 'Control';
 export const LINE_START = process.platform === 'darwin' ? 'Meta+ArrowLeft' : 'Home';
 
 /**
+ * `[data-path="…"]` for a path on disk.
+ *
+ * A CSS string reads a backslash as the start of an escape, so a Windows path
+ * written into one as it is (`D:\a\Noto`) names a different string, and the
+ * selector matches nothing.
+ */
+export function dataPath(value: string): string {
+  return `[data-path="${value.replace(/["\\]/g, '\\$&')}"]`;
+}
+
+/**
  * Click to place the caret, and wait until the editor knows where it is.
  *
  * A click lets the browser put the caret where it landed, and ProseMirror

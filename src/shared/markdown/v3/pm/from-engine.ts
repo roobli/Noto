@@ -781,6 +781,11 @@ function endOfSimpleInlineMath(input: string, at: number): { end: number; value:
   if (sizeOpen < 1) return null;
 
   const contentStart = i;
+  // Pandoc's dollar rule, as `math-text-pandoc.ts` applies it for micromark:
+  // one `$` opens only before a non-space, and closes only after a non-space
+  // and not before a digit, so `$8,000 - $50,000` is text.
+  const blank = (ch: string | undefined) => ch === undefined || ch === ' ' || ch === '\t' || ch === '\n' || ch === '\r';
+  if (sizeOpen === 1 && blank(input[contentStart])) return null;
   while (i < len) {
     if (input[i] !== '$') {
       i += 1;
@@ -793,7 +798,8 @@ function endOfSimpleInlineMath(input: string, at: number): { end: number; value:
       size += 1;
       i += 1;
     }
-    if (size === sizeOpen) {
+    const pandocRefuses = sizeOpen === 1 && (blank(input[closeStart - 1]) || /[0-9]/.test(input[i] ?? ''));
+    if (size === sizeOpen && !pandocRefuses) {
       const raw = input.slice(contentStart, closeStart);
       return { end: i, value: padTrimMathValue(raw) };
     }
@@ -3667,11 +3673,17 @@ export function parseSimpleFlatListsSource(md: string): ParsedFlatList[] | null 
     };
   };
 
+  // A marker line whose text opens a block (`- > a`, `- # h`, `- - a`) holds
+  // that block, not a paragraph; the items here start with one, so such a
+  // list is left to the dialect parser, which reads it as CommonMark does.
+  let structuralLead = false;
+
   const pushItem = (
     level: DraftListLevel,
     checked: boolean | null,
     text: string,
   ): void => {
+    if (restLooksStructural(text)) structuralLead = true;
     level.items.push({
       checked,
       children: [{ type: 'paragraph', lines: [text] }],
@@ -4199,7 +4211,7 @@ export function parseSimpleFlatListsSource(md: string): ParsedFlatList[] | null 
     i += 1;
   }
 
-  if (stack.length === 0) return null;
+  if (stack.length === 0 || structuralLead) return null;
   const last = finalizeLevel(stack[0]!);
   if (!last) return null;
   rootLists.push(last);

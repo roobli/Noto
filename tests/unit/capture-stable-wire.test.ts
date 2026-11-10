@@ -140,6 +140,7 @@ describe('capture stable wire', () => {
     if (full.transaction.mode !== 'blocks') throw new Error('expected blocks');
     const result = serializeDocument(context.document, full.transaction);
     if (result.status !== 'serialized') throw new Error('expected serialized');
-    expect(new TextDecoder().decode(result.outputBytes)).toBe('- a\n\n* b\n\n- c\n');
+    // The emptied paragraphs are empty lines, saved as a blank line more each.
+    expect(new TextDecoder().decode(result.outputBytes)).toBe('- a\n\n\n* b\n\n\n- c\n');
   });
 });

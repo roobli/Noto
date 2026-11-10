@@ -154,6 +154,37 @@ test.describe('settings', () => {
     }
   });
 
+  test('draws the page at the head of Appearance as the controls under it set it', async () => {
+    const { app, page } = await launch('specimen');
+    try {
+      await invokeMenu(app, 'settings');
+      const specimen = page.getByTestId('pref-specimen');
+      const look = () => specimen.locator('.pref-specimen-page').evaluate((node) => {
+        const style = getComputedStyle(node);
+        const paper = node.parentElement!.getBoundingClientRect().width;
+        return { face: style.fontFamily, size: style.fontSize, share: node.getBoundingClientRect().width / paper };
+      });
+      const before = await look();
+      expect(before.face).toMatch(/Songti SC/);
+
+      // Each control moves the page it names, and the page is the one the
+      // editor will draw: the same face, the same size, a wider column.
+      await page.getByTestId('face-sans').click();
+      await expect.poll(async () => (await look()).face).toMatch(/^"PingFang SC"/);
+      await page.getByTestId('setting-font-size').fill('19');
+      await expect.poll(async () => (await look()).size).toBe('19px');
+      await page.getByTestId('width-full').click();
+      await expect.poll(async () => (await look()).share).toBeGreaterThan(before.share + 0.2);
+
+      // The tiles are still one radio group each, with the choice checked.
+      await expect(page.getByTestId('face-sans')).toHaveAttribute('aria-checked', 'true');
+      await expect(page.getByTestId('face-serif')).toHaveAttribute('aria-checked', 'false');
+      await expect(page.getByRole('radiogroup', { name: 'Page width' }).getByRole('radio')).toHaveCount(3);
+    } finally {
+      await app.close();
+    }
+  });
+
   test('steps the page width through three modes, never past the canvas', async () => {
     const { app, page } = await launch('width');
     try {

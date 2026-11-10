@@ -271,6 +271,43 @@ test('a held row keeps the shape it has standing still', async () => {
   }
 });
 
+test('the title bar\'s ? leads to what is new, with a way to each, and stops saying so once looked at', async () => {
+  const { app, page } = await launch('guide');
+  try {
+    const toggle = page.getByTestId('guide-toggle');
+    await expect(toggle).toHaveClass(/has-news/);
+    await toggle.click();
+    const panel = page.getByTestId('shortcuts-panel');
+    await expect(panel.locator('.shortcuts-group').first()).toContainText('New since you last looked');
+    // A sheet over the window, centred and clear of the title bar, with the note dimmed but in view behind it.
+    const placed = await page.evaluate(() => {
+      const box = document.querySelector('[data-testid="shortcuts-panel"]')!.getBoundingClientRect();
+      const scrim = getComputedStyle(document.querySelector('[data-testid="shortcuts-scrim"]')!).backgroundColor;
+      const alpha = /rgba?\(([^)]+)\)/.exec(scrim)?.[1]?.split(/[ ,/]+/).filter(Boolean)[3];
+      return { left: box.left, right: window.innerWidth - box.right, top: box.top, alpha: alpha === undefined ? 1 : Number(alpha) };
+    });
+    expect(Math.abs(placed.left - placed.right)).toBeLessThan(2);
+    expect(placed.top).toBeGreaterThanOrEqual(48);
+    expect(placed.alpha).toBeLessThan(1);
+    await expect(panel.locator('.shortcuts-group').first()).toContainText('Ask the vault');
+    // What an entry needs is said where it is.
+    await expect(panel).toContainText('The folder keeps memory');
+    // With no note in front, what needs one says so in its place.
+    await expect(panel.locator('[data-testid="shortcuts-later"][data-try="note-info"]').first()).toHaveText('Open a note first');
+    // A Try It closes the list and goes there.
+    await panel.locator('[data-testid="shortcuts-try"][data-try="folder-info"]').first().click();
+    await expect(panel).toHaveCount(0);
+    await expect(page.getByTestId('info-pane')).toBeVisible();
+    // Looked at: no dot, and nothing marked New.
+    await expect(toggle).not.toHaveClass(/has-news/);
+    await toggle.click();
+    await expect(panel.locator('.shortcuts-group').first()).not.toContainText('New since you last looked');
+    await expect(panel.locator('[data-new]')).toHaveCount(0);
+  } finally {
+    await app.close();
+  }
+});
+
 test('the Help menu says what the app can do', async () => {
   const { app, page } = await launch('help');
   try {

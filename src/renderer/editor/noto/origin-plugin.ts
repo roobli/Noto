@@ -14,6 +14,7 @@ import { Plugin, PluginKey, type EditorState, type Transaction } from 'prosemirr
 import type { Node as ProseNode } from 'prosemirror-model';
 import type { StepMap } from 'prosemirror-transform';
 import type { NotoBlockOrigin } from '../../../shared/markdown/v3/contracts';
+import { isUnwritableBlock } from './capture';
 
 type Origins = readonly (NotoBlockOrigin | null)[];
 
@@ -104,6 +105,11 @@ function isInteriorTopLevelEdit(transaction: Transaction): boolean {
  * Target lookup is binary search on the new top-level ranges. A linear
  * `find` here was O(blocks²) on every keystroke and dominated caret-in-viewport
  * time on the two-megabyte corpus.
+ *
+ * A block split in two keeps its origin on the part that still has text.
+ * Enter at the start of a block leaves an empty paragraph above it, and the
+ * origin used to go to that first part, so the text below lost its bytes and
+ * the blank lines above it lost the block they belong before.
  */
 function mapStep(oldDoc: ProseNode, newDoc: ProseNode, map: StepMap, previous: Origins): Origins {
   const oldRanges = topLevelRanges(oldDoc);
@@ -118,9 +124,16 @@ function mapStep(oldDoc: ProseNode, newDoc: ProseNode, map: StepMap, previous: O
     if (start.deletedAcross && end.deletedAcross) continue;
     const from = Math.min(start.pos, end.pos);
     const to = Math.max(start.pos, end.pos);
-    const target = rangeContaining(newRanges, from)
+    const first = rangeContaining(newRanges, from)
       ?? (to > from ? rangeContaining(newRanges, to - 1) : null);
-    if (!target || !overlaps(from, to, target) || mapped[target.index]) continue;
+    if (!first || !overlaps(from, to, first)) continue;
+    let target = first;
+    if (isUnwritableBlock(newDoc.child(first.index))) {
+      for (let index = first.index + 1; index < newRanges.length && newRanges[index]!.from < to; index += 1) {
+        if (!mapped[index] && !isUnwritableBlock(newDoc.child(index))) { target = newRanges[index]!; break; }
+      }
+    }
+    if (mapped[target.index]) continue;
     mapped[target.index] = origin;
   }
 

@@ -29,6 +29,8 @@ import {
 } from './plugins/bundled-plugin-discovery';
 import { RendererLeaseBridge } from './plugins/renderer-lease-bridge';
 import { ServiceHost } from './plugins/service-host';
+import { memoryWorkerPath, systemMemoryWorker } from './workspace/memory-host';
+import { FolderList, MemoryTrust } from './workspace/memory-trust';
 import { ExperimentalPluginRuntimeHost } from './plugins/experimental-plugin-runtime-host';
 import { PluginInstaller } from './plugins/plugin-installer';
 import { discoverUserPlugins, FRESH_MARKER, joinCatalog, readUserPluginCode, userPluginCodeUrl, type SetAsidePlugin, type UserPlugin } from './plugins/user-plugins';
@@ -43,7 +45,7 @@ import {
   resolveEditorChromeTone,
   syncEditorTitleBarOverlay,
 } from './windows/editor-window-chrome';
-import { RecentFiles } from './workspace/recent-files';
+import { FrontAtQuit, noteToReopen, RecentFiles } from './workspace/recent-files';
 import { SettingsStore } from './workspace/settings-store';
 import { registerSettingsHandlers } from './workspace/register-settings-handlers';
 import { WorkspaceSession, MAX_TABS } from './workspace/session';
@@ -430,6 +432,7 @@ async function run(): Promise<void> {
   // timestamp, exactly like a recent document, so it does not need its own class.
   const recentFolders = new RecentFiles(path.join(userData, 'recent-folders.json'));
   await recentFolders.load();
+  const frontAtQuit = new FrontAtQuit(path.join(userData, 'front-at-quit.json'));
   const settings = new SettingsStore(path.join(userData, 'settings.json'));
   await settings.load();
   const updater = new AppUpdater({
@@ -444,6 +447,13 @@ async function run(): Promise<void> {
     () => settings.current().codeViewer,
     () => settings.current().remoteImages,
   );
+  session.useMemory({
+    startWorker: systemMemoryWorker(memoryWorkerPath(app.isPackaged, process.resourcesPath, __dirname)),
+    trust: new MemoryTrust(path.join(app.getPath('userData'), 'memory-trust.json'), (event, fields) => logger.log(event, fields)),
+    // The vault's command line, which an agent's copied setup runs with Node.
+    cli: memoryWorkerPath(app.isPackaged, process.resourcesPath, __dirname, 'noto-vault.js'),
+    unrecorded: new FolderList(path.join(app.getPath('userData'), 'memory-unrecorded.json'), (event, fields) => logger.log(event, fields)),
+  });
   // Registered first of the quit listeners. Node runs every listener even
   // when one prevents the quit, so the others check the same hold.
   app.prependListener('before-quit', (event) => {
@@ -455,6 +465,8 @@ async function run(): Promise<void> {
   app.on('before-quit', () => {
     if (quitHeldForUnsaved() || documentsClosed) return;
     documentsClosed = true;
+    // Before the notes close, while the one in front is still known.
+    frontAtQuit.save(session?.currentPath ?? null);
     session?.closeAll();
   });
 
@@ -506,6 +518,8 @@ async function run(): Promise<void> {
     readOnly: false,
     alwaysOnTop: windowAlwaysOnTop,
     gitMarks: settings.current().gitMarks,
+    noteMarks: settings.current().noteMarks,
+    codeWrap: settings.current().codeWrap,
     treeSort: settings.current().treeSort,
     themes,
     themePath: settings.current().customCssPath,
@@ -935,6 +949,14 @@ async function run(): Promise<void> {
         menuState.gitMarks = reply.settings.gitMarks;
         refreshMenu();
       }
+      if (reply.settings.codeWrap !== menuState.codeWrap) {
+        menuState.codeWrap = reply.settings.codeWrap;
+        refreshMenu();
+      }
+      if (reply.settings.noteMarks !== menuState.noteMarks) {
+        menuState.noteMarks = reply.settings.noteMarks;
+        refreshMenu();
+      }
       // The tree's order shows as a tick in the View menu, and the tree
       // itself is listed again when it changes.
       if (reply.settings.remoteControl !== (remote !== null)) void applyRemote(reply.settings.remoteControl);
@@ -1013,14 +1035,21 @@ async function run(): Promise<void> {
     });
   } else {
     /*
-     * Nothing named, so the folder from last time comes back.
+     * Nothing named, so the folder from last time comes back, and the note
+     * that was in front of it.
      *
      * Launching from the dock gave an empty window and an invitation to open a
-     * folder, to somebody who has opened the same one every day. The folder
-     * only: which note was in front is not restored, because reopening a
-     * document is a change to it as far as the recovery journal is concerned
-     * and starting a session by touching a file nobody asked for is not worth
-     * the convenience.
+     * folder, to somebody who has opened the same one every day, and then a
+     * blank page in it (daily-use audit, finding 9). Typora puts you back in
+     * the note you left. Opening a note only reads it and its recovery
+     * journal; a journal that holds unsaved work is shown as it would be on
+     * any open, which is the moment the reader most needs to see it. The
+     * note is the one in front at the last quit, when it is inside the
+     * folder and still on disk; none when every note had been closed; the
+     * newest recent one inside the folder when there is no record yet.
+     *
+     * Not recorded as a read in the vault's memory: main opens it here, not
+     * the reader, and only the reader's opens reach the read record.
      *
      * Not marked as chosen, because the reader is not choosing it now. That
      * leaves the rail obeying its own setting instead of springing open.
@@ -1039,6 +1068,12 @@ async function run(): Promise<void> {
         if (!last) return;
         await session?.openFolderPath(last.path, false)
           .catch(() => logger.log('workspace_restore_folder_failed', {}));
+        await recent.load();
+        const note = await noteToReopen(await frontAtQuit.read(), recent.list(), last.path);
+        if (note) {
+          await session?.openPath(note).then(refreshMenu)
+            .catch(() => logger.log('workspace_restore_note_failed', {}));
+        }
       })();
     });
   }

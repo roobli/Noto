@@ -17,16 +17,24 @@
  * again, at most once a frame, only when the gutter changes, blocks come or go, or
  * the document's height changes (a ResizeObserver), which is when a line
  * could have moved.
+ *
+ * A changed table is marked by its rows (`git-table-rows.ts`): a bar beside
+ * each run of changed or new rows and a mark where rows were deleted, so one
+ * row edited in a long table is one short bar. While such marks are shown,
+ * an edit lays the layer out again too, since the rows they mark can change
+ * with a key.
  */
 
 import { Plugin, PluginKey, type EditorState, type Transaction } from 'prosemirror-state';
 import type { EditorView } from 'prosemirror-view';
 import type { Node as ProseNode } from 'prosemirror-model';
-import type { NotoBlockOrigin } from '../../../shared/markdown/v3/contracts';
+import type { NotoDocumentWire, NotoBlockOrigin } from '../../../shared/markdown/v3/contracts';
 import type { WorkspaceGitBlocksV1 } from '../../../shared/workspace/v1/contracts';
-import { originKey } from './origin-plugin';
+import { getBlockOrigins, originKey } from './origin-plugin';
 import { pinnedSource } from './capture';
 import { GIT_BLOCK_WORDS, openGitPopover, type GitPopoverAction } from './git-popover';
+import { blockToMarkdown } from '../../../shared/markdown/v3/pm/to-mdast';
+import { tableRowChanges, type TableRowChanges } from './git-table-rows';
 
 export interface GitGutterEntry {
   readonly change: 'modified' | 'added';
@@ -229,6 +237,28 @@ function openDeleted(view: EditorView, before: number, head: string): boolean {
 }
 
 /** Where the keyboard's revert applies from the caret: its block, or a deleted run beside it. */
+/**
+ * The text the last commit has for the top-level block at `index`, so git
+ * can be asked which commits changed it: a changed block's committed text,
+ * the block as saved when git says it has not changed, and null for a block
+ * added since the last commit. A note git has said nothing about (nothing in
+ * it changed, or its marks are off) counts as unchanged when `inGit`, and as
+ * having no history otherwise.
+ */
+export function committedTextAt(state: EditorState, index: number, accepted: NotoDocumentWire, inGit: boolean): string | null {
+  const gutter = gitGutterKey.getState(state);
+  const known = gutter !== undefined && gutter.origins !== null;
+  if (!known && !inGit) return null;
+  const entry = known ? gitEntryAt(state, index) : null;
+  if (entry?.change === 'added') return null;
+  if (entry?.change === 'modified') return entry.head;
+  const origin = known ? originAt(state, gutter!.origins!, index) : getBlockOrigins(state)[index] ?? null;
+  if (!origin) return null;
+  const at = accepted.origins.findIndex((candidate) => candidate.blockId === origin.blockId);
+  const span = at < 0 ? undefined : accepted.spans[at];
+  return span ? accepted.text.slice(span.start, span.end) : null;
+}
+
 export function gitTargetAtSelection(state: EditorState): GitRevertTarget | null {
   const index = state.selection.$from.index(0);
   if (gitEntryAt(state, index)) return { kind: 'block', index };
@@ -271,6 +301,47 @@ const TRIANGLE_HALF_HEIGHT = 4;
 const TRIANGLE_CLEARANCE = 4;
 const DELETED_BOX = 16;
 
+const GIT_ROW_WORDS = {
+  modified: 'Row changed since the last commit',
+  added: 'Row new since the last commit',
+  deleted: 'Rows deleted here since the last commit',
+} as const;
+
+/** The rows of the table last compared, per node, so a layout does not compare again. */
+const rowChanges = new WeakMap<ProseNode, { readonly head: string; readonly changes: TableRowChanges | null }>();
+
+interface RowMarks {
+  /** Runs of rows with the same change, by their top and bottom on screen. */
+  readonly runs: ReadonlyArray<{ readonly change: 'modified' | 'added'; readonly top: number; readonly bottom: number }>;
+  /** Where on screen rows were deleted. */
+  readonly deleted: readonly number[];
+}
+
+/** The rows of a changed table to mark, or null to mark the whole table. */
+function tableRowMarks(node: ProseNode, head: string, block: HTMLElement): RowMarks | null {
+  if (node.type.name !== 'table') return null;
+  let known = rowChanges.get(node);
+  if (!known || known.head !== head) {
+    known = { head, changes: tableRowChanges(head, blockToMarkdown(node)) };
+    rowChanges.set(node, known);
+  }
+  const { changes } = known;
+  const table = block.querySelector('table');
+  if (!changes || !table || table.rows.length !== changes.rows.length) return null;
+  const rects = Array.from(table.rows, (row) => row.getBoundingClientRect());
+  const runs: Array<{ change: 'modified' | 'added'; top: number; bottom: number }> = [];
+  changes.rows.forEach((change, at) => {
+    if (change === 'same') return;
+    const last = runs[runs.length - 1];
+    if (last && last.change === change && changes.rows[at - 1] === change) last.bottom = rects[at]!.bottom;
+    else runs.push({ change, top: rects[at]!.top, bottom: rects[at]!.bottom });
+  });
+  const deleted = changes.deletedBefore.map((before) => (before === 0 ? rects[0]!.top
+    : before >= rects.length ? rects[rects.length - 1]!.bottom
+    : (rects[before - 1]!.bottom + rects[before]!.top) / 2));
+  return { runs, deleted };
+}
+
 /**
  * The layer: absolutely placed elements in a zero-height box just before the
  * document, inside the editor host, so they scroll with it and never enter
@@ -283,6 +354,8 @@ class GutterLayer {
   private readonly resize: ResizeObserver | null;
   private frame: ReturnType<typeof setTimeout> | null = null;
   private marks: GitGutterMarks = { lines: [], deleted: [] };
+  /** Whether the last layout marked a table's rows, which an edit can change. */
+  private rowsShown = false;
   /** The top-level elements being watched for size, while there is a gutter. */
   private readonly watched = new Set<Element>();
 
@@ -302,6 +375,7 @@ class GutterLayer {
 
   update(view: EditorView, previous: EditorState): void {
     if (gitGutterKey.getState(view.state) !== gitGutterKey.getState(previous)) this.schedule();
+    else if (this.rowsShown && view.state.doc !== previous.doc) this.schedule();
   }
 
   destroy(): void {
@@ -378,6 +452,7 @@ class GutterLayer {
     this.marks = gitGutterMarks(view.state);
     const { lines, deleted } = this.marks;
     if (lines.length === 0 && deleted.length === 0) {
+      this.rowsShown = false;
       this.layer.replaceChildren();
       this.watch(false);
       return;
@@ -403,16 +478,19 @@ class GutterLayer {
     const origin = this.layer.getBoundingClientRect();
     const children: HTMLElement[] = [];
     const existing = this.layer.children;
-    const take = (at: number, kind: string): HTMLElement => {
+    const take = (at: number, kind: string, mark = kind, testid = kind === 'deleted' ? 'git-deleted-mark' : 'git-line'): HTMLElement => {
       const reused = existing[children.length] as HTMLElement | undefined;
       const element = reused ?? document.createElement('div');
       element.className = `noto-git-mark noto-git-${kind}`;
-      element.dataset.gitMark = kind;
+      // A row's marks open the table's block, as the table's own bar did.
+      element.dataset.gitMark = mark;
       element.dataset.gitAt = String(at);
-      element.dataset.testid = kind === 'deleted' ? 'git-deleted-mark' : 'git-line';
+      element.dataset.testid = testid;
+      element.dataset.gitChange = kind;
       children.push(element);
       return element;
     };
+    let rowsShown = false;
     // Triangles first: where they sit decides where the bars beside them stop.
     const triangles: Array<{ before: number; head: string; left: number; y: number }> = [];
     for (const run of deleted) {
@@ -432,6 +510,22 @@ class GutterLayer {
       const block = elements.get(line.index);
       if (!block) continue;
       const rect = block.getBoundingClientRect();
+      const rows = line.change === 'modified' && line.head !== null
+        ? tableRowMarks(view.state.doc.child(line.index), line.head, block) : null;
+      if (rows) {
+        rowsShown = true;
+        for (const run of rows.runs) {
+          const element = take(line.index, run.change, run.change, 'git-row-line');
+          element.title = GIT_ROW_WORDS[run.change];
+          place(element, rect.left - origin.left - LINE_BOX, run.top - origin.top, run.bottom - run.top);
+        }
+        for (const y of rows.deleted) {
+          const element = take(line.index, 'deleted', 'row-deleted', 'git-row-deleted-mark');
+          element.title = GIT_ROW_WORDS.deleted;
+          place(element, rect.left - origin.left - BAR_CENTRE - DELETED_BOX / 2, y - origin.top - DELETED_BOX / 2, DELETED_BOX);
+        }
+        continue;
+      }
       let top = rect.top;
       let bottom = rect.bottom;
       for (const triangle of triangles) {
@@ -450,6 +544,7 @@ class GutterLayer {
       // The box is centred on the point, the bar's centre line.
       place(element, triangle.left - origin.left - BAR_CENTRE - DELETED_BOX / 2, triangle.y - origin.top - DELETED_BOX / 2, DELETED_BOX);
     }
+    this.rowsShown = rowsShown;
     while (existing.length > children.length) existing[existing.length - 1]!.remove();
     for (const element of children) if (element.parentElement !== this.layer) this.layer.append(element);
   }

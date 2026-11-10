@@ -19,6 +19,7 @@ import {
   type NotoUnit,
 } from '../../../shared/markdown/v3/contracts';
 import { compactTransaction, sameOrigin } from '../../../shared/markdown/v3/revision-patch';
+import { MAX_BLANK_LINES, type GapLines } from '../../../shared/markdown/v3/blank-lines';
 
 /**
  * A top-level block with nothing to write: an empty paragraph or heading.
@@ -123,7 +124,45 @@ export interface CaptureInput {
    * every save does unless a line-ending command has been used.
    */
   readonly envelope?: NotoTargetEnvelope;
+  /**
+   * Blank lines the accepted file has after each block, so a gap whose empty
+   * paragraphs still match it is left to the save, which keeps its bytes.
+   */
+  readonly gapLines?: GapLines;
 }
+
+/**
+ * Blank lines to ask for before a written block (`NotoUnit.blankLinesBefore`).
+ *
+ * A file's extra blank lines open as empty paragraphs (NotoEditor), so the
+ * page is the file: the gap is one break plus one line per empty paragraph
+ * since the block above. Undefined leaves the gap to the save, which keeps
+ * the file's own between two blocks that were neighbours in it and writes a
+ * plain break anywhere else, so it is asked for only when that would differ.
+ */
+function blankLinesFor(
+  emptyLines: number,
+  above: NotoBlockOrigin | null,
+  origin: NotoBlockOrigin | null,
+  wroteAbove: boolean,
+  gapLines?: GapLines,
+): number | undefined {
+  if (!wroteAbove) return undefined;
+  const wanted = 1 + emptyLines;
+  const neighbours = above !== null && origin !== null && above.ordinal === origin.ordinal - 1;
+  if (!neighbours) return emptyLines > 0 ? Math.min(wanted, MAX_BLANK_LINES) : undefined;
+  const file = gapLines?.(above.ordinal) ?? 1;
+  // A plain break, or a single newline, with nothing typed into it. The save
+  // keeps a single newline only while both blocks are untouched, and makes it
+  // a blank line otherwise, which is always safe to read back.
+  if (emptyLines === 0 && file <= 1) return undefined;
+  if (wanted === file) return undefined;
+  // Past the bound a save accepts, a gap the file already had stays as it is.
+  if (wanted > MAX_BLANK_LINES) return file > MAX_BLANK_LINES ? undefined : MAX_BLANK_LINES;
+  return wanted;
+}
+
+const isEmptyParagraph = (node: ProseNode): boolean => node.type.name === 'paragraph' && isUnwritableBlock(node);
 
 export interface CaptureStats {
   /** Blocks reused verbatim, costing no serialization. */
@@ -146,14 +185,12 @@ function markdownFor(
   pristine: CaptureInput['pristine'],
 ): { markdown: string; reused: boolean } {
   const pin = pins.get(node);
-  if (origin) {
-    const previous = pristine.get(origin.blockId);
-    if (previous && (pin ? pin.markdown === previous.markdown : node.eq(previous.node))) {
-      return { markdown: previous.markdown, reused: true };
-    }
+  const previous = origin ? pristine.get(origin.blockId) : undefined;
+  if (previous && (pin ? pin.markdown === previous.markdown : node.eq(previous.node))) {
+    return { markdown: previous.markdown, reused: true };
   }
   if (pin) return { markdown: pin.markdown, reused: false };
-  return { markdown: blockToMarkdown(node), reused: false };
+  return { markdown: blockToMarkdown(node, previous?.markdown), reused: false };
 }
 
 /** The bytes one block would save as now. */
@@ -231,9 +268,17 @@ export function captureUnits(input: CaptureInput): { units: NotoUnit[]; stats: C
   let serialized = 0;
   let previousList: ListMarker | null = null;
 
+  let emptyLines = 0;
+  let above: NotoBlockOrigin | null = null;
   input.doc.forEach((node, _offset, index) => {
     const origin = input.origins[index] ?? null;
-    if (isUnwritableBlock(node)) return;
+    if (isUnwritableBlock(node)) {
+      if (isEmptyParagraph(node)) emptyLines += 1;
+      return;
+    }
+    const blankLinesBefore = blankLinesFor(emptyLines, above, origin, units.length > 0, input.gapLines);
+    emptyLines = 0;
+    above = origin;
     let result = markdownFor(node, origin, input.pristine);
     let list = writtenListMarker(node, result.markdown);
     if (continuesList(previousList, list)) {
@@ -247,7 +292,7 @@ export function captureUnits(input: CaptureInput): { units: NotoUnit[]; stats: C
     // A reused block sends no text. Main already holds its bytes, so repeating
     // them would make every save carry the whole document across the process
     // boundary regardless of how little changed.
-    units.push({ origin, markdown: result.reused ? null : result.markdown });
+    units.push({ origin, markdown: result.reused ? null : result.markdown, ...(blankLinesBefore === undefined ? {} : { blankLinesBefore }) });
   });
 
   return { units, stats: { reused, serialized } };
@@ -303,14 +348,25 @@ export function captureStableWire(
   const baseOrigins = input.document.origins;
   let previousList: ListMarker | null = null;
 
+  let emptyLines = 0;
+  let above: NotoBlockOrigin | null = null;
+  let wrote = false;
   for (let index = 0; index < doc.childCount; index += 1) {
     const node = doc.child(index);
     const origin = input.origins[index] ?? null;
-    // Not written, so not counted either: the same as the full walk.
+    // Not written, so not counted either: the same as the full walk. A run
+    // goes on across empty lines that are the file's own blank lines, since
+    // it keeps the gaps between its blocks; a gap that changed asks for its
+    // spacing below, which ends the run there.
     if (isUnwritableBlock(node)) {
-      run = null;
+      if (isEmptyParagraph(node)) emptyLines += 1;
       continue;
     }
+    const blankLinesBefore = blankLinesFor(emptyLines, above, origin, wrote, input.gapLines);
+    const spacing = blankLinesBefore === undefined ? {} : { blankLinesBefore };
+    emptyLines = 0;
+    above = origin;
+    wrote = true;
     const pin = pins.get(node);
     let unchanged = !pin && node === acceptedNodes[index];
     if (!unchanged && origin) {
@@ -328,12 +384,13 @@ export function captureStableWire(
       previousList = writtenListMarker(separate, null);
       serialized += 1;
       run = null;
-      units.push({ origin, markdown: blockToMarkdown(separate) });
+      units.push({ origin, markdown: blockToMarkdown(separate), ...spacing });
       continue;
     }
     previousList = list;
     const base = origin ? baseOrigins[origin.ordinal] : undefined;
-    if (unchanged && origin && base && sameOrigin(origin, base)) {
+    // A block that asks for its own spacing is sent on its own: a run carries none.
+    if (unchanged && origin && base && sameOrigin(origin, base) && blankLinesBefore === undefined) {
       reused += 1;
       if (run && run.keep + run.count === origin.ordinal) {
         run.count += 1;
@@ -343,13 +400,17 @@ export function captureStableWire(
       }
       continue;
     }
-    serialized += 1;
+    // Sent on its own only for the spacing it asks for, it is still reused.
+    if (unchanged && origin && base && sameOrigin(origin, base)) reused += 1;
+    else serialized += 1;
     run = null;
     // Unchanged but not a base block at its ordinal still sends no text. A
     // block with no origin has nothing to reuse and must be rendered.
     units.push({
       origin,
-      markdown: unchanged && origin ? null : pin ? pin.markdown : blockToMarkdown(node),
+      markdown: unchanged && origin ? null : pin ? pin.markdown
+        : blockToMarkdown(node, origin ? input.pristine.get(origin.blockId)?.markdown : undefined),
+      ...spacing,
     });
   }
 

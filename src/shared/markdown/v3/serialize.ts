@@ -23,6 +23,8 @@
  */
 
 import { parseSingleBlock } from './blocks';
+import { blankLinesIn } from './blank-lines';
+export { blankLinesIn } from './blank-lines';
 import { checkWindow, verificationWindows, type ReparsedBlock } from './incremental';
 // `parseDocument` remains for source mode, where the whole file is replaced
 // and there is no per-block knowledge to build a revision from.
@@ -1058,7 +1060,72 @@ function nextRevisionFromEngine(
  * ordinals only. On success we re-attach sha256 evidence and branded revision
  * ids; identity keeps the accepted document object.
  */
+/**
+ * Give each gap the blank lines its unit asked for (`NotoUnit.blankLinesBefore`).
+ *
+ * Applied after whichever path built the next revision, so every path keeps
+ * its own proof of the blocks and only the whitespace between them moves. A
+ * gap that already holds as many blank lines is left byte for byte, spaces on
+ * a blank line included. Offsets, digests and the revision id are rebuilt for
+ * the new text; the evidence of what was copied untouched is not, because
+ * spacing moved every offset after the first changed gap.
+ */
+function withBlankLines(result: NotoSerializeSuccess, units: readonly NotoUnit[]): NotoSerializeSuccess {
+  const next = result.document;
+  if (!units.some((unit) => unit.blankLinesBefore !== undefined) || next.blocks.length !== units.length) return result;
+  const pieces = (gaps: readonly string[]) => [next.leading, ...next.blocks.flatMap((block, index) => (
+    index === 0 ? [next.text.slice(block.start, block.end)] : [gaps[index - 1]!, next.text.slice(block.start, block.end)]
+  )), next.trailing];
+  const gaps = next.gaps.map((gap) => gap.text);
+  if (gaps.length !== Math.max(0, next.blocks.length - 1)) return result;
+  // A gap that already has the asked-for count keeps its bytes, which is
+  // every gap on a save that did not touch one: found before anything is joined.
+  const rewrite = units.flatMap((unit, index) => {
+    const wanted = unit.blankLinesBefore;
+    return index === 0 || wanted === undefined || blankLinesIn(gaps[index - 1]!) === wanted ? [] : [{ index, wanted }];
+  });
+  // Only when the document is the plain sum of its parts can its gaps be rewritten in place.
+  if (rewrite.length === 0 || pieces(gaps).join('') !== next.text) return result;
+  for (const { index, wanted } of rewrite) {
+    const gap = gaps[index - 1]!;
+    // A mixed file's gap keeps the ending it had.
+    const crlf = next.envelope.lineEnding === 'crlf' || (next.envelope.lineEnding === 'mixed' && gap.includes('\r\n'));
+    gaps[index - 1] = fromLf('\n'.repeat(wanted + 1), crlf ? 'crlf' : 'lf');
+  }
+  const text = pieces(gaps).join('');
+  let cursor = next.leading.length;
+  const blocks = next.blocks.map((block, index) => {
+    if (index > 0) cursor += gaps[index - 1]!.length;
+    const length = block.end - block.start;
+    const moved = { ...block, start: cursor, end: cursor + length };
+    cursor += length;
+    return moved;
+  });
+  const outputBytes = encodeOutput(text, next.envelope.bom);
+  const outputSha256 = sha256(outputBytes);
+  const document: NotoDocument = {
+    ...next,
+    revisionId: `noto-rev-v3:${outputSha256}` as NotoRevisionId,
+    envelope: { ...next.envelope, byteLength: outputBytes.byteLength, sourceSha256: outputSha256, hasFinalNewline: text.endsWith('\n') },
+    originalBytes: outputBytes.slice(),
+    text,
+    blocks,
+    gaps: gaps.map((gap, index) => ({ beforeOrdinal: index, text: gap })),
+    nodes: null,
+  };
+  return { status: 'serialized', version: NOTO_MARKDOWN_VERSION, outputBytes, outputSha256, document, preserved: [] };
+}
+
 function serializeBlocksViaRoobli(
+  document: NotoDocument,
+  units: readonly NotoUnit[],
+  target: NotoTargetEnvelope,
+): NotoSerializeResult {
+  const result = serializeBlocksAnyPath(document, units, target);
+  return result.status === 'serialized' ? withBlankLines(result, units) : result;
+}
+
+function serializeBlocksAnyPath(
   document: NotoDocument,
   units: readonly NotoUnit[],
   target: NotoTargetEnvelope,

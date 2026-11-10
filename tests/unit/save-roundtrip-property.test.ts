@@ -13,6 +13,7 @@ import { afterEach, describe, expect, it } from 'vitest';
 import { TextSelection } from 'prosemirror-state';
 import { DOMParser, Fragment, Slice, type Node as ProseNode } from 'prosemirror-model';
 import { isUnwritableBlock } from '../../src/renderer/editor/noto/capture';
+import { moveBlock } from '../../src/renderer/editor/noto/move-block';
 import { NotoEditor } from '../../src/renderer/editor/noto/NotoEditor';
 import { parseDocument, toWire } from '../../src/shared/markdown/v3/document';
 import { blockSpansFromWire, splitBlocks } from '../../src/shared/markdown/v3/blocks';
@@ -396,10 +397,12 @@ describe('save edge cases found by the property test', () => {
     const v = view(h);
     const at = blockStart(v.state.doc, 1);
     v.dispatch(v.state.tr.delete(at + 1, at + 1 + 'One.'.length));
-    expect(save(h)).toBe('# T\n\nTwo.\n');
+    // The emptied paragraph is an empty line on screen, and is saved as one:
+    // a blank line more between the heading and the next paragraph.
+    expect(save(h)).toBe('# T\n\n\nTwo.\n');
     // The next save still pairs the remaining blocks with their own bytes.
     insertAtBlockStart(h, 2, 'Still ');
-    expect(save(h)).toBe('# T\n\nStill Two.\n');
+    expect(save(h)).toBe('# T\n\n\nStill Two.\n');
     expectSavedMatchesEditor(h, 'emptied paragraph');
   });
 
@@ -859,6 +862,15 @@ describe('a dollar sign in text', () => {
     expectSavedMatchesEditor(h, 'dollar before an escaped character');
   });
 
+  // Audit finding 12: prices are text under Pandoc's dollar rule, and an
+  // edit to their line must not write backslashes the author never wrote.
+  it('saves an edited line of prices as the author wrote them', () => {
+    const h = openTracked('From $8,000 - $50,000 a year\n');
+    typeAtEnd(h, 0, ', or $5 a day.');
+    expect(save(h)).toBe('From $8,000 - $50,000 a year, or $5 a day.\n');
+    expectSavedMatchesEditor(h, 'prices stay as written');
+  });
+
   it('at the start of a styled run after math stays text', () => {
     const h = openTracked('$x$**\\$\\_a** costs \\$5.\n');
     typeAtEnd(h, 0, '!');
@@ -940,11 +952,11 @@ describe('two lists the editor leaves adjacent', () => {
   it('an emptied paragraph between two bullet lists keeps them separate on reopen', () => {
     const h = openTracked('- a\n\nx\n\n- b\n');
     emptyBlock(h, 1);
-    expect(save(h)).toBe('- a\n\n* b\n');
+    expect(save(h)).toBe('- a\n\n\n* b\n');
     expect(fullDoc(h.saved).childCount).toBe(2);
     // The next save reuses what was written rather than flipping it back.
     insertAtBlockStart(h, 0, 'z');
-    expect(save(h)).toBe('- za\n\n* b\n');
+    expect(save(h)).toBe('- za\n\n\n* b\n');
   });
 
   it('a deleted paragraph between two ordered lists keeps them separate on reopen', () => {
@@ -958,7 +970,7 @@ describe('two lists the editor leaves adjacent', () => {
     const h = openTracked('- a\n\nx\n\n- b\n\ny\n\n- c\n');
     emptyBlock(h, 3);
     emptyBlock(h, 1);
-    expect(save(h)).toBe('- a\n\n* b\n\n- c\n');
+    expect(save(h)).toBe('- a\n\n\n* b\n\n\n- c\n');
     expect(fullDoc(h.saved).childCount).toBe(3);
   });
 
@@ -966,7 +978,7 @@ describe('two lists the editor leaves adjacent', () => {
     const h = openTracked('- a\n\nx\n\n1. b\n\ny\n\n* c\n');
     emptyBlock(h, 3);
     emptyBlock(h, 1);
-    expect(save(h)).toBe('- a\n\n1. b\n\n* c\n');
+    expect(save(h)).toBe('- a\n\n\n1. b\n\n\n* c\n');
   });
 });
 
@@ -1104,8 +1116,9 @@ describe('revert to committed', () => {
     const head = 'One.\n\n\n\nTwo   with  *odd*   spacing_ \n\nThree.\n';
     const h = openTracked('One.\n\n\n\nTwo edited.\n\nThree.\n');
     h.editor.setGitBlocks(gutterFor(h, head));
-    expect(revertTargets(h)).toEqual([{ kind: 'block', index: 1 }]);
-    expect(h.editor.revertGitBlock({ kind: 'block', index: 1 })).toBe(true);
+    // The file's two extra blank lines open as empty lines, so the block is the fourth node.
+    expect(revertTargets(h)).toEqual([{ kind: 'block', index: 3 }]);
+    expect(h.editor.revertGitBlock({ kind: 'block', index: 3 })).toBe(true);
     expect(isDirty(h)).toBe(true);
     expect(revertTargets(h)).toEqual([]);
     expect(save(h)).toBe(head);
@@ -1238,5 +1251,177 @@ describe('revert to committed', () => {
       expectSavedMatchesEditor(h, `seed ${seed} after undo`);
       expect(fullDoc(h.saved).eq(fullDoc(working)), `seed ${seed} after undo`).toBe(true);
     }
+  });
+});
+
+describe('the reader\'s blank lines between blocks', () => {
+  // Empty lines typed between two blocks were dropped on save, and a file's
+  // extra blank lines looked like one and could only be taken away in source
+  // mode. They now open as empty paragraphs, and the save counts them.
+  const splitAt = (h: Harness, pos: (doc: ProseNode) => number) => {
+    const v = view(h);
+    v.dispatch(v.state.tr.setSelection(TextSelection.create(v.state.doc, pos(v.state.doc))));
+    v.dispatch(v.state.tr.split(v.state.selection.from));
+  };
+  const splitAtEnd = (h: Harness, index: number) => splitAt(h, (doc) => blockStart(doc, index) + doc.child(index).nodeSize - 1);
+  const splitAtStart = (h: Harness, index: number) => splitAt(h, (doc) => blockStart(doc, index) + 1);
+  const backspaceAtStart = (h: Harness, index: number) => {
+    const v = view(h);
+    v.dispatch(v.state.tr.setSelection(TextSelection.create(v.state.doc, blockStart(v.state.doc, index) + 1)));
+    const event = new KeyboardEvent('keydown', { key: 'Backspace' });
+    return v.someProp('handleKeyDown', (handle) => handle(v, event)) ?? false;
+  };
+  const empties = (h: Harness) => {
+    const shape: string[] = [];
+    view(h).state.doc.forEach((node) => shape.push(isUnwritableBlock(node) ? '_' : node.textContent));
+    return shape.join('|');
+  };
+
+  it('saves empty lines typed between two blocks as that many blank lines', () => {
+    const h = openTracked('one\n\ntwo\n');
+    splitAtEnd(h, 0);
+    splitAtEnd(h, 0);
+    expect(save(h)).toBe('one\n\n\n\ntwo\n');
+    // And the next save, with the empty lines still on screen, writes the same.
+    insertAtBlockStart(h, 3, 'still ');
+    expect(save(h)).toBe('one\n\n\n\nstill two\n');
+  });
+
+  it('opens a file\'s extra blank lines as empty lines, and keeps their bytes while they are left alone', () => {
+    const h = openTracked('one\n\n \n\n\ntwo\n\nthree\n');
+    expect(empties(h)).toBe('one|_|_|_|two|three');
+    insertAtBlockStart(h, 4, 'X');
+    expect(save(h)).toBe('one\n\n \n\n\nXtwo\n\nthree\n');
+  });
+
+  it('keeps CRLF blank lines byte for byte', () => {
+    const h = openTracked('one\r\n\r\n\r\ntwo\r\n');
+    expect(empties(h)).toBe('one|_|two');
+    insertAtBlockStart(h, 2, 'X');
+    expect(save(h)).toBe('one\r\n\r\n\r\nXtwo\r\n');
+  });
+
+  it('adds an empty line to the blank lines a file already had, from either side of them', () => {
+    const above = openTracked('one\n\n\n\ntwo\n');
+    splitAtEnd(above, 0);
+    expect(save(above)).toBe('one\n\n\n\n\ntwo\n');
+    // Enter at the start of the block below: the text keeps its own bytes too.
+    const below = openTracked('one\n\n\n\n__two__\n');
+    splitAtStart(below, 3);
+    expect(empties(below)).toBe('one|_|_|_|two');
+    expect(save(below)).toBe('one\n\n\n\n\n__two__\n');
+  });
+
+  it('takes one blank line away with Backspace at the start of the block below them', () => {
+    const h = openTracked('one\n\n\n\ntwo\n');
+    expect(backspaceAtStart(h, 3)).toBe(true);
+    expect(save(h)).toBe('one\n\n\ntwo\n');
+  });
+
+  it('takes the last extra one away too, and leaves an ordinary break', () => {
+    const h = openTracked('one\n\n\ntwo\n');
+    expect(backspaceAtStart(h, 2)).toBe(true);
+    expect(save(h)).toBe('one\n\ntwo\n');
+    // With no extra blank line left, Backspace joins the blocks as it always did.
+    backspaceAtStart(h, 1);
+    expect(save(h)).toBe('onetwo\n');
+  });
+
+  it('puts a blank line taken away back on undo, and takes it again on redo', () => {
+    const h = openTracked('one\n\n\n\ntwo\n');
+    backspaceAtStart(h, 3);
+    expect(h.editor.history('undo')).toBe(true);
+    expect(empties(h)).toBe('one|_|_|two');
+    expect(save(h)).toBe('one\n\n\n\ntwo\n');
+    expect(h.editor.history('redo')).toBe(true);
+    expect(save(h)).toBe('one\n\n\ntwo\n');
+  });
+
+  it('keeps the blank lines where they were when a block is put in below them', () => {
+    const h = openTracked('one\n\n\n\ntwo\n');
+    const v = view(h);
+    v.dispatch(v.state.tr.insert(blockStart(v.state.doc, 3), notoSchema.nodes.paragraph.create(null, notoSchema.text('pasted'))));
+    expect(save(h)).toBe('one\n\n\n\npasted\n\ntwo\n');
+  });
+
+  it('saves an emptied block between blank lines as one more of them, as the page shows', () => {
+    const h = openTracked('zero\n\none\n\n\n\ntwo\n');
+    const v = view(h);
+    const start = blockStart(v.state.doc, 1);
+    v.dispatch(v.state.tr.delete(start + 1, start + 1 + 'one'.length));
+    expect(empties(h)).toBe('zero|_|_|_|two');
+    expect(save(h)).toBe('zero\n\n\n\n\ntwo\n');
+    // Opened again, the page is what it was.
+    expect(empties(openTracked(h.saved))).toBe('zero|_|_|_|two');
+  });
+
+  it('asks for no more blank lines than a save allows', () => {
+    const h = openTracked('one\n\ntwo\n');
+    const v = view(h);
+    const lines = Array.from({ length: 1200 }, () => notoSchema.nodes.paragraph.create());
+    v.dispatch(v.state.tr.insert(blockStart(v.state.doc, 1), lines));
+    expect(save(h)).toBe(`one${'\n'.repeat(1001)}two\n`);
+  });
+
+  it('counts the outline\'s blocks without the empty lines between them', () => {
+    const h = openTracked('a\n\n\n\nb\n\n# c\n');
+    h.editor.focusBlock(2);
+    expect(view(h).state.selection.$from.parent.textContent).toBe('c');
+  });
+
+  it('keeps the blank lines around a block replaced from its markdown', () => {
+    const h = openTracked('a\n\n\n\nb\n\nc\n');
+    expect(h.editor.replaceMarkdown('a\n\n\n\nB\n\nc\n')).toBe(true);
+    expect(empties(h)).toBe('a|_|_|B|c');
+    expect(save(h)).toBe('a\n\n\n\nB\n\nc\n');
+  });
+
+  it('moves a block past the next block, over the blank lines between them, which stay put', () => {
+    const h = openTracked('a\n\n\n\nb\n\nc\n');
+    const v = view(h);
+    v.dispatch(v.state.tr.setSelection(TextSelection.create(v.state.doc, blockStart(v.state.doc, 3) + 1)));
+    expect(moveBlock(true)(v.state, v.dispatch)).toBe(true);
+    expect(empties(h)).toBe('b|_|_|a|c');
+    expect(save(h)).toBe('b\n\n\n\na\n\nc\n');
+    expect(moveBlock(false)(view(h).state, view(h).dispatch)).toBe(true);
+    expect(empties(h)).toBe('a|_|_|b|c');
+  });
+
+  it('saves an untouched note with blank lines between its blocks as runs, not block by block', () => {
+    const h = openTracked('a\n\n\n\nb\n\n\n\nc\n\n\n\nd\n');
+    insertAtBlockStart(h, 9, 'X');
+    const wire = h.editor.captureSave();
+    expect(wire.mode === 'blocks' ? wire.units : []).toHaveLength(2);
+    expect(save(h)).toBe('a\n\n\n\nb\n\n\n\nc\n\n\n\nXd\n');
+  });
+
+  it('leaves a gap wider than a save may ask for as it was, rather than cutting it', () => {
+    const text = `one${'\n'.repeat(1202)}two\n`;
+    const h = openTracked(text);
+    insertAtBlockStart(h, 0, 'X');
+    expect(save(h)).toBe(`X${text}`);
+  });
+
+  it('reports the caret\'s block again when a block above it is emptied', () => {
+    const reported: number[] = [];
+    const host = document.createElement('div');
+    document.body.append(host);
+    const wire = toWire(parsed('one\n\n\n\ntwo\n'));
+    const editor = new NotoEditor(host, wire, { mac: false, onActiveBlockChanged: (index) => reported.push(index) });
+    try {
+      const v = editor.getView()!;
+      v.dispatch(v.state.tr.setSelection(TextSelection.create(v.state.doc, blockStart(v.state.doc, 3) + 1)));
+      expect(reported.at(-1)).toBe(1);
+      v.dispatch(v.state.tr.delete(1, 1 + 'one'.length));
+      expect(reported.at(-1)).toBe(0);
+    } finally {
+      editor.destroy();
+    }
+  });
+
+  it('leaves blank lines at the start and the end of the note as they were', () => {
+    const h = openTracked('\n\none\n\ntwo\n\n\n');
+    insertAtBlockStart(h, 0, 'X');
+    expect(save(h)).toBe('\n\nXone\n\ntwo\n\n\n');
   });
 });

@@ -7,6 +7,7 @@
  */
 
 import { isEntryName } from './entry-names';
+import { PROPOSAL_ID } from './contracts';
 import {
   WORKSPACE_EXPORT_REFUSALS,
   ENTRY_ACTIONS,
@@ -31,6 +32,44 @@ import {
   MAX_PASTE_TEXT,
   WorkspaceLinkV1,
   WorkspaceLinksReplyV1,
+  NoteCommitV1,
+  NoteMemoryV1,
+  WorkspaceMemoryChangedV1,
+  WorkspaceKeepMemoryReplyV1,
+  WorkspaceTrustMemoryReplyV1,
+  WorkspaceReviewActionV1,
+  WorkspaceReviewReplyV1,
+  WorkspaceReviewRequestV1,
+  WorkspaceAgentActionV1,
+  WorkspaceAgentRequestV1,
+  WorkspaceAgentsReplyV1,
+  WorkspaceMemoryAskReplyV1,
+  WorkspaceMemoryAskRequestV1,
+  WorkspaceMemoryFolderReplyV1,
+  WorkspaceMemoryFolderRequestV1,
+  WorkspaceMemoryPrivacyReplyV1,
+  WorkspaceMemoryPrivacyRequestV1,
+  WorkspaceNoteMemoryReplyV1,
+  WorkspaceFolderMemoryReplyV1,
+  WorkspaceFolderHistoryReplyV1,
+  WorkspaceShowFolderInfoEventV1,
+  WorkspaceFocusFolderEventV1,
+  WorkspaceLinksFollowedV1,
+  WorkspaceUndoLinksReplyV1,
+  WorkspaceUndoLinksRequestV1,
+  FolderNoteV1,
+  WorkspaceNoteHistoryReplyV1,
+  WorkspaceNoteHistoryRequestV1,
+  WorkspaceNotePassageReplyV1,
+  WorkspaceNotePassageRequestV1,
+  WorkspaceNoteVersionReplyV1,
+  WorkspaceNoteVersionRequestV1,
+  WorkspaceNotePreviewReplyV1,
+  WorkspaceMenuCommandV1Entry,
+  WorkspaceMenuCommandsReplyV1,
+  WorkspaceRunMenuCommandReplyV1,
+  WorkspaceRunMenuCommandRequestV1,
+  WorkspaceNotePreviewRequestV1,
   WorkspaceTagIndexReplyV1,
   WorkspaceTagSummaryV1,
   WorkspaceNotesByTagRequestV1,
@@ -98,7 +137,10 @@ export function isWorkspaceRequestV1(value: unknown): value is WorkspaceRequestV
 }
 
 export function isWorkspaceOpenPathRequestV1(value: unknown): value is WorkspaceOpenPathRequestV1 {
-  return record(value) && exact(value, ['version', 'requestId', 'path'])
+  return record(value)
+    && (exact(value, ['version', 'requestId', 'path'])
+      || (exact(value, ['version', 'requestId', 'path', 'from'])
+        && typeof value.from === 'string' && value.from.length > 0 && value.from.length <= 4096))
     && value.version === 1 && typeof value.requestId === 'string' && requestId.test(value.requestId)
     && typeof value.path === 'string' && value.path.length > 0 && value.path.length <= 4096;
 }
@@ -260,6 +302,526 @@ export function isWorkspaceLinksReplyV1(value: unknown): value is WorkspaceLinks
     && Array.isArray(value.links) && value.links.every(isWorkspaceLinkV1)
     && Array.isArray(value.related) && value.related.every(isWorkspaceLinkV1);
 }
+
+export function isWorkspaceNoteHistoryRequestV1(value: unknown): value is WorkspaceNoteHistoryRequestV1 {
+  return isWorkspaceFolderRequestV1(value);
+}
+
+export function isWorkspaceNotePassageRequestV1(value: unknown): value is WorkspaceNotePassageRequestV1 {
+  return record(value) && exact(value, ['version', 'requestId', 'path', 'text'])
+    && value.version === 1 && typeof value.requestId === 'string' && requestId.test(value.requestId)
+    && typeof value.path === 'string' && value.path.length > 0 && value.path.length <= 4096
+    && typeof value.text === 'string' && value.text.trim().length > 0 && value.text.length <= 256 * 1024;
+}
+
+const PASSAGE_STATES = new Set(['ok', 'not-found', 'untracked', 'not-git', 'slow', 'unavailable', 'outside']);
+
+export function isWorkspaceNotePassageReplyV1(value: unknown): value is WorkspaceNotePassageReplyV1 {
+  if (!record(value) || !exact(value, ['version', 'state', 'lines', 'commits']) || value.version !== 1) return false;
+  const lines = value.lines;
+  return typeof value.state === 'string' && PASSAGE_STATES.has(value.state)
+    && (lines === null || (record(lines) && exact(lines, ['from', 'to']) && whole(lines.from) && whole(lines.to)
+      && (lines.from as number) >= 1 && (lines.to as number) >= (lines.from as number)))
+    && Array.isArray(value.commits) && value.commits.length <= 1000
+    && value.commits.every((hash) => typeof hash === 'string' && /^[0-9a-f]{40,64}$/.test(hash));
+}
+
+export const isWorkspaceNotePassageResultV1 = (
+  value: unknown, id: string,
+): value is WorkspaceResultV1<WorkspaceNotePassageReplyV1> => isResult(value, id, isWorkspaceNotePassageReplyV1);
+
+export function isWorkspaceNoteVersionRequestV1(value: unknown): value is WorkspaceNoteVersionRequestV1 {
+  return record(value) && exact(value, ['version', 'requestId', 'path', 'commit', 'at'])
+    && value.version === 1 && typeof value.requestId === 'string' && requestId.test(value.requestId)
+    && typeof value.path === 'string' && value.path.length > 0 && value.path.length <= 4096
+    && typeof value.commit === 'string' && /^[0-9a-f]{40,64}$/.test(value.commit)
+    && typeof value.at === 'string' && value.at.length > 0 && value.at.length <= 4096;
+}
+
+const NOTE_CHANGES = new Set(['added', 'modified', 'renamed', 'copied', 'deleted', 'merge']);
+const count = (value: unknown) => value === null || (typeof value === 'number' && Number.isSafeInteger(value) && value >= 0);
+const time = (value: unknown) => typeof value === 'number' && Number.isFinite(value) && value >= 0;
+
+function isNoteCommitV1(value: unknown): value is NoteCommitV1 {
+  return record(value)
+    && exact(value, ['hash', 'time', 'author', 'subject', 'change', 'path', 'from', 'added', 'removed', 'tooling', 'sweeping'])
+    && typeof value.hash === 'string' && /^[0-9a-f]{40,64}$/.test(value.hash)
+    && time(value.time)
+    && typeof value.author === 'string' && value.author.length <= 512
+    && typeof value.subject === 'string' && value.subject.length <= 4096
+    && typeof value.change === 'string' && NOTE_CHANGES.has(value.change)
+    && typeof value.path === 'string' && value.path.length <= 4096
+    && (value.from === null || (typeof value.from === 'string' && value.from.length <= 4096))
+    && count(value.added) && count(value.removed)
+    && typeof value.tooling === 'boolean' && typeof value.sweeping === 'boolean';
+}
+
+const HISTORY_STATES = new Set(['ok', 'untracked', 'not-git', 'slow', 'unavailable', 'outside']);
+
+export function isWorkspaceNoteHistoryReplyV1(value: unknown): value is WorkspaceNoteHistoryReplyV1 {
+  if (!record(value) || !exact(value, ['version', 'state', 'commits', 'more', 'uncommitted', 'file'])) return false;
+  const { uncommitted, file } = value;
+  return value.version === 1
+    && typeof value.state === 'string' && HISTORY_STATES.has(value.state)
+    && Array.isArray(value.commits) && value.commits.length <= 1000 && value.commits.every(isNoteCommitV1)
+    && typeof value.more === 'boolean'
+    && (uncommitted === null || (record(uncommitted) && exact(uncommitted, ['added', 'removed'])
+      && count(uncommitted.added) && count(uncommitted.removed)))
+    && (file === null || (record(file) && exact(file, ['created', 'modified', 'bytes'])
+      && time(file.created) && time(file.modified) && count(file.bytes)));
+}
+
+export const isWorkspaceNoteHistoryResultV1 = (
+  value: unknown, id: string,
+): value is WorkspaceResultV1<WorkspaceNoteHistoryReplyV1> => isResult(value, id, isWorkspaceNoteHistoryReplyV1);
+
+export function isWorkspaceNoteVersionReplyV1(value: unknown): value is WorkspaceNoteVersionReplyV1 {
+  return record(value) && exact(value, ['version', 'text'])
+    && value.version === 1 && (value.text === null || typeof value.text === 'string');
+}
+
+export const isWorkspaceNoteVersionResultV1 = (
+  value: unknown, id: string,
+): value is WorkspaceResultV1<WorkspaceNoteVersionReplyV1> => isResult(value, id, isWorkspaceNoteVersionReplyV1);
+
+/** The longest preview main sends, in characters. */
+export const NOTE_PREVIEW_MAX = 8192;
+
+export function isWorkspaceNotePreviewRequestV1(value: unknown): value is WorkspaceNotePreviewRequestV1 {
+  return record(value) && exact(value, ['version', 'requestId', 'path', 'line'])
+    && value.version === 1 && typeof value.requestId === 'string' && requestId.test(value.requestId)
+    && typeof value.path === 'string' && value.path.length > 0 && value.path.length <= 4096
+    && (value.line === null || (typeof value.line === 'number' && Number.isSafeInteger(value.line) && value.line >= 1 && value.line <= 10_000_000));
+}
+
+export function isWorkspaceNotePreviewReplyV1(value: unknown): value is WorkspaceNotePreviewReplyV1 {
+  return record(value) && exact(value, ['version', 'text', 'from', 'modified', 'fence'])
+    && value.version === 1
+    && (value.fence === null || (typeof value.fence === 'string' && /^(`{3,32}|~{3,32})$/.test(value.fence)))
+    && (value.text === null || (typeof value.text === 'string' && value.text.length <= NOTE_PREVIEW_MAX))
+    && typeof value.from === 'number' && Number.isSafeInteger(value.from) && value.from >= 1
+    && (value.modified === null || time(value.modified));
+}
+
+export const isWorkspaceNotePreviewResultV1 = (
+  value: unknown, id: string,
+): value is WorkspaceResultV1<WorkspaceNotePreviewReplyV1> => isResult(value, id, isWorkspaceNotePreviewReplyV1);
+
+const MENU_TEXT_MAX = 200;
+const menuText = (value: unknown, max = MENU_TEXT_MAX): value is string => typeof value === 'string' && value.length <= max;
+
+export function isWorkspaceRunMenuCommandRequestV1(value: unknown): value is WorkspaceRunMenuCommandRequestV1 {
+  return record(value) && exact(value, ['version', 'requestId', 'id'])
+    && value.version === 1 && typeof value.requestId === 'string' && requestId.test(value.requestId)
+    && typeof value.id === 'string' && /^[a-z0-9][a-z0-9:._-]{0,95}$/i.test(value.id);
+}
+
+function isMenuCommandEntry(value: unknown): value is WorkspaceMenuCommandV1Entry {
+  return record(value) && exact(value, ['id', 'title', 'path', 'accelerator', 'enabled', 'checked'])
+    && menuText(value.id, 96) && value.id.length > 0 && menuText(value.title) && menuText(value.path, 400)
+    && (value.accelerator === null || menuText(value.accelerator, 64))
+    && typeof value.enabled === 'boolean' && (value.checked === null || typeof value.checked === 'boolean');
+}
+
+export function isWorkspaceMenuCommandsReplyV1(value: unknown): value is WorkspaceMenuCommandsReplyV1 {
+  return record(value) && exact(value, ['version', 'commands']) && value.version === 1
+    && Array.isArray(value.commands) && value.commands.length <= 1000 && value.commands.every(isMenuCommandEntry);
+}
+
+export function isWorkspaceRunMenuCommandReplyV1(value: unknown): value is WorkspaceRunMenuCommandReplyV1 {
+  return record(value) && exact(value, ['version', 'ran']) && value.version === 1 && typeof value.ran === 'boolean';
+}
+
+export const isWorkspaceMenuCommandsResultV1 = (
+  value: unknown, id: string,
+): value is WorkspaceResultV1<WorkspaceMenuCommandsReplyV1> => isResult(value, id, isWorkspaceMenuCommandsReplyV1);
+
+export const isWorkspaceRunMenuCommandResultV1 = (
+  value: unknown, id: string,
+): value is WorkspaceResultV1<WorkspaceRunMenuCommandReplyV1> => isResult(value, id, isWorkspaceRunMenuCommandReplyV1);
+
+/** A short string, as the memory's titles, paths and phrases are. */
+const text = (value: unknown, max = 4096) => typeof value === 'string' && value.length <= max;
+const textOrNull = (value: unknown, max = 4096) => value === null || text(value, max);
+const number = (value: unknown) => typeof value === 'number' && Number.isFinite(value);
+const whole = (value: unknown) => typeof value === 'number' && Number.isSafeInteger(value) && value >= 0;
+const listOf = (value: unknown, max: number, each: (item: Record<string, unknown>) => boolean) =>
+  Array.isArray(value) && value.length <= max && value.every((item) => record(item) && each(item));
+const ORIGINS = new Set(['note', 'script', 'folder', 'config', 'default']);
+const traced = (value: unknown, nullable: boolean) => record(value) && exact(value, ['value', 'from'])
+  && (nullable ? textOrNull(value.value, 64) : text(value.value, 64))
+  && typeof value.from === 'string' && ORIGINS.has(value.from);
+
+function isNoteMemoryV1(value: unknown): value is NoteMemoryV1 {
+  if (!record(value) || !exact(value, [
+    'path', 'title', 'id', 'kind', 'known', 'sensitivity', 'status', 'tags', 'aliases', 'heat', 'supersededBy',
+    'linksHere', 'linksHereCount', 'namedHere', 'namedHereCount', 'together', 'togetherCount', 'aboutSame',
+    'outgoing', 'reads', 'readers', 'leadsHere', 'writes', 'agents',
+  ])) return false;
+  const { heat, outgoing, writes, supersededBy } = value;
+  return text(value.path) && text(value.title) && textOrNull(value.id, 512)
+    && traced(value.kind, false) && traced(value.known, true) && traced(value.sensitivity, false)
+    && textOrNull(value.status, 512)
+    && Array.isArray(value.tags) && value.tags.length <= 512 && value.tags.every((tag) => text(tag, 256))
+    && Array.isArray(value.aliases) && value.aliases.length <= 512 && value.aliases.every((alias) => text(alias, 512))
+    && record(heat) && exact(heat, ['heat', 'reads', 'writes', 'lastRead', 'lastWrite'])
+    && number(heat.heat) && whole(heat.reads) && whole(heat.writes) && textOrNull(heat.lastRead, 64) && textOrNull(heat.lastWrite, 64)
+    && (supersededBy === null || (record(supersededBy) && exact(supersededBy, ['path', 'title']) && text(supersededBy.path) && text(supersededBy.title)))
+    && listOf(value.linksHere, 200, (item) => exact(item, ['path', 'title', 'relation', 'heat', 'reads'])
+      && text(item.path) && text(item.title) && textOrNull(item.relation, 128) && number(item.heat) && whole(item.reads))
+    && whole(value.linksHereCount)
+    && listOf(value.namedHere, 200, (item) => exact(item, ['id', 'to', 'title', 'score', 'around'])
+      && text(item.id, 128) && text(item.to) && text(item.title) && number(item.score)
+      && Array.isArray(item.around) && item.around.length === 3 && item.around.every((part) => text(part, 1024)))
+    && whole(value.namedHereCount)
+    && listOf(value.together, 200, (item) => exact(item, ['path', 'title', 'type', 'count', 'weight', 'last'])
+      && text(item.path) && text(item.title) && text(item.type, 64) && whole(item.count) && number(item.weight) && textOrNull(item.last, 64))
+    && whole(value.togetherCount)
+    && listOf(value.aboutSame, 200, (item) => exact(item, ['path', 'title', 'why', 'excerpt'])
+      && text(item.path) && text(item.title) && Array.isArray(item.why) && item.why.length <= 16
+      && item.why.every((reason) => text(reason, 512)) && text(item.excerpt, 8192))
+    && record(outgoing) && exact(outgoing, ['count', 'broken', 'brokenCount']) && whole(outgoing.count) && whole(outgoing.brokenCount)
+    && listOf(outgoing.broken, 1000, (item) => exact(item, ['target', 'line']) && text(item.target) && whole(item.line))
+    && listOf(value.reads, 20000, (item) => exact(item, ['day', 'count']) && text(item.day, 10) && whole(item.count))
+    && listOf(value.readers, 200, (item) => exact(item, ['actor', 'count', 'last']) && text(item.actor, 256) && whole(item.count) && text(item.last, 64))
+    && listOf(value.leadsHere, 200, (item) => exact(item, ['from', 'query', 'count']) && textOrNull(item.from) && textOrNull(item.query, 1024) && whole(item.count))
+    && record(writes) && exact(writes, ['commits', 'appends', 'agents']) && whole(writes.commits) && whole(writes.appends)
+    && listOf(writes.agents, 200, (item) => exact(item, ['actor', 'count', 'last']) && text(item.actor, 256) && whole(item.count) && text(item.last, 64))
+    && listOf(value.agents, 200, (item) => exact(item, ['name', 'canSee', 'why']) && text(item.name, 256)
+      && typeof item.canSee === 'boolean' && textOrNull(item.why, 512));
+}
+
+const MEMORY_STATES = new Set(['ok', 'no-memory', 'untrusted', 'opening', 'unknown', 'unavailable', 'outside']);
+const KEEP_OUTCOMES = new Set(['made', 'cancelled', 'failed']);
+
+export function isWorkspaceKeepMemoryReplyV1(value: unknown): value is WorkspaceKeepMemoryReplyV1 {
+  return record(value) && exact(value, ['version', 'outcome', 'made']) && value.version === 1
+    && typeof value.outcome === 'string' && KEEP_OUTCOMES.has(value.outcome)
+    && Array.isArray(value.made) && value.made.length <= 64 && value.made.every((file) => text(file, 512))
+    && (value.outcome === 'made' || value.made.length === 0);
+}
+
+export function isWorkspaceTrustMemoryReplyV1(value: unknown): value is WorkspaceTrustMemoryReplyV1 {
+  return record(value) && exact(value, ['version', 'trusted']) && value.version === 1 && typeof value.trusted === 'boolean';
+}
+
+export const isWorkspaceTrustMemoryResultV1 = (
+  value: unknown, id: string,
+): value is WorkspaceResultV1<WorkspaceTrustMemoryReplyV1> => isResult(value, id, isWorkspaceTrustMemoryReplyV1);
+
+const REVIEW_KINDS = new Set(['stale', 'mention', 'together']);
+const REVIEW_STATES = new Set(['ok', 'failed', 'no-memory', 'untrusted', 'opening', 'unavailable', 'outside']);
+/** A suggestion's id: seven hex digits, as the vault makes them. */
+const suggestionIdPattern = /^[0-9a-f]{7}$/;
+/** As many as a Fix All in a folder that was reorganized may name. */
+const ids = (value: unknown, max = 5000) => Array.isArray(value) && value.length <= max
+  && value.every((id) => typeof id === 'string' && suggestionIdPattern.test(id));
+const proposalId = (value: unknown) => typeof value === 'string' && PROPOSAL_ID.test(value) && !value.includes('..');
+/** A folder-relative path, as the vault names notes: forward slashes, never up and out. */
+const notePath = (value: unknown) => typeof value === 'string' && value.length > 0 && value.length <= 1024
+  && !value.startsWith('/') && !value.split('/').includes('..') && !value.includes('\0');
+const paths = (value: unknown, max = 2000) => Array.isArray(value) && value.length <= max && value.every(notePath);
+
+const AGENT_NAME = /^[A-Za-z0-9._-]{1,64}$/;
+/** Names a policy reserves, or that a parsed map treats as its own machinery. */
+const RESERVED_AGENTS = new Set(['owner', 'default', '__proto__', 'constructor', 'prototype']);
+/**
+ * The one folder an agent may write in: a vault path that a policy pattern
+ * can name as itself. `*` and `?` would make it a wildcard ("write in **"
+ * reads as a folder and means everywhere), and a control character would put
+ * lines of its own into the sheet that asks the person.
+ */
+// eslint-disable-next-line no-control-regex
+const writeFolder = (value: unknown) => notePath(value) && !/[*?\u0000-\u001f\u007f]/.test(value as string);
+const SENSITIVITY_LEVELS = new Set(['open', 'private', 'sealed']);
+
+export function isWorkspaceAgentActionV1(value: unknown): value is WorkspaceAgentActionV1 {
+  if (!record(value) || typeof value.kind !== 'string') return false;
+  if (value.kind === 'list') return exact(value, ['kind']);
+  if (value.kind === 'revoke') return exact(value, ['kind', 'name']) && typeof value.name === 'string' && AGENT_NAME.test(value.name);
+  if (value.kind !== 'add') return false;
+  return exact(value, ['kind', 'name', 'reads', 'may', 'writeIn'])
+    && typeof value.name === 'string' && AGENT_NAME.test(value.name) && !RESERVED_AGENTS.has(value.name)
+    && (value.reads === 'open' || value.reads === 'private')
+    && (value.may === 'read' || value.may === 'propose' || value.may === 'write')
+    && (value.may === 'write' ? writeFolder(value.writeIn) : value.writeIn === null);
+}
+
+export function isWorkspaceAgentRequestV1(value: unknown): value is WorkspaceAgentRequestV1 {
+  return record(value) && exact(value, ['version', 'requestId', 'action']) && value.version === 1
+    && typeof value.requestId === 'string' && requestId.test(value.requestId) && isWorkspaceAgentActionV1(value.action);
+}
+
+const agentRow = (item: Record<string, unknown>) => exact(item, ['name', 'keys', 'reads', 'verbs', 'writes', 'revoked', 'implicit', 'lastRead', 'readCount'])
+  && typeof item.name === 'string' && AGENT_NAME.test(item.name) && whole(item.keys)
+  && typeof item.reads === 'string' && SENSITIVITY_LEVELS.has(item.reads)
+  && Array.isArray(item.verbs) && item.verbs.length <= 16 && item.verbs.every((verb) => text(verb, 32))
+  && Array.isArray(item.writes) && item.writes.length <= 64 && item.writes.every((pattern) => text(pattern, 512))
+  && textOrNull(item.revoked, 64) && typeof item.implicit === 'boolean' && textOrNull(item.lastRead, 64) && whole(item.readCount);
+
+export function isWorkspaceAgentsReplyV1(value: unknown): value is WorkspaceAgentsReplyV1 {
+  return record(value) && exact(value, ['version', 'state', 'outcome', 'error', 'agents', 'key', 'setup']) && value.version === 1
+    && (value.state === 'ok' || value.state === 'no-memory' || value.state === 'outside')
+    && (value.outcome === 'done' || value.outcome === 'cancelled' || value.outcome === 'failed')
+    && textOrNull(value.error, 4096) && listOf(value.agents, 200, agentRow)
+    && (value.key === null || (typeof value.key === 'string' && /^[A-Za-z0-9_-]{16,128}$/.test(value.key)))
+    && (value.setup === null || (record(value.setup) && exact(value.setup, ['script', 'root'])
+      && text(value.setup.script, 4096) && text(value.setup.root, 4096)));
+}
+
+export function isWorkspaceMemoryPrivacyRequestV1(value: unknown): value is WorkspaceMemoryPrivacyRequestV1 {
+  return record(value) && exact(value, ['version', 'requestId', 'note']) && value.version === 1
+    && typeof value.requestId === 'string' && requestId.test(value.requestId)
+    && (value.note === null || (text(value.note, 4096) && !(value.note as string).includes('\0')));
+}
+
+const level = (value: unknown) => typeof value === 'string' && SENSITIVITY_LEVELS.has(value);
+
+export function isWorkspaceMemoryPrivacyReplyV1(value: unknown): value is WorkspaceMemoryPrivacyReplyV1 {
+  return record(value) && exact(value, ['version', 'root', 'vault', 'folders', 'note']) && value.version === 1
+    && textOrNull(value.root, 4096) && level(value.vault)
+    && listOf(value.folders, 5000, (item) => exact(item, ['path', 'level']) && text(item.path, 4096) && level(item.level))
+    && (value.note === null || (record(value.note) && exact(value.note, ['level', 'folder'])
+      && (value.note.level === 'private' || value.note.level === 'sealed')
+      && (value.note.folder === 'open' || value.note.folder === 'private')));
+}
+
+export const isWorkspaceMemoryPrivacyResultV1 = (
+  value: unknown, id: string,
+): value is WorkspaceResultV1<WorkspaceMemoryPrivacyReplyV1> => isResult(value, id, isWorkspaceMemoryPrivacyReplyV1);
+
+export function isWorkspaceMemoryFolderRequestV1(value: unknown): value is WorkspaceMemoryFolderRequestV1 {
+  if (!record(value) || !exact(value, ['version', 'requestId', 'action']) || value.version !== 1
+    || typeof value.requestId !== 'string' || !requestId.test(value.requestId) || !record(value.action)) return false;
+  const action = value.action;
+  if (action.kind === 'record') return exact(action, ['kind', 'on']) && typeof action.on === 'boolean';
+  return (action.kind === 'status' || action.kind === 'rebuild' || action.kind === 'turn-off') && exact(action, ['kind']);
+}
+
+const FOLDER_STATES = new Set(['outside', 'no-memory', 'untrusted', 'opening', 'open', 'unavailable']);
+
+export function isWorkspaceMemoryFolderReplyV1(value: unknown): value is WorkspaceMemoryFolderReplyV1 {
+  return record(value) && exact(value, ['version', 'state', 'outcome', 'error', 'index', 'recording']) && value.version === 1
+    && typeof value.state === 'string' && FOLDER_STATES.has(value.state)
+    && (value.outcome === 'done' || value.outcome === 'cancelled' || value.outcome === 'failed')
+    && textOrNull(value.error, 4096) && typeof value.recording === 'boolean'
+    && (value.index === null || (record(value.index) && exact(value.index, ['notes', 'links', 'reads', 'bytes', 'refreshed'])
+      && whole(value.index.notes) && whole(value.index.links) && whole(value.index.reads) && whole(value.index.bytes)
+      && textOrNull(value.index.refreshed, 64)));
+}
+
+export const isWorkspaceMemoryFolderResultV1 = (
+  value: unknown, id: string,
+): value is WorkspaceResultV1<WorkspaceMemoryFolderReplyV1> => isResult(value, id, isWorkspaceMemoryFolderReplyV1);
+
+export function isWorkspaceMemoryAskRequestV1(value: unknown): value is WorkspaceMemoryAskRequestV1 {
+  return record(value) && exact(value, ['version', 'requestId', 'cue', 'note']) && value.version === 1
+    && typeof value.requestId === 'string' && requestId.test(value.requestId)
+    && typeof value.cue === 'string' && value.cue.trim().length > 0 && value.cue.length <= 500
+    && (value.note === null || (text(value.note, 4096) && !(value.note as string).includes('\0')));
+}
+
+const ASK_STATES = new Set(['ok', 'no-memory', 'untrusted', 'opening', 'unavailable', 'outside']);
+
+export function isWorkspaceMemoryAskReplyV1(value: unknown): value is WorkspaceMemoryAskReplyV1 {
+  if (!record(value) || !exact(value, ['version', 'state', 'value']) || value.version !== 1) return false;
+  if (typeof value.state !== 'string' || !ASK_STATES.has(value.state)) return false;
+  if (value.state !== 'ok') return value.value === null;
+  const pack = value.value;
+  return record(pack) && exact(pack, ['cue', 'items', 'omitted', 'markdown']) && text(pack.cue, 500) && whole(pack.omitted)
+    && text(pack.markdown, 1024 * 1024)
+    && listOf(pack.items, 100, (item) => exact(item, ['path', 'title', 'kind', 'why', 'excerpt'])
+      && notePath(item.path) && text(item.title, 512) && text(item.kind, 64)
+      && Array.isArray(item.why) && item.why.length <= 20 && item.why.every((why) => text(why, 512)) && text(item.excerpt, 64 * 1024));
+}
+
+export const isWorkspaceMemoryAskResultV1 = (
+  value: unknown, id: string,
+): value is WorkspaceResultV1<WorkspaceMemoryAskReplyV1> => isResult(value, id, isWorkspaceMemoryAskReplyV1);
+
+export const isWorkspaceAgentsResultV1 = (
+  value: unknown, id: string,
+): value is WorkspaceResultV1<WorkspaceAgentsReplyV1> => isResult(value, id, isWorkspaceAgentsReplyV1);
+
+export function isWorkspaceReviewActionV1(value: unknown): value is WorkspaceReviewActionV1 {
+  if (!record(value) || typeof value.kind !== 'string') return false;
+  switch (value.kind) {
+    case 'summary':
+      return exact(value, ['kind', 'counted']) && Array.isArray(value.counted) && value.counted.length <= 3
+        && value.counted.every((kind) => typeof kind === 'string' && REVIEW_KINDS.has(kind));
+    case 'suggestions':
+      return exact(value, ['kind', 'type', 'offset', 'limit']) && typeof value.type === 'string' && REVIEW_KINDS.has(value.type)
+        && whole(value.offset) && whole(value.limit) && (value.limit as number) <= 200;
+    case 'proposal-file':
+      return exact(value, ['kind', 'proposal', 'path']) && proposalId(value.proposal) && notePath(value.path);
+    case 'accept':
+    case 'reject':
+      return exact(value, ['kind', 'proposal']) && proposalId(value.proposal);
+    case 'link':
+    case 'dismiss':
+      return exact(value, ['kind', 'type', 'ids']) && typeof value.type === 'string' && REVIEW_KINDS.has(value.type)
+        && ids(value.ids) && (value.ids as unknown[]).length > 0;
+    case 'undismiss':
+      return exact(value, ['kind', 'ids']) && (value.ids === 'all' || ids(value.ids));
+    case 'dismissals':
+    case 'undo':
+      return exact(value, ['kind']);
+    case 'mentions':
+      return exact(value, ['kind', 'note']) && text(value.note, 4096) && (value.note as string).length > 0 && !(value.note as string).includes('\0');
+    default:
+      return false;
+  }
+}
+
+export function isWorkspaceReviewRequestV1(value: unknown): value is WorkspaceReviewRequestV1 {
+  return record(value) && exact(value, ['version', 'requestId', 'action']) && value.version === 1
+    && typeof value.requestId === 'string' && requestId.test(value.requestId) && isWorkspaceReviewActionV1(value.action);
+}
+
+const reviewProposal = (item: Record<string, unknown>) => exact(item, ['id', 'subject', 'author', 'time', 'files'])
+  && proposalId(item.id) && text(item.subject, 1024) && text(item.author, 256) && text(item.time, 64)
+  && listOf(item.files, 2000, (file) => exact(file, ['status', 'path']) && text(file.status, 8) && notePath(file.path));
+const countOrNull = (value: unknown) => value === null || whole(value);
+const reviewSuggestion = (item: Record<string, unknown>) => exact(item, ['id', 'type', 'from', 'to', 'toTitle', 'score', 'reason', 'line', 'around'])
+  && ids([item.id]) && typeof item.type === 'string' && REVIEW_KINDS.has(item.type) && notePath(item.from) && notePath(item.to)
+  && text(item.toTitle, 512) && number(item.score) && text(item.reason, 1024) && (item.line === null || whole(item.line))
+  && (item.around === null || (Array.isArray(item.around) && item.around.length === 3 && item.around.every((part) => text(part, 1024))));
+
+const reviewMention = (item: Record<string, unknown>) => exact(item, ['id', 'to', 'toTitle', 'score', 'around', 'replacement'])
+  && ids([item.id]) && notePath(item.to) && text(item.toTitle, 512) && number(item.score)
+  && Array.isArray(item.around) && item.around.length === 3 && item.around.every((part) => text(part, 1024))
+  // One wiki link that still reads as the words it replaces: what the card offers is what is written.
+  && text(item.replacement, 2048) && /^\[\[[^[\]\r\n]+\]\]$/.test(item.replacement as string)
+  && ((item.replacement as string) === `[[${(item.around as string[])[1]}]]` || (item.replacement as string).endsWith(`|${(item.around as string[])[1]}]]`));
+
+/** Whether a reply's value is what its action answers. */
+const REVIEW_VALUES: { readonly [K in WorkspaceReviewActionV1['kind']]: (value: unknown) => boolean } = {
+  summary: (value) => record(value) && exact(value, ['proposals', 'counts', 'dismissed'])
+    && listOf(value.proposals, 500, reviewProposal) && whole(value.dismissed)
+    && record(value.counts) && exact(value.counts, ['stale', 'mention', 'together'])
+    && countOrNull(value.counts.stale) && countOrNull(value.counts.mention) && countOrNull(value.counts.together),
+  suggestions: (value) => record(value) && exact(value, ['total', 'items']) && whole(value.total) && listOf(value.items, 200, reviewSuggestion),
+  'proposal-file': (value) => record(value) && exact(value, ['base', 'proposed'])
+    && textOrNull(value.base, 16 * 1024 * 1024) && textOrNull(value.proposed, 16 * 1024 * 1024),
+  accept: (value) => record(value) && exact(value, ['applied', 'unchanged', 'conflicts', 'busy'])
+    && paths(value.applied) && paths(value.unchanged) && paths(value.conflicts) && paths(value.busy),
+  reject: (value) => value === null,
+  link: (value) => record(value) && exact(value, ['linked', 'outdated', 'busy']) && ids(value.linked) && ids(value.outdated) && ids(value.busy),
+  dismiss: (value) => record(value) && exact(value, ['count', 'missing']) && whole(value.count) && ids(value.missing),
+  dismissals: (value) => listOf(value, 20_000, (item) => exact(item, ['id', 'type', 'from', 'to', 'time'])
+    && ids([item.id]) && text(item.type, 32) && notePath(item.from) && notePath(item.to) && textOrNull(item.time, 64)),
+  undismiss: (value) => record(value) && exact(value, ['count']) && whole(value.count),
+  undo: (value) => value === null || (record(value) && exact(value, ['restored', 'changed', 'busy'])
+    && paths(value.restored) && paths(value.changed) && paths(value.busy)),
+  mentions: (value) => listOf(value, 50, reviewMention),
+};
+
+export function isWorkspaceReviewReplyV1(value: unknown, kind: WorkspaceReviewActionV1['kind']): value is WorkspaceReviewReplyV1 {
+  if (!record(value) || !exact(value, ['version', 'state', 'value', 'error']) || value.version !== 1) return false;
+  if (typeof value.state !== 'string' || !REVIEW_STATES.has(value.state) || !textOrNull(value.error, 4096)) return false;
+  // Only an answer carries a value (null for `reject`, and for `undo` with nothing to take back).
+  return value.state === 'ok' ? REVIEW_VALUES[kind](value.value) : value.value === null;
+}
+
+export const isWorkspaceReviewResultV1 = (
+  value: unknown, id: string, kind: WorkspaceReviewActionV1['kind'],
+): value is WorkspaceResultV1<WorkspaceReviewReplyV1> => isResult(value, id, (candidate): candidate is WorkspaceReviewReplyV1 => isWorkspaceReviewReplyV1(candidate, kind));
+
+export const isWorkspaceKeepMemoryResultV1 = (
+  value: unknown, id: string,
+): value is WorkspaceResultV1<WorkspaceKeepMemoryReplyV1> => isResult(value, id, isWorkspaceKeepMemoryReplyV1);
+
+export function isWorkspaceMemoryChangedV1(value: unknown): value is WorkspaceMemoryChangedV1 {
+  return record(value) && exact(value, ['version']) && value.version === 1;
+}
+
+export function isWorkspaceNoteMemoryReplyV1(value: unknown): value is WorkspaceNoteMemoryReplyV1 {
+  return record(value) && exact(value, ['version', 'state', 'memory']) && value.version === 1
+    && typeof value.state === 'string' && MEMORY_STATES.has(value.state)
+    && (value.state === 'ok' ? isNoteMemoryV1(value.memory) : value.memory === null);
+}
+
+const FOLDER_GIT_STATES = new Set(['ok', 'not-git', 'slow', 'unavailable', 'outside']);
+
+/** At most what main reads of a folder's history. */
+export const FOLDER_COMMITS_MAX = 50;
+
+export function isWorkspaceFolderHistoryReplyV1(value: unknown): value is WorkspaceFolderHistoryReplyV1 {
+  return record(value) && exact(value, ['version', 'state', 'commits']) && value.version === 1
+    && typeof value.state === 'string' && FOLDER_GIT_STATES.has(value.state)
+    && Array.isArray(value.commits) && value.commits.length <= FOLDER_COMMITS_MAX
+    && (value.state === 'ok' || value.commits.length === 0)
+    && value.commits.every((commit) => record(commit)
+      && exact(commit, ['hash', 'time', 'author', 'subject', 'notes', 'files'])
+      && typeof commit.hash === 'string' && /^[0-9a-f]{40,64}$/.test(commit.hash)
+      && whole(commit.time) && text(commit.author, 200) && text(commit.subject, 1000)
+      && Array.isArray(commit.notes) && commit.notes.length <= 8 && commit.notes.every(notePath)
+      && whole(commit.files) && (commit.files as number) >= commit.notes.length);
+}
+
+export const isWorkspaceFolderHistoryResultV1 = (
+  value: unknown, id: string,
+): value is WorkspaceResultV1<WorkspaceFolderHistoryReplyV1> => isResult(value, id, isWorkspaceFolderHistoryReplyV1);
+
+export function isWorkspaceShowFolderInfoEventV1(value: unknown): value is WorkspaceShowFolderInfoEventV1 {
+  return record(value) && exact(value, ['version', 'path']) && value.version === 1
+    && typeof value.path === 'string' && value.path.length > 0 && value.path.length <= 4096;
+}
+
+export function isWorkspaceFocusFolderEventV1(value: unknown): value is WorkspaceFocusFolderEventV1 {
+  return record(value) && exact(value, ['version', 'path']) && value.version === 1
+    && typeof value.path === 'string' && value.path.length > 0 && value.path.length <= 4096;
+}
+
+export function isWorkspaceLinksFollowedV1(value: unknown): value is WorkspaceLinksFollowedV1 {
+  return record(value) && exact(value, ['version', 'pass', 'notes', 'links', 'held', 'left']) && value.version === 1
+    && whole(value.pass) && whole(value.notes) && whole(value.links) && whole(value.held) && whole(value.left)
+    && (value.links as number) >= (value.notes as number) && ((value.pass as number) > 0) === ((value.notes as number) > 0);
+}
+
+export function isWorkspaceUndoLinksRequestV1(value: unknown): value is WorkspaceUndoLinksRequestV1 {
+  return record(value) && exact(value, ['version', 'requestId', 'pass']) && value.version === 1
+    && typeof value.requestId === 'string' && requestId.test(value.requestId) && whole(value.pass) && (value.pass as number) > 0;
+}
+
+export function isWorkspaceUndoLinksReplyV1(value: unknown): value is WorkspaceUndoLinksReplyV1 {
+  return record(value) && exact(value, ['version', 'restored', 'kept']) && value.version === 1
+    && whole(value.restored) && whole(value.kept);
+}
+
+export const isWorkspaceUndoLinksResultV1 = (
+  value: unknown, id: string,
+): value is WorkspaceResultV1<WorkspaceUndoLinksReplyV1> => isResult(value, id, isWorkspaceUndoLinksReplyV1);
+
+const isFolderNoteV1 = (value: unknown): value is FolderNoteV1 => record(value)
+  && exact(value, ['path', 'title', 'heat', 'reads', 'lastRead'])
+  && notePath(value.path) && text(value.title, 1024)
+  && typeof value.heat === 'number' && Number.isFinite(value.heat) && value.heat >= 0
+  && whole(value.reads) && textOrNull(value.lastRead, 64);
+
+/** Items per list, as main asks the vault for them. */
+export const FOLDER_LIST_MAX = 12;
+const folderNotes = (value: unknown) => Array.isArray(value) && value.length <= FOLDER_LIST_MAX && value.every(isFolderNoteV1);
+
+export function isWorkspaceFolderMemoryReplyV1(value: unknown): value is WorkspaceFolderMemoryReplyV1 {
+  if (!record(value) || !exact(value, ['version', 'state', 'memory']) || value.version !== 1) return false;
+  if (typeof value.state !== 'string' || value.state === 'unknown' || !MEMORY_STATES.has(value.state)) return false;
+  if (value.state !== 'ok') return value.memory === null;
+  const memory = value.memory;
+  return record(memory) && exact(memory, ['folder', 'notes', 'warmest', 'mostRead', 'orphans', 'broken'])
+    && typeof memory.folder === 'string' && memory.folder.length <= 1024 && (memory.folder === '' || notePath(memory.folder))
+    && whole(memory.notes) && folderNotes(memory.warmest) && folderNotes(memory.mostRead)
+    && record(memory.orphans) && exact(memory.orphans, ['count', 'items']) && whole(memory.orphans.count)
+    && folderNotes(memory.orphans.items) && whole(memory.broken);
+}
+
+export const isWorkspaceFolderMemoryResultV1 = (
+  value: unknown, id: string,
+): value is WorkspaceResultV1<WorkspaceFolderMemoryReplyV1> => isResult(value, id, isWorkspaceFolderMemoryReplyV1);
+
+export const isWorkspaceNoteMemoryResultV1 = (
+  value: unknown, id: string,
+): value is WorkspaceResultV1<WorkspaceNoteMemoryReplyV1> => isResult(value, id, isWorkspaceNoteMemoryReplyV1);
 
 export const isWorkspaceLinksResultV1 = (
   value: unknown, id: string,
@@ -470,8 +1032,15 @@ export function isWorkspaceNewFileReplyV1(value: unknown): value is WorkspaceNew
 export const isWorkspaceNewFileResultV1 = (value: unknown, id: string): value is WorkspaceResultV1<WorkspaceNewFileReplyV1> =>
   isResult(value, id, isWorkspaceNewFileReplyV1);
 
+/** The most rows one menu is for: a Shift-click across a folder of hundreds. */
+export const TREE_MENU_ALSO_MAX = 2000;
+
 export function isWorkspaceTreeMenuRequestV1(value: unknown): value is WorkspaceTreeMenuRequestV1 {
-  return record(value) && exact(value, ['version', 'requestId', 'path', 'kind'])
+  return record(value)
+    && (exact(value, ['version', 'requestId', 'path', 'kind'])
+      || (exact(value, ['version', 'requestId', 'path', 'kind', 'also']) && Array.isArray(value.also) && value.also.length > 0
+        && value.also.length <= TREE_MENU_ALSO_MAX
+        && value.also.every((other) => typeof other === 'string' && other.length > 0 && other.length <= 4096)))
     && value.version === 1
     && typeof value.requestId === 'string' && requestId.test(value.requestId)
     && typeof value.path === 'string' && value.path.length > 0 && value.path.length <= 4096
@@ -574,7 +1143,10 @@ const isMarkPath = (value: unknown): value is string =>
   typeof value === 'string' && value.length > 0 && value.length <= 4096;
 
 export function isWorkspaceGitMarksV1(value: unknown): value is WorkspaceGitMarksV1 {
-  return record(value) && exact(value, ['version', 'root', 'files', 'folders'])
+  return record(value)
+    && (exact(value, ['version', 'root', 'files', 'folders'])
+      || (exact(value, ['version', 'root', 'files', 'folders', 'repository', 'realRoot'])
+        && value.repository === true && isMarkPath(value.realRoot)))
     && value.version === NOTO_WORKSPACE_VERSION
     && (value.root === null || isMarkPath(value.root))
     && Array.isArray(value.files) && value.files.length <= MAX_GIT_MARKS

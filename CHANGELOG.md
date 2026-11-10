@@ -11,6 +11,196 @@ How releases are made, and what each channel receives, is in
 
 ### Added
 
+- **A deep folder fits a narrow window.** The file tree no longer scrolls
+  sideways. When the open tree is deep, each level steps in less (from 30 px
+  down to 14 px), so the deepest note keeps room for its name. A name that
+  still does not fit is cut in the middle, keeping its end: a start it shares
+  with its neighbours goes first, and a note's `.md` before that. Rest the
+  pointer on a cut name to read it whole.
+- **Focus on a folder.** Option-click a folder, or choose Focus on This
+  Folder from its menu, and it becomes the tree's root, with its full steps
+  back and a bar above it leading up again. Escape, or ×, shows the whole
+  folder.
+- **Settings → Appearance → File tree.** Folders you are in: Stack, each held
+  on its own row as before, or Trail, folded into one row of names that leads
+  back to any of them. And Show .md in the tree, on by default.
+
+- **Quick Open shows the note you are on beside its results.** The
+  highlighted note's title, folder and when it changed, then its opening as
+  readable text; in In Notes mode the lines around the match, with the
+  matched line marked. The palette is wider to make room for it.
+- **Appearance shows the page it sets.** The head of the pane draws a page
+  in miniature in the live theme, with real text in the document's face,
+  size and leading, as wide as the page width makes it, and it changes as
+  the controls under it move. Theme, document font and page width are
+  tiles that picture each choice.
+- **Note Info: a pane beside the page about the note in front.** View → Note
+  Info, the command palette, or Get Info in the tree's menu opens it. Its
+  head says where the note is and what git says about it, a timeline lays
+  out its commits (a ring at the right for changes not yet committed), and
+  its tabs come from plugins. History lists every commit that touched the
+  note, through renames and moves, newest first; a press opens the commit in
+  the diff view, whose bar steps to the commit before or after (`[` and
+  `]`), compares the version with the note as it stands, copies it, or takes
+  it back as one edit that Undo reverses and that is saved only when the
+  note is. Shift with a press compares any two. A commit that only rewrote
+  text between a tool's markers, or one that changed more than a hundred
+  files, is drawn quieter. Properties shows the note's frontmatter, its
+  words (Chinese a character each), tables, code blocks and links, its
+  first and last commit, and the file's dates, size and path. The pane
+  remembers whether it was open, its tab and its width. A folder outside
+  git says so and gives the file's dates instead.
+- **Related and Activity, from the folder's memory.** In a folder that keeps
+  memory (one with a `.noto/` folder, as the vault tools make), Note Info
+  gains two tabs and a row of reads on its timeline. Related lists what
+  links to the note, the notes it names without linking, the notes read or
+  changed together with it, and the notes about the same thing, each with
+  the reason it is there, and says how many notes it links to and which
+  links are broken. Activity says who read it and how often, what led to
+  it, what was written to it, its heat in a sentence, and which agents may
+  not read it and why. Properties adds the note's kind, how it is known and
+  its sensitivity, each with where it comes from. The memory runs on a
+  thread of its own, opened the first time it is asked, so the window never
+  waits for its index; a folder without `.noto/` is never opened or written
+  to. Keep Memory for This Folder asks first, in a sheet that lists the
+  files it will make. A folder whose memory runs scripts from
+  `.noto/scripts` (a clone, a download) runs none of them until you have
+  seen them named and allowed them, once per folder; History and Properties
+  work meanwhile. A memory that could not be opened is tried again after a
+  pause.
+- **Review, the folder's queue, in the rail.** In a folder that keeps
+  memory, a page beside Changes lists what agents proposed and what the
+  tools found, with a count on its toggle of the proposals and the links to
+  moved notes. A proposal opens in the diff view, one file at a time with [
+  and ], to Accept (merged three ways with what is there now) or Reject.
+  Links to notes that moved are fixed all at once; names a note uses
+  without linking, and notes read together with no link, are gone through
+  one at a time by key: Y links, N says not this for good, S skips. Each
+  line is shown as it will read linked. What Review writes shows up in
+  Changes, Undo takes the last write back where the files are still as it
+  left them, a note with unsaved edits is left alone and named, and what
+  was said no to can be brought back. The lists come from a second memory
+  worker, so finding every mention in a big folder never holds up Note
+  Info.
+- **Agents and privacy, without a terminal.** Settings → Memory lists the
+  agents a folder's memory knows, what each may read and do, and when it
+  last read anything, along with what any agent without a key gets, which
+  can be turned off. Add an Agent asks its name, whether it reads private
+  notes, and whether it only reads, also proposes changes, or also writes
+  in one folder; Noto asks once more in a sheet of its own, then shows the
+  key once with a setup to copy for Claude Code or Codex. Take Key Back
+  stops the agent at its next request. A folder's right-click menu has
+  Privacy: Open, Private or Sealed. `.noto/access.yaml` keeps its comments
+  and its own indent through all of it, and every change is read back before
+  it is saved: one that would alter anything else in the policy is not made,
+  and says which part to change by hand. The MCP server the setups start is the vault's command
+  line, shipped with Noto and run by Node 22.13 or later.
+- **Link suggestions in the note.** In a folder that keeps memory, the few
+  likeliest notes the note in front names without linking get a faint
+  dotted underline. Rest the pointer on one, or press Option-Return with the
+  caret in it, for a card: Link writes the link in place as one edit Undo
+  takes back, and Not This says no for good, in Review as well. View → Show
+  Suggestions in Notes turns them off. Plugins can mark words in the note
+  the same way, through a new `marks:<id>` slot.
+- **Locks, and the memory's own settings.** A folder made private or
+  sealed wears a small lock in the tree (outlined for private, solid for
+  sealed), and a note private by its own frontmatter says so in the status
+  line. Settings → Memory now says what the index holds and how fresh it
+  is, rebuilds it, keeps or stops the read record on this computer, and
+  stops keeping memory: its sheet lists what `.noto` holds, then moves it to
+  the Trash. An agent's server stops serving a folder whose `.noto` is gone,
+  and one started later refuses it rather than making `.noto` again.
+- **Ask the vault, and Copy as Context.** At the top of Related, or from
+  "Memory: ask the folder a question" in the command palette, a question in words is answered with
+  the notes most likely to matter, each with why and a few lines of it, the
+  note in front's neighbours counting for more. Copy as Context puts the
+  answer on the clipboard as the Markdown an agent asking through MCP is
+  given, for pasting into a chat.
+- **One passage's history.** History of This Passage, in a paragraph's
+  right-click menu in a note under git, lists only the commits that changed
+  those lines, followed where they moved, with Show All to have the rest
+  back. A passage written since the last commit says it has no history yet.
+- **A folder's info.** Get Info in a folder's right-click menu turns Note
+  Info to the folder until a note is chosen: how many notes it holds and how
+  many of its links are broken, its warmest notes each with a meter, the
+  newest commits that changed anything in it with the notes they changed,
+  the notes read most, and those nothing links to or from. Back returns to
+  the note in front. Plugins add to it through a `folder:<id>` slot.
+- **Links follow a note when it is renamed or moved.** Moving or renaming a
+  note or a folder in the tree (one at a time or several together) writes
+  again every link that reached it, in the notes that linked to it and in
+  its own relative links, each in the style it was written: a bare name stays
+  a bare name, a path stays a path, an embed, a label, an anchor and `%20`
+  are kept. The status line says how many links in how many notes, with
+  Undo, which takes back each note nothing has changed since. A note with
+  unsaved edits is left alone and counted. Moves made in quick succession
+  are followed as one. Move to Trash says how many links would lead nowhere.
+  In a folder that keeps memory the index names the notes to read;
+  elsewhere each note is read once.
+- **Dragging in the file tree crosses more than a screen.** Holding a
+  dragged row at the top or bottom edge scrolls the tree, slowly where the
+  edge begins and faster deeper in; a closed folder held over opens; the
+  foot of the rail says where the drop would go, and why not when it would
+  not move anything. A note's row is a drop target for the folder it is in.
+  The target folder's row and icon take the accent together.
+- **Several rows at once.** Command-click chooses rows in the tree and
+  Shift-click a run of them; dragging one of them carries them all, and the
+  right-click menu offers Move N Items To…, Copy Paths and Move to Trash for
+  the lot. Escape clears the choice.
+- **The open folder's own row has a menu**: New Note Here, New Folder Here,
+  Get Info for the whole folder, Reveal and Copy Path.
+- **What Noto Can Do is the guide.** The `?` in the title bar opens it as a
+  sheet over the window, with a dot when something is new since you last
+  looked; each entry says where the feature is and what Noto does, needs or
+  not, and most have a Show Me or Try It that goes there. One that needs a
+  folder or a note in front, when there is none, says so in its place.
+- **Noto has an icon**: an N on paper whose last stroke is the caret.
+- **Note Info names the agents that wrote a note.** Git keeps every change
+  but not who made it, so an agent that edits files with its own tools
+  looked like you. Activity's Written section now lists the agents that said
+  they wrote the note, and Settings → Memory copies a Claude Code hook that
+  says so after each of its reads and edits. Nothing is added to commits.
+- **Plugins can add to Note Info.** A tab (`info:<id>`) and a timeline track
+  (`track:<id>`) are slots like the rail's pages, and `git.read` now gives a
+  note's history and its text at any of its commits. History and Properties
+  are built from them alone.
+- **Table rows and columns come out from the right-click menu.** A right
+  click in a table offers Insert Row Above and Below, Insert Column Left and
+  Right, Delete Row, Delete Column and Delete Table. A row's or column's
+  handle now says what it does: a press selects it, Shift with a press takes
+  in the ones up to it, and Delete or Backspace takes out the whole rows or
+  columns selected, several at once; the menu then says how many (Delete 3
+  Rows). Before, the keys only emptied the cells and the source was the quick
+  way to remove a row.
+- **Down past a quote, list, table or code block at the end of a note makes a
+  line below it**, and Up past one at the start makes a line above. A note
+  that began with a quote had no line above it the keyboard could reach. The
+  line is empty until typed in, and an empty last line is not saved.
+- **A changed table is marked by its rows.** In a folder under git, the bar
+  beside a table that differs from the last commit stands beside the rows
+  that changed or are new, with a mark where rows were deleted, instead of
+  running the height of the table. A table whose columns or alignment changed
+  is still marked whole.
+
+- **Changes, in the rail.** A toggle beside search, with a count, opens the
+  notes that differ from the last commit as one short tree: changed, new and
+  deleted, each with its own mark, and a chain of folders holding only the
+  next drawn as one row. A click opens the note; a deleted one is listed,
+  struck through. A right click gives a note or folder the same menu as in
+  the file tree (open, rename, duplicate, move, reveal, copy path, trash); a
+  rename or new folder is typed on the row in the file tree, and the rail
+  comes back to Changes after. It is a bundled plugin, on by default, and can
+  be switched off in the Plugin Center.
+- **Plugins can put a page in the rail.** A trusted plugin may register a
+  page with a toggle in the rail's head, and read the folder's git status if
+  its manifest declares `git.read`. The page lives while the plugin is
+  switched on, with or without a note open. Changes is the first; the slots
+  and what they offer are described in `docs/architecture/plugin-slots.md`.
+- **A vault that keeps memory learns what you read.** In a folder with a
+  `.noto/` folder, each note brought to the front is one line in
+  `.noto/events/`, with the note you followed a link from. The vault tools
+  read it to tell which notes are warm and which are thought of together. A
+  folder without `.noto/` is never written to.
 - **Write a sidenote in the margin.** Select words, then Add Sidenote from
   the right-click menu or Cmd-Alt-S: a card opens in the right margin, beside
   the line, with the keys in it. Enter saves the note and Escape leaves
@@ -21,20 +211,179 @@ How releases are made, and what each channel receives, is in
   carry a dotted rule, and pointing at the words or the note lights both.
   Remove Sidenote in the right-click menu takes a note out and keeps its
   words; so does Backspace after a note, which selects it first.
+- **A code block that names no language is read as one.** Noto reads the
+  code for the marks a language leaves (a `package` line, a `def` ending in a
+  colon, a command at the start of a line) and colours the block as that
+  language when one stands clearly above the rest; code it cannot place stays
+  plain. The guess is shown in the block's corner with an `auto` tag, and the
+  file is not changed until you choose.
 - **Plugins can add to the editor's right-click menu.** An editor extension
   may offer lines for the point clicked, each running one of its commands;
   `docs/plugins.md` says how.
 
 ### Changed
 
+- **Settings has room to breathe.** The groups are lifted cards on a
+  slightly darker floor, the list of panes is a panel set in from the
+  window's edges, Done has air around it, and everything in a pane lines up
+  on one edge. Each pane opens on its own mark in a ring of soft light.
+- **Quick Open fits a laptop's window.** Its margin grows with the window
+  instead of a fixed 24 px, it sits a tenth of the way down, the preview is
+  a shade under the list, and the list's scroll bar shows only under the
+  pointer.
+- **Note Info's ground runs to the top of the window,** as the rail's does,
+  so no seam crosses the pane under the title bar.
+- **Note Info's Related tab reads in plain words.** Each note says in a few
+  words why it is offered (read together, linked from, a title like this
+  one) instead of the index's own phrases cut off mid-word, a small meter
+  shows how warm it is, and a group past eight notes has Show More. History
+  draws its commits on a line, and Properties groups its facts.
+- **Settings → Memory uses the same cards as every other pane.** Its agents
+  are one card with a mark for each and Add an Agent as the last row; the
+  Claude Code hook is a row with Copy Hook.
+- **A long note's timeline draws its last year.** When a note's commits or
+  reads span more than a year, the timeline draws the last twelve months to
+  scale and everything before as one muted mark at the left, said as how
+  many; the axis's left end switches to all of its time.
+- **What an agent does is recorded under its name.** The vault's command
+  line records under the agent that runs it (Claude Code and Codex say so in
+  their environment, or `NOTO_ACTOR`), a server started as the owner under
+  the name its client gives, and measuring recall records nothing, so none
+  of it is counted as your reading.
+- **The read record is shorter.** One recall is one line with all the notes
+  it returned, and a note opened again with nothing between, within a
+  minute, is counted on one line instead of written again. On a real folder
+  that is 244 lines where there were 908.
+- **A change on disk reads again only the folders it touched**, not every
+  folder ever opened in the tree.
+- **Tables ask for less attention.** The table's tools stand in the page's
+  right margin beside the table, and only while the caret is in it and the
+  pointer is on it; they used to sit over the line above the table the whole
+  time a cell was being typed in. Only the row and the column under the
+  pointer show a handle, rather than every one at once, and each handle is
+  easier to grab. Every tool is in the Table menu as well.
+- **A caret you can find.** Noto draws the caret itself: two pixels in the
+  accent where the browser would put its own one-pixel line. It stays solid
+  while you type or move and breathes softly once it sits still, rather than
+  blinking hard on and off. A short move along a line glides and a jump to
+  another line does not, and a click or the note taking the keys shows a
+  brief halo where it landed. Reduce Motion keeps it solid and still. It
+  steps aside for an input method composing, a selection, a field inside the
+  note and the gap cursor.
+- **A click in the page around the text puts the caret in the note**, at the
+  nearest place: the margins, above the first block, below the last. It used
+  to take the keys away from the note, which in a new, empty note looked as
+  if the note would not take any. Naming a new note hands the keys to that
+  note even when its editor is still being built.
+- **Rich text pasted from ChatGPT, GitHub, a documentation site or Google
+  Docs is tidied into what a note holds.** A code block keeps its code and
+  its language, read from the page's class, GitHub's wrapper or ChatGPT's
+  header, and loses the header and the Copy button. A KaTeX formula comes in
+  as its TeX instead of its drawing twice over. A table cell that held
+  paragraphs, breaks or a list is joined onto one line, since a markdown
+  cell is one. Bold, italic and code set by a style, as Google Docs writes
+  them, become marks, and non-breaking and zero-width spaces become spaces
+  or nothing. When the tidy took anything out, turned a formula round or
+  joined a cell, the status line says what, with Paste as text to put the
+  plain text in instead, in one undo step. A code block copied within Noto
+  keeps its language too; it used to lose it.
+- **Copying inside one block copies what was selected, and nothing around
+  it.** Ten words out of a table cell came out as a one-cell table with a
+  header rule, part of a list item with its bullet, and the command inside
+  backticks with the backticks. Now the plain text is the words selected:
+  a mark the selection holds whole, with more beside it, keeps its markdown
+  (`the **bold** word`), and one the selection is inside or cuts does not, so
+  the text in backticks copies as the bare command. Part of a code block
+  copies as the code, without its fence, also when the drag runs onto the
+  very start of the next line. Rich-text targets get the words with their formatting
+  and no table, list or heading around them. A selection across blocks
+  copies as markdown, as before.
+- **A code block's language is chosen from a list.** The box in the corner,
+  with the system's grey completion list under it, is now the language's name
+  and a chevron; a press opens a list with a search field. It filters by a
+  language's name, its fence name or the other names people type (`py`,
+  `sh`, `yml`), marks the letters that matched, and takes the arrows, Enter,
+  Tab and Escape. With nothing typed it starts with the guess, so Enter keeps
+  it, and with Detect automatically when the block names a language. What you
+  typed is what the fence says: `ts` chosen is `ts`. A name the list does not
+  know can still be used as written.
+- **Select All inside a code block selects its code first**, and the whole
+  note on the next press, as Typora does.
 - **A sidenote is edited where it is drawn.** With the caret in a note, the
   note stays in the margin and its tags stay hidden; they used to appear and
   pull the note back into the paragraph. Source Code Mode shows the tags.
   Cmd-Alt-S opens the card for the selected words instead of turning them
   into a note's text.
 
+### Removed
+
+- **Dragging a column's edge to set its width.** Markdown has no way to keep
+  a column's width, so the width was lost on save, and the drag rewrote the
+  table's rows behind the editor's back. Columns size to their text.
+
 ### Fixed
 
+- **The filename is centred over the page with Note Info open.** It was
+  centred over everything right of the rail, so it sat off to the right of
+  the text it names. It now moves with the page when Note Info opens.
+- **Save pressed while a save is landing is no longer ignored.** It waits
+  for that save and then writes what is on screen, so the note no longer
+  stays marked unsaved with the last words unwritten.
+- **The timeline's marks sit on its line**, rather than a little below it.
+- **No speck under the rail's tabs with a page in front.** With Changes (or
+  any page) showing, the tab underline was scaled to nothing but still left
+  a faint mark at the rail's left edge on a fine screen; it now fades out.
+- **The rail no longer lies over the page while a window grows.** With a
+  wide rail, widening the window raised the rail's limit and the rail took
+  its new width at once while its column eased after it, so for a moment it
+  covered the start of the page. A change of window width now moves both at
+  once, as dragging the rail's edge does.
+- **A quote written on a list item's own line is a quote.** `- > a` showed
+  as a list item reading "> a", and so did a heading, a code fence or a
+  nested list started on the marker's line (`- # h`, `- - a`). They are now
+  the blocks CommonMark makes of them, and are written back as they were.
+- **Changes lists the notes of a folder opened through a link.** Git names
+  the notes from where the folder really is, and the page looked for them
+  under the name it was opened by, so it said nothing had changed while its
+  toggle counted them. On Windows every folder under a short name was
+  affected, the temporary folder among them.
+- **A selection made right after clicking into a note keeps its last
+  letter.** 20 ms after the editor takes the focus it used to put back the
+  selection it last knew, to undo where the browser drops the caret; on a
+  busy machine that came after a Shift and arrow pressed in the meantime and
+  undid it. The editor engine (`prosemirror-view` 1.42.9) now leaves a
+  selection that has moved since the focus.
+- **A key pressed straight after a click or a caret move acts where the caret
+  is now.** The browser reports a move a moment after it happens, and a key
+  that came first acted on the old place: Enter right after Command-Down put
+  its lines at the start of the note. A keyboard macro or a script would hit
+  it; so did the tests on a busy machine.
+- **Moving a row or column by its handle works more than once.** The
+  handles went away with the first move, with the caret moving between cells
+  and with every key typed, and came back only when the pointer left the
+  table and returned.
+- **Undo works in Source Code Mode, and leaving it shows what it says.**
+  Cmd+Z there undid a change in the hidden rendered note instead of the
+  text, so the text and the note drifted apart and leaving showed the note's
+  version. Undo and Redo now step through the text, a typed run at a time,
+  and leaving always hands the note what the text says. A save no longer
+  starts the view over, so keys typed just after it are kept.
+- **Undo in the find bar and other text boxes undoes what was typed there**,
+  not the last change to the note.
+- **The page follows the rail's edge while you drag it.** Only the rail grew
+  until the pointer was let go, so mid-drag it spilled over a page that had
+  not moved, and the page's line marks and highlights showed through it in a
+  band. The page and the title bar now move with the edge, a frame at a time.
+- **Input methods have a caret while they compose.** The drawn caret steps
+  aside then, and the browser's own was hidden too, so Chinese and Japanese
+  input showed none until the text was committed. A click that puts the caret
+  in the note no longer shows it for a moment at the old place first.
+- **Paste as text acts only on the note it was offered for.** The button is
+  dropped when another note or Source Code Mode comes to the front, and a
+  paste that lost any words, in navigation, hidden text or a long button,
+  always says so. Code keeps its non-breaking and zero-width spaces.
+- **A press in the page around the text can drag to select**, as it can
+  inside the text.
 - **Undo in a field inside a note undoes what was typed there.** In a code
   block's language field or a sidenote's card, Edit > Undo undid the last
   change to the note behind it, and the Format menu's commands reached the

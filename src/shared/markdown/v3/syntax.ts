@@ -15,6 +15,7 @@ import { gfmStrikethroughCjkFriendly } from 'micromark-extension-cjk-friendly-gf
 import { cjkFriendlyToMarkdown } from 'mdast-util-to-markdown-cjk-friendly';
 import { gfmFromMarkdown, gfmToMarkdown } from 'mdast-util-gfm';
 import { math } from 'micromark-extension-math';
+import { mathTextPandoc } from './math-text-pandoc';
 import { mathFromMarkdown, mathToMarkdown } from 'mdast-util-math';
 import { frontmatter } from 'micromark-extension-frontmatter';
 import { frontmatterFromMarkdown, frontmatterToMarkdown } from 'mdast-util-frontmatter';
@@ -68,7 +69,11 @@ const micromarkExtensions = [
    * come after `gfm()`; the single tilde stays Typora's subscript.
    */
   gfmStrikethroughCjkFriendly({ singleTilde: false }),
-  math({ singleDollarTextMath: true }),
+  /*
+   * Display math as micromark has it; inline math with Pandoc's dollar rule,
+   * so `$8,000 - $50,000` is prices and `$x$` is math (`math-text-pandoc.ts`).
+   */
+  { ...math({ singleDollarTextMath: true }), text: { [36]: mathTextPandoc } },
   frontmatterSyntax,
 ];
 
@@ -244,6 +249,32 @@ function dollarAlwaysEscaped(extension: ToMarkdownOptions): ToMarkdownOptions {
       return always;
     }),
   };
+}
+
+/**
+ * A formula written so that it reads back as the formula.
+ *
+ * Under Pandoc's dollar rule (`math-text-pandoc.ts`) a single-dollar span
+ * cannot begin or end with a space, nor be followed by a digit. The editor
+ * can still hold such a formula: Inline Math on a selection ending in a
+ * space, a space typed at a formula's end, a digit typed after one. Written
+ * as `$x $` or `$x$5` it came back as text. Those are written with two
+ * dollars, which the rule leaves as micromark reads them: `$$x $$`, `$$x$$5`.
+ */
+function inlineMathThatReadsBack(extension: ToMarkdownOptions): ToMarkdownOptions {
+  const write = extension.handlers?.inlineMath;
+  if (typeof write !== 'function') return extension;
+  const blank = (ch: string | undefined) => ch === undefined || ch === ' ' || ch === '\t' || ch === '\n' || ch === '\r';
+  const handle: Handle = (node, parent, state, info) => {
+    const out = write(node, parent, state, info);
+    if (out.length < 2 || out[1] === '$') return out;
+    const inner = out.slice(1, -1);
+    if (inner.length > 0 && !blank(inner[0]) && !blank(inner[inner.length - 1]) && !/^[0-9]/.test(info.after)) return out;
+    return `$$${inner}$$`;
+  };
+  const { peek } = write as { peek?: Handle };
+  const inlineMath = peek ? Object.assign(handle, { peek }) : handle;
+  return { ...extension, handlers: { ...extension.handlers, inlineMath } };
 }
 
 /**
@@ -941,7 +972,7 @@ const serializerOptions: ToMarkdownOptions = {
     // CommonMark's own flanking rules and, believing the run cannot close,
     // escapes the Chinese character after it into a numeric reference.
     nestedEmphasisAlternates(cjkFriendlyToMarkdown()),
-    tablesAsTheVaultWritesThem(strikethroughFlanks(tildeOnlyInPairs(gfmToMarkdown({ tablePipeAlign: false })))), dollarAlwaysEscaped(mathToMarkdown()), frontmatterToMarkdown(), characterReferenceVerbatim, verbatimRunsInText, listMarkerFromNode, bareAutolink, hardBreakAsTwoSpaces],
+    tablesAsTheVaultWritesThem(strikethroughFlanks(tildeOnlyInPairs(gfmToMarkdown({ tablePipeAlign: false })))), dollarAlwaysEscaped(inlineMathThatReadsBack(mathToMarkdown())), frontmatterToMarkdown(), characterReferenceVerbatim, verbatimRunsInText, listMarkerFromNode, bareAutolink, hardBreakAsTwoSpaces],
 };
 
 /**
@@ -961,13 +992,63 @@ export function parseMarkdown(text: string): Root {
  * Only used for blocks the user actually edited. Untouched blocks are sliced
  * from the original source instead, which is what keeps saves byte exact.
  */
-export function renderMarkdown(node: Nodes): string {
+export function renderMarkdown(node: Nodes, options: RenderOptions = {}): string {
   markTextBesideStarRuns(node);
   try {
-    return toMarkdown(node, serializerOptions);
+    const markdown = toMarkdown(node, serializerOptions);
+    return options.keepDollarEscapes ? markdown : withoutNeedlessDollarEscapes(markdown);
   } finally {
     textBesideStarRuns.clear();
   }
+}
+
+export interface RenderOptions {
+  /**
+   * Escape every dollar in text, as the serializer does on its own. Set for
+   * a block whose source already escaped one, so a note written for an
+   * editor that wants `\\$` keeps the author's style when it is edited.
+   */
+  readonly keepDollarEscapes?: boolean;
+}
+
+/** At most this many escaped dollars are tried per block, so a table of prices stays cheap. */
+const DOLLAR_ESCAPES_TRIED = 64;
+
+/**
+ * Drop each `\$` the text reads the same without.
+ *
+ * The serializer escapes every dollar in text, because under micromark's rule
+ * any `$` could open math. Under Pandoc's rule (`math-text-pandoc.ts`) most
+ * prices cannot, and an edited line of them was saved as `\$8,000 - \$50,000`
+ * where the author wrote `$8,000 - $50,000`. Which dollars are safe depends on
+ * what comes after them in the block, so each escape is tried: it goes when
+ * the block parses to the same tree without it, and stays otherwise.
+ */
+function withoutNeedlessDollarEscapes(markdown: string): string {
+  if (!markdown.includes('\\$')) return markdown;
+  const shape = (text: string) => JSON.stringify(parseMarkdown(text), (key, value) => (key === 'position' ? undefined : value));
+  const meant = shape(markdown);
+  // Most often every escape can go (a line or a table of prices): one parse says so.
+  const bare = markdown.replace(/\\\$/g, '$');
+  if (shape(bare) === meant) return bare;
+  // Otherwise one at a time; a block with more than the budget keeps them all,
+  // so the same text always saves the same way.
+  const escapes = markdown.split('\\$').length - 1;
+  if (escapes > DOLLAR_ESCAPES_TRIED) return markdown;
+  let out = markdown;
+  let from = 0;
+  for (;;) {
+    const at = out.indexOf('\\$', from);
+    if (at < 0) break;
+    const candidate = out.slice(0, at) + out.slice(at + 1);
+    if (shape(candidate) === meant) {
+      out = candidate;
+      from = at + 1;
+    } else {
+      from = at + 2;
+    }
+  }
+  return out;
 }
 
 /**

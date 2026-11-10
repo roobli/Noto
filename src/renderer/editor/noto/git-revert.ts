@@ -25,7 +25,7 @@ import { sameOrigin } from '../../../shared/markdown/v3/revision-patch';
 import { parseSingleBlock, splitBlocks } from '../../../shared/markdown/v3/blocks';
 import { toLf } from '../../../shared/markdown/v3/line-endings';
 import { blockFromSpan } from '../../../shared/markdown/v3/pm/from-mdast';
-import { blockMarkdownNow, pinSource, type PristineBlock } from './capture';
+import { blockMarkdownNow, isUnwritableBlock, pinSource, type PristineBlock } from './capture';
 import { gitDeletedHeadsBefore, gitEntryAt, type GitRevertTarget } from './git-gutter';
 
 export type { GitRevertTarget };
@@ -103,9 +103,15 @@ interface RevertPlan {
 function planRevert(state: EditorState, target: GitRevertTarget, context: GitRevertContext): RevertPlan | null {
   const doc = state.doc;
   const count = doc.childCount;
-  const around = (index: number): string | null => index >= 0 && index < count
-    ? blockMarkdownNow(doc.child(index), context.origins[index] ?? null, context.pristine)
-    : null;
+  // The nearest written block that way: empty lines between blocks are not
+  // written, so the committed text has to read back beside the next real one.
+  const around = (index: number, step: -1 | 1): string | null => {
+    let at = index;
+    while (at >= 0 && at < count && isUnwritableBlock(doc.child(at))) at += step;
+    return at >= 0 && at < count
+      ? blockMarkdownNow(doc.child(at), context.origins[at] ?? null, context.pristine)
+      : null;
+  };
   const committed = (heads: readonly string[]): RevertPlan['nodes'] | null => {
     const nodes = [];
     for (const markdown of heads) {
@@ -116,7 +122,7 @@ function planRevert(state: EditorState, target: GitRevertTarget, context: GitRev
     return nodes;
   };
   const fits = (before: number, heads: readonly string[], after: number): boolean => {
-    const window = [around(before), ...heads, around(after)].filter((text): text is string => text !== null);
+    const window = [around(before, -1), ...heads, around(after, 1)].filter((text): text is string => text !== null);
     return readsBack(window);
   };
 

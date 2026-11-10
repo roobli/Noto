@@ -47,12 +47,15 @@ const appleNotarize = process.env.APPLE_API_KEY && process.env.APPLE_API_KEY_ID 
 
 const config: ForgeConfig = {
   packagerConfig: {
-    asar: { unpack: '**/.vite/build/fs-service.js' },
+    asar: { unpack: '**/.vite/build/{fs-service,vault-worker,noto-vault}.js' },
     extraResource: [
       path.resolve(__dirname, 'resources'),
       path.resolve(__dirname, 'node_modules/electron/dist/LICENSE'),
       path.resolve(__dirname, 'node_modules/electron/dist/LICENSES.chromium.html'),
     ],
+    // The N with the caret for its last stroke (`resources/icon/noto.svg`; `pnpm icons` draws the rest).
+    // No extension: the packager takes `.icns` on macOS and `.ico` on Windows.
+    icon: path.resolve(__dirname, 'resources/icon/noto'),
     executableName: process.platform === 'linux' ? 'noto' : 'Noto',
     appBundleId: 'dev.lr00rl.noto',
     appCategoryType: 'public.app-category.productivity',
@@ -92,6 +95,7 @@ const config: ForgeConfig = {
     new MakerSquirrel({
       name: 'Noto',
       setupExe: 'NotoSetup.exe',
+      setupIcon: path.resolve(__dirname, 'resources/icon/noto.ico'),
       certificateFile: process.env.WINDOWS_CERTIFICATE_FILE,
       certificatePassword: process.env.WINDOWS_CERTIFICATE_PASSWORD,
     }, ['win32']),
@@ -101,6 +105,7 @@ const config: ForgeConfig = {
         name: 'noto',
         productName: 'Noto',
         genericName: 'Markdown Editor',
+        icon: path.resolve(__dirname, 'resources/icon/noto.png'),
         categories: ['Office', 'Utility'],
         mimeType: ['text/markdown'],
       },
@@ -110,6 +115,7 @@ const config: ForgeConfig = {
         name: 'noto',
         productName: 'Noto',
         genericName: 'Markdown Editor',
+        icon: path.resolve(__dirname, 'resources/icon/noto.png'),
         categories: ['Office', 'Utility'],
         mimeType: ['text/markdown'],
       },
@@ -145,6 +151,8 @@ const config: ForgeConfig = {
         { entry: 'src/preload/preload.ts', config: 'vite.preload.config.mts', target: 'preload' },
         { entry: 'src/preload/plugin-preload.ts', config: 'vite.plugin-preload.config.mts', target: 'preload' },
         { entry: 'src/service/fs-service.ts', config: 'vite.service.config.mts', target: 'main' },
+        { entry: 'src/vault-worker/vault-worker.ts', config: 'vite.vault.config.mts', target: 'main' },
+        { entry: 'src/vault-worker/vault-cli.ts', config: 'vite.vault-cli.config.mts', target: 'main' },
       ],
       renderer: [
         { name: 'main_window', config: 'vite.renderer.config.mts' },

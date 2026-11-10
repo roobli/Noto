@@ -90,6 +90,37 @@ test.describe('find and replace', () => {
     }
   });
 
+  // The bar keeps the keys, and ProseMirror scrolls to a selection only when
+  // the browser's selection is in the editor: Enter, Next and Previous moved
+  // the count and left the page where it was. Typing fast also lost the last
+  // letter, when an echo of an older search put the field back.
+  test('brings each match into view as it is found and stepped to, and keeps every letter typed', async () => {
+    const body = Array.from({ length: 300 }, (_, index) => (index === 150 || index === 250 ? `Paragraph ${index} holds the needle.` : `Paragraph ${index} is plain.`));
+    const { app, page } = await launch('find-scroll', `# Long\n\n${body.join('\n\n')}\n`);
+    try {
+      const inView = (text: string) => page.evaluate((wanted) => {
+        const canvas = document.getElementById('document-canvas')!.getBoundingClientRect();
+        const paragraph = [...document.querySelectorAll('.canvas-slot:not([hidden]) .ProseMirror p')].find((element) => element.textContent === wanted);
+        if (!paragraph) return false;
+        const box = paragraph.getBoundingClientRect();
+        return box.top >= canvas.top && box.bottom <= canvas.bottom;
+      }, text);
+      await invokeMenu(app, 'find');
+      await page.getByTestId('find-input').pressSequentially('needle');
+      await expect(page.getByTestId('find-input')).toHaveValue('needle');
+      await expect(page.getByTestId('find-status')).toHaveText('1 of 2');
+      await expect.poll(() => inView('Paragraph 150 holds the needle.')).toBe(true);
+      await page.keyboard.press('Enter');
+      await expect(page.getByTestId('find-status')).toHaveText('2 of 2');
+      await expect.poll(() => inView('Paragraph 250 holds the needle.')).toBe(true);
+      await page.getByTestId('find-previous').click();
+      await expect.poll(() => inView('Paragraph 150 holds the needle.')).toBe(true);
+      await expect(page.getByTestId('find-input')).toHaveValue('needle');
+    } finally {
+      await app.close();
+    }
+  });
+
   test('honours match case', async () => {
     const { app, page } = await launch('case');
     try {

@@ -81,12 +81,14 @@ export function fuzzyScore(text: string, query: string): number {
   return score;
 }
 
-/** Which characters of `text` the match consumed, for highlighting. */
-export function matchPositions(text: string, query: string): number[] | null {
-  const lowerText = text.toLowerCase();
-  const lowerQuery = query.toLowerCase().trim();
-  if (lowerQuery.length === 0) return [];
+/**
+ * The words of a query. Quick open matches each word on its own and wants all
+ * of them, the way fzf does, so `docker es` finds `Docker/deploy_es.md`: as
+ * one subsequence the space had to be in the name too, and nothing matched.
+ */
+export const queryTokens = (query: string): string[] => query.trim().split(/\s+/).filter((token) => token.length > 0);
 
+function subsequence(lowerText: string, lowerQuery: string): number[] | null {
   const positions: number[] = [];
   let queryIndex = 0;
   for (let index = 0; index < lowerText.length && queryIndex < lowerQuery.length; index += 1) {
@@ -99,6 +101,40 @@ export function matchPositions(text: string, query: string): number[] | null {
 }
 
 /**
+ * Where a word sits whole in the text, preferring a start of a word, so the
+ * highlight shows `es` in `docker_es` rather than an `e` from one word and an
+ * `s` from the next.
+ */
+function occurrence(lowerText: string, token: string): number[] | null {
+  let first = -1;
+  for (let at = lowerText.indexOf(token); at >= 0; at = lowerText.indexOf(token, at + 1)) {
+    if (first < 0) first = at;
+    if (at === 0 || /[\\/\-_.\s]/.test(lowerText[at - 1])) { first = at; break; }
+  }
+  return first < 0 ? null : Array.from(token, (_, offset) => first + offset);
+}
+
+/**
+ * Which characters of `text` the match consumed, for highlighting. With
+ * several words, each word's own characters, so a name shows the words it
+ * carries even when another word matched in the path instead.
+ */
+export function matchPositions(text: string, query: string): number[] | null {
+  const lowerText = text.toLowerCase();
+  const tokens = queryTokens(query.toLowerCase());
+  if (tokens.length === 0) return [];
+  const all = new Set<number>();
+  let any = false;
+  for (const token of tokens) {
+    const positions = occurrence(lowerText, token) ?? subsequence(lowerText, token);
+    if (positions === null) continue;
+    any = true;
+    for (const position of positions) all.add(position);
+  }
+  return any ? [...all].sort((a, b) => a - b) : null;
+}
+
+/**
  * The best a candidate scores across the keys it offers.
  *
  * The name is worth more than the path, because people search for what a note
@@ -106,10 +142,23 @@ export function matchPositions(text: string, query: string): number[] | null {
  * says otherwise about itself, and flips the weighting.
  */
 export function scoreCandidate(keys: ScoreKeys, query: string, options: ScoreOptions): number {
-  const name = fuzzyScore(keys.nameKey, query) + (options.pathQuery ? 6 : 25);
-  const path = fuzzyScore(keys.pathKey, query) + (options.pathQuery ? 22 : 8);
-  const best = Math.max(name, path);
-  return best === NO_MATCH ? NO_MATCH : best + options.frecencyBoost;
+  const tokens = queryTokens(query);
+  if (tokens.length <= 1) return scoreToken(keys, query.trim(), options) + options.frecencyBoost;
+  // Every word must match the name or the path; each is scored where it fits
+  // best, so a folder word and a name word can share one note.
+  let total = 0;
+  for (const token of tokens) {
+    const best = scoreToken(keys, token, options);
+    if (best === NO_MATCH) return NO_MATCH;
+    total += best;
+  }
+  return total / tokens.length + options.frecencyBoost;
+}
+
+function scoreToken(keys: ScoreKeys, token: string, options: ScoreOptions): number {
+  const name = fuzzyScore(keys.nameKey, token) + (options.pathQuery ? 6 : 25);
+  const path = fuzzyScore(keys.pathKey, token) + (options.pathQuery ? 22 : 8);
+  return Math.max(name, path);
 }
 
 /** A query is about location when it names one. */

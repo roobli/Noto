@@ -98,4 +98,37 @@ test.describe('what copying puts on the clipboard', () => {
       await app.close();
     }
   });
+
+  test('tidies a ChatGPT answer as it is pasted, says so, and gives the plain text on request', async () => {
+    const { app, page } = await launch('tidy');
+    try {
+      const last = page.locator('.ProseMirror > p').last();
+      await placeCaret(page, last);
+      await page.keyboard.press(process.platform === 'darwin' ? 'Meta+ArrowRight' : 'End');
+      await page.keyboard.press('Enter');
+      const html = '<p>Run this:</p>'
+        + '<pre class="overflow-visible"><div class="contain-inline-size"><div class="flex">bash</div>'
+        + '<div class="sticky"><button><svg><path d="M0"/></svg>Copy code</button></div></div>'
+        + '<div class="overflow-y-auto"><code class="whitespace-pre! language-bash"><span class="hljs-built_in">ls</span> -la\n</code></div></pre>'
+        + '<table><thead><tr><th>Item</th><th>Notes</th></tr></thead><tbody>'
+        + '<tr><td>A</td><td><p>first line</p><p>second line</p></td></tr></tbody></table>';
+      await paste(page, html, 'Run this:\nbash\nCopy code\nls -la\nItem Notes\nA first line second line');
+
+      // The code and its language, no button text; the table whole, its cell on one line.
+      await expect(page.locator('.ProseMirror pre')).toHaveCount(1);
+      await expect(page.locator('.ProseMirror pre')).toHaveAttribute('data-lang', 'bash');
+      await expect(page.locator('.ProseMirror')).not.toContainText('Copy code');
+      await expect(page.locator('.ProseMirror td').nth(1)).toHaveText('first line second line');
+
+      // Told what was changed, with the plain text a click away.
+      await expect(page.getByTestId('status-notice')).toHaveText(
+        'Pasted and tidied: took out "Copy code"; joined the lines of a table cell.');
+      await page.getByTestId('status-notice-action').click();
+      await expect(page.locator('.ProseMirror pre')).toHaveCount(0);
+      await expect(page.locator('.ProseMirror table')).toHaveCount(0);
+      await expect(page.locator('.ProseMirror')).toContainText('Copy code');
+    } finally {
+      await app.close();
+    }
+  });
 });

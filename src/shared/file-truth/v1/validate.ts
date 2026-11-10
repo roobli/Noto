@@ -19,6 +19,7 @@ import type {
 } from './contracts';
 import type { NotoDocumentWire, NotoRevisionPatch } from '../../markdown/v3/contracts';
 import { MAX_TRANSACTION_UNITS } from '../../markdown/v3/revision-patch';
+import { MAX_BLANK_LINES } from '../../markdown/v3/blank-lines';
 
 const requestId = /^[A-Za-z0-9._:-]{1,96}$/;
 const hash = /^[a-f0-9]{64}$/;
@@ -189,7 +190,10 @@ function isTransaction(value: unknown): boolean {
   if (value.mode === 'blocks') return exact(value, ['version', 'mode', 'documentId', 'revisionId', 'units', 'envelope'])
     && isTargetEnvelope(value.envelope)
     && Array.isArray(value.units) && value.units.length <= MAX_TRANSACTION_UNITS
-    && value.units.every((unit) => isKeptRun(unit) || (record(unit) && exact(unit, ['origin', 'markdown'])
+    && value.units.every((unit) => isKeptRun(unit) || (record(unit)
+      && (exact(unit, ['origin', 'markdown']) || (exact(unit, ['origin', 'markdown', 'blankLinesBefore'])
+        && typeof unit.blankLinesBefore === 'number' && Number.isSafeInteger(unit.blankLinesBefore)
+        && unit.blankLinesBefore >= 1 && unit.blankLinesBefore <= MAX_BLANK_LINES))
       && (unit.origin === null || isOrigin(unit.origin))
       // Null means the block is unchanged, so it carries no text. A unit with
       // no origin has nothing to be unchanged from and must carry its markdown.

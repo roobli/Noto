@@ -10,6 +10,8 @@
 import {
   clampSetting,
   DEFAULT_SETTINGS,
+  SHEET_WIDTHS,
+  type SheetWidthV1,
   NOTO_SETTINGS_VERSION,
   SETTING_RANGES,
   WIDTH_MODES,
@@ -33,6 +35,8 @@ import {
   type SystemFontsReplyV1,
   type ShortcutsReplyV1,
   type TreeSortV1,
+  TREE_HELD,
+  type TreeHeldV1,
   type RemoteStatusReplyV1,
   UPDATE_CHANNEL_SETTINGS,
   type UpdateChannelSettingV1,
@@ -106,6 +110,10 @@ const record = (value: unknown): value is Record<string, unknown> =>
 
 const SETTING_KEYS = Object.keys(DEFAULT_SETTINGS) as (keyof NotoSettingsV1)[];
 
+/** A tab of the info pane, as `pluginId:tabId`, or empty for whichever comes first. */
+const isInfoTab = (value: unknown): value is string =>
+  typeof value === 'string' && (value === '' || /^[A-Za-z0-9._-]{1,128}:[A-Za-z0-9._-]{1,64}$/.test(value));
+
 /** One of the three substitutions, falling back to the switch they used to share. */
 function substitution(value: Record<string, unknown>, key: 'smartQuotes' | 'smartDashes' | 'smartEllipsis'): boolean {
   if (typeof value[key] === 'boolean') return value[key];
@@ -127,7 +135,13 @@ export function coerceSettings(value: unknown): NotoSettingsV1 {
     treeSort: TREE_SORTS.includes(value.treeSort as TreeSortV1)
       ? value.treeSort as TreeSortV1
       : DEFAULT_SETTINGS.treeSort,
-    quickOpenWidth: value.quickOpenWidth === 'wide' ? 'wide' : DEFAULT_SETTINGS.quickOpenWidth,
+    treeHeld: TREE_HELD.includes(value.treeHeld as TreeHeldV1)
+      ? value.treeHeld as TreeHeldV1
+      : DEFAULT_SETTINGS.treeHeld,
+    treeNoteExtensions: typeof value.treeNoteExtensions === 'boolean'
+      ? value.treeNoteExtensions
+      : DEFAULT_SETTINGS.treeNoteExtensions,
+    sheetWidth: SHEET_WIDTHS.includes(value.sheetWidth as SheetWidthV1) ? value.sheetWidth as SheetWidthV1 : DEFAULT_SETTINGS.sheetWidth,
     remoteControl: typeof value.remoteControl === 'boolean'
       ? value.remoteControl
       : DEFAULT_SETTINGS.remoteControl,
@@ -159,6 +173,7 @@ export function coerceSettings(value: unknown): NotoSettingsV1 {
     codeLineNumbers: typeof value.codeLineNumbers === 'boolean'
       ? value.codeLineNumbers
       : DEFAULT_SETTINGS.codeLineNumbers,
+    codeWrap: typeof value.codeWrap === 'boolean' ? value.codeWrap : DEFAULT_SETTINGS.codeWrap,
     codeIndentGuides: typeof value.codeIndentGuides === 'boolean'
       ? value.codeIndentGuides
       : DEFAULT_SETTINGS.codeIndentGuides,
@@ -177,6 +192,7 @@ export function coerceSettings(value: unknown): NotoSettingsV1 {
       : DEFAULT_SETTINGS.todoCheckTime,
     focusMode: typeof value.focusMode === 'boolean' ? value.focusMode : DEFAULT_SETTINGS.focusMode,
     gitMarks: typeof value.gitMarks === 'boolean' ? value.gitMarks : DEFAULT_SETTINGS.gitMarks,
+    noteMarks: typeof value.noteMarks === 'boolean' ? value.noteMarks : DEFAULT_SETTINGS.noteMarks,
     typewriterMode: typeof value.typewriterMode === 'boolean'
       ? value.typewriterMode
       : DEFAULT_SETTINGS.typewriterMode,
@@ -184,6 +200,7 @@ export function coerceSettings(value: unknown): NotoSettingsV1 {
       ? value.sidebarOnLaunch
       : DEFAULT_SETTINGS.sidebarOnLaunch,
     railWidth: numeric(value, 'railWidth'),
+    infoWidth: numeric(value, 'infoWidth'),
     autoSave: typeof value.autoSave === 'boolean' ? value.autoSave : DEFAULT_SETTINGS.autoSave,
     autoSaveDelayMs: numeric(value, 'autoSaveDelayMs'),
     customCssPath: isCssPath(value.customCssPath)
@@ -210,6 +227,8 @@ export function coerceSettings(value: unknown): NotoSettingsV1 {
     railLinks: typeof value.railLinks === 'boolean'
       ? value.railLinks
       : DEFAULT_SETTINGS.railLinks,
+    infoOpen: typeof value.infoOpen === 'boolean' ? value.infoOpen : DEFAULT_SETTINGS.infoOpen,
+    infoTab: isInfoTab(value.infoTab) ? value.infoTab : DEFAULT_SETTINGS.infoTab,
     updateChannel: UPDATE_CHANNEL_SETTINGS.includes(value.updateChannel as UpdateChannelSettingV1)
       ? value.updateChannel as UpdateChannelSettingV1
       : DEFAULT_SETTINGS.updateChannel,
@@ -242,12 +261,14 @@ export function isSettingsWriteRequestV1(value: unknown): value is SettingsWrite
     if (key === 'theme') return themes.includes(patch.theme as NotoTheme);
     if (key === 'widthMode') return isWidthMode(patch.widthMode);
     if (key === 'diffLayout') return isDiffLayout(patch.diffLayout);
+    if (key === 'infoTab') return isInfoTab(patch.infoTab);
     if (key === 'disabledShortcuts') return isDisabledShortcuts(patch.disabledShortcuts);
     if (key === 'pluginMarketplace') return isMarketplaceRepo(patch.pluginMarketplace);
     if (key === 'proseFace') return PROSE_FACES.includes(patch.proseFace as ProseFaceV1);
     if (key === 'proseFontFamily') return isProseFontFamily(patch.proseFontFamily);
     if (key === 'treeSort') return TREE_SORTS.includes(patch.treeSort as TreeSortV1);
-    if (key === 'quickOpenWidth') return patch.quickOpenWidth === 'default' || patch.quickOpenWidth === 'wide';
+    if (key === 'treeHeld') return TREE_HELD.includes(patch.treeHeld as TreeHeldV1);
+    if (key === 'sheetWidth') return SHEET_WIDTHS.includes(patch.sheetWidth as SheetWidthV1);
     if (key === 'customCssPath') return isCssPath(patch.customCssPath);
     if (key === 'imageDestination') return IMAGE_DESTINATIONS.includes(patch.imageDestination as ImageDestinationV1);
     if (key === 'imageCustomFolder') return isImageFolder(patch.imageCustomFolder);
@@ -308,6 +329,7 @@ export function isSettingsReplyV1(value: unknown): value is SettingsReplyV1 {
     && isDisabledShortcuts(settings.disabledShortcuts)
     && isMarketplaceRepo(settings.pluginMarketplace)
     && typeof settings.codeLineNumbers === 'boolean'
+    && typeof settings.codeWrap === 'boolean'
     && typeof settings.codeIndentGuides === 'boolean'
     && typeof settings.codeTabMarkers === 'boolean'
     && typeof settings.timelines === 'boolean'
@@ -315,6 +337,10 @@ export function isSettingsReplyV1(value: unknown): value is SettingsReplyV1 {
     && typeof settings.sidenotes === 'boolean'
     && typeof settings.fileTags === 'boolean'
     && typeof settings.railLinks === 'boolean'
+    && TREE_HELD.includes(settings.treeHeld as TreeHeldV1)
+    && typeof settings.treeNoteExtensions === 'boolean'
+    && typeof settings.infoOpen === 'boolean'
+    && isInfoTab(settings.infoTab)
     && UPDATE_CHANNEL_SETTINGS.includes(settings.updateChannel as UpdateChannelSettingV1)
     && typeof settings.checkUpdatesOnLaunch === 'boolean'
     && typeof settings.autoDownloadUpdates === 'boolean'
@@ -322,6 +348,7 @@ export function isSettingsReplyV1(value: unknown): value is SettingsReplyV1 {
     && typeof settings.todoCheckTime === 'boolean'
     && typeof settings.focusMode === 'boolean'
     && typeof settings.gitMarks === 'boolean'
+    && typeof settings.noteMarks === 'boolean'
     && typeof settings.typewriterMode === 'boolean'
     && typeof settings.sidebarOnLaunch === 'boolean'
     && typeof settings.autoSave === 'boolean'

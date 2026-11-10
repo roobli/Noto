@@ -26,23 +26,32 @@ Commands live in the menu bar only. The palette, the context menu and the keymap
 | 4 | ```` ```js ```` then Return | No code block; the rule fired only on a space. `$$` then Return, the same | Blocks daily use | Closed 2026-10-27 |
 | 5 | Typing `[text](url)` | Stays text and saves escaped, `\[text]\(https\://…)`, while pasting the same text works | Blocks daily use | Closed 2026-10-27 for links; a typed inline tag (`<kbd>`) is still escaped |
 | 6 | Smart punctuation | Shipped on: `"--flag"` saved as `“—flag”` | Annoys daily | Closed 2026-10-27 for new installs; an existing settings file keeps its stored value |
-| 7 | Switching notes | A note opens at the previous note's scroll offset; Back does not restore yours | Annoys daily | Open: keep a scroll anchor (top block and offset) per document |
-| 8 | Cmd+/ (source mode) | Toggling there and back lands about 14,000 px away from where you were | Annoys daily | Open: map the caret across and restore it to the same viewport fraction |
-| 9 | Launch | Restores the folder but opens no note and keeps the rail hidden; after a folder opens, the empty page still says "Open a folder" | Annoys daily | Open: reopen the last note at its anchor; the empty state offers the folder's index note, recent notes and New Note |
-| 10 | Cmd+N | Focus stays outside the editor, and `Untitled.md` is written at the vault root at once | Annoys daily | Open: focus the editor, create the note in the current folder on the first keystroke |
-| 11 | Quick open | Any query with a space returns nothing (`docker es`) | Annoys daily | Open: split on whitespace, AND the tokens across name and path |
-| 12 | Dollar amounts | `$8,000 - $50,000` renders as math; 694 lines in 124 of the author's notes match | Annoys daily | Open: apply Pandoc's dollar rule on load and while typing, or make single-dollar math opt-in |
-| 13 | Typora's macOS keys | Shift+Cmd+O opens the outline, F8/F9 do nothing, Cmd+\ does nothing, Cmd+]/[ change the page width outside a list | Annoys daily | Open: adopt Typora's map for every shared command; move Wider/Narrower off the brackets |
-| 14 | Narrow window | The rail covers a third of the page and stays after a pick or Escape | Annoys daily | Open: close on pick and on Escape, dim the page behind it |
-| 15 | Command palette | Holds export, git and plugin commands only; "focus" finds nothing | Annoys daily | Open: one command registry feeding the menu, the palette (with keys) and the keymap |
-| 16 | Rename the open note | The title bar keeps the old name | Annoys daily | Open |
-| 17 | File tree | No keyboard model: arrows, Enter and F2 do nothing | Polish | Open |
-| 18 | Editor context menu | Clipboard items only | Polish | Open: build it from the command registry |
-| 19 | Tree, sideways swipe | Names slide under pinned icons and read garbled | Polish | Open |
+| 7 | Switching notes | A note opens at the previous note's scroll offset; Back does not restore yours | Annoys daily | Closed 2026-11-09: each note keeps the top block and offset at the top of the page, per open note and by path for later launches (`reading-anchors.ts`) |
+| 8 | Cmd+/ (source mode) | Toggling there and back lands about 14,000 px away from where you were | Annoys daily | Closed 2026-11-09: the place on the way into source mode is put back on the way out; a caret moved out of view is brought into it |
+| 9 | Launch | Restores the folder but opens no note and keeps the rail hidden; after a folder opens, the empty page still says "Open a folder" | Annoys daily | Closed 2026-11-09: a launch reopens the note in front at the last quit, at its place; an open folder with no note offers its index note, recent notes, New Note and Find a Note |
+| 10 | Cmd+N | Focus stays outside the editor, and `Untitled.md` is written at the vault root at once | Annoys daily | Closed before 2026-11-09 (new-note specs): the note is made beside the note in front, named on its row, then takes the keys |
+| 11 | Quick open | Any query with a space returns nothing (`docker es`) | Annoys daily | Closed 2026-11-09: each word matches the name or the path on its own |
+| 12 | Dollar amounts | `$8,000 - $50,000` renders as math; 694 lines in 124 of the author's notes match | Annoys daily | Closed 2026-11-09: Pandoc's dollar rule in both parsers and while typing; an edited line of prices saves without backslashes |
+| 13 | Typora's macOS keys | Shift+Cmd+O opens the outline, F8/F9 do nothing, Cmd+\ does nothing, Cmd+]/[ change the page width outside a list | Annoys daily | Closed 2026-11-09: F8, F9, ⌃⌘1 for the outline, ⇧⌘O for Quick Open on a Mac, ⌘\ for Clear Format; Wider and Narrower stay on the brackets, as in the author's own Typora plugin |
+| 14 | Narrow window | The rail covers a third of the page and stays after a pick or Escape | Annoys daily | Closed 2026-11-09: a pick in the tree or outline and Escape put the laid-over rail away; the page behind is dimmed |
+| 15 | Command palette | Holds export, git and plugin commands only; "focus" finds nothing | Annoys daily | Closed 2026-11-09: the palette lists every menu command with its keys and runs it through the menu |
+| 16 | Rename the open note | The title bar keeps the old name | Annoys daily | Closed before 2026-11-09; checked 2026-11-09 by renaming the open note with F2 |
+| 17 | File tree | No keyboard model: arrows, Enter and F2 do nothing | Polish | Closed 2026-11-09: a tree with one Tab stop; arrows, Home, End, F2 and typing a name |
+| 18 | Editor context menu | Clipboard items only | Polish | Closed 2026-11-09: Format, Paragraph and Insert submenus from the menu bar, Copy as Markdown over a selection |
+| 19 | Tree, sideways swipe | Names slide under pinned icons and read garbled | Polish | Fixed 2026-11-06: the rail no longer scrolls sideways; names are cut keeping their end and shown whole on a rest |
 | 20 | Paste HTML code | `language-*` is dropped from the fence | Polish | Open |
 | 21 | Cmd+Down in a 2.9 MB note | Stops at the end of the mounted range | Polish | Open |
 
 The rail and title bar fix of the same day (gap 16 in `typora-gap.md`) came from the author's own side-by-side capture, not from this audit.
+
+## What the trial week asked for (2026-11-09, 2026-11-10)
+
+Four things the author hit while writing, and the answer each got on `next_version/20261109_daily-use`:
+
+- Blank lines. Empty lines typed between two blocks used to collapse on save, and a file's extra blank lines drew as an ordinary break. A save now writes one blank line per empty line, and a file's extra blank lines open as empty lines the caret can enter; an untouched gap saves byte for byte. The first version drew the lines as a widget with plugin state for "the reader took this gap over"; independent review found three ways that lost lines (Enter at the start of the block below, Undo after a Backspace there, and a quadratic scan per Enter), so it was rebuilt with the file's blank lines as real empty paragraphs.
+- Code wrap. Long lines now wrap by default, as Typora does, each line number placed at its line's start. A block with a long line shows a Wrap button in its corner; View > Wrap Lines in Code Blocks flips the same setting for every block.
+- Table arrows. Up and down used to walk the cells by their number (Up went left), and at the note's edge a table grew an empty line. The arrows now move by column, walk a cell's text first, and make nothing past the table's edge; the gap cursor no longer exists inside tables, which is what grew a whole column when a letter was typed at a cell's inner edge.
+- The sheets. Quick Open, What Noto Can Do, Browse Tags and the command palette were four sizes at three heights; they now share one frame and one width, which Command-[ and Command-] step in any of them. A heading chosen from the outline (or a [TOC] block) glides to a tenth of the way down the page instead of landing wherever the page could fit it.
 
 ## What it could not test
 

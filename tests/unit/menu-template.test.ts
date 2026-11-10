@@ -126,7 +126,7 @@ describe('the menu and the renderer agree on commands', () => {
       'open-dialog', 'open-folder', 'refresh-folder', 'close-tab', 'import-document', 'print', 'paste-plain',
       'reopen-closed', 'theme-none',
       // A second chord for a command the menu already names once.
-      'quick-open-period',
+      'quick-open-period', 'quick-open-typora',
     ]);
     const sent = ids.filter((id) => !mainOnly.has(id));
     for (const id of sent) {
@@ -137,8 +137,9 @@ describe('the menu and the renderer agree on commands', () => {
   it('offers every command the contract defines', () => {
     const ids = new Set(menuCommandIds(template('darwin')));
     // Sent by main itself rather than offered: Close Tab's question sends
-    // `save-and-close` when the reader chooses Save.
-    const sentByMain = new Set(['save-and-close']);
+    // `save-and-close` when the reader chooses Save, and Get Info in the
+    // tree's menu sends `show-note-info` once the note is open.
+    const sentByMain = new Set(['save-and-close', 'show-note-info']);
     for (const command of known) {
       if (sentByMain.has(command)) continue;
       expect(ids.has(command)).toBe(true);

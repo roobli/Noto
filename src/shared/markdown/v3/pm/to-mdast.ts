@@ -411,7 +411,11 @@ function listItemToMdast(item: ProseNode) {
  * The trailing newline `mdast-util-to-markdown` appends is removed, because
  * Noto stores blocks without their separator and the serializer supplies gaps.
  */
-export function blockToMarkdown(node: ProseNode): string {
+/**
+ * `previous` is the block's markdown before it was edited, when it has one:
+ * its escaping style for dollars is kept (see `RenderOptions`).
+ */
+export function blockToMarkdown(node: ProseNode, previous?: string): string {
   // A block open in source mode already holds its own markdown. Round tripping
   // it through the serializer would reformat what the user is editing by hand.
   if (node.type.name === 'source_block') return textOf(node);
@@ -420,7 +424,7 @@ export function blockToMarkdown(node: ProseNode): string {
   if (node.type.name === 'code_block' && node.attrs.fenced === false) {
     return textOf(node).split('\n').map((line) => (line.length > 0 ? `    ${line}` : line)).join('\n');
   }
-  const markdown = renderMarkdown(blockToMdast(node)).replace(/\n+$/, '');
+  const markdown = renderMarkdown(blockToMdast(node), { keepDollarEscapes: typeof previous === 'string' && previous.includes('\\$') }).replace(/\n+$/, '');
   // Alignment is a pure transform of the finished text, so it needs no place in
   // the mdast conversion: the reader asked for this table's source to be lined
   // up, and this is the one funnel every block's markdown passes through.

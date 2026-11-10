@@ -19,13 +19,15 @@ import { triggerRange, wikiLinkText } from './wiki-trigger';
 import { droppedNote } from './dropped-note';
 import { tocBlockPlugin } from './toc-block';
 import { footnoteHoverPlugin } from './footnote-hover';
+import { closeNoteMarkCard, noteMarksPlugin, setNoteMarks, type NoteMarkView } from './note-marks-plugin';
 import { sliceFromText } from './paste-text';
 import { EditorState, Selection, type Plugin, type Transaction, TextSelection } from 'prosemirror-state';
 import { EditorView } from 'prosemirror-view';
 import { closeHistory, history, redo, undo } from 'prosemirror-history';
 import { dropCursor } from 'prosemirror-dropcursor';
-import { gapCursor } from 'prosemirror-gapcursor';
-import { columnResizing, tableEditing } from 'prosemirror-tables';
+import { notoGapCursor } from './gap-cursor';
+import { notoTableEditing } from './table-editing';
+import { tableContextItems, tableContextPress } from './table-context';
 import { Fragment, type Node as ProseNode } from 'prosemirror-model';
 import { notoSchema } from '../../../shared/markdown/v3/pm/schema';
 import { blockFromSpan, blocksFromSpans, docFromSpans } from '../../../shared/markdown/v3/pm/from-mdast';
@@ -58,10 +60,12 @@ import {
   sourceHasFinalNewline,
   sourceSettleKind,
 } from '../../source-mode-text';
+import { blankLinesIn, type GapLines } from '../../../shared/markdown/v3/blank-lines';
 import { blockMarkdownNow, captureMarkdown, captureStableWire, captureTransaction, effectiveOrigins, isUnwritableBlock, pinnedSource, type CaptureStats, type PristineBlock } from './capture';
 import type { NotoEditorPort } from './NotoEditorPort';
 import { createOriginPlugin, getBlockOrigins, rebaseOrigins, transactionKeepsTopLevelNodes } from './origin-plugin';
-import { gitGutterPlugin, gitTargetAtSelection, setGitBlocks, showCommittedAtSelection, type GitRevertTarget } from './git-gutter';
+import { caretCatchUp } from './caret-catch-up';
+import { committedTextAt, gitGutterPlugin, gitTargetAtSelection, setGitBlocks, showCommittedAtSelection, type GitRevertTarget } from './git-gutter';
 import { gitRevertKind, gitRevertTransaction, type GitRevertContext } from './git-revert';
 import { closeGitPopover } from './git-popover';
 import type { WorkspaceGitBlocksV1 } from '../../../shared/workspace/v1/contracts';
@@ -103,7 +107,9 @@ import { syntaxHighlightPlugin } from './highlight';
 import { wikiLinkPlugin } from './wiki-link-plugin';
 import { followLinkPlugin, linkEditorPlugin } from './link-plugin';
 import { DocumentCounter, type DocumentCount } from './word-count';
-import { sliceToMarkdown } from './clipboard';
+import { fenceCodeOnly, inlineCopySlice, inlineCopyText, sliceToMarkdown } from './clipboard';
+import { NO_TIDY, describeTidy, tidyIsWorthSaying, tidyPastedHtml, type PasteTidy } from './paste-clean';
+import { caretPlugin } from './caret-plugin';
 import { rootSpellCheck, SPELL_CHECK_RESCAN, spellCheckScopeKey, spellCheckScopePlugin } from './spell-check-scope';
 
 /** How long after the last keystroke the document is counted. */
@@ -146,6 +152,12 @@ export interface NotoEditorOptions extends Omit<InputRuleOptions, 'smartQuotes' 
   readonly onCountChanged?: (count: DocumentCount) => void;
   /** Cmd or Ctrl clicking a `[[wiki link]]`. Absent means links stay inert. */
   readonly onFollowWikiLink?: (target: string) => void;
+  /** An action was chosen on a plugin's mark (`setNoteMarks`), after any text it replaces was replaced. */
+  readonly onNoteMarkAction?: (key: string, action: string) => void;
+  /** History of This Passage was chosen: `text` is the passage as the last commit has it. Absent, it is not offered. */
+  readonly onPassageHistory?: (text: string) => void;
+  /** Whether the note's folder is in git, so a note with nothing changed still has a history to follow. */
+  readonly inGit?: () => boolean;
   /** Two brackets were typed, which is a reader asking which note they mean. */
   readonly onWikiTrigger?: () => void;
   /** Where relative images resolve from, and whether web images load. */
@@ -171,8 +183,18 @@ export interface InsertedImage {
   readonly alt: string;
 }
 
+/** Inputs that hold typed text, as opposed to a checkbox or a button. */
+const TEXT_INPUT_TYPES = new Set(['text', 'search', 'url', 'email', 'tel', 'password', 'number']);
+/** Commands that only move the selection, which a read-only note still takes. */
+const SELECTION_COMMANDS = new Set(['select-all', 'select-word', 'select-line', 'select-scope', 'jump-to-selection']);
+
+/** The editor's own context item for a passage's history; a command App answers. */
+export const PASSAGE_HISTORY = 'noto.passage-history';
+
 export class NotoEditor implements NotoEditorPort {
   private view: EditorView | null = null;
+  /** What tidying the rich text being pasted changed, read once by handlePaste. */
+  private pasteTidy: PasteTidy = NO_TIDY;
   private document: NotoDocumentWire;
   private substitutions = { quotes: false, dashes: false, ellipsis: false };
   private typewriter = false;
@@ -190,6 +212,8 @@ export class NotoEditor implements NotoEditorPort {
   private extensionPlugins: readonly Plugin[] = [];
   private readonly unsubscribeExtensions: () => void;
   private activeBlock = -1;
+  /** The top-level node and node count `activeBlock` was worked out at. */
+  private activeAt = { index: -1, count: -1 };
   /* Bumped by every change, so a picture that arrives after the document moved
      under it is put where the caret is now rather than at a stale offset. */
   private docVersion = 0;
@@ -248,6 +272,21 @@ export class NotoEditor implements NotoEditorPort {
   private acceptedNodes: ProseNode[] = [];
   private topLevelStable = false;
   /**
+   * Origins for the document as opened, one per top-level node. A file's
+   * extra blank lines open as empty paragraphs between its blocks, which have
+   * none, so this is the file's origins with gaps in it.
+   */
+  private openOrigins: readonly (NotoBlockOrigin | null)[] = [];
+  /** The node each opened block became, by opened index. */
+  private openNodes: readonly ProseNode[] = [];
+  /** For each top-level node as opened, the opened index of the block at or below it. */
+  private openedAt: Int32Array = new Int32Array(0);
+  /**
+   * The file's blank lines could not be opened as empty lines (its blocks and
+   * origins disagree in number), so the save must not count them either.
+   */
+  private blankLinesUnopened = false;
+  /**
    * Stand-in node objects from a deferred open, by opened index. Background
    * enrichment replaces one only while it is still this exact object.
    */
@@ -298,9 +337,35 @@ export class NotoEditor implements NotoEditorPort {
       // take pointer input have to refuse separately, because a node view's
       // own handlers never see this.
       editable: () => !this.readOnly,
-      // What leaves on the clipboard is the markdown, not the words without it.
-      clipboardTextSerializer: (slice) => sliceToMarkdown(slice),
+      // What leaves on the clipboard is the markdown, not the words without
+      // it; inside one block, only what was selected (clipboard.ts).
+      transformCopied: (slice, view) => inlineCopySlice(view.state) ?? slice,
+      clipboardTextSerializer: (slice, view) => inlineCopyText(view.state) ?? sliceToMarkdown(slice),
       clipboardTextParser: (text, $context) => sliceFromText(text, $context),
+      // Rich text from elsewhere is tidied before it is read (paste-clean.ts).
+      transformPastedHTML: (html) => {
+        const { html: tidied, tidy } = tidyPastedHtml(html);
+        this.pasteTidy = tidy;
+        return tidied;
+      },
+      // Each paste starts with nothing tidied, so what the tidy reports is
+      // always this paste's, even when this paste was never tidied (into code,
+      // or as plain text).
+      handleDOMEvents: {
+        paste: () => {
+          this.pasteTidy = NO_TIDY;
+          return false;
+        },
+        // Cut takes what copy would: a fence's code, without the line break
+        // into the next block that a drag over it picked up. Left as it was,
+        // the clipboard would hold the code and the delete would pull the next
+        // paragraph up into the fence.
+        cut: (view) => {
+          const code = fenceCodeOnly(view.state);
+          if (code) view.dispatch(view.state.tr.setSelection(TextSelection.create(view.state.doc, code.from, code.to)));
+          return false;
+        },
+      },
       handleTextInput: (view, from, _to, text) => {
         // The second of two brackets: asked after the transaction, since the
         // question is about the document the keystroke is making, not the one
@@ -318,13 +383,24 @@ export class NotoEditor implements NotoEditorPort {
         // the paragraph the caret is in. Rich text, and the editor's own
         // copies, keep the library's path.
         const data = event.clipboardData;
-        if (!data || data.types.includes('text/html')) return false;
+        if (data?.types.includes('text/html')) {
+          // The library inserts it; if the tidy took anything out or turned
+          // anything round, the reader is told and offered the plain text.
+          const tidy = this.pasteTidy;
+          this.pasteTidy = NO_TIDY;
+          if (tidyIsWorthSaying(tidy)) this.offerPlainPaste(view, tidy, data.getData('text/plain'));
+          return false;
+        }
+        if (!data) return false;
         const text = data.getData('text/plain');
         if (text.length === 0) return false;
         this.pasteText(text);
         return true;
       },
       handleDrop: (view, event) => {
+        // A drop of HTML is tidied on the way in too; what the tidy found
+        // belongs to the drop, and must not be read by the next paste.
+        this.pasteTidy = NO_TIDY;
         const note = droppedNote((event as DragEvent).dataTransfer?.files);
         if (note && this.options.onDropNote) {
           event.preventDefault();
@@ -385,7 +461,9 @@ export class NotoEditor implements NotoEditorPort {
 
   private corePlugins(document: NotoDocumentWire): Plugin[] {
     return [
-      createOriginPlugin(document.origins),
+      // First of the key handlers, so every one after it sees where the caret is.
+      caretCatchUp(),
+      createOriginPlugin(this.openOrigins.length > 0 ? this.openOrigins : document.origins),
       // A getter, not a value: the setting can change while the editor is open
       // and the rules must follow without the editor being rebuilt.
       notoInputRules({
@@ -402,14 +480,17 @@ export class NotoEditor implements NotoEditorPort {
       }),
       history(),
       dropCursor({ color: 'var(--accent)' }),
-      gapCursor(),
+      notoGapCursor(),
+      caretPlugin(),
       alertPlugin(),
       imageLinePlugin(),
       typoraMarksPlugin(() => this.markKinds),
       typewriterPlugin(() => this.typewriter),
       autoPairPlugin(() => this.autoPair),
-      columnResizing(),
-      tableEditing(),
+      // Before the table plugin, which would otherwise take a right press on
+      // selected cells as the start of a new selection.
+      tableContextPress(),
+      notoTableEditing(),
       activeNodePlugin(),
       viewportLayoutPlugin(),
       viewportStubPlugin(),
@@ -419,7 +500,8 @@ export class NotoEditor implements NotoEditorPort {
       wikiLinkPlugin({ onFollow: (target) => this.options.onFollowWikiLink?.(target) }),
       indexBlockPlugin({ onFollow: (target) => this.options.onFollowWikiLink?.(target) }),
       footnoteHoverPlugin(),
-      tocBlockPlugin({ onGo: (blockIndex) => this.focusBlock(blockIndex) }),
+      noteMarksPlugin({ onAction: (key, action) => this.options.onNoteMarkAction?.(key, action) }),
+      tocBlockPlugin({ onGo: (blockIndex) => this.focusTopLevel(blockIndex, { at: 0.1 }) }),
       linkEditorPlugin(),
       followLinkPlugin({ onFollow: (href) => this.options.onFollowLink?.(href) }),
       mathEditingPlugin(),
@@ -443,20 +525,76 @@ export class NotoEditor implements NotoEditorPort {
    */
   private buildDoc(document: NotoDocumentWire, spans?: readonly BlockSpan[]): ProseNode {
     const resolved = spans ?? splitBlocks(document.text).spans;
-    const doc = docFromSpans(resolved);
+    const blocks = docFromSpans(resolved);
 
     this.pristine = new Map();
-    doc.forEach((node, _offset, index) => {
+    blocks.forEach((node, _offset, index) => {
       const origin = document.origins[index];
       const span = resolved[index];
       if (origin && span) this.pristine.set(origin.blockId, { node, markdown: toLf(span.markdown) });
     });
+    const doc = this.withBlankLines(blocks, document);
     this.rememberAccepted(doc);
+    this.activeAt = { index: -1, count: -1 };
 
     // Seed the prior split from the open/reload spans (no extra parse).
     this.priorSplit.seedFromSpans(document.text, resolved);
 
     return doc;
+  }
+
+  /**
+   * Open a file's extra blank lines between two blocks as empty paragraphs.
+   *
+   * Markdown reads any run of blank lines as one break, so three blank lines
+   * before a new section used to look like one and save as one. Opened as
+   * empty paragraphs, they are on the page as the lines they are: the caret
+   * goes into them, Enter adds one, Backspace takes one away, undo puts it
+   * back, and the save counts them (`capture.ts`). Blank lines at the very
+   * start and end of the note are left alone, as before.
+   */
+  private withBlankLines(blocks: ProseNode, document: NotoDocumentWire): ProseNode {
+    this.blankLinesUnopened = blocks.childCount !== document.origins.length;
+    const lines = this.blankLinesUnopened ? () => 1 : this.gapLines();
+    const children: ProseNode[] = [];
+    const origins: (NotoBlockOrigin | null)[] = [];
+    const nodes: ProseNode[] = [];
+    const openedAt: number[] = [];
+    blocks.forEach((node, _offset, index) => {
+      children.push(node);
+      origins.push(document.origins[index] ?? null);
+      nodes.push(node);
+      openedAt.push(index);
+      if (index + 1 === blocks.childCount) return;
+      for (let extra = lines(index) - 1; extra > 0; extra -= 1) {
+        children.push(notoSchema.nodes.paragraph.create());
+        origins.push(null);
+        openedAt.push(index + 1);
+      }
+    });
+    this.openOrigins = origins;
+    this.openNodes = nodes;
+    this.openedAt = Int32Array.from(openedAt);
+    return children.length === blocks.childCount ? blocks : blocks.copy(Fragment.fromArray(children));
+  }
+
+  /** The opened index of the block a top-level node index stands at, for the background enrichment. */
+  openedIndexAt(index: number): number {
+    if (this.openedAt.length === 0) return index;
+    return this.openedAt[Math.max(0, Math.min(index, this.openedAt.length - 1))]!;
+  }
+
+  /** Blank lines after each block of the accepted revision, read from its text once per revision. */
+  private gapCache: { readonly revision: string; readonly lines: readonly number[] } | null = null;
+  private gapLines(): GapLines {
+    const document = this.document;
+    if (this.gapCache?.revision !== document.revisionId) {
+      const spans = document.spans;
+      const lines = spans.map((span, ordinal) => (ordinal + 1 < spans.length ? blankLinesIn(document.text.slice(span.end, spans[ordinal + 1]!.start)) : 1));
+      this.gapCache = { revision: document.revisionId, lines };
+    }
+    const { lines } = this.gapCache!;
+    return (ordinal) => lines[ordinal] ?? 1;
   }
 
   private countTimer: ReturnType<typeof setTimeout> | null = null;
@@ -656,7 +794,7 @@ export class NotoEditor implements NotoEditorPort {
     // already moved: the two are a moment apart, and a key or a paste in that
     // moment lands where the caret was.
     this.host.dataset.caret = String(this.view?.state.selection.from ?? 0);
-    this.reportActiveBlock();
+    this.reportActiveBlock(transaction);
     if (transaction.getMeta(ENRICH_META) !== true) this.enrichAtSelection();
     if (!transaction.docChanged) return;
     // Background enrichment swaps a stand-in for the real node of the same
@@ -725,15 +863,28 @@ export class NotoEditor implements NotoEditorPort {
     }, 0);
   }
 
-  /** Told only when it changes: this runs on every transaction, typing included. */
-  private reportActiveBlock(): void {
+  /**
+   * Told only when it changes: this runs on every transaction, typing included.
+   *
+   * Counted in written blocks, the file's blocks that the outline and Source
+   * Code Mode count in, so the empty paragraphs of blank lines do not put
+   * them out by one each.
+   */
+  private reportActiveBlock(transaction?: Transaction): void {
     const view = this.view;
     if (!view || !this.options.onActiveBlockChanged) return;
+    const { doc } = view.state;
     const { $from } = view.state.selection;
     const index = $from.index(0);
-    if (index === this.activeBlock) return;
-    this.activeBlock = index;
-    this.options.onActiveBlockChanged(index);
+    // An edit above the caret's block can empty a block or fill one, which
+    // moves the count without moving the caret.
+    const above = transaction?.docChanged === true && editedBefore(transaction, $from.depth > 0 ? $from.before(1) : 0);
+    if (!above && index === this.activeAt.index && doc.childCount === this.activeAt.count) return;
+    this.activeAt = { index, count: doc.childCount };
+    const written = writtenBlocksBefore(doc, index);
+    if (written === this.activeBlock) return;
+    this.activeBlock = written;
+    this.options.onActiveBlockChanged(written);
   }
 
   private refreshDirty(): void {
@@ -827,20 +978,134 @@ export class NotoEditor implements NotoEditorPort {
     this.view?.focus();
   }
 
+  /** Whether the note itself has the keys, rather than a field drawn in it. */
+  hasFocus(): boolean {
+    const view = this.view;
+    return view !== null && view.hasFocus() && !this.fieldFocused(view);
+  }
+
   /**
-   * Put the caret at the start of a top level block and scroll it into view.
-   *
-   * Used by the outline. Moving the selection rather than only scrolling means
-   * the user can keep typing where they landed.
+   * A press in the page around the text: in its margin, above the first block
+   * or below the last. The caret goes to the nearest place in the note, and a
+   * drag from there selects, as it would from inside the text. A press there
+   * used to take the keys away from the note and leave no caret, which in a
+   * new, empty note looked like the note would not take any.
    */
-  focusBlock(index: number): void {
+  pressAtPoint(x: number, y: number): void {
+    const view = this.view;
+    if (!view) return;
+    const anchor = this.selectionNear(view, x, y);
+    view.dispatch(view.state.tr.setSelection(anchor).scrollIntoView());
+    view.focus();
+    const from = anchor.anchor;
+    const move = (event: MouseEvent) => {
+      if (this.view !== view || from > view.state.doc.content.size) return;
+      const head = this.selectionNear(view, event.clientX, event.clientY);
+      const selection = TextSelection.between(view.state.doc.resolve(from), head.$head);
+      if (!selection.eq(view.state.selection)) view.dispatch(view.state.tr.setSelection(selection));
+    };
+    const release = () => {
+      window.removeEventListener('mousemove', move);
+      window.removeEventListener('mouseup', release, true);
+    };
+    window.addEventListener('mousemove', move);
+    window.addEventListener('mouseup', release, true);
+  }
+
+  /** The selection nearest a point, which may be outside the text. */
+  private selectionNear(view: EditorView, x: number, y: number): Selection {
+    const box = view.dom.getBoundingClientRect();
+    const doc = view.state.doc;
+    if (y >= box.bottom) return Selection.atEnd(doc);
+    if (y <= box.top) return Selection.atStart(doc);
+    const left = Math.min(Math.max(x, box.left + 1), box.right - 1);
+    const pos = view.posAtCoords({ left, top: y })?.pos;
+    return pos === undefined ? Selection.atEnd(doc) : Selection.near(doc.resolve(pos));
+  }
+
+  /**
+   * Put the caret at the start of a written block and scroll it into view.
+   *
+   * Used by the outline and by leaving Source Code Mode, which count the
+   * file's blocks, not the empty paragraphs between them. Moving the selection
+   * rather than only scrolling means the user can keep typing where they
+   * landed.
+   */
+  /**
+   * Put the caret at the start of a written block and bring it into view.
+   *
+   * The outline and the [TOC] block pass `at`, so the block is placed that
+   * share of the page height down from the page's top: a heading chosen from
+   * the outline is read from where the eye is, not caught at the foot of the
+   * page. A heading near the top of the note lands at the very top instead,
+   * since there is no page above it to spare. Leaving Source Code Mode calls
+   * without `at` and keeps the old bring-into-view, which puts a note back
+   * where it was read rather than moving it.
+   */
+  focusBlock(index: number, options?: { readonly at?: number }): void {
+    const view = this.view;
+    if (!view || index < 0) return;
+    this.focusTopLevel(topLevelOfWritten(view.state.doc, index), options);
+  }
+
+  /** The same, for a top-level node index. */
+  private focusTopLevel(index: number, options?: { readonly at?: number }): void {
     const view = this.view;
     if (!view || index < 0 || index >= view.state.doc.childCount) return;
     let position = 0;
     for (let current = 0; current < index; current += 1) position += view.state.doc.child(current).nodeSize;
     const selection = Selection.near(view.state.doc.resolve(Math.min(position + 1, view.state.doc.content.size)));
-    view.dispatch(view.state.tr.setSelection(selection).scrollIntoView());
+    const transaction = view.state.tr.setSelection(selection);
+    view.dispatch(options?.at === undefined ? transaction.scrollIntoView() : transaction);
     view.focus();
+    if (options?.at !== undefined) this.revealAt(position + 1, options.at);
+  }
+
+  /**
+   * Put `position` at `share` of the page's height from the page's top; at
+   * the very top when the note has no room above it. The glide is quick,
+   * sized by the distance and capped, because a heading jump answers a
+   * choice and a long glide reads as slow; a scroll of the reader's own cuts
+   * it short. Done again a moment later, since a long note draws a far block
+   * as a stand-in whose real node mounts after the first scroll.
+   */
+  private revealAt(position: number, share: number): void {
+    const view = this.view;
+    if (!view) return;
+    let frame = 0;
+    const scrollerOf = () => view.dom.closest<HTMLElement>('.canvas-scroll') ?? view.dom.parentElement;
+    const glideTo = (target: number) => {
+      const scroller = scrollerOf();
+      if (!scroller) return;
+      cancelAnimationFrame(frame);
+      const start = scroller.scrollTop;
+      const delta = target - start;
+      if (Math.abs(delta) < 1) return;
+      if (window.matchMedia('(prefers-reduced-motion: reduce)').matches) {
+        scroller.scrollTop = target;
+        return;
+      }
+      const duration = Math.min(380, Math.max(180, Math.abs(delta) * 0.18));
+      const began = performance.now();
+      const ease = (t: number) => 1 - (1 - t) ** 3;
+      scroller.addEventListener('wheel', () => cancelAnimationFrame(frame), { once: true });
+      const step = (now: number) => {
+        const t = Math.min(1, (now - began) / duration);
+        scroller.scrollTop = start + delta * ease(t);
+        if (t < 1) frame = requestAnimationFrame(step);
+      };
+      frame = requestAnimationFrame(step);
+    };
+    const reveal = () => {
+      const scroller = scrollerOf();
+      if (!scroller) return;
+      let top: number;
+      try { top = view.coordsAtPos(position).top; } catch { return; }
+      const box = scroller.getBoundingClientRect();
+      glideTo(Math.max(0, scroller.scrollTop + top - box.top - box.height * share));
+    };
+    reveal();
+    setTimeout(() => { if (this.view === view) reveal(); }, 160);
   }
 
   /**
@@ -863,34 +1128,65 @@ export class NotoEditor implements NotoEditorPort {
    * keep in step. False when the command has nothing to do where the caret
    * is, which is what lets the caller say so rather than pretending.
    */
-  /** What the editor's plugins add to a right click at a point in the page. */
+  /** What the editor and its plugins add to a right click at a point in the page. */
   contextItemsAt(x: number, y: number): EditorContextItem[] {
     const view = this.view;
-    if (!view || this.readOnly) return [];
+    this.contextPassage = null;
+    if (!view) return [];
     // A click outside the note (a rename field, a search box) or in a field
     // drawn inside it is not about the note: no plugin has anything there.
     const hit = globalThis.document.elementFromPoint(x, y);
     if (!hit || !view.dom.contains(hit) || this.fieldFocused(view)) return [];
     const pos = view.posAtCoords({ left: x, top: y })?.pos ?? null;
-    return editorExtensions.contextItems(view, { pos, element: hit });
+    // Reading a passage's history changes nothing, so a read-only note offers it too; last, after what edits.
+    this.contextPassage = pos === null || !this.options.onPassageHistory ? null : this.passageAt(pos);
+    const history: EditorContextItem[] = this.contextPassage === null ? [] : [{ title: 'History of This Passage', command: PASSAGE_HISTORY }];
+    if (this.readOnly) return history;
+    // The table's own lines first: in a table they are what the click is about.
+    return [...tableContextItems(view.state, pos), ...editorExtensions.contextItems(view, { pos, element: hit }), ...history];
   }
 
-  /** Whether the keys belong to a text field drawn inside the note rather than to the note. */
+  /** The passage a right click was on, for History of This Passage when it is chosen. */
+  private contextPassage: string | null = null;
+
+  /** The text the last commit has for the top-level block holding `pos`; null where git has none. */
+  private passageAt(pos: number): string | null {
+    const view = this.view;
+    if (!view) return null;
+    const index = view.state.doc.resolve(Math.min(pos, view.state.doc.content.size)).index(0);
+    return committedTextAt(view.state, index, this.acceptedDocument, this.options.inGit?.() ?? false);
+  }
+
+  /**
+   * Whether the keys belong to a text field rather than to the note: one drawn
+   * inside it (a sidenote's card, a code block's language), the Source Code
+   * Mode text, or a box in the window such as the find bar. Each has its own
+   * undo, and the note's commands would act on the note behind it.
+   */
   private fieldFocused(view: EditorView): boolean {
     const active = globalThis.document.activeElement;
-    return active instanceof HTMLElement && active !== view.dom && view.dom.contains(active)
-      && (active instanceof HTMLTextAreaElement || active instanceof HTMLInputElement);
+    if (!(active instanceof HTMLElement) || active === view.dom) return false;
+    if (active instanceof HTMLTextAreaElement) return true;
+    return active instanceof HTMLInputElement && TEXT_INPUT_TYPES.has(active.type);
   }
 
   runCommand(name: string): boolean {
     const view = this.view;
     if (!view) return false;
+    if (name === PASSAGE_HISTORY) {
+      const text = this.contextPassage ?? this.passageAt(view.state.selection.from);
+      this.contextPassage = null;
+      if (text === null || !this.options.onPassageHistory) return false;
+      this.options.onPassageHistory(text);
+      return true;
+    }
     // Bold from the menu while a sidenote is being written would bold the
     // note's words behind the field, not anything in it.
     if (this.fieldFocused(view)) return false;
     // Every editor command changes the document, so read-only refuses them all
-    // rather than each one having to remember to check.
-    if (this.readOnly) return false;
+    // rather than each one having to remember to check, except the few that
+    // only move the selection.
+    if (this.readOnly && !SELECTION_COMMANDS.has(name)) return false;
     const stamp = this.taskStampOptions();
     const command = name === 'task-toggle' ? toggleTaskStatus(undefined, stamp)
       : name === 'task-complete' ? toggleTaskStatus(true, stamp)
@@ -966,6 +1262,7 @@ export class NotoEditor implements NotoEditorPort {
     this.enrichEverywhere();
     view.dispatch(setSearch(view.state.tr, { options }));
     const state = getSearchState(view.state);
+    this.revealActiveMatch();
     return { matches: state.matches.length, active: state.active };
   }
 
@@ -976,7 +1273,41 @@ export class NotoEditor implements NotoEditorPort {
     view.dispatch(goToMatch(view.state.tr, direction));
     view.dispatch(selectActiveMatch(view.state, view.state.tr));
     const state = getSearchState(view.state);
+    this.revealActiveMatch();
     return { matches: state.matches.length, active: state.active };
+  }
+
+  /**
+   * Scroll the page to the current match.
+   *
+   * The find bar keeps the keys, so the document's selection is not where the
+   * browser's is, and ProseMirror scrolls to a selection only when the
+   * browser's selection is inside the editor: Enter, Next and Previous moved
+   * the count and left the page where it was. The match is put a third of the
+   * way down the page, and put there again a frame later, once a part of a
+   * long note that was only a stand-in has been drawn.
+   */
+  private revealActiveMatch(): void {
+    const view = this.view;
+    if (!view) return;
+    const reveal = () => {
+      const state = getSearchState(view.state);
+      const match = state.matches[state.active];
+      if (!match) return;
+      const scroller = view.dom.closest<HTMLElement>('.canvas-scroll') ?? view.dom.parentElement;
+      if (!scroller) return;
+      let coords: { top: number; bottom: number };
+      try { coords = view.coordsAtPos(match.from); } catch { return; }
+      const box = scroller.getBoundingClientRect();
+      const margin = Math.min(80, box.height / 6);
+      if (coords.top >= box.top + margin && coords.bottom <= box.bottom - margin) return;
+      scroller.scrollTop += coords.top - (box.top + box.height / 3);
+    };
+    reveal();
+    requestAnimationFrame(() => requestAnimationFrame(reveal));
+    // A match in a long note's far part was measured against the stand-in
+    // drawn there, and the real blocks mount once it scrolls into view.
+    setTimeout(() => { if (this.view === view) reveal(); }, 160);
   }
 
   /** Replace the current match, or every match. Returns how many changed. */
@@ -1105,6 +1436,18 @@ export class NotoEditor implements NotoEditorPort {
     view.dispatch(setGitBlocks(view.state.tr, event));
   }
 
+  /**
+   * The marks plugins put on the note, in place of the ones it had: found by
+   * their words in the note as it stands, and drawn over it. A view change
+   * only: no history, no save.
+   */
+  setNoteMarks(marks: readonly NoteMarkView[]): void {
+    const view = this.view;
+    if (!view) return;
+    if (marks.length === 0) closeNoteMarkCard();
+    view.dispatch(setNoteMarks(view.state.tr, marks));
+  }
+
   /** The block at the caret as committed, for the keyboard. False when there is nothing to show. */
   showCommittedBlock(): boolean {
     const view = this.view;
@@ -1205,10 +1548,40 @@ export class NotoEditor implements NotoEditorPort {
     return true;
   }
 
+  /**
+   * After a tidied rich paste: say what was changed, with a way back to the
+   * plain text. The paste is made its own undo step first, so taking it back
+   * takes nothing else with it.
+   */
+  private offerPlainPaste(view: EditorView, tidy: PasteTidy, plain: string): void {
+    view.dispatch(closeHistory(view.state.tr));
+    const before = view.state.doc;
+    queueMicrotask(() => {
+      const after = view.state.doc;
+      if (after === before) return;
+      const run = () => {
+        // Only while the paste is still the last thing done to the note.
+        if (this.view !== view || view.state.doc !== after) return;
+        if (!undo(view.state, view.dispatch)) return;
+        if (!view.state.doc.eq(before)) { redo(view.state, view.dispatch); return; }
+        if (plain.trim()) this.pasteText(plain);
+      };
+      globalThis.dispatchEvent(new CustomEvent('noto:notice', {
+        detail: { message: describeTidy(tidy), action: plain.trim() ? { label: 'Paste as text', run } : undefined },
+      }));
+    });
+  }
+
   /** Paste text at the caret, read as markdown: Paste as Plain Text's half. */
   pasteText(text: string): void {
     const view = this.view;
     if (!view || this.readOnly) return;
+    // Spaces that do not break, and characters with no width, ride along with
+    // copied text and stop a list marker or a table rule from being read. In
+    // code they may be the point, so code takes the text as it came.
+    if (!view.state.selection.$from.parent.type.spec.code) {
+      text = text.replace(/\u00A0/g, ' ').replace(/[\u200B\uFEFF]/g, '');
+    }
     const slice = sliceFromText(text, view.state.selection.$from);
     view.dispatch(view.state.tr.replaceSelection(slice).scrollIntoView());
     view.focus();
@@ -1268,11 +1641,27 @@ export class NotoEditor implements NotoEditorPort {
       && current[current.length - 1 - suffix] === next[next.length - 1 - suffix]) suffix += 1;
 
     // Character positions of the replaced range in the ProseMirror document.
+    // `current` counts written blocks only, so the empty paragraphs of blank
+    // lines between them are stepped over, and kept, rather than counted.
+    const doc = view.state.doc;
+    const starts: number[] = [];
+    const ends: number[] = [];
+    doc.forEach((node, offset) => {
+      if (isUnwritableBlock(node)) return;
+      starts.push(offset);
+      ends.push(offset + node.nodeSize);
+    });
     let from = 0;
-    for (let index = 0; index < prefix; index += 1) from += view.state.doc.child(index).nodeSize;
-    let to = view.state.doc.content.size;
-    for (let index = 0; index < suffix; index += 1) {
-      to -= view.state.doc.child(view.state.doc.childCount - 1 - index).nodeSize;
+    let to = doc.content.size;
+    if (starts.length === current.length && current.length > 0) {
+      const last = current.length - suffix - 1;
+      if (last >= prefix) {
+        from = starts[prefix]!;
+        to = ends[last]!;
+      } else {
+        from = prefix > 0 ? ends[prefix - 1]! : starts[0]!;
+        to = from;
+      }
     }
 
     const replacement = withKnownFootnoteIds(
@@ -1422,6 +1811,7 @@ export class NotoEditor implements NotoEditorPort {
       document: this.document,
       pristine: this.pristine,
       envelope: this.target ?? undefined,
+      gapLines: this.blankLinesUnopened ? undefined : this.gapLines(),
     };
     if (this.topLevelStable && this.acceptedNodes.length === input.doc.childCount) {
       return captureStableWire(input, this.acceptedNodes).transaction;
@@ -1463,6 +1853,7 @@ export class NotoEditor implements NotoEditorPort {
       document: this.document,
       pristine: this.pristine,
       envelope: this.target ?? undefined,
+      gapLines: this.blankLinesUnopened ? undefined : this.gapLines(),
     });
   }
 
@@ -1616,10 +2007,11 @@ export class NotoEditor implements NotoEditorPort {
     });
     this.deferredEnrich = controller;
     const sources = new Array<ProseNode | null>(spans.length).fill(null);
-    const doc = this.view.state.doc;
-    if (doc.childCount === spans.length) {
+    // The opened blocks, not the top-level nodes: a file's extra blank lines
+    // opened as empty paragraphs between them.
+    if (this.openNodes.length === spans.length) {
       for (let index = remainderFrom; index < spans.length; index += 1) {
-        const node = doc.child(index);
+        const node = this.openNodes[index]!;
         sources[index] = node;
         this.enrichIndex.set(node, index);
       }
@@ -1838,6 +2230,37 @@ export class NotoEditor implements NotoEditorPort {
  * paired, so the next save re-renders blocks rather than reusing another
  * block's bytes.
  */
+/** Whether `transaction` changed anything before `pos` in the document it made. */
+function editedBefore(transaction: Transaction, pos: number): boolean {
+  const maps = transaction.mapping.maps;
+  for (let step = 0; step < maps.length; step += 1) {
+    let earliest = Infinity;
+    maps[step]!.forEach((_oldStart, _oldEnd, newStart) => { earliest = Math.min(earliest, newStart); });
+    if (earliest === Infinity) continue;
+    if (transaction.mapping.slice(step + 1).map(earliest, -1) < pos) return true;
+  }
+  return false;
+}
+
+/** Top-level nodes before `index` that are written to the file, skipping empty paragraphs. */
+export function writtenBlocksBefore(doc: ProseNode, index: number): number {
+  let written = 0;
+  const end = Math.min(index, doc.childCount);
+  for (let at = 0; at < end; at += 1) if (!isUnwritableBlock(doc.child(at))) written += 1;
+  return written;
+}
+
+/** The top-level node index of written block `index`, or the last node when there are fewer. */
+export function topLevelOfWritten(doc: ProseNode, index: number): number {
+  let written = 0;
+  for (let at = 0; at < doc.childCount; at += 1) {
+    if (isUnwritableBlock(doc.child(at))) continue;
+    if (written === index) return at;
+    written += 1;
+  }
+  return doc.childCount - 1;
+}
+
 export function alignSavedBlocks(doc: ProseNode, blockCount: number): (number | null)[] {
   const alignment = new Array<number | null>(doc.childCount).fill(null);
   if (doc.childCount === blockCount) {

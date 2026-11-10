@@ -51,8 +51,8 @@ The honest summary of where it stands is worth reading before you depend on
 it.
 
 All three platforms are now verified the same way: the packaged application is
-built and then driven through its real interface, and the whole suite of about 300 packaged tests passes on macOS, Windows and Linux
-on every change, alongside nearly 3,000 unit tests. Windows was unproven until the run that proved it,
+built and then driven through its real interface, and the whole suite of about 370 packaged tests runs on macOS, Windows and Linux
+on every change, alongside about 3,200 unit tests. Windows was unproven until the run that proved it,
 which is also the run that found two faults nobody could have read out of the
 code: every plugin came up needing recovery because a durability step that
 only POSIX has was being treated as a failure, and the remote control refused
@@ -123,26 +123,29 @@ build to run.
 
 ## Using it
 
-Open a file with `Cmd+O`, or open a folder with `Cmd+Alt+O` to get the
-workspace tree. Open notes sit behind a quiet Recent strip in the status bar
+Open a file with `Cmd+O`, or open a folder with `Cmd+Alt+Shift+O` to get the
+workspace tree. `Cmd+P` (or `Cmd+.`) opens any note in it by name. Open notes sit behind a quiet Recent strip in the status bar
 rather than a classic tab bar. The rail on the left holds Files and Outline by
 default; Links (graph / related) stays off until you turn it on in Settings →
 Appearance. The one control at the top left opens and closes the rail, and
 `Cmd+Shift+L` and `Cmd+Shift+O` open it directly on the view they name.
-`Cmd+F` finds, `Cmd+Alt+F` finds and replaces, `Cmd+K` opens the command
-palette, and `Cmd+,` opens Settings (and closes it again) — a full-page shell with
+`Cmd+F` finds, `Cmd+Alt+F` finds and replaces, `Cmd+Shift+P` opens the command
+palette, and `Cmd+,` opens Settings (and closes it again), a full-page shell with
 categories, where plugins are turned on under the Plugins section. On Windows and Linux, read
 Control for Command.
 
-The title bar carries the filename and nothing else that is not an action you
-can take right now: Save appears when there is something to save and is absent
-when there is not. The gear is the single Settings entry; Plugins is reached
-from Settings' left nav, not a second top-bar icon. What the chrome is for, and
+The title bar carries the filename, centred over the page, and nothing else
+that is not an action you can take right now: Save appears when there is
+something to save and is absent when there is not. The gear is the single
+Settings entry; Plugins is reached from Settings' left nav, not a second top-bar
+icon. Beside the gear, `?` opens What Noto Can Do: every feature, where to find
+it, a Show Me that goes there, and a dot on the button when something is new. What the chrome is for, and
 why it is this quiet, is written down in
 [`docs/design/chrome.md`](docs/design/chrome.md).
 
-Settings carries the document's typography, so text size, line height and
-line width are yours to set rather than fixed: the width is a character count,
+Settings carries the document's typography, shown on a small page at the top
+of Appearance that follows each control as it moves, so text size, line height
+and line width are yours to set rather than fixed: the width is a character count,
 not a pixel width, so it holds as the size changes. Saving automatically is
 there too, off by default and debounced against typing, and it refuses in
 exactly the cases the Save button refuses. A custom stylesheet can be pointed at
@@ -153,6 +156,10 @@ is enough to retheme the app without editing it.
 whole folder by how well it matches and by how often and how recently you open
 it, so an empty box already shows the few notes you probably want. `Enter`
 opens the note; `Alt+Enter` writes a `[[wiki link]]` to it at the caret instead.
+The highlighted note is shown beside the results, its title, folder and when it
+changed, then its opening as readable text, so you can tell two notes with the
+same name apart before opening either; in a narrow window the list takes the
+width alone.
 Wiki links render inline wherever they appear, and `Cmd+click` follows one.
 
 The links are decorations rather than a node type, so they cannot reach the
@@ -171,12 +178,66 @@ row holds what acts on the folder: open another, reveal it in the file manager,
 refresh, and the folders you opened before. `Cmd+Shift+R` reveals the current
 note instead.
 
+The tree fits the rail rather than scrolling sideways. When the open folders go
+deep, each level steps in less, and a name that still does not fit is cut in
+the middle, keeping its end; rest the pointer on it to read it whole. Settings →
+Appearance → File tree chooses how the folders you are in stay in sight as the
+tree scrolls, each held on its own row or folded into one trail row of names,
+and whether a note shows its `.md`. Option-click a folder, or choose Focus on
+This Folder from its menu, to make it the tree's root for a while; Escape shows
+the whole folder again.
+
+Drag a row onto a folder to move it, or onto a note to put it beside that note;
+hold at the top or bottom edge to scroll, and over a closed folder to open it.
+`Cmd`-click and `Shift`-click choose several rows to drag, move or trash
+together. When Noto renames or moves a note or a folder, the links to it are
+written again, each in the style it was written in, and the status line says
+how many, with Undo.
+
 After looking through a large folder, the arrows beside the rail's search shut
 every folder except the ones holding the note in front, and bring that note back
 into view; View → Collapse Other Folders does the same. A new note, from
 `Cmd+N` or a folder's New Note, asks for its name on its own row at once, with
 `Untitled` selected: type a name and press `Enter` to start writing in it, or
 press `Escape` to keep the placeholder.
+
+In a folder under git, the icon beside the rail's search, with a count, turns
+the rail to Changes: only the notes that differ from the last commit, as one
+short tree, each opened by a click and given the file tree's menu by a right
+click. In a folder with a `.noto/` folder in it, Noto writes down each note you
+bring to the front, and the note you followed a link from, one line each in
+`.noto/events/`, for the [vault tools](https://github.com/roobli/vault) to read;
+a folder without `.noto/` is never written to.
+
+View → Note Info, or Get Info in a note's right-click menu in the tree, opens a
+pane beside the page about the note in front: its folder and what git says
+about it, a timeline of its commits, its History (every commit that touched
+it, through renames, each opened in the diff view, where Older and Newer step
+through them, Compare with Now sets one against the note as it stands, and
+Restore This Version takes it back as an edit Undo reverses) and its
+Properties (frontmatter, counts, dates, path). Commits that only rewrote a
+tool's marked region, or changed a hundred files at once, are drawn quieter.
+In a folder that keeps memory, Related lists what links to the note, what it
+names without linking, what is read with it and what is about the same thing,
+and Activity says who read it, what led there, which agents wrote it and
+which may not read it; a folder without memory is offered it, with what would be written said
+first, and a folder whose memory runs scripts runs none until they are
+allowed.
+
+Review, a page in the rail beside Changes, is the folder's queue: what agents
+proposed, opened file by file in the diff view to accept or reject, and what
+the tools found (links to notes that moved, fixed all at once; names a note
+uses without linking, gone through one at a time with Y, N and S). What it
+writes shows up in Changes to be committed as usual, Undo takes the last
+write back, and a note with unsaved edits is left alone.
+
+Settings → Memory says which agents may read the folder and what they may
+do; Add an Agent gives one a key, shown once with a setup to paste for
+Claude Code or Codex, and Take Key Back stops it at its next request. Copy
+Hook for Claude Code gives Claude Code a hook that says which notes it read and
+wrote with its own tools, so its edits are named as its own rather than
+counted as yours. A
+folder's right-click menu sets it open, private or sealed.
 
 `Cmd+/` opens Source Code Mode: the whole note as the Markdown it is saved as,
 the way Typora's Command-slash does. `Cmd+Alt+/` still toggles source for the
@@ -265,9 +326,14 @@ the document only if it asked for that; a service plugin gets a filesystem
 grant scoped to a path, revocable, and denied everywhere else. Nothing is
 ambient.
 
-Four plugins ship in the build. Title Shift promotes and demotes heading
+Eight plugins ship in the build. Title Shift promotes and demotes heading
 levels, and Markdown Padding applies CJK spacing rules; both are ports of the
-author's Typora plugins. Semantic Focus and Fixture Reader are bundled
+author's Typora plugins. Sidenotes draws `<span class="sidenote">` notes in the
+margin and writes new ones there, Changes lists the notes changed since the
+last commit as a page in the rail, the first plugin to use a slot outside the
+editor, History fills the Note Info pane with a note's commits and
+properties, and Memory adds Related and Activity from the vault's index and
+the Review page in the rail. Semantic Focus and Fixture Reader are bundled
 examples, one per runtime kind, kept so that a plugin author has a working
 plugin of each shape to read and so the capability broker has something that
 exercises it.
@@ -295,6 +361,14 @@ unsigned local build and a signed release build take the same path: set
 `WINDOWS_CERTIFICATE_PASSWORD` on Windows. With none of them set the build
 still succeeds and is simply unsigned, which is what a contributor without
 certificates needs.
+
+The two libraries Noto is built on, [`@roobli/md`](https://github.com/roobli/md)
+for Markdown and [`@roobli/vault`](https://github.com/roobli/vault) for the
+folder's memory, are pinned to a commit in `package.json` and compiled on
+install, so a clean checkout builds without either repository beside it. To
+work on one alongside Noto, point its entry at your checkout for a while
+(`"@roobli/vault": "link:../vault"`), and pin it again to the pushed commit
+before the change goes up.
 
 The end-to-end suite runs against a packaged application rather than a
 development server, because the things most likely to break in an Electron app

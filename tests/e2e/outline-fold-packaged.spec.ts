@@ -1,7 +1,7 @@
 import { mkdir, rm, writeFile } from 'node:fs/promises';
 import path from 'node:path';
 import { expect, test, _electron as electron } from '@playwright/test';
-import { packagedExecutable } from './packaged-app';
+import { packagedExecutable, placeCaret } from './packaged-app';
 
 const NOTE = '# One\n\n## One A\n\n### One A i\n\n## One B\n\n# Two\n\nwords\n';
 
@@ -38,8 +38,10 @@ test('a heading folds its branch shut in the outline, and opens it again', async
     await expect(one).toHaveClass(/is-closed/);
 
     // The caret's heading is inside the closed branch, so the closed row is
-    // the current one. Then the branch is opened from the keyboard.
-    await page.locator('.canvas-slot:not([hidden]) .ProseMirror h3').click();
+    // the current one. Then the branch is opened from the keyboard. The row
+    // was current before the click too, so the click has to have landed
+    // before focus moves to the outline, or the caret stays on One.
+    await placeCaret(page, page.locator('.canvas-slot:not([hidden]) .ProseMirror h3'));
     await expect(one).toHaveClass(/is-current/);
     await one.focus();
     await page.keyboard.press('ArrowRight');

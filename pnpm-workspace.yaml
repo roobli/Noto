@@ -13,6 +13,9 @@ strictPeerDependencies: false
 allowBuilds:
   '@roobli/md': true
   '@roobli/md@https://codeload.github.com/roobli/md/tar.gz/39955fe91f767415edb8161496b48369a48373dc': true
+  # The vault library, pinned to a commit as md is; its prepare script compiles it.
+  '@roobli/vault': true
+  '@roobli/vault@https://codeload.github.com/roobli/vault/tar.gz/78d56077bd0217d6398b9bf9320d8b6680dcfffd': true
   '@parcel/watcher': true
   electron: true
   esbuild: true
@@ -21,3 +24,4 @@ allowBuilds:
   # only while packaging, never inside the app.
   electron-winstaller: true
   '@roobli/md@https://codeload.github.com/roobli/md/tar.gz/b408b1d24a814d7045209fad7e97741ad63a2805': set this to true or false
+  '@roobli/vault@https://codeload.github.com/roobli/vault/tar.gz/4c9652b6dc108f33613db4df4d32fc5b9992cd94': set this to true or false

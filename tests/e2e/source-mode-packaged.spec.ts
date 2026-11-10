@@ -118,3 +118,51 @@ test('a save from inside Source Code Mode writes what is on screen', async () =>
     await app.close();
   }
 });
+
+test('Undo and Redo in Source Code Mode act on the text, and leaving shows what it says', async () => {
+  const workspace = path.join(process.cwd(), 'test-results', 'source-mode-undo');
+  await rm(workspace, { recursive: true, force: true });
+  await mkdir(path.join(workspace, 'user-data'), { recursive: true });
+  const vault = path.join(workspace, 'vault');
+  await mkdir(vault, { recursive: true });
+  const file = path.join(vault, 'note.md');
+  await writeFile(file, NOTE, 'utf8');
+  const app = await electron.launch({
+    executablePath: packagedExecutable(),
+    args: [`--user-data-dir=${path.join(workspace, 'user-data')}`, vault],
+  });
+  try {
+    const page = await app.firstWindow();
+    await page.setViewportSize({ width: 1280, height: 900 });
+    await page.waitForSelector('[data-testid="file-tree"]', { state: 'visible', timeout: 30_000 });
+    await page.getByTestId('tree-file').first().click();
+    const rendered = page.locator('.canvas-slot:not([hidden]) .ProseMirror');
+    await rendered.waitFor({ state: 'visible' });
+    await invokeMenu(app, 'source-code-mode');
+    const input = page.getByTestId('source-input');
+    await expect(input).toBeFocused();
+    await input.evaluate((node) => { (node as HTMLTextAreaElement).setSelectionRange(2, 7); });
+    await page.keyboard.type('Heading');
+    // Long enough for the text to settle into the note behind it.
+    await page.waitForTimeout(700);
+
+    // Undo from the menu takes back the word typed, in one step, in the text
+    // and not in the note behind it; Redo brings it back.
+    await invokeMenu(app, 'undo');
+    await expect(input).toHaveValue(NOTE);
+    await invokeMenu(app, 'redo');
+    await expect(input).toHaveValue(NOTE.replace('Title', 'Heading'));
+    await page.waitForTimeout(700);
+
+    // A save keeps the view and its caret; typed straight after, the words
+    // reach the note even though the view is left before they settle.
+    await invokeMenu(app, 'save');
+    await expect.poll(() => readFile(file, 'utf8')).toBe(NOTE.replace('Title', 'Heading'));
+    await expect(input).toBeFocused();
+    await page.keyboard.type(' Two');
+    await invokeMenu(app, 'source-code-mode');
+    await expect(rendered.locator('h1')).toHaveText('Heading Two');
+  } finally {
+    await app.close();
+  }
+});

@@ -15,6 +15,7 @@
 import type { Command } from 'prosemirror-state';
 import { TextSelection } from 'prosemirror-state';
 import type { Node as ProseNode, ResolvedPos } from 'prosemirror-model';
+import { isUnwritableBlock } from './capture';
 
 export interface MovedLine {
   readonly text: string;
@@ -82,20 +83,30 @@ function swapWithSibling(
 ): boolean {
   const parent = $pos.node(depth - 1);
   const index = $pos.index(depth - 1);
-  const other = up ? index - 1 : index + 1;
+  const step = up ? -1 : 1;
+  let other = index + step;
   if (other < 0 || other >= parent.childCount) return false;
 
   const node = parent.child(index);
+  // Between top-level blocks, empty lines are the file's blank lines: a block
+  // moves past the block beyond them, and they stay where they were.
+  if (depth === 1 && !isUnwritableBlock(node)) {
+    while (other >= 0 && other < parent.childCount && isUnwritableBlock(parent.child(other))) other += step;
+    if (other < 0 || other >= parent.childCount) return false;
+  }
   const sibling = parent.child(other);
+  const between: ProseNode[] = [];
+  for (let at = Math.min(index, other) + 1; at < Math.max(index, other); at += 1) between.push(parent.child(at));
+  const betweenSize = between.reduce((size, child) => size + child.nodeSize, 0);
   const start = $pos.before(depth);
   const end = $pos.after(depth);
-  const from = up ? start - sibling.nodeSize : start;
-  const to = up ? end : end + sibling.nodeSize;
-  const ordered: ProseNode[] = up ? [node, sibling] : [sibling, node];
+  const from = up ? start - betweenSize - sibling.nodeSize : start;
+  const to = up ? end : end + betweenSize + sibling.nodeSize;
+  const ordered: ProseNode[] = up ? [node, ...between, sibling] : [sibling, ...between, node];
 
   if (dispatch) {
     const within = $pos.pos - start;
-    const movedStart = up ? from : from + sibling.nodeSize;
+    const movedStart = up ? from : from + sibling.nodeSize + betweenSize;
     const transaction = state.tr.replaceWith(from, to, ordered);
     transaction.setSelection(TextSelection.near(transaction.doc.resolve(movedStart + within)));
     transaction.scrollIntoView();

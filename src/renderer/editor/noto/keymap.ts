@@ -38,16 +38,16 @@ import {
 import { findWrapping } from 'prosemirror-transform';
 import type { Node as ProseNode, ResolvedPos } from 'prosemirror-model';
 import { moveBlock, moveColumn } from './move-block';
-import { enterInTable, tableFromRows, unwrapAtStart } from './block-edges';
+import { deleteSelectedRowsOrColumns, enterInTable, exitAtEdge, moveCellVertically, tableFromRows, unwrapAtStart } from './block-edges';
 import { openLinkEditor } from './link-plugin';
-import { fenceOnEnter } from './input-rules';
+import { fenceOnEnter, undoSubstitution } from './input-rules';
 import {
   sortTasks,
   toggleTaskStatus,
   type TaskStampOptions,
 } from './todo-manager';
 
-import { TextSelection, type Command, type EditorState, type Plugin, type Transaction } from 'prosemirror-state';
+import { AllSelection, TextSelection, type Command, type EditorState, type Plugin, type Transaction } from 'prosemirror-state';
 import { notoSchema } from '../../../shared/markdown/v3/pm/schema';
 import { normalizeChord } from '../../../shared/shortcuts/chord';
 import { TIMELINE_LANGUAGE, TIMELINE_TEMPLATE } from './timeline';
@@ -355,6 +355,25 @@ export const clearFormat: Command = (state, dispatch) => {
 };
 
 /**
+ * Select All, a step at a time inside a code block: the block's code first,
+ * since that is what a reader in a fence means to take, and the whole note on
+ * the next press. Elsewhere, the whole note at once.
+ */
+export const selectAllStepwise: Command = (state, dispatch) => {
+  const { $from, $to, from, to } = state.selection;
+  if ($from.sameParent($to) && $from.parent.type.spec.code && $from.parent.content.size > 0) {
+    const start = $from.start();
+    const end = $from.end();
+    if (from !== start || to !== end) {
+      dispatch?.(state.tr.setSelection(TextSelection.create(state.doc, start, end)));
+      return true;
+    }
+  }
+  dispatch?.(state.tr.setSelection(new AllSelection(state.doc)));
+  return true;
+};
+
+/**
  * The run of text around the caret that carries the same marks, or null
  * when the caret's text carries none. Typora calls this the styled scope:
  * the whole of a bold phrase, from the caret anywhere inside it.
@@ -585,6 +604,7 @@ export const EDITOR_COMMANDS: Readonly<Record<string, Command>> = {
   'move-column-left': moveColumn(true),
   'move-column-right': moveColumn(false),
   'insert-link': openLinkEditor,
+  'select-all': selectAllStepwise,
   'select-word': selectWord,
   'select-line': selectLine,
   'jump-to-selection': jumpToSelection,
@@ -693,13 +713,22 @@ export function notoBindings({ mac, onWidthStep, taskStamp }: KeymapOptions): Re
     [`${mod}-k`]: openLinkEditor,
     [`${mod}-Shift-Backspace`]: clearFormat,
 
+    [`${mod}-a`]: selectAllStepwise,
     [`${mod}-z`]: undo,
     [`${mod}-Shift-z`]: redo,
     [`${mod}-y`]: redo,
 
     Enter: enter,
-    // Typora's Backspace at the head of a block, tried before the ordinary one.
-    Backspace: unwrapAtStart,
+    // A quote or dash just put in for what was typed comes back as typed; then
+    // whole rows or columns selected; then Typora's Backspace at the head of a
+    // block, tried before the ordinary one.
+    Backspace: chainCommands(undoSubstitution, deleteSelectedRowsOrColumns, unwrapAtStart),
+    Delete: deleteSelectedRowsOrColumns,
+    // Out past a quote, a list or a code block at the edge of the note. In a
+    // table the arrows move by column first (moveCellVertically), and at the
+    // note's edge they stay in the table (exitAtEdge).
+    ArrowDown: chainCommands(moveCellVertically(1), exitAtEdge(1)),
+    ArrowUp: chainCommands(moveCellVertically(-1), exitAtEdge(-1)),
     'Shift-Enter': insertHardBreak,
     [`${mod}-Enter`]: insertHardBreak,
 

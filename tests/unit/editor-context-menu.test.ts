@@ -78,3 +78,34 @@ describe('the editor context menu', () => {
     expect(send).toHaveBeenCalledWith('noto:v1:workspace:context-command', { version: 1, command: 'sidenotes.insert' });
   });
 });
+
+describe('the editor context menu, from the application menu', () => {
+  // Daily-use audit finding 18: the menu held the clipboard and nothing else.
+  const clicked: string[] = [];
+  const appMenu = {
+    getMenuItemById: (id: string) => (['mark-strong', 'block-heading-1', 'block-quote', 'table-insert', 'copy-as-markdown'].includes(id)
+      ? { label: id.toUpperCase(), accelerator: 'CmdOrCtrl+B', enabled: id !== 'block-quote', visible: true, click: () => { clicked.push(id); } }
+      : null),
+  } as unknown as Parameters<typeof buildEditorContextMenu>[3];
+
+  it('adds Format, Paragraph and Insert, each holding what the menu bar holds', () => {
+    const items = buildEditorContextMenu(window, params(), [], appMenu);
+    expect(labels(items)).toEqual(['cut', 'copy', 'paste', 'Paste as Plain Text', 'separator', 'Format', 'Paragraph', 'Insert', 'separator', 'selectAll']);
+    const paragraph = items.find((item) => item.label === 'Paragraph')!.submenu as { label: string; enabled: boolean }[];
+    expect(paragraph.map((item) => [item.label, item.enabled])).toEqual([['BLOCK-HEADING-1', true], ['BLOCK-QUOTE', false]]);
+    const format = items.find((item) => item.label === 'Format')!.submenu as { click: () => void; registerAccelerator: boolean }[];
+    format[0]!.click();
+    expect(clicked).toEqual(['mark-strong']);
+    expect(format[0]!.registerAccelerator).toBe(false);
+  });
+
+  it('offers Copy as Markdown over a selection', () => {
+    expect(labels(buildEditorContextMenu(window, params({ selectionText: 'words' }), [], appMenu))).toContain('COPY-AS-MARKDOWN');
+    expect(labels(buildEditorContextMenu(window, params(), [], appMenu))).not.toContain('COPY-AS-MARKDOWN');
+  });
+
+  it('keeps a read-only page to the clipboard', () => {
+    expect(labels(buildEditorContextMenu(window, params({ isEditable: false, selectionText: 'x' }), [], appMenu)))
+      .toEqual(['cut', 'copy', 'paste', 'Paste as Plain Text', 'separator', 'selectAll']);
+  });
+});
