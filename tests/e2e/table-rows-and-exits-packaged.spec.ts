@@ -192,3 +192,60 @@ test.describe('git marks in a table', () => {
     }
   });
 });
+
+test.describe('the edges of a table', () => {
+  const endOfLine = process.platform === 'darwin' ? 'Meta+ArrowRight' : 'End';
+  const startOfLine = process.platform === 'darwin' ? 'Meta+ArrowLeft' : 'Home';
+
+  test('the arrows move within a table at the edge of the note, and make nothing past it', async () => {
+    const { app, page, file } = await openNote('| a | b |\n| --- | --- |\n| one | two |\n');
+    try {
+      // Down from the end of the last cell used to make an empty line under the table.
+      await page.locator('.noto-table-frame td', { hasText: 'two' }).click();
+      await page.keyboard.press(endOfLine);
+      await page.keyboard.press('ArrowDown');
+      await expect(page.locator('.ProseMirror > p')).toHaveCount(0);
+      await page.keyboard.type('!');
+      await save(app);
+      await expect.poll(() => readFileSync(file, 'utf8')).toBe('| a | b |\n| --- | --- |\n| one | two! |\n');
+
+      // Up from the start of the first cell stays in the table too. The first
+      // row is a header row, whose cells the table draws as th, not td.
+      await page.locator('.noto-table-frame th', { hasText: 'a' }).click();
+      await page.keyboard.press(startOfLine);
+      await page.keyboard.press('ArrowUp');
+      await expect(page.locator('.ProseMirror > p')).toHaveCount(0);
+      await page.keyboard.type('!');
+      await save(app);
+      await expect.poll(() => readFileSync(file, 'utf8')).toBe('| !a | b |\n| --- | --- |\n| one | two! |\n');
+    } finally {
+      await app.close();
+    }
+  });
+
+  test('an arrow steps into the line that is already beyond the table', async () => {
+    const { app, page, file } = await openNote('before\n\n| a | b |\n| --- | --- |\n| one | two |\n\nafter\n');
+    try {
+      // Down from the end of the last cell goes to the paragraph below. The
+      // browser's caret lands at the end of it, which is the nearest place
+      // to the cell's right edge; either way the table itself is untouched.
+      await page.locator('.noto-table-frame td', { hasText: 'two' }).click();
+      await page.keyboard.press(endOfLine);
+      await page.keyboard.press('ArrowDown');
+      await page.keyboard.type('!');
+      await expect(page.locator('.ProseMirror > p')).toHaveCount(2);
+      await save(app);
+      await expect.poll(() => readFileSync(file, 'utf8')).toBe('before\n\n| a | b |\n| --- | --- |\n| one | two |\n\nafter!\n');
+
+      // Up from the start of the first cell goes to the paragraph above.
+      await page.locator('.noto-table-frame th', { hasText: 'a' }).click();
+      await page.keyboard.press(startOfLine);
+      await page.keyboard.press('ArrowUp');
+      await page.keyboard.type('!');
+      await save(app);
+      await expect.poll(() => readFileSync(file, 'utf8')).toBe('!before\n\n| a | b |\n| --- | --- |\n| one | two |\n\nafter!\n');
+    } finally {
+      await app.close();
+    }
+  });
+});

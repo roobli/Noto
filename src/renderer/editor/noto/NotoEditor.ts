@@ -25,7 +25,7 @@ import { EditorState, Selection, type Plugin, type Transaction, TextSelection } 
 import { EditorView } from 'prosemirror-view';
 import { closeHistory, history, redo, undo } from 'prosemirror-history';
 import { dropCursor } from 'prosemirror-dropcursor';
-import { gapCursor } from 'prosemirror-gapcursor';
+import { notoGapCursor } from './gap-cursor';
 import { tableEditing } from 'prosemirror-tables';
 import { tableContextItems, tableContextPress } from './table-context';
 import { Fragment, type Node as ProseNode } from 'prosemirror-model';
@@ -480,7 +480,7 @@ export class NotoEditor implements NotoEditorPort {
       }),
       history(),
       dropCursor({ color: 'var(--accent)' }),
-      gapCursor(),
+      notoGapCursor(),
       caretPlugin(),
       alertPlugin(),
       imageLinePlugin(),
@@ -501,7 +501,7 @@ export class NotoEditor implements NotoEditorPort {
       indexBlockPlugin({ onFollow: (target) => this.options.onFollowWikiLink?.(target) }),
       footnoteHoverPlugin(),
       noteMarksPlugin({ onAction: (key, action) => this.options.onNoteMarkAction?.(key, action) }),
-      tocBlockPlugin({ onGo: (blockIndex) => this.focusTopLevel(blockIndex) }),
+      tocBlockPlugin({ onGo: (blockIndex) => this.focusTopLevel(blockIndex, { at: 0.1 }) }),
       linkEditorPlugin(),
       followLinkPlugin({ onFollow: (href) => this.options.onFollowLink?.(href) }),
       mathEditingPlugin(),
@@ -1031,21 +1031,57 @@ export class NotoEditor implements NotoEditorPort {
    * rather than only scrolling means the user can keep typing where they
    * landed.
    */
-  focusBlock(index: number): void {
+  /**
+   * Put the caret at the start of a written block and bring it into view.
+   *
+   * The outline and the [TOC] block pass `at`, so the block is placed that
+   * share of the page height down from the page's top: a heading chosen from
+   * the outline is read from where the eye is, not caught at the foot of the
+   * page. A heading near the top of the note lands at the very top instead,
+   * since there is no page above it to spare. Leaving Source Code Mode calls
+   * without `at` and keeps the old bring-into-view, which puts a note back
+   * where it was read rather than moving it.
+   */
+  focusBlock(index: number, options?: { readonly at?: number }): void {
     const view = this.view;
     if (!view || index < 0) return;
-    this.focusTopLevel(topLevelOfWritten(view.state.doc, index));
+    this.focusTopLevel(topLevelOfWritten(view.state.doc, index), options);
   }
 
   /** The same, for a top-level node index. */
-  private focusTopLevel(index: number): void {
+  private focusTopLevel(index: number, options?: { readonly at?: number }): void {
     const view = this.view;
     if (!view || index < 0 || index >= view.state.doc.childCount) return;
     let position = 0;
     for (let current = 0; current < index; current += 1) position += view.state.doc.child(current).nodeSize;
     const selection = Selection.near(view.state.doc.resolve(Math.min(position + 1, view.state.doc.content.size)));
-    view.dispatch(view.state.tr.setSelection(selection).scrollIntoView());
+    const transaction = view.state.tr.setSelection(selection);
+    view.dispatch(options?.at === undefined ? transaction.scrollIntoView() : transaction);
     view.focus();
+    if (options?.at !== undefined) this.revealAt(position + 1, options.at);
+  }
+
+  /**
+   * Put `position` at `share` of the page's height from the page's top, by
+   * smooth scroll; at the very top when the note has no room above it. Done
+   * again a moment later, since a long note draws a far block as a stand-in
+   * whose real node mounts after the first scroll.
+   */
+  private revealAt(position: number, share: number): void {
+    const view = this.view;
+    if (!view) return;
+    const reveal = () => {
+      const scroller = view.dom.closest<HTMLElement>('.canvas-scroll') ?? view.dom.parentElement;
+      if (!scroller) return;
+      let top: number;
+      try { top = view.coordsAtPos(position).top; } catch { return; }
+      const box = scroller.getBoundingClientRect();
+      const target = scroller.scrollTop + top - box.top - box.height * share;
+      const smooth = !window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+      scroller.scrollTo({ top: Math.max(0, target), behavior: smooth ? 'smooth' : 'auto' });
+    };
+    reveal();
+    setTimeout(() => { if (this.view === view) reveal(); }, 160);
   }
 
   /**

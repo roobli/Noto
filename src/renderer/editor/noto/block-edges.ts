@@ -155,12 +155,17 @@ export const tableFromRows: Command = (state, dispatch) => {
  * the first line of one that starts inside something, makes a plain line
  * there and goes to it.
  *
- * "Inside something" is a quote, a list, a callout, a table, a code or maths
- * block: anything that is not a plain paragraph or heading at the top level.
+ * "Inside something" is a quote, a list, a callout, a code or maths block:
+ * anything that is not a plain paragraph or heading at the top level.
  * Without this the keyboard had no way past one at the edge of a note. Enter
  * on an empty line steps out of a quote or a list one level at a time, but a
- * code block keeps its Enters, a table makes rows, and a note that starts
- * with a quote had no line above it at all, so the only way was the source.
+ * code block keeps its Enters, and a note that starts with a quote had no
+ * line above it at all, so the only way was the source.
+ *
+ * A table is the exception: its arrows move within it, and no line is made
+ * past it. The table's own arrow handler takes the caret into a block beyond
+ * the table when there is one; at the edge of the note there is none, so the
+ * key stops there instead of growing a cell the reader never asked for.
  *
  * Only from the last line (or the first), so Down inside a long last item
  * still moves down through it first. The new line is empty, and an empty last
@@ -198,6 +203,9 @@ export function exitAtEdge(direction: 1 | -1): Command {
     }
     // From the last visual line of a wrapped paragraph, not from the middle of it.
     if (view && !view.endOfTextblock(direction === 1 ? 'down' : 'up')) return false;
+    // At the edge of a note a table has no block beyond it: the arrows move
+    // within the table, so the key is spent here and nothing is made.
+    if (table) return true;
     if (dispatch) {
       const at = direction === 1 ? doc.content.size : 0;
       const tr = state.tr.insert(at, nodes.paragraph.create());

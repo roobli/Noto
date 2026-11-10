@@ -724,7 +724,8 @@ export function notoBindings({ mac, onWidthStep, taskStamp }: KeymapOptions): Re
     // block, tried before the ordinary one.
     Backspace: chainCommands(undoSubstitution, deleteSelectedRowsOrColumns, unwrapAtStart),
     Delete: deleteSelectedRowsOrColumns,
-    // Out past a quote, a list, a table or a code block at the edge of the note.
+    // Out past a quote, a list or a code block at the edge of the note; a
+    // table's arrows move within it (exitAtEdge).
     ArrowDown: exitAtEdge(1),
     ArrowUp: exitAtEdge(-1),
     'Shift-Enter': insertHardBreak,

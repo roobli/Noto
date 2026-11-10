@@ -41,16 +41,29 @@ describe('leaving a block at the edge of the note', () => {
     expect(next.selection.head).toBe(1);
   });
 
-  it('leaves the table by its last row from any cell of it, not from a row above', () => {
+  it('spends the arrow at a table that ends the note, and makes nothing past it', () => {
     const table = '| a | b |\n| --- | --- |\n| 1 | 2 |';
     const state = atEnd(table);
-    expect(shape(run(state, exitAtEdge(1))!.doc)).toMatch(/^doc\(table\(.*\),paragraph\(\)\)$/);
+    // The key is consumed where the table is the edge, and no line is made:
+    // the arrows move within the table only.
+    let changed = false;
+    expect(exitAtEdge(1)(state, () => { changed = true; })).toBe(true);
+    expect(changed).toBe(false);
     // In the first cell of the last row, with a cell beside it on the same line.
     const first = state.apply(state.tr.setSelection(TextSelection.near(state.doc.resolve(state.doc.firstChild!.child(0).nodeSize + 3))));
     expect(first.selection.$head.index(1)).toBe(1);
-    expect(run(first, exitAtEdge(1))).not.toBeNull();
+    changed = false;
+    expect(exitAtEdge(1)(first, () => { changed = true; })).toBe(true);
+    expect(changed).toBe(false);
     // From the header row, Down stays in the table.
     expect(run(atStart(table), exitAtEdge(1))).toBeNull();
+  });
+
+  it('spends the arrow at a table that starts the note, and makes nothing above it', () => {
+    const state = atStart('| a | b |\n| --- | --- |\n| 1 | 2 |\n\nafter');
+    let changed = false;
+    expect(exitAtEdge(-1)(state, () => { changed = true; })).toBe(true);
+    expect(changed).toBe(false);
   });
 
   it('does nothing where Down already has somewhere to go, or there is nothing to leave', () => {
