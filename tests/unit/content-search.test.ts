@@ -60,6 +60,14 @@ describe('finding lines', () => {
     expect(found.line.slice(found.column, found.column + 6)).toBe('NEEDLE');
   });
 
+  it('starts a cut window on a whole word, with the ellipsis set off by a space', () => {
+    const words = Array.from({ length: 120 }, (_, at) => `word${at}`).join(' ');
+    const text = `${words} NEEDLE ${words}`;
+    const [found] = matchesIn(text, lit('NEEDLE'));
+    expect(found.line.startsWith('… word')).toBe(true);
+    expect(found.line.slice(found.column, found.column + 6)).toBe('NEEDLE');
+  });
+
   it('finds nothing for an empty query rather than everything', () => {
   });
 });
