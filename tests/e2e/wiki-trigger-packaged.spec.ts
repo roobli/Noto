@@ -54,7 +54,7 @@ test('typing two brackets offers the notes, and writes the link where they were'
     const palette = page.getByTestId('quick-open');
     await expect(palette).toBeVisible();
     await expect(page.getByTestId('quick-linking')).toBeVisible();
-    await expect(page.getByTestId('quick-input')).toHaveAttribute('placeholder', /Link to one of/);
+    await expect(page.getByTestId('quick-input')).toHaveAttribute('placeholder', 'Link to a note: type its name');
 
     await page.getByTestId('quick-input').fill('kestrel');
     await expect(page.getByTestId('quick-result').first()).toContainText('kestrels');

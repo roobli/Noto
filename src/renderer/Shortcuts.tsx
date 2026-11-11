@@ -25,7 +25,7 @@ import { SheetWidthHint, stepSheetWidth, type SheetWidthControl } from './sheet-
  * new ones marked New, gathered at the top, and the title bar's ? carries a
  * dot until the list is opened again.
  */
-export const GUIDE_EDITION = 8;
+export const GUIDE_EDITION = 9;
 
 /** What a Try It button does: the window leads there, or does it. */
 export type GuideTry =
@@ -56,7 +56,10 @@ export function shortcutGroups(mac: boolean): Group[] {
     {
       title: 'Finding your way',
       entries: [
-        { keys: mac ? [mod('P', mac), shift(mac) + mod('O', mac), mod('.', mac)] : [mod('P', mac), mod('.', mac)], what: 'Quick open. Tab cycles files, folders and the text inside notes.', tryIt: 'quick-open' },
+        { keys: mac ? [mod('P', mac), shift(mac) + mod('O', mac), mod('.', mac)] : [mod('P', mac), mod('.', mac)], what: 'Quick open. Tab cycles names, folders and the text inside notes. The row under the pointer is the one chosen.', tryIt: 'quick-open' },
+        { keys: [alt(mac) + 'E'], what: 'Quick open\'s preview shows the note as the page shows it, or its source, every line numbered. Remembered.', since: 9, tryIt: 'quick-open' },
+        { keys: [alt(mac) + '[', alt(mac) + ']'], what: 'Move the line between quick open\'s list and its preview, or drag it; it settles at even steps, and a double-click puts it back in the middle. Remembered.', since: 9, tryIt: 'quick-open' },
+        { keys: [shift(mac) + 'Tab'], what: 'Leave quick open\'s box for the mode buttons and the divider; Escape comes back to it.', since: 9 },
         { keys: [shift(mac) + mod('P', mac)], what: 'The command palette: every command in the menus, by name or by its menu, with its key.', since: 6, tryIt: 'palette' },
         { keys: ['Folders'], what: 'Choosing a folder narrows the other two tabs to it. Backspace on an empty box leaves it.' },
         { keys: ['New note', shift(mac) + '↩'], what: 'Type a name nothing matches and quick open offers to make it, as a note or a folder, in the folder it is narrowed to. A new folder is narrowed to at once, ready for its first note.', since: 5, tryIt: 'quick-open' },

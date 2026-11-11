@@ -65,7 +65,7 @@ test.describe('quick open', () => {
     const { app, page, folder } = await launch('follow-disk');
     try {
       await invokeMenu(app, 'quick-open');
-      await expect(page.getByTestId('quick-input')).toHaveAttribute('placeholder', /4 notes/);
+      await expect(page.getByTestId('quick-tally')).toHaveText('4 notes');
       await page.keyboard.press('Escape');
       await expect(page.getByTestId('file-tree')).toContainText('release-notes');
 
@@ -75,9 +75,9 @@ test.describe('quick open', () => {
 
       await invokeMenu(app, 'quick-open');
       await page.getByTestId('quick-input').fill('changelog');
-      await expect(page.getByTestId('quick-result').first()).toContainText('changelog.md');
+      await expect(page.getByTestId('quick-result').first().locator('.quick-name')).toHaveText('changelog');
       await page.getByTestId('quick-input').fill('release');
-      await expect(page.getByTestId('quick-open')).not.toContainText('release-notes.md');
+      await expect(page.getByTestId('quick-result').locator('.quick-name')).not.toContainText(['release-notes']);
     } finally {
       await app.close();
     }
@@ -89,10 +89,10 @@ test.describe('quick open', () => {
       await invokeMenu(app, 'quick-open');
       await expect(page.getByTestId('quick-open')).toBeVisible();
       // The index reached the renderer, so the box knows how much it searches.
-      await expect(page.getByTestId('quick-input')).toHaveAttribute('placeholder', /4 notes/);
+      await expect(page.getByTestId('quick-tally')).toHaveText('4 notes');
 
       await page.getByTestId('quick-input').fill('release');
-      await expect(page.getByTestId('quick-result').first()).toContainText('release-notes.md');
+      await expect(page.getByTestId('quick-result').first().locator('.quick-name')).toHaveText('release-notes');
       await page.keyboard.press('Enter');
 
       await expect(page.getByTestId('quick-open')).toBeHidden();
@@ -107,7 +107,7 @@ test.describe('quick open', () => {
     try {
       await invokeMenu(app, 'quick-open');
       await page.getByTestId('quick-input').fill('发展');
-      await expect(page.getByTestId('quick-result').first()).toContainText('发展规划.md');
+      await expect(page.getByTestId('quick-result').first().locator('.quick-name')).toHaveText('发展规划');
     } finally {
       await app.close();
     }
@@ -118,7 +118,9 @@ test.describe('quick open', () => {
     try {
       await invokeMenu(app, 'quick-open');
       await page.getByTestId('quick-input').fill('chapters/deep');
-      await expect(page.getByTestId('quick-result').first()).toContainText('deep-dive.md');
+      await expect(page.getByTestId('quick-result').first().locator('.quick-name')).toHaveText('deep-dive');
+      // Where it lives, under the name, as the folder it is in.
+      await expect(page.getByTestId('quick-result').first().locator('.quick-path')).toHaveText('chapters');
     } finally {
       await app.close();
     }
@@ -185,7 +187,8 @@ test.describe('searching inside notes', () => {
       await page.getByTestId('quick-input').fill('Detail');
       await expect(page.getByTestId('quick-match')).toHaveCount(1);
       const match = page.getByTestId('quick-match').first();
-      await expect(match).toContainText('deep-dive.md');
+      await expect(match.locator('.quick-name')).toHaveText('deep-dive');
+      await expect(match.locator('.quick-meta')).toHaveText('1 line');
       // The line it was found on is shown, which is the reason to search bodies.
       await expect(match.locator('.quick-line-text')).toContainText('Detail.');
 
@@ -223,12 +226,19 @@ test.describe('searching inside notes', () => {
       await page.getByTestId('quick-input').press('Tab');
       await page.getByTestId('quick-input').fill('ZEBRA_TOKEN');
       await expect(page.getByTestId('quick-match')).toHaveCount(1);
-      const hit = preview.locator('.is-hit');
-      await expect(hit).toHaveClass(/quick-preview-code/);
-      await expect(hit).toContainText('export ZEBRA_TOKEN=1');
-      // After the fence closes, the note reads as prose again.
-      await expect(preview.locator('.quick-preview-h2')).toHaveText('After');
-      await expect(preview.locator('.quick-preview-li')).toHaveText('run the tests');
+      // Rendered as the page renders it: the match is inside the page's own code block, marked.
+      const hit = preview.locator('.quick-preview-hit');
+      await expect(hit).toHaveText('ZEBRA_TOKEN');
+      await expect(preview.locator('pre code')).toContainText('export ZEBRA_TOKEN=1');
+      // After the fence closes, the note reads as prose again: the page's heading and list.
+      await expect(preview.locator('.quick-preview-doc h2')).toHaveText('After');
+      await expect(preview.locator('.quick-preview-doc li')).toHaveText('run the tests');
+      // Source shows the bytes, numbered from where the window begins, with the matched line marked.
+      await page.getByTestId('quick-input').press('Alt+KeyE');
+      await expect(preview.locator('.quick-preview-source li.is-hit')).toHaveText('export ZEBRA_TOKEN=1');
+      await expect(preview.locator('.quick-preview-source')).toContainText('## After');
+      await page.getByTestId('quick-input').press('Alt+KeyE');
+      await expect(preview.locator('.quick-preview-doc')).toBeVisible();
 
       // A note changed while the palette is open shows its new text when
       // walked back to, not what was read of it before.
@@ -272,7 +282,8 @@ test.describe('searching inside notes', () => {
       await page.getByTestId('quick-input').press('Tab');
       await page.getByTestId('quick-input').press('Tab');
       await page.getByTestId('quick-input').fill('zzzznothinghere');
-      await expect(page.getByTestId('quick-open')).toContainText('No note contains that.');
+      await expect(page.getByTestId('quick-open').locator('.quick-empty')).toHaveText('No note contains zzzznothinghere.');
+      await expect(page.getByTestId('quick-tally')).toHaveText('0 lines in 0 notes');
     } finally {
       await app.close();
     }

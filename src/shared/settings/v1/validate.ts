@@ -12,6 +12,10 @@ import {
   DEFAULT_SETTINGS,
   SHEET_WIDTHS,
   type SheetWidthV1,
+  QUICK_OPEN_PREVIEWS,
+  QUICK_SPLIT_MAX,
+  QUICK_SPLIT_MIN,
+  type QuickOpenPreviewV1,
   NOTO_SETTINGS_VERSION,
   SETTING_RANGES,
   WIDTH_MODES,
@@ -42,6 +46,11 @@ import {
   type UpdateChannelSettingV1,
 } from './contracts';
 import { isCanonicalChord } from '../../shortcuts/chord';
+
+/** A whole percent inside the travel the divider is allowed. */
+function isQuickSplit(value: unknown): value is number {
+  return typeof value === 'number' && Number.isInteger(value) && value >= QUICK_SPLIT_MIN && value <= QUICK_SPLIT_MAX;
+}
 
 /** Past this many, a list of switched-off chords is not something a person made. */
 const DISABLED_SHORTCUTS_MAX = 200;
@@ -142,6 +151,8 @@ export function coerceSettings(value: unknown): NotoSettingsV1 {
       ? value.treeNoteExtensions
       : DEFAULT_SETTINGS.treeNoteExtensions,
     sheetWidth: SHEET_WIDTHS.includes(value.sheetWidth as SheetWidthV1) ? value.sheetWidth as SheetWidthV1 : DEFAULT_SETTINGS.sheetWidth,
+    quickOpenSplit: isQuickSplit(value.quickOpenSplit) ? value.quickOpenSplit : DEFAULT_SETTINGS.quickOpenSplit,
+    quickOpenPreview: QUICK_OPEN_PREVIEWS.includes(value.quickOpenPreview as QuickOpenPreviewV1) ? value.quickOpenPreview as QuickOpenPreviewV1 : DEFAULT_SETTINGS.quickOpenPreview,
     remoteControl: typeof value.remoteControl === 'boolean'
       ? value.remoteControl
       : DEFAULT_SETTINGS.remoteControl,
@@ -269,6 +280,8 @@ export function isSettingsWriteRequestV1(value: unknown): value is SettingsWrite
     if (key === 'treeSort') return TREE_SORTS.includes(patch.treeSort as TreeSortV1);
     if (key === 'treeHeld') return TREE_HELD.includes(patch.treeHeld as TreeHeldV1);
     if (key === 'sheetWidth') return SHEET_WIDTHS.includes(patch.sheetWidth as SheetWidthV1);
+    if (key === 'quickOpenSplit') return isQuickSplit(patch.quickOpenSplit);
+    if (key === 'quickOpenPreview') return QUICK_OPEN_PREVIEWS.includes(patch.quickOpenPreview as QuickOpenPreviewV1);
     if (key === 'customCssPath') return isCssPath(patch.customCssPath);
     if (key === 'imageDestination') return IMAGE_DESTINATIONS.includes(patch.imageDestination as ImageDestinationV1);
     if (key === 'imageCustomFolder') return isImageFolder(patch.imageCustomFolder);
@@ -330,6 +343,8 @@ export function isSettingsReplyV1(value: unknown): value is SettingsReplyV1 {
     && isMarketplaceRepo(settings.pluginMarketplace)
     && typeof settings.codeLineNumbers === 'boolean'
     && typeof settings.codeWrap === 'boolean'
+    && isQuickSplit(settings.quickOpenSplit)
+    && QUICK_OPEN_PREVIEWS.includes(settings.quickOpenPreview as QuickOpenPreviewV1)
     && typeof settings.codeIndentGuides === 'boolean'
     && typeof settings.codeTabMarkers === 'boolean'
     && typeof settings.timelines === 'boolean'

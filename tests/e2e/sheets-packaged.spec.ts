@@ -76,17 +76,20 @@ test('the sheets share a top and a width that the bracket keys step in any of th
     await expect(palette).toHaveAttribute('data-sheet-width', '4');
     await page.keyboard.press('Escape');
 
-    // Quick Open, which shows the most, is the widest and the tallest of them.
+    // Quick Open is sized for finding, not reading: 74% of the window's
+    // height (560..780), and at each step a ceiling well under the page
+    // (step 4: 80% of 1400, under 1280; step 3: 70%, under 1120). It sits a
+    // little lower than the other sheets, with air above and below.
     await invokeMenu(app, 'quick-open');
     const quick = page.getByTestId('quick-open');
     await expect(quick).toHaveAttribute('data-sheet-width', '4');
     const quickAt4 = await box(quick);
-    expect(quickAt4.top).toBe(guideAt3.top);
-    expect(quickAt4.width).toBe(1352);
-    expect(quickAt4.height).toBeGreaterThan(guideAt3.height);
+    expect(quickAt4.width).toBe(1120);
+    expect(quickAt4.height).toBe(666);
+    expect(quickAt4.top).toBe(117);
     await page.keyboard.press(narrower);
     await expect(quick).toHaveAttribute('data-sheet-width', '3');
-    expect((await box(quick)).width).toBe(1064);
+    expect((await box(quick)).width).toBe(980);
     await page.keyboard.press('Escape');
   } finally {
     await app.close();

@@ -199,7 +199,7 @@ test.describe('making a new note', () => {
       await page.keyboard.press('Escape');
       await invokeMenu(app, 'quick-open');
       await page.getByTestId('quick-input').fill('Untitled');
-      await expect(page.getByTestId('quick-result')).toContainText(['Untitled.md']);
+      await expect(page.getByTestId('quick-result').locator('.quick-name')).toContainText(['Untitled']);
     } finally {
       await app.close();
     }

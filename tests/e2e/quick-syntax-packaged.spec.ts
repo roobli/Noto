@@ -62,7 +62,7 @@ test.describe('the query language', () => {
       // The words matched are the words, never the operator.
       await input.fill('type:file plan');
       await expect(page.getByTestId('quick-result')).toHaveCount(1);
-      await expect(page.getByTestId('quick-result').first()).toContainText('plan.md');
+      await expect(page.getByTestId('quick-result').first().locator('.quick-name')).toHaveText('plan');
 
       // Its aliases are the plugin's own.
       await input.fill('type:c kestrel');
