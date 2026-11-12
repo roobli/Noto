@@ -753,6 +753,11 @@ export interface WorkspaceIndexEntryV1 {
   readonly name: string;
   /** Relative to the workspace root, always with forward slashes. */
   readonly relativePath: string;
+  /**
+   * When the note last changed, in epoch milliseconds, so a result can say
+   * how old it is without a read per row. Absent when it could not be read.
+   */
+  readonly modified?: number;
 }
 
 export interface WorkspaceIndexReplyV1 {

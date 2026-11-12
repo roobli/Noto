@@ -54,6 +54,9 @@ body {
   /* The chevron at the file tree's edge while a drag scrolls it: a slow
      back and forth that says "moving", never a bounce. */
   --motion-nudge: 700ms;
+  /* The thin line under Quick Open's head while a search inside notes runs:
+     one even pass a second, so it reads as working, not as a warning. */
+  --motion-sweep: 1000ms;
   --ease-out: cubic-bezier(0.16, 1, 0.3, 1);
   /* For a line that fills while something waits (a folder about to open
      under a drag): even, so the time it shows is the time it takes. */
@@ -2500,11 +2503,14 @@ section.plugin-group > .plugin-market-row.is-set-aside {
   font: 400 11px/16px tokens.$mono;
   text-align: center;
 }
+/* Quick Open's foot is on the rail its list starts on, and a solid band over nothing. */
+.quick-open .quick-hints { position: relative; z-index: 1; min-height: 42px; background: var(--overlay); padding-left: var(--quick-rail); font-size: 13px; }
+
 .sheet-foot-end { display: inline-flex; gap: 16px; align-items: center; margin-left: auto; }
 .sheet-width-hint { display: inline-flex; gap: 4px; align-items: center; }
 .sheet-width-pips { display: inline-flex; gap: 3px; margin-left: 4px; }
-.sheet-width-pips i { width: 12px; height: 4px; border-radius: 2px; background: var(--hairline); }
-.sheet-width-pips i.is-on { background: var(--accent); }
+.sheet-width-pips i { width: 10px; height: 4px; border-radius: 2px; background: var(--hairline); }
+.sheet-width-pips i.is-on { background: color-mix(in srgb, var(--ink) 55%, transparent); }
 
 .command-palette-scrim {
   animation: noto-fade var(--motion-micro) var(--ease-out);
@@ -2611,9 +2617,15 @@ section.plugin-group > .plugin-market-row.is-set-aside {
 
 /* Quick open
    -------------------------------------------------------------------------
-   Near the top rather than centred: the list grows downward as you type, and a
-   centred box would move its own first result every keystroke. Anchored, it
-   stays still and only the rows beneath it change. */
+   One page, not two panes: the query, the section label, the names, the
+   matched lines and the foot all start on one rail; between the list and the
+   note there is only a gutter with a hairline, which is the divider. The
+   frame is sized for finding, not reading: 74% of the window's height, never
+   under 560 or over 780 (what the eye takes in without moving the head), and
+   at each width step a hard ceiling well under the page (760 to 1280). It
+   sits lower as the window grows, with no jump. Near the top rather than
+   centred, as before: the list grows downward as you type, and a centred box
+   would move its own first result every keystroke. */
 
 .quick-scrim {
   animation: noto-fade var(--motion-micro) var(--ease-out);
@@ -2624,16 +2636,17 @@ section.plugin-group > .plugin-market-row.is-set-aside {
 }
 
 .quick-open {
+  --quick-rail: 28px;
+  --quick-top: clamp(56px, 13vh, 240px);
   animation: noto-arrive var(--motion-default) var(--ease-out);
   position: absolute;
-  /* The sheets' top and the most room of them (The sheets, above). */
-  top: var(--sheet-top);
+  top: var(--quick-top);
   left: 50%;
   translate: -50% 0;
   display: flex;
   flex-direction: column;
-  width: var(--sheet-width-full);
-  height: var(--sheet-height-full);
+  width: min(calc(100vw - 32px), clamp(720px, 70vw, 1120px));
+  height: min(calc(100vh - var(--quick-top) - 24px), clamp(560px, 80vh, 860px));
   /* No transition on the width: it changes on ⌘[ and ⌘], from the keyboard,
      and a width that eases reflows every row on every frame of it. */
   overflow: hidden;
@@ -2641,33 +2654,32 @@ section.plugin-group > .plugin-market-row.is-set-aside {
   border-radius: var(--sheet-radius);
   background: var(--overlay);
   box-shadow: var(--sheet-shadow);
+  color: var(--ink);
 }
+:root[data-sheet-width='1'] .quick-open { width: min(calc(100vw - 32px), clamp(560px, 52vw, 760px)); }
+:root[data-sheet-width='2'] .quick-open { width: min(calc(100vw - 32px), clamp(640px, 62vw, 940px)); }
+:root[data-sheet-width='4'] .quick-open { width: min(calc(100vw - 48px), clamp(760px, 80vw, 1280px)); }
 
+/* The head: the query on the names' rail, then how many matched and what is searched. */
 .quick-input-row {
+  position: relative;
   display: flex;
+  flex: 0 0 auto;
   align-items: center;
-  gap: 10px;
-  flex: 0 0 auto;
+  gap: 14px;
+  height: 56px;
+  padding: 0 16px 0 var(--quick-rail);
   border-bottom: 1px solid var(--hairline);
-  padding-left: 14px;
 }
 
-/* What is being searched, stated rather than guessed at from the results.
-   It is a button because Tab already switches it and a label you can click is
-   the same affordance said twice more cheaply than a second control. */
-.quick-mode {
-  flex: 0 0 auto;
-  min-height: 20px;
-  border: 1px solid var(--hairline);
-  border-radius: 4px;
-  background: var(--panel);
-  padding: 1px 7px;
+.quick-glass {
+  position: absolute;
+  top: 50%;
+  left: 7px;
+  margin-top: -7.5px;
   color: var(--muted);
-  font-size: 11px;
-  white-space: nowrap;
+  opacity: 0.75;
 }
-
-.quick-mode:hover { color: var(--ink); background: var(--raised); }
 
 .quick-input {
   flex: 1 1 auto;
@@ -2675,65 +2687,208 @@ section.plugin-group > .plugin-market-row.is-set-aside {
   border: 0;
   border-radius: 0;
   background: transparent;
-  padding: 16px 18px 16px 0;
-  color: var(--ink);
-  font-size: 16px;
+  align-self: stretch;
+  padding: 0;
+  color: var(--ink-strong);
+  font: 400 var(--doc-font-size, 15px)/var(--doc-line-height, 1.7) tokens.$ui;
+  /* The end of a long query, the part just typed, stays in view: a text box scrolls to its caret. */
 }
 
 .quick-input:focus-visible { outline: none; }
 .quick-input::placeholder { color: var(--muted); }
 
-.quick-results {
+.quick-tally {
+  flex: 0 0 auto;
+  color: var(--muted);
+  font: 400 12px tokens.$mono;
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+
+  b { color: var(--ink); font-weight: 500; }
+}
+
+/* What is searched, as one segmented control at the row's end. */
+.quick-tabs {
+  display: inline-flex;
+  flex: 0 0 auto;
+  gap: 2px;
+  border: 1px solid var(--hairline);
+  border-radius: 8px;
+  background: var(--panel);
+  padding: 2px;
+}
+
+.quick-tab {
+  appearance: none;
+  display: inline-flex;
+  align-items: center;
+  height: 28px;
+  border: 0;
+  border-radius: 6px;
+  background: transparent;
+  padding: 0 12px;
+  color: var(--muted);
+  font: 400 13px/1 tokens.$ui;
+  white-space: nowrap;
+  cursor: pointer;
+
+  &:hover { color: var(--ink); }
+  &.is-current {
+    background: var(--overlay);
+    color: var(--ink-strong);
+    box-shadow: 0 1px 2px color-mix(in srgb, var(--shadow) 14%, transparent), 0 0 0 1px var(--hairline);
+  }
+  &:focus-visible { outline: 2px solid var(--focus); outline-offset: 1px; }
+}
+
+/* The folder the search is narrowed to, which is left by pressing it or by
+   backspacing out of an empty box. */
+.quick-scope {
+  flex: 0 0 auto;
+  max-width: 240px;
+  overflow: hidden;
+  border: 0;
+  border-radius: 999px;
+  background: color-mix(in srgb, var(--accent) 10%, transparent);
+  padding: 3px 10px;
+  color: var(--accent);
+  font: 400 13px/1.4 tokens.$ui;
+  white-space: nowrap;
+  text-overflow: ellipsis;
+  cursor: pointer;
+}
+
+/* A search inside notes is running: a thin sweep under the head, not a sentence in the list. */
+.quick-searching {
+  position: relative;
+  flex: 0 0 auto;
+  height: 0;
+
+  overflow: hidden;
+
+  &::after {
+    content: '';
+    position: absolute;
+    top: -1px;
+    left: 0;
+    width: 22%;
+    height: 2px;
+    background: var(--accent);
+    animation: quick-sweep var(--motion-sweep) var(--ease-in-out) infinite;
+  }
+}
+
+@keyframes quick-sweep {
+  from { transform: translateX(-100%); }
+  to { transform: translateX(460%); }
+}
+
+/* The body: the list, the divider, the note. The columns are the reader's split (QuickOpen.tsx). */
+.quick-body {
+  display: grid;
   flex: 1 1 auto;
+  grid-template-rows: minmax(0, 1fr);
+  grid-template-columns: minmax(0, 1fr);
+  min-height: 0;
+
+  &.is-dividing { cursor: col-resize; user-select: none; }
+}
+
+.quick-results {
+  min-width: 0;
   min-height: 0;
   overflow-y: auto;
   overscroll-behavior: contain;
-  padding: 6px;
+  padding: 10px 0 16px;
 }
 
+/* The list's scroll bar shows only while the list is under the pointer: drawn
+   always, it stood as a third rule between the two columns. */
+.quick-results::-webkit-scrollbar-thumb { background: transparent; }
+.quick-results:hover::-webkit-scrollbar-thumb { background: var(--hairline); }
+
+.quick-section {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  margin: 0;
+  padding: 6px 16px 6px var(--quick-rail);
+  color: var(--muted);
+  font: 400 11px tokens.$ui;
+  letter-spacing: 0.02em;
+
+  span { font-family: tokens.$mono; }
+}
+
+/* A row: the name, at its right how old or how many, and under it where it lives. */
 .quick-result {
+  position: relative;
   display: grid;
-  grid-template-columns: minmax(0, 1fr);
-  gap: 1px;
+  grid-template-columns: minmax(0, 1fr) auto;
+  column-gap: 16px;
+  align-content: center;
   width: 100%;
+  min-height: 46px;
   border: 0;
-  border-radius: 7px;
+  border-radius: 0;
   background: transparent;
-  padding: 7px 12px;
+  padding: 7px 16px 7px var(--quick-rail);
+  color: var(--ink);
   text-align: left;
+  cursor: default;
 }
 
-/* One selected row, moved by the keyboard and by the pointer alike. There is no
-   separate hover state: two different highlights on one list is two answers to
-   "which one does Enter take". It wears the spine, as the tree's current note
-   and History's open commit do: this is where you are in the list. */
-.quick-result.is-selected {
-  border-radius: 0 6px 6px 0;
-  background: var(--surface-active);
-  box-shadow: inset 2px 0 0 var(--accent);
+/* One selected row, moved by the keyboard and by the pointer alike: the
+   spine at the sheet's edge and a light wash of the accent. No separate hover:
+   two highlights on one list would be two answers to which one Enter takes. */
+.quick-result.is-selected { background: color-mix(in srgb, var(--accent) 12%, var(--overlay)); }
+.quick-result.is-selected::before {
+  content: '';
+  position: absolute;
+  top: 0;
+  bottom: 0;
+  left: 0;
+  width: 3px;
+  background: var(--accent);
 }
-.quick-result:hover { background: var(--surface-active); }
+:root[data-theme='dark'] .quick-result.is-selected { background: color-mix(in srgb, var(--accent) 16%, var(--overlay)); }
 
 .quick-name {
+  grid-column: 1;
   min-width: 0;
   overflow: hidden;
-  color: var(--ink);
-  font-size: 14px;
+  color: inherit;
+  font: 400 13px/18px tokens.$ui;
   text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.is-selected .quick-name { color: var(--ink-strong); }
+
+.quick-meta {
+  grid-row: 1;
+  grid-column: 2;
+  align-self: baseline;
+  color: var(--muted);
+  font: 400 11px/18px tokens.$mono;
+  font-variant-numeric: tabular-nums;
   white-space: nowrap;
 }
 
 .quick-path {
+  grid-column: 1 / -1;
   min-width: 0;
+  margin-top: 2px;
   overflow: hidden;
   color: var(--muted);
-  /* Quieter than the name it belongs to. It is context, not the answer. In
-     the interface face: most folders here are named in Chinese, which a
-     monospace face only borrows from another font, a size off. */
-  font: 400 12px/17px tokens.$ui;
+  font: 400 11px/16px tokens.$ui;
   text-overflow: ellipsis;
   white-space: nowrap;
 }
+
+/* On the selected row the quiet text lifts with the wash, so the context you
+   judge a hit by stays readable on it (5.5:1 by day, 4.9:1 at night). */
+.is-selected :is(.quick-path, .quick-meta, .quick-line-number) { color: color-mix(in srgb, var(--muted) 72%, var(--ink)); }
+:root[data-theme='dark'] .is-selected :is(.quick-path, .quick-meta, .quick-line-number) { color: color-mix(in srgb, var(--muted) 55%, var(--ink)); }
 
 /* The characters the query actually matched. Weight and colour rather than a
    highlighter block, which at this size turns a filename into a barcode. */
@@ -2745,51 +2900,58 @@ section.plugin-group > .plugin-market-row.is-set-aside {
   font-weight: 600;
 }
 
-/* A content match shows the lines it found, which is the whole reason to search
-   inside notes rather than across their names. */
+/* A content match shows the lines it found, on a gutter of their numbers,
+   which is the whole reason to search inside notes rather than their names. */
+.quick-lines {
+  display: grid;
+  grid-column: 1 / -1;
+  margin-top: 6px;
+}
+
 .quick-line {
-  display: flex;
-  gap: 8px;
+  display: grid;
+  grid-template-columns: 30px minmax(0, 1fr);
+  column-gap: 10px;
   min-width: 0;
-  margin-top: 1px;
-  font-family: tokens.$mono;
-  font-size: 11px;
-  line-height: 1.5;
 }
 
 .quick-line-number {
-  flex: 0 0 auto;
-  min-width: 2.5em;
   color: var(--muted);
-  opacity: 0.7;
+  font: 400 11px/18px tokens.$mono;
+  font-variant-numeric: tabular-nums;
   text-align: right;
 }
 
 .quick-line-text {
   min-width: 0;
   overflow: hidden;
-  color: var(--muted);
+  color: var(--ink);
+  font: 400 12px/18px tokens.$prose;
   text-overflow: ellipsis;
   white-space: nowrap;
-}
 
-.is-selected .quick-line-text { color: var(--ink); }
-
-/* How many times it appears, which is what ranked it. */
-.quick-count {
-  margin-left: 6px;
-  color: var(--muted);
-  font-family: tokens.$mono;
-  font-size: 10px;
-  font-weight: 400;
+  .quick-hit {
+    border-radius: 2px;
+    background: color-mix(in srgb, var(--mark-fill) 70%, transparent);
+    padding: 0 1px;
+    color: var(--ink-strong);
+    font-weight: inherit;
+  }
 }
 
 .quick-empty {
   margin: 0;
-  padding: 18px 12px;
+  padding: 40px 16px 0 var(--quick-rail);
   color: var(--muted);
-  font-size: 12.5px;
-  text-align: center;
+  font: 400 13px/1.7 tokens.$ui;
+
+  b { color: var(--ink); font-weight: 500; }
+}
+
+.quick-empty-also {
+  display: block;
+  margin-top: 10px;
+  font-size: 12px;
 }
 
 /* What can be done with what was typed besides opening a match. Below the
@@ -2825,15 +2987,196 @@ section.plugin-group > .plugin-market-row.is-set-aside {
 
 /* Why the last thing asked to be made was not, where the row that asked was. */
 .quick-notice {
-  margin: 2px 4px 6px;
+  margin: 2px 16px 6px var(--quick-rail);
   border-radius: 6px;
   padding: 7px 10px;
   background: color-mix(in srgb, var(--warning) 12%, transparent);
   color: var(--ink);
-  font-size: 12px;
+  font-size: 13px;
 }
 
 .quick-truncated { margin-left: auto; color: var(--warning); }
+
+/* The divider: one hairline in the gutter, which thickens under the pointer
+   and while dragged, with the split said in a badge while it moves. */
+.quick-divider {
+  position: relative;
+  touch-action: none;
+  cursor: col-resize;
+
+  &::before {
+    content: '';
+    position: absolute;
+    top: 0;
+    bottom: 0;
+    left: 50%;
+    width: 1px;
+    background: var(--hairline);
+    transition: background-color var(--motion-micro) var(--ease-out);
+  }
+
+  &:hover::before,
+  .is-dividing > &::before {
+    left: calc(50% - 1px);
+    width: 3px;
+    background: color-mix(in srgb, var(--ink) 22%, transparent);
+  }
+
+  &:focus-visible { outline: none; }
+  &:focus-visible::before { left: calc(50% - 1px); width: 3px; background: var(--focus); }
+}
+
+.quick-divider-badge {
+  position: absolute;
+  top: 50%;
+  left: 50%;
+  translate: -50% -50%;
+  border: 1px solid var(--hairline);
+  border-radius: 999px;
+  background: var(--overlay);
+  padding: 3px 7px;
+  color: var(--muted);
+  font: 400 11px tokens.$mono;
+  white-space: nowrap;
+  opacity: 0;
+  pointer-events: none;
+  transition: opacity var(--motion-micro) var(--ease-out);
+
+  .is-dividing > .quick-divider &,
+  .quick-divider:focus-visible & { opacity: 1; }
+}
+
+/* The note beside the list, set as the page sets it, on the page's own reading
+   width where the pane allows (`--measure-cap`). One paper with the list. */
+.quick-preview {
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+  min-height: 0;
+  padding: 0 24px 0 14px;
+
+  &.is-blank { align-items: flex-start; justify-content: flex-start; }
+}
+
+.quick-preview-measure {
+  display: flex;
+  flex: 1 1 auto;
+  flex-direction: column;
+  width: 100%;
+  max-width: var(--measure-cap, 796px);
+  min-height: 0;
+}
+
+.quick-preview-head {
+  display: flex;
+  flex: 0 0 auto;
+  align-items: baseline;
+  gap: 10px;
+  border-bottom: 1px solid var(--hairline);
+  padding: 22px 0 12px;
+  color: var(--muted);
+  font: 400 13px/1.4 tokens.$ui;
+  white-space: nowrap;
+}
+
+.quick-preview-where { min-width: 0; overflow: hidden; text-overflow: ellipsis; direction: rtl; text-align: left; }
+.quick-preview-where > bdi { direction: ltr; }
+.quick-preview-when { flex: 0 0 auto; font: 400 12px tokens.$mono; }
+
+/* The body scrolls inside its own box and stops on a crisp edge above the foot. */
+.quick-preview-body {
+  flex: 1 1 auto;
+  min-height: 0;
+  overflow-x: hidden;
+  overflow-y: auto;
+  overscroll-behavior: contain;
+  padding: 16px 0 40px;
+  scrollbar-width: none;
+
+  &::-webkit-scrollbar { display: none; }
+}
+
+/* Rendered: the editor's own document rules apply (`.ProseMirror` in
+   editor.scss), here only the parts that are about a live editor taken out. */
+.quick-preview-doc.ProseMirror {
+  min-height: 0;
+  padding-left: 0;
+  pointer-events: none;
+  user-select: text;
+
+  > :first-child { margin-top: 0; }
+}
+
+/* The page's headings are sized for a page; in a preview beside a list they
+   shouted. Same faces and weights, a step apart instead of a page apart, and
+   less air above them, so a screen of preview holds a screen of the note. */
+.quick-preview-doc.ProseMirror {
+  /* One size under the page: a preview is glanced at beside a list, not read. */
+  font-size: calc(var(--doc-font-size, 15px) - 1px);
+  line-height: var(--doc-line-height, 1.7);
+
+  :is(h1, h2, h3, h4, h5, h6) { margin: calc(1.1 * var(--doc-font-size, 15px)) 0 calc(0.45 * var(--doc-font-size, 15px)); line-height: 1.35; }
+  h1 { font-size: 1.4em; }
+  h2 { font-size: 1.24em; }
+  h3 { font-size: 1.12em; }
+  :is(h4, h5) { font-size: 1em; }
+  > :is(h1, h2, h3, h4, h5, h6):first-child { margin-top: 0; }
+}
+
+.quick-preview-doc .noto-frontmatter {
+  display: -webkit-box;
+  overflow: hidden;
+  -webkit-box-orient: vertical;
+  -webkit-line-clamp: 2;
+  line-clamp: 2;
+  margin-bottom: 18px;
+  padding: 8px 12px;
+}
+
+.quick-preview-picture {
+  color: var(--muted);
+  font-style: italic;
+
+  &::before { content: '['; }
+  &::after { content: ']'; }
+}
+
+.quick-preview-hit { border-radius: 2px; background: color-mix(in srgb, var(--mark-fill) 55%, transparent); color: var(--ink-strong); }
+
+/* Source: the bytes, numbered, wrapped inside the measure, nothing hidden. */
+.quick-preview-source {
+  margin: 0;
+  padding: 0;
+  color: var(--code-text);
+  font: 400 12px/1.7 tokens.$mono;
+  list-style: none;
+  counter-reset: quick-line calc(var(--from, 1) - 1);
+
+  li {
+    display: grid;
+    grid-template-columns: 36px minmax(0, 1fr);
+    column-gap: 12px;
+    counter-increment: quick-line;
+
+    &::before { content: counter(quick-line); color: var(--muted); text-align: right; font-variant-numeric: tabular-nums; }
+    &.is-hit { margin: 0 -8px; border-radius: 4px; background: color-mix(in srgb, var(--mark-fill) 40%, transparent); padding: 0 8px; }
+  }
+
+  span { overflow-wrap: anywhere; white-space: pre-wrap; }
+}
+
+.quick-preview-empty {
+  margin: 0;
+  padding: 28px 0 0;
+  color: var(--muted);
+  font: 400 13px/1.6 tokens.$ui;
+}
+
+/* Where the window is too narrow for both, the list keeps the room. */
+@media (max-width: 900px) {
+  .quick-body { grid-template-columns: minmax(0, 1fr) !important; }
+  .quick-divider, .quick-preview { display: none; }
+}
 
 /* Narrow windows
    -------------------------------------------------------------------------
@@ -2921,6 +3264,9 @@ section.plugin-group > .plugin-market-row.is-set-aside {
     scroll-behavior: auto !important;
     transition-property: opacity, color, background-color, border-color, outline-color, text-decoration-color, fill, stroke !important;
   }
+  /* Quick Open's search line stands still at full width: the head still says a search is running. */
+  @keyframes quick-sweep { from { opacity: 0.45; } to { opacity: 0.45; } }
+  .quick-searching::after { width: 100%; }
 }
 
 /* The theme's selection: the accent at a wash, never the system blue. It was
@@ -3786,142 +4132,6 @@ section.plugin-group > .plugin-market-row.is-set-aside {
   border: 0;
   cursor: pointer;
   font: inherit;
-}
-
-/* Quick open's three tabs and its scope chip. */
-
-
-/* The list's scroll bar shows only while the list is under the pointer: drawn
-   always, it stood as a third rule between the two columns. */
-.quick-results::-webkit-scrollbar-thumb { background: transparent; }
-.quick-results:hover::-webkit-scrollbar-thumb { background: var(--hairline); }
-.quick-body { display: flex; flex: 1 1 auto; min-height: 0; }
-.quick-body > .quick-results { flex: 1 1 50%; min-width: 0; }
-
-/* The preview reads like the page it will open onto: the document's face, its
-   leading, headings as headings; fading out where it is cut. */
-.quick-preview {
-  display: flex;
-  flex: 1 1 50%;
-  flex-direction: column;
-  min-width: 0;
-  border-left: 1px solid var(--hairline);
-  /* A shade under the list in both themes: the side you read, set back from
-     the side you choose from. Paper alone matched the light theme's panel. */
-  background: color-mix(in srgb, var(--paper) 55%, var(--panel));
-
-  &.is-blank { align-items: center; justify-content: center; }
-}
-.quick-preview-head {
-  flex: 0 0 auto;
-  padding: 18px 24px 10px;
-}
-.quick-preview-title {
-  display: -webkit-box;
-  margin: 0;
-  overflow: hidden;
-  color: var(--ink-strong);
-  font: 600 18px/25px tokens.$prose;
-  -webkit-box-orient: vertical;
-  -webkit-line-clamp: 2;
-  line-clamp: 2;
-  overflow-wrap: anywhere;
-}
-.quick-preview-where {
-  display: flex;
-  gap: 8px;
-  min-width: 0;
-  margin: 5px 0 0;
-  color: var(--muted);
-  font: 400 11.5px/16px tokens.$ui;
-  white-space: nowrap;
-
-  > span:not(:first-child)::before { content: '\00b7'; margin-right: 8px; }
-}
-.quick-preview-folder { min-width: 0; overflow: hidden; text-overflow: ellipsis; }
-.quick-preview-body {
-  position: relative;
-  flex: 1 1 auto;
-  min-height: 0;
-  overflow: hidden;
-  padding: 6px 24px 28px;
-  color: var(--ink);
-  font: 400 13.5px/1.75 tokens.$prose;
-  mask-image: linear-gradient(to bottom, #000 calc(100% - 64px), transparent);
-
-  p, hr { margin: 0 0 6px; }
-}
-.quick-preview-h1, .quick-preview-h2, .quick-preview-h3 { margin-top: 10px !important; color: var(--ink-strong); font-weight: 600; }
-.quick-preview-h1 { font-size: 16px; }
-.quick-preview-h2 { font-size: 15px; }
-.quick-preview-h3 { font-size: 14px; }
-.quick-preview-li { position: relative; padding-left: 16px; }
-.quick-preview-li::before { content: ''; position: absolute; top: 0.8em; left: 4px; width: 4px; height: 4px; border-radius: 50%; background: var(--muted); }
-.quick-preview-quote { padding-left: 12px; border-left: 2px solid var(--quote-line); color: var(--quote-ink); }
-.quick-preview-code {
-  margin: 0 !important;
-  padding: 0 10px;
-  overflow: hidden;
-  background: var(--code-fill);
-  color: var(--code-text);
-  font: 400 11.5px/1.65 tokens.$mono;
-  text-overflow: ellipsis;
-  white-space: pre;
-}
-.quick-preview-rule { height: 0; border: 0; border-top: 1px solid var(--hairline); margin: 10px 0 !important; }
-/* The line a search inside notes found, and the words in it. */
-.quick-preview-body .is-hit { margin-right: -8px; margin-left: -8px; padding-right: 8px; padding-left: 8px; border-radius: 4px; background: color-mix(in srgb, var(--mark-fill) 38%, transparent); }
-.quick-preview-hit { border-radius: 2px; background: var(--mark-fill); color: var(--ink-strong); }
-.quick-preview-empty { margin: 0; padding: 24px; color: var(--muted); font: 400 12.5px/18px tokens.$ui; text-align: center; }
-
-/* Where the window is too narrow for both, the list keeps the room. */
-@media (max-width: 900px) {
-  .quick-open.has-preview { width: min(740px, calc(100vw - 2 * var(--quick-gutter))); }
-  .quick-preview { display: none; }
-}
-
-.quick-tabs {
-  display: flex;
-  flex: 0 0 auto;
-  align-items: center;
-  gap: 2px;
-  padding-right: 8px;
-  margin-right: 2px;
-  border-right: 1px solid var(--hairline);
-}
-
-.quick-tab {
-  appearance: none;
-  border: 0;
-  border-bottom: 2px solid transparent;
-  border-radius: 0;
-  background: transparent;
-  padding: 5px 8px 4px;
-  color: var(--muted);
-  font-size: 12.5px;
-  line-height: 1;
-  cursor: pointer;
-
-  &.quick-tab:hover { color: var(--ink); background: transparent; }
-  &.is-current { color: var(--accent); border-bottom-color: var(--accent); }
-}
-
-/* The folder the search is narrowed to, which is left by pressing it or by
-   backspacing out of an empty box. */
-.quick-scope {
-  flex: 0 0 auto;
-  max-width: 220px;
-  overflow: hidden;
-  border: 0;
-  border-radius: 999px;
-  background: color-mix(in srgb, var(--accent) 10%, transparent);
-  padding: 2px 9px;
-  color: var(--accent);
-  font-size: 11.5px;
-  line-height: 1.4;
-  white-space: nowrap;
-  text-overflow: ellipsis;
-  cursor: pointer;
 }
 
 /* What the box offers to finish: a short list under the input, the first one

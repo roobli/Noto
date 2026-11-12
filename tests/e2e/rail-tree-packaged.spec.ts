@@ -452,7 +452,7 @@ test.describe('a note opened on its own', () => {
 
       await invokeMenu(app, 'quick-open');
       await page.getByTestId('quick-input').fill('deeper');
-      await expect(page.getByTestId('quick-result').first()).toContainText('deeper.md');
+      await expect(page.getByTestId('quick-result').first().locator('.quick-name')).toHaveText('deeper');
 
       await page.keyboard.press('Escape');
       // And the tree knows the folder once it is asked for.

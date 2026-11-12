@@ -940,10 +940,13 @@ export function isWorkspacePasteEventV1(value: unknown): value is WorkspacePaste
 }
 
 function isIndexEntryV1(value: unknown): value is WorkspaceIndexEntryV1 {
-  return record(value) && exact(value, ['path', 'name', 'relativePath'])
+  if (!record(value)) return false;
+  const keys = 'modified' in value ? ['path', 'name', 'relativePath', 'modified'] : ['path', 'name', 'relativePath'];
+  return exact(value, keys)
     && typeof value.path === 'string' && value.path.length > 0
     && typeof value.name === 'string'
-    && typeof value.relativePath === 'string';
+    && typeof value.relativePath === 'string'
+    && (!('modified' in value) || time(value.modified));
 }
 
 export function isWorkspaceIndexReplyV1(value: unknown): value is WorkspaceIndexReplyV1 {

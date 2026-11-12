@@ -17,7 +17,7 @@
  * rather than being a thing you resort to when the tree fails.
  */
 
-import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { Fragment, useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import type {
   WorkspaceContentMatchV1, WorkspaceIndexEntryV1,
 } from '../shared/workspace/v1/contracts';
@@ -25,14 +25,15 @@ import {
   contentDebounceMs, isPathQuery, matchPositions, rankCandidates, type ScoreKeys,
 } from '../shared/search/v1/fuzzy';
 import { searchBoost, type FrecencyStoreV1 } from '../shared/search/v1/frecency';
-import { pathContext } from './quick-open-path';
+import { pathTail } from './quick-open-path';
 import { foldersOf, withinScope } from './quick-open-folders';
 import { completeQuery, parseQuery, removeToken, type Completion } from './quick-open-query';
 import { isComposing } from './ime';
-import { QuickPreview, type PreviewTarget, type PreviewValue } from './QuickPreview';
+import { changedWords, folderWords, QuickPreview, type PreviewTarget, type PreviewValue } from './QuickPreview';
 import { readableHit } from './quick-preview';
 import { quickActions, type QuickAction } from './quick-open-make';
 import { SheetWidthHint, stepSheetWidth, type SheetWidthControl } from './sheet-width';
+import { QUICK_SPLIT_MAX, QUICK_SPLIT_MIN, type QuickOpenPreviewV1 } from '../shared/settings/v1/contracts';
 
 /**
  * How many results are drawn: enough to fill the panel on a tall window, so it
@@ -40,6 +41,10 @@ import { SheetWidthHint, stepSheetWidth, type SheetWidthControl } from './sheet-
  * the page. Beyond this nobody is reading, they are retyping.
  */
 const LIMIT = 30;
+/** Opened notes enough to fill the list with nothing typed; fewer, and the notes changed lately follow. */
+const RECENT_FLOOR = 12;
+/** The gutter between the list and the preview, which is the divider. */
+const GUTTER = 28;
 
 interface Candidate extends ScoreKeys {
   readonly entry: WorkspaceIndexEntryV1;
@@ -57,10 +62,16 @@ export const QUICK_TABS = ['files', 'folders', 'content'] as const;
 export type QuickOpenMode = (typeof QUICK_TABS)[number];
 
 export const QUICK_TAB_LABELS: Record<QuickOpenMode, string> = {
-  files: 'Files',
+  files: 'Names',
   folders: 'Folders',
-  content: 'In notes',
+  content: 'Text',
 };
+
+/** The preview keeps this much width, and the list this much, whatever the divider and the width step. */
+const PREVIEW_FLOOR = 320;
+const LIST_FLOOR = 300;
+/** Where the divider settles when it is dragged close: half, and the two the author used to choose from. */
+const SPLIT_SNAPS = [50, 56, 62];
 
 export interface QuickOpenProps {
   readonly open: boolean;
@@ -92,6 +103,12 @@ export interface QuickOpenProps {
   readonly onClose: () => void;
   /** How wide it is drawn, the step all the sheets share, and how to change it. */
   readonly sheet?: SheetWidthControl;
+  /** The list's share of the body, in percent, and how to keep a new one. */
+  readonly split?: number;
+  readonly onSplit?: (split: number) => void;
+  /** Rendered or source, and how to keep a change. */
+  readonly previewView?: QuickOpenPreviewV1;
+  readonly onPreviewView?: (view: QuickOpenPreviewV1) => void;
   /**
    * Reads the note in front of the list for the preview beside it: its
    * opening, or the lines around `line`. Without it there is no preview.
@@ -152,6 +169,8 @@ const PREVIEW_DELAY_MS = 60;
 /** How long a note's preview is shown from memory before it is read again. */
 const PREVIEW_FRESH_MS = 3000;
 
+const stripExtension = (name: string) => name.replace(/\.(md|markdown|mdown|mkd|txt)$/i, '');
+
 /** The name with the matched characters marked, so a fuzzy hit shows its work. */
 function Highlighted({ text, query }: { text: string; query: string }) {
   const positions = useMemo(() => new Set(matchPositions(text, query) ?? []), [text, query]);
@@ -173,6 +192,7 @@ export function QuickOpen({
   open, disabledShortcuts = [], mode, onMode, onSearchContent, onOpenMatch,
   entries, frecency, truncated, canInsertLink, linking = false, onOpenFile, onInsertLink, onClose,
   sheet, onPreview, onMake, folderName = '',
+  split = 50, onSplit, previewView = 'rendered', onPreviewView,
 }: QuickOpenProps) {
   const [query, setQuery] = useState('');
   const [selected, setSelected] = useState(0);
@@ -185,6 +205,13 @@ export function QuickOpen({
   const [caret, setCaret] = useState(0);
   const inputRef = useRef<HTMLInputElement>(null);
   const listRef = useRef<HTMLDivElement>(null);
+  const bodyRef = useRef<HTMLDivElement>(null);
+  const sectionRef = useRef<HTMLElement>(null);
+  /** The divider while it is dragged, which is drawn but not kept until the press lets go. */
+  const [liveSplit, setLiveSplit] = useState<number | null>(null);
+  const [dragging, setDragging] = useState(false);
+  /** Where the pointer last was, so only a real move of it chooses a row, not a list scrolled under it. */
+  const pointer = useRef({ x: -1, y: -1 });
 
   useEffect(() => {
     if (!open) return;
@@ -242,6 +269,7 @@ export function QuickOpen({
 
   useEffect(() => { setSelected(0); }, [effectiveMode]);
 
+
   const candidates = useMemo<Candidate[]>(() => withinScope(entries, effectiveScope).map((entry) => ({
     entry,
     nameKey: entry.name.toLowerCase(),
@@ -282,7 +310,15 @@ export function QuickOpen({
         .sort((a, b) => b.score - a.score
           || a.candidate.pathKey.localeCompare(b.candidate.pathKey))
         .map((scored) => scored.candidate);
-      if (effectiveScope.length === 0) return recent.slice(0, LIMIT);
+      if (effectiveScope.length === 0) {
+        if (recent.length >= RECENT_FLOOR) return recent.slice(0, LIMIT);
+        // Too little history to fill a screen: the notes changed most lately follow.
+        const seen = new Set(recent.map((candidate) => candidate.entry.path));
+        const changed = candidates
+          .filter((candidate) => !seen.has(candidate.entry.path) && typeof candidate.entry.modified === 'number')
+          .sort((a, b) => (b.entry.modified ?? 0) - (a.entry.modified ?? 0));
+        return [...recent, ...changed].slice(0, LIMIT);
+      }
       // Inside a folder the folder is what was asked for: its notes, the ones
       // opened lately first and then the rest, nearest the folder first. The
       // history alone left a folder nobody had opened a note from looking
@@ -330,6 +366,18 @@ export function QuickOpen({
       ?.scrollIntoView({ block: 'nearest' });
   }, [selected, results]);
 
+  /*
+   * The row under the pointer is the selected row, as the keys' row is: one
+   * answer to which note Enter opens and the preview shows. Only a real move
+   * of the pointer counts, so a list scrolled under a resting pointer while
+   * the arrows walk it does not snatch the selection back.
+   */
+  const hoverRow = useCallback((index: number) => (event: React.MouseEvent) => {
+    const moved = Math.abs(event.clientX - pointer.current.x) + Math.abs(event.clientY - pointer.current.y) > 1;
+    pointer.current = { x: event.clientX, y: event.clientY };
+    if (moved) setSelected(index);
+  }, []);
+
   const choose = useCallback((candidate: Candidate | undefined, asLink: boolean) => {
     if (!candidate) return;
     if ((asLink || linking) && canInsertLink) onInsertLink(candidate.entry);
@@ -373,6 +421,75 @@ export function QuickOpen({
     return true;
   }, []);
 
+  const cycleMode = useCallback((step: 1 | -1) => {
+    const at = QUICK_TABS.indexOf(effectiveMode);
+    // A written `type:` outranks the tab, so cycling takes it out rather
+    // than leaving the box saying one thing and the tabs another.
+    setQuery((current) => removeToken(current, 'type'));
+    onMode(QUICK_TABS[(at + step + QUICK_TABS.length) % QUICK_TABS.length]);
+  }, [effectiveMode, onMode]);
+
+  /*
+   * The divider's travel at this width: QUICK_SPLIT_MIN..MAX, narrowed so
+   * the preview keeps PREVIEW_FLOOR and the list LIST_FLOOR. At the
+   * narrowest width step the two floors meet and it stays where it is.
+   */
+  const splitRange = useCallback((): readonly [number, number] => {
+    const body = bodyRef.current;
+    if (!body) return [QUICK_SPLIT_MIN, QUICK_SPLIT_MAX];
+    const usable = body.getBoundingClientRect().width - GUTTER;
+    if (usable <= 0) return [QUICK_SPLIT_MIN, QUICK_SPLIT_MAX];
+    const low = Math.max(QUICK_SPLIT_MIN, Math.ceil((LIST_FLOOR / usable) * 100));
+    const high = Math.min(QUICK_SPLIT_MAX, Math.floor(((usable - PREVIEW_FLOOR) / usable) * 100));
+    return high >= low ? [low, high] : [50, 50];
+  }, []);
+  const clampSplit = useCallback((value: number, snap: boolean): number => {
+    const [low, high] = splitRange();
+    let next = Math.max(low, Math.min(high, Math.round(value)));
+    if (snap) for (const at of SPLIT_SNAPS) if (at >= low && at <= high && Math.abs(next - at) <= 1) next = at;
+    return next;
+  }, [splitRange]);
+  // The divider stays inside its travel when the width step changes under it.
+  useEffect(() => {
+    if (!open || !onSplit) return;
+    const fitted = clampSplit(split, false);
+    if (fitted !== split) onSplit(fitted);
+  }, [open, sheet?.width, split, clampSplit, onSplit]);
+  const moveSplit = useCallback((by: number) => {
+    const next = clampSplit(split + by, false);
+    if (next !== split) onSplit?.(next);
+  }, [clampSplit, onSplit, split]);
+
+  const onDividerDown = (event: React.PointerEvent<HTMLDivElement>) => {
+    if (event.button !== 0 || !bodyRef.current) return;
+    event.preventDefault();
+    const divider = event.currentTarget;
+    divider.setPointerCapture(event.pointerId);
+    setDragging(true);
+    const box = bodyRef.current.getBoundingClientRect();
+    const at = (clientX: number) => clampSplit(((clientX - box.left - GUTTER / 2) / (box.width - GUTTER)) * 100, true);
+    let last = split;
+    const move = (moveEvent: PointerEvent) => { last = at(moveEvent.clientX); setLiveSplit(last); };
+    const end = () => {
+      divider.removeEventListener('pointermove', move);
+      divider.removeEventListener('pointerup', end);
+      divider.removeEventListener('pointercancel', end);
+      divider.removeEventListener('lostpointercapture', end);
+      setDragging(false);
+      setLiveSplit(null);
+      if (last !== split) onSplit?.(last);
+    };
+    divider.addEventListener('pointermove', move);
+    divider.addEventListener('pointerup', end);
+    divider.addEventListener('pointercancel', end);
+    divider.addEventListener('lostpointercapture', end);
+  };
+  const onDividerKey = (event: React.KeyboardEvent<HTMLDivElement>) => {
+    if (event.key === 'ArrowLeft' || event.key === 'ArrowRight') { event.preventDefault(); moveSplit(event.key === 'ArrowRight' ? 2 : -2); }
+    if (event.key === 'Home' || event.key === 'Enter') { event.preventDefault(); onSplit?.(clampSplit(50, false)); }
+    if (event.key === 'Escape') { event.preventDefault(); inputRef.current?.focus(); }
+  };
+
   /** Narrow to a folder and go back to looking for notes inside it. */
   const enterFolder = useCallback((folder: { relativePath: string } | undefined) => {
     if (!folder) return;
@@ -411,18 +528,33 @@ export function QuickOpen({
     if (event.key === 'Escape') { event.preventDefault(); onClose(); return; }
     // Tab switches what is being searched without leaving the box, which is
     // where the thought "it is in a note, I just cannot remember which" turns
-    // into "search inside them then".
-    if (event.key === 'Tab') {
+    // into "search inside them then". Shift-Tab leaves the box for the
+    // sheet's controls (the current mode, then Tab on to the others and the
+    // divider), and Escape from any of them comes back to the box.
+    if (event.key === 'Tab' && event.shiftKey && !event.altKey && !event.metaKey && !event.ctrlKey) {
+      event.preventDefault();
+      sectionRef.current?.querySelector<HTMLElement>('.quick-tab.is-current')?.focus();
+      return;
+    }
+    if (event.key === 'Tab' && !event.shiftKey && !event.altKey && !event.metaKey && !event.ctrlKey) {
       event.preventDefault();
       // Finishing what is being typed comes first; the tabs are what Tab
       // does when there is nothing to finish.
       if (takeCompletion(completions.candidates[0])) return;
-      const step = event.shiftKey ? -1 : 1;
-      const at = QUICK_TABS.indexOf(effectiveMode);
-      // A written `type:` outranks the tab, so cycling takes it out rather
-      // than leaving the box saying one thing and the tabs another.
-      setQuery((current) => removeToken(current, 'type'));
-      onMode(QUICK_TABS[(at + step + QUICK_TABS.length) % QUICK_TABS.length]);
+      cycleMode(1);
+      return;
+    }
+    // Rendered or source. Option and a key, because the menu bar answers
+    // Command and a letter before the box would hear it.
+    if (event.altKey && !event.metaKey && !event.ctrlKey && event.code === 'KeyE') {
+      event.preventDefault();
+      onPreviewView?.(previewView === 'source' ? 'rendered' : 'source');
+      return;
+    }
+    // The divider, from the keyboard: Option and the brackets move it.
+    if (event.altKey && !event.metaKey && !event.ctrlKey && (event.code === 'BracketLeft' || event.code === 'BracketRight')) {
+      event.preventDefault();
+      moveSplit(event.code === 'BracketRight' ? 2 : -2);
       return;
     }
     // The width, on the same keys the author's own palette uses, and the same
@@ -499,6 +631,32 @@ export function QuickOpen({
   const previewValue = preview?.key === previewKey ? preview.value : undefined;
   const previewShown = onPreview !== undefined;
 
+  const shownSplit = liveSplit ?? split;
+  /**
+   * How old a note is, said short, so every row has the same right edge. With
+   * nothing typed the list is what was opened lately, and the age is when it
+   * was opened; a search's results say when each note last changed.
+   */
+  const ageOf = (entry: WorkspaceIndexEntryV1): string | null => {
+    const opened = frecency[entry.path]?.lastOpenedAt;
+    const when = terms.trim().length === 0 && typeof opened === 'number' && opened > 0 ? opened : entry.modified ?? opened;
+    return typeof when === 'number' && when > 0 ? changedWords(when) : null;
+  };
+  /** Of an empty query's rows, how many were opened here; the rest are the notes changed lately. */
+  const openedCount = terms.trim().length === 0 ? results.filter((candidate) => (frecency[candidate.entry.path]?.lastOpenedAt ?? 0) > 0).length : 0;
+  /** How many matched, in this mode, out of how many there are to search. */
+  const total = candidates.length.toLocaleString('en');
+  const count = (value: number, more = false) => <b>{value.toLocaleString('en')}{more ? '+' : ''}</b>;
+  const lines = content.matches.reduce((sum, match) => sum + match.occurrences, 0);
+  const tally = effectiveMode === 'content'
+    ? (terms.trim().length === 0 ? <>{total} notes</>
+      : searching ? <>searching {total}…</>
+      : <>{count(lines)} {lines === 1 ? 'line' : 'lines'} in {count(content.matches.length, content.truncated)} {content.matches.length === 1 ? 'note' : 'notes'}</>)
+    : effectiveMode === 'folders'
+      ? (terms.trim().length === 0 ? <>{folders.length.toLocaleString('en')} folders</> : <>{count(folderResults.length)} of {folders.length.toLocaleString('en')}</>)
+      : terms.trim().length === 0 ? <>{total} notes</>
+      : <>{count(results.length, results.length >= LIMIT)} of {total}</>;
+
   /** Where a row that makes something puts it: the folder narrowed to, or the open one. */
   const makingIn = effectiveScope.length > 0 ? effectiveScope : folderName;
   const selectedAction = selected >= baseCount ? actions[selected - baseCount] : undefined;
@@ -513,11 +671,12 @@ export function QuickOpen({
             id={`quick-result-${index}`}
             type="button"
             role="option"
+                tabIndex={-1}
             aria-selected={index === selected}
             className={index === selected ? 'quick-result quick-action is-selected' : 'quick-result quick-action'}
             data-testid="quick-action"
             data-kind={action.kind}
-            onMouseMove={() => setSelected(index)}
+            onMouseMove={hoverRow(index)}
             onClick={() => void runAction(action)}
           >
             <span className="quick-action-glyph" aria-hidden="true"><ActionGlyph kind={action.kind} /></span>
@@ -544,77 +703,92 @@ export function QuickOpen({
         aria-modal="true"
         aria-label="Quick open"
         data-testid="quick-open"
+        ref={sectionRef}
         onClick={(event) => event.stopPropagation()}
+        // Escape from one of the sheet's controls (a mode button, the divider)
+        // comes back to the box; from the box it closes (onKeyDown), and from
+        // anywhere else, such as the sheet before the box has taken focus, too.
+        onKeyDown={(event) => {
+          if (event.key !== 'Escape' || event.target === inputRef.current || isComposing(event)) return;
+          event.preventDefault();
+          const control = event.target instanceof Element && event.target.closest('.quick-tabs, .quick-divider');
+          if (control) inputRef.current?.focus();
+          else onClose();
+        }}
       >
         <div className="quick-input-row">
-        {/* The three tabs, as the author's own palette has them: what is being
-            searched is a thing you point at, not a mode you have to remember
-            you are in. Tab cycles them from the box, so the hand never leaves
-            it, and the tabs themselves never take the focus. */}
-        <div className="quick-tabs" role="tablist" aria-label="What to search">
-          {QUICK_TABS.map((tab) => (
+          <svg className="quick-glass" viewBox="0 0 16 16" width="15" height="15" fill="none" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round" aria-hidden="true">
+            <circle cx="7" cy="7" r="4.6" />
+            <path d="M10.4 10.4 14 14" />
+          </svg>
+          {effectiveScope.length > 0 && (
             <button
-              key={tab}
               type="button"
-              role="tab"
-              tabIndex={-1}
-              aria-selected={tab === effectiveMode}
-              className={tab === effectiveMode ? 'quick-tab is-current' : 'quick-tab'}
-              data-testid={`quick-tab-${tab}`}
-              title="Tab"
+              className="quick-scope"
+              data-testid="quick-scope"
+              title="Backspace on an empty box steps back out"
               onMouseDown={(event) => event.preventDefault()}
-              onClick={() => { setQuery((current) => removeToken(current, 'type')); onMode(tab); }}
+              onClick={() => {
+                // Whichever put the scope there is what is taken away: the
+                // written token, or the folder that was chosen.
+                if (parsed.scope !== null) setQuery((current) => removeToken(current, 'scope'));
+                else setScope((current) => current.split('/').slice(0, -1).join('/'));
+                inputRef.current?.focus();
+              }}
             >
-              {QUICK_TAB_LABELS[tab]}
+              {effectiveScope}
             </button>
-          ))}
+          )}
+          <input
+            ref={inputRef}
+            type="text"
+            className="quick-input"
+            data-testid="quick-input"
+            spellCheck={false}
+            placeholder={entries.length === 0 && !onMake
+              ? 'Open a folder to search it'
+              : effectiveMode === 'files' && !linking && onMake && candidates.length === 0
+                ? 'Name a note to make it here, or paste a path to open one'
+              : linking
+                ? 'Link to a note: type its name'
+                : effectiveMode === 'content'
+                  ? 'Find a line inside your notes'
+                  : effectiveMode === 'folders'
+                    ? 'Find a folder'
+                    : 'Find a note by name, or a line inside one'}
+            aria-label="Search notes"
+            role="combobox"
+            aria-expanded
+            aria-controls="quick-open-results"
+            aria-activedescendant={selected < rowCount ? `quick-result-${selected}` : undefined}
+            value={query}
+            onChange={(event) => { setQuery(event.target.value); setCaret(event.target.selectionStart ?? event.target.value.length); }}
+            onSelect={(event) => setCaret((event.target as HTMLInputElement).selectionStart ?? 0)}
+            onKeyDown={onKeyDown}
+          />
+          {/* How many matched, out of how many: the first question a search answers. */}
+          <span className="quick-tally" data-testid="quick-tally" aria-live="polite">{tally}</span>
+          {/* What is searched, a thing you point at. Tab from the box cycles it,
+              so the hand never leaves the keys; the buttons are real buttons too. */}
+          <div className="quick-tabs" role="tablist" aria-label="What to search">
+            {QUICK_TABS.map((tab) => (
+              <button
+                key={tab}
+                type="button"
+                role="tab"
+                aria-selected={tab === effectiveMode}
+                className={tab === effectiveMode ? 'quick-tab is-current' : 'quick-tab'}
+                data-testid={`quick-tab-${tab}`}
+                title={`${QUICK_TAB_LABELS[tab]} (Tab from the box)`}
+                onMouseDown={(event) => event.preventDefault()}
+                onClick={() => { setQuery((current) => removeToken(current, 'type')); onMode(tab); inputRef.current?.focus(); }}
+              >
+                {QUICK_TAB_LABELS[tab]}
+              </button>
+            ))}
+          </div>
         </div>
-        {effectiveScope.length > 0 && (
-          <button
-            type="button"
-            className="quick-scope"
-            data-testid="quick-scope"
-            title="Backspace on an empty box steps back out"
-            onMouseDown={(event) => event.preventDefault()}
-            onClick={() => {
-              // Whichever put the scope there is what is taken away: the
-              // written token, or the folder that was chosen.
-              if (parsed.scope !== null) setQuery((current) => removeToken(current, 'scope'));
-              else setScope((current) => current.split('/').slice(0, -1).join('/'));
-              inputRef.current?.focus();
-            }}
-          >
-            {effectiveScope}
-          </button>
-        )}
-        <input
-          ref={inputRef}
-          type="text"
-          className="quick-input"
-          data-testid="quick-input"
-          spellCheck={false}
-          placeholder={entries.length === 0 && !onMake
-            ? 'Open a folder to search it'
-            : effectiveMode === 'files' && !linking && onMake && candidates.length === 0
-              ? 'Name a note to make it here, or paste a path to open one'
-            : linking
-              ? `Link to one of ${candidates.length} notes`
-              : effectiveMode === 'content'
-                ? `Search inside ${candidates.length} notes`
-                : effectiveMode === 'folders'
-                  ? `Search ${folders.length} folders`
-                  : `Search ${candidates.length} notes`}
-          aria-label="Search notes"
-          role="combobox"
-          aria-expanded
-          aria-controls="quick-open-results"
-          aria-activedescendant={selected < rowCount ? `quick-result-${selected}` : undefined}
-          value={query}
-          onChange={(event) => { setQuery(event.target.value); setCaret(event.target.selectionStart ?? event.target.value.length); }}
-          onSelect={(event) => setCaret((event.target as HTMLInputElement).selectionStart ?? 0)}
-          onKeyDown={onKeyDown}
-        />
-        </div>
+        {effectiveMode === 'content' && searching && <div className="quick-searching" aria-hidden="true" />}
 
         {completions.candidates.length > 0 && (
           <div className="quick-complete" data-testid="quick-complete">
@@ -634,7 +808,11 @@ export function QuickOpen({
           </div>
         )}
 
-        <div className="quick-body">
+        <div
+          className={dragging ? 'quick-body is-dividing' : 'quick-body'}
+          ref={bodyRef}
+          style={previewShown ? { gridTemplateColumns: `minmax(0, ${shownSplit}fr) ${GUTTER}px minmax(0, ${100 - shownSplit}fr)` } : undefined}
+        >
         <div className="quick-results" id="quick-open-results" role="listbox" ref={listRef}>
           {effectiveMode === 'folders' ? (<>
             {noticeRow}
@@ -652,20 +830,19 @@ export function QuickOpen({
                   id={`quick-result-${index}`}
                   type="button"
                   role="option"
+                tabIndex={-1}
                   aria-selected={index === selected}
                   className={index === selected ? 'quick-result is-selected' : 'quick-result'}
                   data-testid="quick-folder"
                   title={folder.relativePath}
-                  onMouseMove={() => setSelected(index)}
+                  onMouseMove={hoverRow(index)}
                   onClick={() => enterFolder(folder)}
                 >
                   <span className="quick-name">
                     <Highlighted text={folder.name} query={terms.trim()} />
-                    <span className="quick-count">{folder.notes}</span>
                   </span>
-                  <span className="quick-path">
-                    <Highlighted text={folder.relativePath} query={terms.trim()} />
-                  </span>
+                  <span className="quick-meta">{folder.notes} {folder.notes === 1 ? 'note' : 'notes'}</span>
+                  <span className="quick-path" title={folder.relativePath}>{pathTail(folder.relativePath, true)}</span>
                 </button>
               ))}
             {actionRows}
@@ -679,7 +856,7 @@ export function QuickOpen({
                       ? 'Searching…'
                       : content.timedOut
                         ? 'That search took too long. Try a longer query.'
-                        : 'No note contains that.'}
+                        : <>No note contains <b>{terms.trim()}</b>.</>}
                 </p>
               )
               : content.matches.map((match, index) => (
@@ -688,17 +865,17 @@ export function QuickOpen({
                   id={`quick-result-${index}`}
                   type="button"
                   role="option"
+                tabIndex={-1}
                   aria-selected={index === selected}
                   className={index === selected ? 'quick-result is-selected' : 'quick-result'}
                   data-testid="quick-match"
                   title={match.relativePath}
-                  onMouseMove={() => setSelected(index)}
+                  onMouseMove={hoverRow(index)}
                   onClick={() => chooseMatch(match)}
                 >
-                  <span className="quick-name">
-                    {match.name}
-                    <span className="quick-count">{match.occurrences}</span>
-                  </span>
+                  <span className="quick-name">{stripExtension(match.name)}</span>
+                  <span className="quick-meta">{match.occurrences} {match.occurrences === 1 ? 'line' : 'lines'}</span>
+                  <span className="quick-lines">
                   {match.lines.map((line) => {
                     // Read as the page reads it: escaped paths in their own letters, links by their words, a table by its cells.
                     const shown = readableHit(line.line, line.column, line.length);
@@ -717,7 +894,8 @@ export function QuickOpen({
                       </span>
                     );
                   })}
-                  <span className="quick-path">{pathContext(match.relativePath)}</span>
+                  </span>
+                  <span className="quick-path" title={match.relativePath}>{pathTail(match.relativePath)}</span>
                 </button>
               ))
           ) : (<>
@@ -731,38 +909,65 @@ export function QuickOpen({
                     ? effectiveScope.length > 0 || entries.length === 0
                       ? onMake ? 'No notes here yet. Type a name to make the first one.' : 'No notes in this folder.'
                       : 'Nothing opened yet. Type to search.'
-                    : 'No note matches that.'}
+                    : <>No note is named <b>{terms.trim()}</b>.<span className="quick-empty-also">{onMake ? <><kbd>⇧↩</kbd> makes it here · </> : null}<kbd>tab</kbd> looks inside notes</span></>}
               </p>
             )
             : results.map((candidate, index) => (
+              <Fragment key={candidate.entry.path}>
+              {terms.trim().length === 0 && effectiveScope.length === 0 && index === 0 && openedCount > 0 && (
+                <p className="quick-section" role="presentation">Opened lately<span>{openedCount}</span></p>
+              )}
+              {terms.trim().length === 0 && effectiveScope.length === 0 && index === openedCount && index < results.length && (
+                <p className="quick-section" role="presentation">Changed lately<span>{results.length - openedCount}</span></p>
+              )}
               <button
-                key={candidate.entry.path}
                 id={`quick-result-${index}`}
                 type="button"
                 role="option"
+                tabIndex={-1}
                 aria-selected={index === selected}
                 className={index === selected ? 'quick-result is-selected' : 'quick-result'}
                 data-testid="quick-result"
                 title={candidate.entry.relativePath}
                 // Selecting on hover rather than on click, so the keyboard and
                 // the pointer never disagree about which row is next.
-                onMouseMove={() => setSelected(index)}
+                onMouseMove={hoverRow(index)}
                 onClick={(event) => choose(candidate, event.altKey)}
               >
                 <span className="quick-name">
-                  <Highlighted text={candidate.entry.name} query={terms.trim()} />
+                  <Highlighted text={stripExtension(candidate.entry.name)} query={terms.trim()} />
                 </span>
-                <span className="quick-path">
-                  <Highlighted text={pathContext(candidate.entry.relativePath)} query={terms.trim()} />
-                </span>
+                {ageOf(candidate.entry) && <span className="quick-meta">{ageOf(candidate.entry)}</span>}
+                <span className="quick-path" title={candidate.entry.relativePath}>{pathTail(candidate.entry.relativePath)}</span>
               </button>
+              </Fragment>
             ))}
             {actionRows}
           </>)}
         </div>
 
+        {previewShown && (
+          // The divider: drag it, or focus it and use the arrows; a double-click is half and half.
+          <div
+            className="quick-divider"
+            data-testid="quick-divider"
+            role="separator"
+            aria-orientation="vertical"
+            aria-label="Divide the list and the preview"
+            aria-valuenow={shownSplit}
+            aria-valuemin={QUICK_SPLIT_MIN}
+            aria-valuemax={QUICK_SPLIT_MAX}
+            tabIndex={0}
+            title="Drag to divide · double-click for half and half"
+            onPointerDown={onDividerDown}
+            onDoubleClick={() => onSplit?.(clampSplit(50, false))}
+            onKeyDown={onDividerKey}
+          >
+            <span className="quick-divider-badge" aria-hidden="true">{shownSplit} / {100 - shownSplit}</span>
+          </div>
+        )}
         {previewShown && (previewTarget
-          ? <QuickPreview target={previewTarget} value={previewValue} query={effectiveMode === 'content' ? terms : ''} />
+          ? <QuickPreview target={previewTarget} value={previewValue} query={effectiveMode === 'content' ? terms : ''} view={previewView} />
           : (
             <aside className="quick-preview is-blank" data-testid="quick-preview">
               <p className="quick-preview-empty">
@@ -779,11 +984,12 @@ export function QuickOpen({
               in; saying it opens the note as well would be two answers to
               one key, and only one of them true. */}
           {/* Enter's word is the selected row's: a row that makes something is not one that opens. */}
+          {rowCount > 0 && <span><kbd>↑</kbd> <kbd>↓</kbd> choose</span>}
           {selectedMakes
             ? <span><kbd>↩</kbd> make it</span>
             : <>
               {!linking && effectiveMode !== 'folders' && <span><kbd>↩</kbd> open</span>}
-              {effectiveMode === 'files' && canInsertLink && !linking && selected < baseCount && <span><kbd>⌥↩</kbd> insert link</span>}
+              {effectiveMode === 'files' && canInsertLink && !linking && selected < baseCount && rowCount > 0 && <span><kbd>⌥↩</kbd> link to it</span>}
               {effectiveMode === 'folders' && <span><kbd>↩</kbd> search inside it</span>}
             </>}
           {actions.some((action) => action.kind === 'new-note') && <span data-testid="quick-hint-new"><kbd>⇧↩</kbd> new note</span>}
@@ -793,6 +999,7 @@ export function QuickOpen({
           )}
           {completions.candidates.length > 0 && <span><kbd>tab</kbd> finish this</span>}
           {scope.length > 0 && <span><kbd>⌫</kbd> leave the folder</span>}
+          {previewShown && <span><kbd>⌥E</kbd> {previewView === 'source' ? 'rendered' : 'source'}</span>}
           <span className="sheet-foot-end"><SheetWidthHint control={sheet} /><span><kbd>esc</kbd> close</span></span>
           {effectiveMode === 'content' && content.truncated && (
             <span className="quick-truncated">Showing the first {content.matches.length}.</span>

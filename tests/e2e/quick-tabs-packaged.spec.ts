@@ -62,10 +62,10 @@ test.describe('quick open, as the author built it', () => {
       await expect(page.getByTestId('quick-tab-files')).toHaveAttribute('aria-selected', 'true');
       await expect(page.getByTestId('quick-scope')).toHaveText('works');
       await page.getByTestId('quick-input').fill('');
-      await expect(page.getByTestId('quick-input')).toHaveAttribute('placeholder', 'Search 2 notes');
+      await expect(page.getByTestId('quick-tally')).toHaveText('2 notes');
       // Nothing typed and no note opened from it yet: the folder still lists
       // its notes, nearest the folder first, rather than an empty panel.
-      await expect(page.getByTestId('quick-result')).toHaveText([/plan\.md/, /hiring\.md/]);
+      await expect(page.getByTestId('quick-result').locator('.quick-name')).toHaveText(['plan', 'hiring']);
 
       // The content tab is narrowed too: three notes mention kestrels, one is inside.
       await page.keyboard.press('Tab');
@@ -99,7 +99,7 @@ test.describe('quick open, as the author built it', () => {
       await expect(page.getByTestId('quick-folder').first()).toContainText('jobs');
       await page.keyboard.press('Enter');
       await expect(page.getByTestId('quick-scope')).toHaveText('works/jobs');
-      await expect(page.getByTestId('quick-result')).toHaveText([/hiring\.md/]);
+      await expect(page.getByTestId('quick-result').locator('.quick-name')).toHaveText(['hiring']);
       // Backspace on the empty box goes up to `works`, not to a folder named
       // by gluing the two together.
       await page.keyboard.press('Backspace');
@@ -145,11 +145,12 @@ test.describe('quick open, as the author built it', () => {
       await expect(palette).toBeVisible();
       await expect(palette).toHaveAttribute('data-sheet-width', '3');
       // Measured settled: on its arrival frame the palette is drawn at 0.98
-      // of its width. The third of the four widths the sheets share: 76% of
-      // the window, at least 720 and at most 1280, with 16px spare each side.
+      // of its width. The third of the four width steps: 70% of the window,
+      // at least 720 and at most 1120 (a popup for finding, well under the
+      // page), with 16px spare each side.
       await finishAnimations(page);
       await expect(palette).toHaveClass(/has-preview/);
-      const expected = await page.evaluate(() => Math.round(Math.min(innerWidth - 32, Math.max(720, Math.min(innerWidth * 0.76, 1280)))));
+      const expected = await page.evaluate(() => Math.round(Math.min(innerWidth - 32, Math.max(720, Math.min(innerWidth * 0.7, 1120)))));
       const narrow = await palette.evaluate((node) => Math.round(node.getBoundingClientRect().width));
       expect(Math.abs(narrow - expected)).toBeLessThanOrEqual(1);
 

@@ -3666,6 +3666,10 @@ function NotoWorkspace({ platform }: { platform: NotoPlatform }) {
         onOpenFile={(filePath) => { quickChoseRef.current = true; void openPath(filePath, null, { caret: true }); }}
         onInsertLink={(entry) => insertWikiLink(entry, quickOpen.linking === true)}
         onPreview={previewNote}
+        split={settings.quickOpenSplit}
+        onSplit={(quickOpenSplit) => changeSettings({ quickOpenSplit })}
+        previewView={settings.quickOpenPreview}
+        onPreviewView={(quickOpenPreview) => changeSettings({ quickOpenPreview })}
         onMake={folder.root ? makeFromQuickOpen : undefined}
         folderName={folder.root ? folder.root.split(/[\\/]/).filter(Boolean).pop() ?? '' : ''}
         linking={quickOpen.linking === true}

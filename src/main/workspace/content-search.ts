@@ -72,14 +72,27 @@ export function matchesIn(
     let shown = line;
     let column = hit.at;
     if (line.length > MAX_LINE) {
-      const from = Math.max(0, hit.at - 40);
-      shown = `${from > 0 ? '…' : ''}${line.slice(from, from + MAX_LINE)}`;
-      column = hit.at - from + (from > 0 ? 1 : 0);
+      const from = wordStart(line, Math.max(0, hit.at - 40));
+      // An ellipsis and a space, so the cut reads as a cut and the first word is whole.
+      const lead = from > 0 ? '… ' : '';
+      shown = `${lead}${line.slice(from, from + MAX_LINE)}`;
+      column = hit.at - from + lead.length;
     }
     const leading = shown.length - shown.trimStart().length;
     found.push({ line: shown.trim(), lineNumber: index + 1, column: column - leading, length: hit.length });
   }
   return found;
+}
+
+/**
+ * Where a window cut at `at` should begin so it starts on a whole word: the
+ * next space after it within a dozen characters, or `at` itself in text with
+ * no spaces to find (CJK runs, a long URL), where any character is a start.
+ */
+function wordStart(line: string, at: number): number {
+  if (at === 0 || /\s/.test(line[at - 1] ?? '')) return at;
+  const next = line.slice(at, at + 12).search(/\s/);
+  return next < 0 ? at : at + next + 1;
 }
 
 /** The first non-empty match in a line, or null. */

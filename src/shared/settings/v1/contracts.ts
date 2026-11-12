@@ -28,6 +28,13 @@ export const SETTINGS_CHANNELS = {
 } as const;
 
 /** `system` follows the operating system, which is the honest default. */
+/** Quick Open's preview: the note as the page renders it, or its source. */
+export type QuickOpenPreviewV1 = 'rendered' | 'source';
+export const QUICK_OPEN_PREVIEWS: readonly QuickOpenPreviewV1[] = ['rendered', 'source'];
+/** The list's share of Quick Open's body, in percent, at its widest travel. */
+export const QUICK_SPLIT_MIN = 40;
+export const QUICK_SPLIT_MAX = 68;
+
 /** A sheet's width, narrowest to widest; 3 is the default. */
 export type SheetWidthV1 = 1 | 2 | 3 | 4;
 export const SHEET_WIDTHS: readonly SheetWidthV1[] = [1, 2, 3, 4];
@@ -210,6 +217,19 @@ export interface NotoSettingsV1 {
    * as the default step.
    */
   readonly sheetWidth: SheetWidthV1;
+  /**
+   * How much of Quick Open's body the list of results takes, in percent; the
+   * preview beside it takes the rest. The reader drags the divider between
+   * them, and the sheet keeps each side wide enough to read whatever the
+   * width step (QUICK_SPLIT_MIN..QUICK_SPLIT_MAX here, narrower in use).
+   */
+  readonly quickOpenSplit: number;
+  /**
+   * How Quick Open shows the note beside the list: as the page renders it,
+   * through the editor's own parser and styles, or as its source, every byte
+   * numbered. Nothing half way between.
+   */
+  readonly quickOpenPreview: QuickOpenPreviewV1;
   /**
    * The layout the unsaved changes open in, which is the one last chosen
    * there: a reader who compares side by side does so every time.
@@ -467,6 +487,8 @@ export const DEFAULT_SETTINGS: NotoSettingsV1 = Object.freeze({
   treeHeld: 'stack',
   treeNoteExtensions: true,
   sheetWidth: 3,
+  quickOpenSplit: 50,
+  quickOpenPreview: 'rendered',
   diffLayout: 'side',
   remoteControl: false,
   markHighlight: true,
