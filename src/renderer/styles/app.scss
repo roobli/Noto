@@ -2646,7 +2646,7 @@ section.plugin-group > .plugin-market-row.is-set-aside {
   display: flex;
   flex-direction: column;
   width: min(calc(100vw - 32px), clamp(720px, 70vw, 1120px));
-  height: min(calc(100vh - var(--quick-top) - 24px), clamp(560px, 74vh, 780px));
+  height: min(calc(100vh - var(--quick-top) - 24px), clamp(560px, 80vh, 860px));
   /* No transition on the width: it changes on ⌘[ and ⌘], from the keyboard,
      and a width that eases reflows every row on every frame of it. */
   overflow: hidden;
@@ -2667,7 +2667,7 @@ section.plugin-group > .plugin-market-row.is-set-aside {
   flex: 0 0 auto;
   align-items: center;
   gap: 14px;
-  height: 64px;
+  height: 56px;
   padding: 0 16px 0 var(--quick-rail);
   border-bottom: 1px solid var(--hairline);
 }
@@ -2690,7 +2690,7 @@ section.plugin-group > .plugin-market-row.is-set-aside {
   align-self: stretch;
   padding: 0;
   color: var(--ink-strong);
-  font: 400 17px/1.4 tokens.$ui;
+  font: 400 var(--doc-font-size, 15px)/var(--doc-line-height, 1.7) tokens.$ui;
   /* The end of a long query, the part just typed, stays in view: a text box scrolls to its caret. */
 }
 
@@ -2814,7 +2814,7 @@ section.plugin-group > .plugin-market-row.is-set-aside {
   margin: 0;
   padding: 6px 16px 6px var(--quick-rail);
   color: var(--muted);
-  font: 400 12px tokens.$ui;
+  font: 400 11px tokens.$ui;
   letter-spacing: 0.02em;
 
   span { font-family: tokens.$mono; }
@@ -2828,11 +2828,11 @@ section.plugin-group > .plugin-market-row.is-set-aside {
   column-gap: 16px;
   align-content: center;
   width: 100%;
-  min-height: 56px;
+  min-height: 46px;
   border: 0;
   border-radius: 0;
   background: transparent;
-  padding: 9px 16px 9px var(--quick-rail);
+  padding: 7px 16px 7px var(--quick-rail);
   color: var(--ink);
   text-align: left;
   cursor: default;
@@ -2858,7 +2858,7 @@ section.plugin-group > .plugin-market-row.is-set-aside {
   min-width: 0;
   overflow: hidden;
   color: inherit;
-  font: 400 15px/21px tokens.$ui;
+  font: 400 13px/18px tokens.$ui;
   text-overflow: ellipsis;
   white-space: nowrap;
 }
@@ -2869,7 +2869,7 @@ section.plugin-group > .plugin-market-row.is-set-aside {
   grid-column: 2;
   align-self: baseline;
   color: var(--muted);
-  font: 400 12px/21px tokens.$mono;
+  font: 400 11px/18px tokens.$mono;
   font-variant-numeric: tabular-nums;
   white-space: nowrap;
 }
@@ -2880,7 +2880,7 @@ section.plugin-group > .plugin-market-row.is-set-aside {
   margin-top: 2px;
   overflow: hidden;
   color: var(--muted);
-  font: 400 13px/18px tokens.$ui;
+  font: 400 11px/16px tokens.$ui;
   text-overflow: ellipsis;
   white-space: nowrap;
 }
@@ -2917,7 +2917,7 @@ section.plugin-group > .plugin-market-row.is-set-aside {
 
 .quick-line-number {
   color: var(--muted);
-  font: 400 12px/20px tokens.$mono;
+  font: 400 11px/18px tokens.$mono;
   font-variant-numeric: tabular-nums;
   text-align: right;
 }
@@ -2926,7 +2926,7 @@ section.plugin-group > .plugin-market-row.is-set-aside {
   min-width: 0;
   overflow: hidden;
   color: var(--ink);
-  font: 400 13px/20px tokens.$prose;
+  font: 400 12px/18px tokens.$prose;
   text-overflow: ellipsis;
   white-space: nowrap;
 
@@ -2943,7 +2943,7 @@ section.plugin-group > .plugin-market-row.is-set-aside {
   margin: 0;
   padding: 40px 16px 0 var(--quick-rail);
   color: var(--muted);
-  font: 400 15px/1.7 tokens.$ui;
+  font: 400 13px/1.7 tokens.$ui;
 
   b { color: var(--ink); font-weight: 500; }
 }
@@ -2951,7 +2951,7 @@ section.plugin-group > .plugin-market-row.is-set-aside {
 .quick-empty-also {
   display: block;
   margin-top: 10px;
-  font-size: 13px;
+  font-size: 12px;
 }
 
 /* What can be done with what was typed besides opening a match. Below the
@@ -3107,6 +3107,22 @@ section.plugin-group > .plugin-market-row.is-set-aside {
   > :first-child { margin-top: 0; }
 }
 
+/* The page's headings are sized for a page; in a preview beside a list they
+   shouted. Same faces and weights, a step apart instead of a page apart, and
+   less air above them, so a screen of preview holds a screen of the note. */
+.quick-preview-doc.ProseMirror {
+  /* One size under the page: a preview is glanced at beside a list, not read. */
+  font-size: calc(var(--doc-font-size, 15px) - 1px);
+  line-height: var(--doc-line-height, 1.7);
+
+  :is(h1, h2, h3, h4, h5, h6) { margin: calc(1.1 * var(--doc-font-size, 15px)) 0 calc(0.45 * var(--doc-font-size, 15px)); line-height: 1.35; }
+  h1 { font-size: 1.4em; }
+  h2 { font-size: 1.24em; }
+  h3 { font-size: 1.12em; }
+  :is(h4, h5) { font-size: 1em; }
+  > :is(h1, h2, h3, h4, h5, h6):first-child { margin-top: 0; }
+}
+
 .quick-preview-doc .noto-frontmatter {
   display: -webkit-box;
   overflow: hidden;
@@ -3132,7 +3148,7 @@ section.plugin-group > .plugin-market-row.is-set-aside {
   margin: 0;
   padding: 0;
   color: var(--code-text);
-  font: 400 12.5px/1.7 tokens.$mono;
+  font: 400 12px/1.7 tokens.$mono;
   list-style: none;
   counter-reset: quick-line calc(var(--from, 1) - 1);
 

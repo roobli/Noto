@@ -1,6 +1,6 @@
 /**
  * Quick Open as one page, in the packaged app: a frame sized for finding
- * (74% of the window's height, 560 to 780, under a ceiling at each width
+ * (80% of the window's height, 560 to 860, under a ceiling at each width
  * step), a divider the reader drags and the sheet keeps readable on both
  * sides, a preview that is either the page rendered or the file's source,
  * both remembered, and the row under the pointer as the selected row.
@@ -62,12 +62,12 @@ test('the frame is sized for finding: capped height and width, the same top for 
     const sheet = page.getByTestId('quick-open');
     await expect(sheet).toBeVisible();
     await finishAnimations(page);
-    // 900 tall: 74% is 666, inside 560..780. 1400 wide at step 3: 70% is 980, under 1120.
-    expect({ w: await width(page, 'quick-open'), h: (await box(page, 'quick-open')).h }).toEqual({ w: 980, h: 666 });
+    // 900 tall: 80% is 720, inside 560..860. 1400 wide at step 3: 70% is 980, under 1120.
+    expect({ w: await width(page, 'quick-open'), h: (await box(page, 'quick-open')).h }).toEqual({ w: 980, h: 720 });
     await page.setViewportSize({ width: 2400, height: 1400 });
     await finishAnimations(page);
     // A large window gets air, not a bigger sheet.
-    expect({ w: await width(page, 'quick-open'), h: (await box(page, 'quick-open')).h }).toEqual({ w: 1120, h: 780 });
+    expect({ w: await width(page, 'quick-open'), h: (await box(page, 'quick-open')).h }).toEqual({ w: 1120, h: 860 });
   } finally {
     await app.close();
   }
@@ -144,10 +144,13 @@ test('the preview is the note rendered as the page renders it, or its source, sw
     await expect(doc.locator('table td').first()).toHaveText('1');
     await expect(doc).not.toContainText('**');
     await expect(doc).not.toContainText('`');
-    // The page's own type: the editor's heading and body sizes.
-    const sizes = await doc.evaluate((node) => ({ h1: parseFloat(getComputedStyle(node.querySelector('h1')!).fontSize), p: parseFloat(getComputedStyle(node.querySelector('p')!).fontSize) }));
-    expect(sizes.p).toBe(15);
-    expect(sizes.h1).toBeGreaterThan(24);
+    // The reader's text size less one and their leading (Settings, 15px and 1.58 by default), with
+    // headings a step above the text rather than a page above it.
+    const sizes = await doc.evaluate((node) => ({ h1: parseFloat(getComputedStyle(node.querySelector('h1')!).fontSize), p: parseFloat(getComputedStyle(node.querySelector('p')!).fontSize), leading: parseFloat(getComputedStyle(node.querySelector('p')!).lineHeight) }));
+    // One size under the page, so 14px against the default 15.
+    expect(sizes.p).toBe(14);
+    expect(sizes.leading).toBeCloseTo(14 * 1.58, 0);
+    expect(sizes.h1).toBeCloseTo(19.6, 0);
     // Source: every byte, numbered.
     await page.getByTestId('quick-input').press('Alt+KeyE');
     const source = preview.locator('.quick-preview-source');
