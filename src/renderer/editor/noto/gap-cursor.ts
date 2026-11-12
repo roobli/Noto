@@ -16,13 +16,18 @@ import { Plugin, type EditorState, type PluginSpec } from 'prosemirror-state';
 import type { EditorProps, EditorView } from 'prosemirror-view';
 import type { ResolvedPos } from 'prosemirror-model';
 
-/** Whether any ancestor of the resolved position is a table. */
-function inTableAt(state: EditorState, pos: number): boolean {
-  const $pos = state.doc.resolve(pos);
+/** Whether any ancestor of a resolved position is a table. */
+function inTable($pos: ResolvedPos): boolean {
   for (let depth = $pos.depth; depth > 0; depth -= 1) {
     if ($pos.node(depth).type.spec.tableRole === 'table') return true;
   }
   return false;
+}
+
+/** The same, for a position in the state's own document; out of it is not in a table. */
+function inTableAt(state: EditorState, pos: number): boolean {
+  if (pos < 0 || pos > state.doc.content.size) return false;
+  return inTable(state.doc.resolve(pos));
 }
 
 /** Whether either end of the selection sits in a table; shared with the table editing wrapper. */
@@ -49,8 +54,12 @@ export function notoGapCursor(): Plugin {
         selectionInTable(view.state) ? false : props.handleKeyDown?.(view, event) ?? false,
       handleClick: (view: EditorView, pos: number, event: MouseEvent) =>
         inTableAt(view.state, pos) ? false : props.handleClick?.(view, pos, event) ?? false,
+      // The positions come resolved in the document the browser just changed,
+      // which is not yet the state's: typing makes it longer, so reading them
+      // against the state threw past its end on every keystroke at a note's
+      // end, and an input method's composition never finished.
       createSelectionBetween: (view: EditorView, $anchor: ResolvedPos, $head: ResolvedPos) =>
-        inTableAt(view.state, $anchor.pos) || inTableAt(view.state, $head.pos)
+        inTable($anchor) || inTable($head)
           ? null
           : props.createSelectionBetween?.(view, $anchor, $head) ?? null,
     },

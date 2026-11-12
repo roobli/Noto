@@ -130,3 +130,27 @@ describe('the up and down arrows move by column, not by the cell\'s number', () 
     expect(view.state.selection).toBeInstanceOf(TextSelection);
   });
 });
+
+describe('the gap cursor reads the document the browser just changed', () => {
+  // Typing, and an input method composing, report the selection resolved in
+  // the document the browser has already changed, which is longer than the
+  // state's. Reading those positions against the state threw past its end on
+  // every keystroke at the end of a note: the text flickered, only the first
+  // letters of a pinyin showed, the characters never landed, and Save said a
+  // composition was still active.
+  it('answers for positions past the end of the state\'s document without throwing', () => {
+    const editor = open('ab');
+    const view = editor.getView()!;
+    const longer = view.state.doc.replace(3, 3, view.state.doc.slice(1, 3));
+    expect(longer.content.size).toBeGreaterThan(view.state.doc.content.size);
+    const $end = longer.resolve(longer.content.size - 1);
+    expect(() => view.someProp('createSelectionBetween', (make) => make(view, $end, $end))).not.toThrow();
+  });
+
+  it('still keeps itself out of a table read from the changed document', () => {
+    const editor = open('| a | b |\n| --- | --- |\n| one | two |\n');
+    const view = editor.getView()!;
+    const $in = view.state.doc.resolve(positionAt(editor, 'two', true));
+    expect(view.someProp('createSelectionBetween', (make) => make(view, $in, $in)) ?? null).toBeNull();
+  });
+});
