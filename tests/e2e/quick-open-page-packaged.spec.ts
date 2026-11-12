@@ -220,6 +220,11 @@ test('Shift-Tab leaves the box for the sheet\'s controls, Tab walks on to the di
     await expect(page.getByTestId('quick-input')).toBeFocused();
     await page.keyboard.press('Escape');
     await expect(page.getByTestId('quick-open')).toHaveCount(0);
+    // With focus on the sheet itself, as before the box has taken it, Escape closes it too.
+    await invokeMenu(app, 'quick-open');
+    await page.getByTestId('quick-open').evaluate((node) => { (node as HTMLElement).tabIndex = -1; (node as HTMLElement).focus(); });
+    await page.keyboard.press('Escape');
+    await expect(page.getByTestId('quick-open')).toHaveCount(0);
   } finally {
     await app.close();
   }

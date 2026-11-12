@@ -705,11 +705,15 @@ export function QuickOpen({
         data-testid="quick-open"
         ref={sectionRef}
         onClick={(event) => event.stopPropagation()}
-        // Escape from a control in the sheet comes back to the box; from the box it closes (onKeyDown).
+        // Escape from one of the sheet's controls (a mode button, the divider)
+        // comes back to the box; from the box it closes (onKeyDown), and from
+        // anywhere else, such as the sheet before the box has taken focus, too.
         onKeyDown={(event) => {
-          if (event.key !== 'Escape' || event.target === inputRef.current) return;
+          if (event.key !== 'Escape' || event.target === inputRef.current || isComposing(event)) return;
           event.preventDefault();
-          inputRef.current?.focus();
+          const control = event.target instanceof Element && event.target.closest('.quick-tabs, .quick-divider');
+          if (control) inputRef.current?.focus();
+          else onClose();
         }}
       >
         <div className="quick-input-row">
