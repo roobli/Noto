@@ -151,3 +151,80 @@ test('a picture in a note\u2019s HTML is not fetched while web images are off', 
     await app.close();
   }
 });
+
+/** A chart as a daily digest writes one: an `<svg>` block, coloured bars and Chinese labels, one line of script that must not run. */
+const CHART = [
+  '# Chart',
+  '',
+  'Before the chart.',
+  '',
+  '<svg xmlns="http://www.w3.org/2000/svg" width="440" height="160" viewBox="0 0 440 160" font-family="sans-serif" font-size="12">',
+  '<title>本周主要资产涨跌幅</title>',
+  '<text x="220" y="17" text-anchor="middle" font-size="14" font-weight="bold">本周主要资产涨跌幅</text>',
+  '<rect x="250" y="30" width="25" height="17" fill="#1e7b34"/>',
+  '<rect x="122" y="78" width="128" height="17" fill="#b3261e" onload="globalThis.__svgRan = true"/>',
+  '<script>globalThis.__svgRan = true;</script>',
+  '</svg>',
+  '',
+  '<div align="center"><svg viewBox="0 0 100 50"><circle cx="25" cy="25" r="20" fill="#1e7b34"/></svg></div>',
+  '',
+  'After the chart.',
+  '',
+].join('\n');
+
+test('an svg a note writes is drawn as the picture it is, and nothing in it runs', async () => {
+  const workspace = path.join(process.cwd(), 'test-results', 'html-svg');
+  await rm(workspace, { recursive: true, force: true });
+  await mkdir(path.join(workspace, 'user-data'), { recursive: true });
+  const vault = path.join(workspace, 'vault');
+  await mkdir(vault, { recursive: true });
+  const file = path.join(vault, 'chart.md');
+  await writeFile(file, CHART, 'utf8');
+  const app = await electron.launch({
+    executablePath: packagedExecutable(),
+    args: [`--user-data-dir=${path.join(workspace, 'user-data')}`, vault],
+  });
+  try {
+    const page = await app.firstWindow();
+    await page.setViewportSize({ width: 1280, height: 900 });
+    await page.waitForSelector('[data-testid="file-tree"]', { state: 'visible', timeout: 30_000 });
+    await page.getByTestId('tree-file').first().click();
+    const editor = page.locator('.canvas-slot:not([hidden]) .ProseMirror');
+    await editor.waitFor({ state: 'visible' });
+
+    // Drawn, decoded, at the size the drawing gives itself, named by its title.
+    const charts = editor.locator('.noto-html-drawn img.noto-html-svg');
+    await expect(charts).toHaveCount(2);
+    const first = charts.first();
+    await expect(first).toHaveAttribute('alt', '本周主要资产涨跌幅');
+    await expect.poll(() => first.evaluate((node) => (node as HTMLImageElement).naturalWidth)).toBe(440);
+    // Its own 440 by 160, in a 10px box that is the same in both themes.
+    expect(await first.evaluate((node) => [Math.round(node.getBoundingClientRect().width), Math.round(node.getBoundingClientRect().height)])).toEqual([460, 180]);
+    // One with only a viewBox takes the viewBox's size, centred by the div it sits in.
+    const second = charts.nth(1);
+    await expect(second).toHaveAttribute('width', '100');
+    await expect.poll(() => second.evaluate((node) => (node as HTMLImageElement).naturalWidth)).toBeGreaterThan(0);
+    const [box, column] = await second.evaluate((node) => [node.getBoundingClientRect(), node.closest('.noto-html-drawn')!.getBoundingClientRect()].map((rect) => rect.left + rect.width / 2));
+    expect(Math.abs(box - column)).toBeLessThan(2);
+    // No source slab around it, and nothing in the drawing ran, in the page or anywhere.
+    await expect(editor.locator('.noto-html-block[data-preview="markup"]')).toHaveCount(2);
+    expect(await page.evaluate(() => (globalThis as { __svgRan?: boolean }).__svgRan ?? false)).toBe(false);
+    await expect(editor.locator('.noto-html-drawn svg, .noto-html-drawn script')).toHaveCount(0);
+
+    // Quick Open's preview draws it the same way.
+    await invokeMenu(app, 'quick-open');
+    await page.getByTestId('quick-input').fill('chart');
+    const preview = page.getByTestId('quick-preview').locator('.quick-preview-doc');
+    await expect(preview.locator('img.noto-html-svg')).toHaveCount(2);
+    await expect.poll(() => preview.locator('img.noto-html-svg').first().evaluate((node) => (node as HTMLImageElement).naturalWidth)).toBe(440);
+    await page.keyboard.press('Escape');
+
+    // The caret brings the source back, and the file is untouched.
+    await first.click();
+    await expect(editor.locator('.noto-html-block.noto-html-editing')).toContainText('<svg');
+    await invokeMenu(app, 'save');
+    await expect.poll(() => readFile(file, 'utf8')).toBe(CHART);
+  } finally {
+    await app.close();
+  }
+});

@@ -3389,6 +3389,12 @@
   summary::marker { color: var(--muted); }
 
   img { max-width: 100%; height: auto; }
+  /* A drawing the note wrote as <svg>, shown as a picture of itself. Its own
+     margin, as a figure has, and nothing else: it is drawn as written. */
+  /* The same box in both themes, so the drawing sits in the same place
+     whether or not the dark theme puts paper under it. */
+  img.noto-html-svg { display: block; margin: 0.6em 0; padding: 10px; border-radius: 6px; box-sizing: content-box; }
+  [align='center'] img.noto-html-svg, center img.noto-html-svg { margin-inline: auto; }
   a { color: var(--accent); }
   p:first-child { margin-top: 0; }
   p:last-child { margin-bottom: 0; }
@@ -3396,6 +3402,11 @@
   [align='right'] { text-align: right; }
   center { display: block; text-align: center; }
 }
+
+/* A drawing is written for paper: black text and lines on nothing, which on
+   the dark theme would be black on near-black. On dark it sits on a sheet of
+   the light theme's paper, the way a chart printed on a page would. */
+:root[data-theme='dark'] .ProseMirror .noto-html-drawn img.noto-html-svg { background: #f7f5f0; }
 
 
 /* Sidenotes: drawn by the bundled Sidenotes plugin

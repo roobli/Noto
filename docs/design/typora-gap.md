@@ -1553,3 +1553,28 @@ redirect. Pages on this machine or the local network are refused outright,
 and while a block's source is being edited its pages wait for the caret to
 leave, so a half-typed address is never fetched. Zhihu answers with its own
 error page inside a frame, which is the site's choice.
+
+## 74. A chart a note wrote as `<svg>` showed nothing. Closed.
+
+The vault holds 28 `<svg>` blocks outside code fences, and the daily digest
+now writes one most mornings: a bar chart of the week's markets, coloured
+bars and Chinese labels. Typora draws them. Noto's HTML cleaning dropped
+`<svg>` with everything inside it, so the block drew as nothing at all and
+the chart could only be read as source with the caret in it.
+
+An `<svg>` element in a block is now drawn as a picture of itself: the markup
+is serialized whole into a `data:image/svg+xml` address and shown by an
+`<img>`, which is what the code viewer already does for a `.svg` file. An SVG
+shown as an image is a closed document, so its scripts, event attributes,
+`javascript:` links and `<foreignObject>` content do nothing, and it loads no
+picture, font or stylesheet from anywhere; the chart is drawn exactly as
+written without the element list the rest of a note's HTML goes through. The
+size is the drawing's own (`width` and `height` in pixels, the missing one
+from the `viewBox`, or the `viewBox` alone), held to the column. On the dark
+theme the drawing sits on light paper, since a chart written for a page has
+black text; the box around it is the same in both themes so it does not move
+when the theme changes. Quick Open's preview draws a note's HTML blocks the
+same way, with embedded pages named rather than loaded.
+
+An `<svg>` inside a sentence is still source, as inline HTML with attributes
+is; a block of one is what charts are written as.
