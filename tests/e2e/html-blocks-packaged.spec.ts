@@ -200,6 +200,9 @@ test('an svg a note writes is drawn as the picture it is, and nothing in it runs
     await expect.poll(() => first.evaluate((node) => (node as HTMLImageElement).naturalWidth)).toBe(440);
     // Its own 440 by 160, in a 10px box that is the same in both themes.
     expect(await first.evaluate((node) => [Math.round(node.getBoundingClientRect().width), Math.round(node.getBoundingClientRect().height)])).toEqual([460, 180]);
+    // Centred in the column, as a diagram or a picture on its own line is.
+    const [own, columnCentre] = await first.evaluate((node) => [node, node.closest('.noto-html-drawn')!].map((element) => { const rect = element.getBoundingClientRect(); return rect.left + rect.width / 2; }));
+    expect(Math.abs(own - columnCentre)).toBeLessThan(2);
     // One with only a viewBox takes the viewBox's size, centred by the div it sits in.
     const second = charts.nth(1);
     await expect(second).toHaveAttribute('width', '100');

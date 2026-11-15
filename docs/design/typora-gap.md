@@ -1570,7 +1570,9 @@ shown as an image is a closed document, so its scripts, event attributes,
 picture, font or stylesheet from anywhere; the chart is drawn exactly as
 written without the element list the rest of a note's HTML goes through. The
 size is the drawing's own (`width` and `height` in pixels, the missing one
-from the `viewBox`, or the `viewBox` alone), held to the column. On the dark
+from the `viewBox`, or the `viewBox` alone), held to the column and centred in
+it, as a diagram and a picture on its own line are, unless the note sets it
+left or right with `align`. On the dark
 theme the drawing sits on light paper, since a chart written for a page has
 black text; the box around it is the same in both themes so it does not move
 when the theme changes. Quick Open's preview draws a note's HTML blocks the

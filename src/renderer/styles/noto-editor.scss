@@ -3391,10 +3391,12 @@
   img { max-width: 100%; height: auto; }
   /* A drawing the note wrote as <svg>, shown as a picture of itself. Its own
      margin, as a figure has, and nothing else: it is drawn as written. */
-  /* The same box in both themes, so the drawing sits in the same place
-     whether or not the dark theme puts paper under it. */
-  img.noto-html-svg { display: block; margin: 0.6em 0; padding: 10px; border-radius: 6px; box-sizing: content-box; }
-  [align='center'] img.noto-html-svg, center img.noto-html-svg { margin-inline: auto; }
+  /* Centred, as a diagram and a picture on a line of its own are, unless the
+     note set it left or right. The same box in both themes, so the drawing
+     sits in the same place whether or not the dark theme puts paper under it. */
+  img.noto-html-svg { display: block; margin: 0.6em auto; padding: 10px; border-radius: 6px; box-sizing: content-box; }
+  [align='left'] img.noto-html-svg { margin-inline: 0 auto; }
+  [align='right'] img.noto-html-svg { margin-inline: auto 0; }
   a { color: var(--accent); }
   p:first-child { margin-top: 0; }
   p:last-child { margin-bottom: 0; }
