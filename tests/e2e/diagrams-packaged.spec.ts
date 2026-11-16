@@ -202,6 +202,56 @@ test.describe('diagrams', () => {
     }
   });
 
+  test('lays out an xychart for the column: labels that do not fit turn it on its side, each in full, bars from zero', async () => {
+    // The daily digest's chart, as written: twelve model names under twelve bars, an axis from 70.
+    const chart = [
+      '# Bench', '',
+      '```mermaid',
+      'xychart-beta',
+      '    title "ParseBench-2"',
+      '    x-axis ["LP Agentic Plus", "LP Agentic", "Claude Opus 5.5", "LP Cost Eff.", "Gemini 4 argon", "Reducto agentic", "Extend Parse 2", "Pulse Ultra 2", "Datalab", "GPT-5.6 terra", "Infinity-Parser2 Pro", "Databricks"]',
+      '    y-axis "score" 70 --> 92',
+      '    bar [89.8, 86.0, 85.7, 84.6, 84.2, 83.9, 83.2, 82.7, 81.3, 77.1, 77.1, 76.9]',
+      '```', '',
+    ].join('\n');
+    const { app, page } = await launch('xychart', chart);
+    try {
+      await page.setViewportSize({ width: 1440, height: 900 });
+      const diagram = page.locator('pre.noto-fence[data-lang="mermaid"] .noto-diagram');
+      await expect(diagram).toHaveAttribute('data-state', 'rendered', { timeout: 20_000 });
+      const frame = await (await diagram.locator('iframe').elementHandle())!.contentFrame();
+      await expect.poll(() => frame!.evaluate(() => document.querySelectorAll('svg g.left-axis g.label text').length)).toBe(12);
+      const shape = await frame!.evaluate(() => {
+        const svg = document.querySelector('svg')!;
+        const texts = [...svg.querySelectorAll('text')].map((text) => text.getBoundingClientRect()).filter((box) => box.width > 0);
+        let overlaps = 0;
+        for (let a = 0; a < texts.length; a += 1) for (let b = a + 1; b < texts.length; b += 1) {
+          const [p, q] = [texts[a]!, texts[b]!];
+          if (Math.min(p.right, q.right) - Math.max(p.left, q.left) > 1 && Math.min(p.bottom, q.bottom) - Math.max(p.top, q.top) > 1) overlaps += 1;
+        }
+        const labels = [...svg.querySelectorAll('g.left-axis g.label text')].map((text) => text.textContent);
+        const values = [...svg.querySelectorAll('g[class^="bar-plot"] text')].map((text) => text.textContent);
+        const tick = svg.querySelector<SVGTextElement>('g.top-axis g.label text')!;
+        const tickX = Number(/translate\(\s*([-\d.]+)/.exec(tick.getAttribute('transform') ?? '')![1]);
+        const starts = [...svg.querySelectorAll('g[class^="bar-plot"] rect')].map((rect) => Number(rect.getAttribute('x')));
+        return { width: svg.getBoundingClientRect().width, overlaps, labels, values, tickValue: tick.textContent, tickX, starts };
+      });
+      // Every model named in full, one row each, no text on top of other text.
+      expect(shape.labels).toContain('Infinity-Parser2 Pro');
+      expect(shape.overlaps).toBe(0);
+      // Read by its numbers: each bar carries its value.
+      expect(shape.values).toEqual(['89.8', '86', '85.7', '84.6', '84.2', '83.9', '83.2', '82.7', '81.3', '77.1', '77.1', '76.9']);
+      // As wide as the room it has (the column, capped at 960), not mermaid's fixed 700.
+      const room = await diagram.locator('iframe').evaluate((element) => element.getBoundingClientRect().width);
+      expect(Math.abs(shape.width - Math.min(960, room))).toBeLessThan(4);
+      // Every bar starts where the axis starts, so lengths compare.
+      expect(shape.tickValue).toBe('70');
+      for (const start of shape.starts) expect(Math.abs(start - shape.tickX)).toBeLessThan(1);
+    } finally {
+      await app.close();
+    }
+  });
+
   test('says when a diagram cannot be drawn, without touching the source', async () => {
     const broken = SOURCE.replace('graph TD\n  A[Start] --> B[End]', 'graph TD\n  A[Start] --> ');
     const { app, page } = await launch('broken', broken);

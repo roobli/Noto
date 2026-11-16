@@ -1602,3 +1602,33 @@ on a fill the note chose itself (`classDef ... fill:#fff3e0`, the vault's
 commonest) is set in whichever ink reads on it, and the strokes mermaid draws
 in plain black are drawn in the theme's line colour. An audit over one diagram
 of each kind found no label under 4.5:1 in either theme.
+
+## 76. An xychart with many categories was a smear of overlapping labels. Closed.
+
+Mermaid draws every xychart at 700 by 500 whatever the column, and never
+looks at its labels. The daily digest's ParseBench chart put twelve model
+names under twelve bars, and they ran into one another; across the vault's
+51 xycharts, 65 pairs of labels overlapped and a long title was cut off.
+
+`src/renderer/diagram/chart-layout.ts` now lays out each xychart from what it
+holds and the room it has. The chart takes the column's width, capped at
+960. When its category labels would not fit under their bars, it is turned
+on its side: one row per category, each label in full, the chart as tall as
+its rows. A single series of bars carries its values, at the size of the
+axis labels. An upright chart of six categories or fewer is drawn narrower
+and centred, so a bar is not a slab, and gets the height its value axis
+needs. A long title is set smaller rather than cut. The frame lays the chart
+out again when the column changes enough to matter.
+
+Three things mermaid draws wrong are mended after drawing: on its side, every
+bar started at the plot's edge rather than at the value axis, so 41 and 565
+on an axis to 80,000 were the same length; a bar's value was sized to the bar,
+up to 85 pixels or down to 3; and a line was drawn under the bars it crossed.
+
+What the note says still wins: an orientation after `xychart`, an `%%{init}`
+directive or front-matter config. What the note means is left alone too: an
+axis written `70 --> 92` is drawn from 70, which makes a 16 per cent gap look
+three times as long; that is the writer's choice to make.
+
+Measured over the 51 charts at windows of 1440, 1000 and 820: no overlapping
+text, nothing clipped, no text under 13px.
