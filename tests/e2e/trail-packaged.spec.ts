@@ -102,7 +102,8 @@ test.describe('the trail', () => {
     try {
       await page.getByTestId('rail-search').click();
       await expect(page.getByTestId('search-input')).toBeFocused();
-      await expect(page.getByTestId('file-tree')).toHaveCount(0);
+      // In place of the files: the tree is out of sight, kept for coming back to.
+      await expect(page.getByTestId('file-tree')).toBeHidden();
     } finally {
       await app.close();
     }

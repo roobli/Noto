@@ -59,6 +59,12 @@ export interface WorkspaceRailProps {
   readonly onView: (view: RailView) => void;
   /** When false, the Links tab (graph / MOC / related) is not drawn. */
   readonly showLinks: boolean;
+  /**
+   * Whether the rail is open. A closed rail stays mounted, hidden, so the
+   * file tree keeps the folder focused on, the folders open and its place;
+   * only the tree is kept alive, the other views are drawn only while seen.
+   */
+  readonly open?: boolean;
   readonly width: number;
   /** Called once when the drag ends, not per pointer move: the width follows
    *  the pointer through a CSS variable, and only the result is persisted. */
@@ -198,9 +204,11 @@ const NO_RULE = { left: '0px', width: '0px' };
 const ruleFor = (view: RailView) => (view === 'files' || view === 'outline' || view === 'links' ? INDICATOR[view] : NO_RULE);
 
 export function WorkspaceRail({
-  view, onView, showLinks, width, onResize, outline, onGoToBlock, currentHeading, tree, onCollapseTree, search, links, pages = [],
+  view, onView, showLinks, open = true, width, onResize, outline, onGoToBlock, currentHeading, tree, onCollapseTree, search, links, pages = [],
 }: WorkspaceRailProps) {
-  const page = view.startsWith('page:') ? pages.find((entry) => `page:${entry.key}` === view) ?? null : null;
+  const page = open && view.startsWith('page:') ? pages.find((entry) => `page:${entry.key}` === view) ?? null : null;
+  // The file tree is in front for its own tab, and for a plugin page that has gone.
+  const filesShown = open && (view === 'files' || (view.startsWith('page:') && !page));
   const railRef = useRef<HTMLElement>(null);
   const outlineRef = useRef<HTMLElement>(null);
   /** The headings folded shut, by block. Kept while the rail lives, as Typora keeps its folds. */
@@ -306,7 +314,7 @@ export function WorkspaceRail({
   }, [onResize, width]);
 
   return (
-    <aside ref={railRef} className="workspace-rail" aria-label="Navigation"
+    <aside ref={railRef} className="workspace-rail" aria-label="Navigation" hidden={!open}
       style={{ '--rail-width': `${width}px` } as CSSProperties}>
       <div
         className="rail-tabs"
@@ -375,22 +383,23 @@ export function WorkspaceRail({
           <PluginPage entry={page} />
         </div>
       )}
-      {(view === 'files' || (view.startsWith('page:') && !page)) && (
-        <div className="rail-view" id="rail-view-files" role="tabpanel" aria-labelledby="rail-tab-files">
-          <FileTree {...tree} />
-        </div>
-      )}
-      {showLinks && view === 'links' && (
+      {/* Kept mounted behind the other views, so the folder focused on, the
+          folders open and the place scrolled to survive a look at the outline. */}
+      <div className="rail-view" id="rail-view-files" role="tabpanel" aria-labelledby="rail-tab-files"
+        hidden={!filesShown}>
+        <FileTree {...tree} shown={filesShown} />
+      </div>
+      {open && showLinks && view === 'links' && (
         <div className="rail-view" id="rail-view-links" role="tabpanel" aria-labelledby="rail-tab-links">
           <RailLinks {...links} />
         </div>
       )}
-      {view === 'search' && (
+      {open && view === 'search' && (
         <div className="rail-view" id="rail-view-search">
           <RailSearch {...search} />
         </div>
       )}
-      {view === 'outline' && (
+      {open && view === 'outline' && (
           <div className="rail-view" id="rail-view-outline" role="tabpanel" aria-labelledby="rail-tab-outline"
             data-testid="outline-panel">
             {outline.length === 0

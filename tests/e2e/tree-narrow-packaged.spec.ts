@@ -195,6 +195,64 @@ test('a folder made the root with Option-click: full steps, a bar back up, and E
   }
 });
 
+test('a focused folder, the open folders and the place scrolled to survive a look at the outline, and closing the rail', async () => {
+  const { app, page, vault } = await launch('focus-kept');
+  try {
+    await openDeepNote(page, vault);
+    const engines = path.join(vault, ...DEEP.slice(0, 3));
+    await page.locator(`[data-testid="tree-directory"]${dataPath(engines)}`).click({ modifiers: ['Alt'] });
+    await expect(page.locator('[data-testid="tree-vault"] .tree-name')).toHaveText('03_计算引擎');
+    const scroller = page.locator('#rail-view-files');
+    await scroller.evaluate((element) => { element.scrollTop = 120; });
+    const scrolled = await scroller.evaluate((element) => element.scrollTop);
+    expect(scrolled).toBeGreaterThan(0);
+    const opened = async () => page.locator('[data-testid="tree-directory"][aria-expanded="true"]').count();
+    const openBefore = await opened();
+
+    // A look at the outline and back: the same root, the same folders open, the same place.
+    await page.getByTestId('outline-toggle').click();
+    await expect(page.getByTestId('outline-panel')).toBeVisible();
+    await expect(page.getByTestId('file-tree')).toBeHidden();
+    await page.getByTestId('rail-files').click();
+    await expect(page.locator('[data-testid="tree-vault"] .tree-name')).toHaveText('03_计算引擎');
+    await expect(page.locator('[data-testid="tree-focusbar"]')).toBeVisible();
+    expect(await opened()).toBe(openBefore);
+    await expect.poll(() => scroller.evaluate((element) => element.scrollTop)).toBe(scrolled);
+
+    // The rail closed and opened again keeps it all too.
+    await page.getByTestId('sidebar-toggle').click();
+    await expect(page.getByTestId('file-tree')).toBeHidden();
+    await page.getByTestId('sidebar-toggle').click();
+    await expect(page.locator('[data-testid="tree-vault"] .tree-name')).toHaveText('03_计算引擎');
+    expect(await opened()).toBe(openBefore);
+    await expect.poll(() => scroller.evaluate((element) => element.scrollTop)).toBe(scrolled);
+
+    // A note opened while the outline is in front is the one brought into view on coming back.
+    await page.getByTestId('outline-toggle').click();
+    await app.evaluate(({ Menu }) => {
+      const find = (items: Electron.MenuItem[]): Electron.MenuItem | null => {
+        for (const item of items) { if (item.id === 'quick-open') return item; const nested = item.submenu ? find(item.submenu.items) : null; if (nested) return nested; }
+        return null;
+      };
+      find(Menu.getApplicationMenu()!.items)!.click();
+    });
+    await page.getByTestId('quick-input').fill('聚合_哈希表');
+    await page.getByTestId('quick-input').press('Enter');
+    await expect(page.getByTestId('quick-open')).toHaveCount(0);
+    await page.getByTestId('rail-files').click();
+    await expect(page.locator('[data-testid="tree-vault"] .tree-name')).toHaveText('03_计算引擎');
+    const active = page.locator('.tree-file-active');
+    await expect(active).toHaveAttribute('data-label', '聚合_哈希表与分区.md');
+    await expect.poll(() => active.evaluate((row) => {
+      const box = row.getBoundingClientRect();
+      const view = row.closest('.rail-view')!.getBoundingClientRect();
+      return box.top >= view.top && box.bottom <= view.bottom;
+    })).toBe(true);
+  } finally {
+    await app.close();
+  }
+});
+
 test('with Note Info open, the filename is centred over the page it names', async () => {
   const { app, page, vault } = await launch('title', { infoOpen: true });
   try {

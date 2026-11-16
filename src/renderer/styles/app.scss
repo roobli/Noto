@@ -449,6 +449,9 @@ button:disabled { color: var(--muted); opacity: 0.7; }
   overflow: hidden;
 }
 
+/* Closed, the rail is kept, out of the layout, so its tree keeps its state. */
+.workspace-rail[hidden] { display: none; }
+
 .workspace-rail {
   animation: noto-rail-in var(--motion-slow) var(--ease-out);
   /* Set by the reader and held: it does not follow the window, because a rail

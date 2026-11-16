@@ -92,6 +92,14 @@ export interface FileTreeProps {
   readonly focusRequest?: { readonly path: string; readonly token: number } | null;
   /** F2 on a row: name it again where it sits, as Rename in its menu does. */
   readonly onRename?: (rowPath: string) => void;
+  /**
+   * Whether the tree is in sight. The rail keeps it mounted while another
+   * view (the outline, search) is in front, so the folder focused on, the
+   * folders open and the place scrolled to are all there on coming back;
+   * hidden, it measures nothing, and brings a note opened meanwhile into
+   * view once it is shown again.
+   */
+  readonly shown?: boolean;
 }
 
 /**
@@ -287,7 +295,7 @@ function foldersBetween(root: string, target: string | null): string[] {
 export function FileTree({
   root, rootName, activePath, list, onOpenFile, onRowMenu, onChooseFolder, onMoveEntry, vaultMenu,
   editing = null, onEditingDone, reloadToken = 0, reloadOnly = null, collapseToken = 0, gitMarks = null, privacyMarks = null,
-  heldFolders = 'stack', noteExtensions = true, focusRequest = null, onRename,
+  heldFolders = 'stack', noteExtensions = true, focusRequest = null, onRename, shown = true,
 }: FileTreeProps) {
   const [children, setChildren] = useState<ReadonlyMap<string, readonly WorkspaceEntryV1[]>>(new Map());
   const [expanded, setExpanded] = useState<ReadonlySet<string>>(new Set());
@@ -313,6 +321,8 @@ export function FileTree({
   const edgeDown = useRef<HTMLDivElement>(null);
   /** The folder the rail is focused on, drawn as its root; null for the whole open folder. */
   const [focus, setFocus] = useState<string | null>(null);
+  /** Where the tree was scrolled to, kept while another view is in front of it. */
+  const scrolledTo = useRef(0);
   /** Which way focus last went, so the tree slides in from that side; null until it first moves. */
   const [focusWay, setFocusWay] = useState<'in' | 'out' | null>(null);
   /** The tree's inner width, which the step per level and every cut name are worked out from. */
@@ -376,7 +386,8 @@ export function FileTree({
    */
   const readMeasure = useCallback(() => {
     const body = bodyRef.current;
-    if (!body) return;
+    // Hidden behind another view, the tree has no width to fit names to.
+    if (!body || body.clientWidth === 0) return;
     setTreeWidth(body.clientWidth);
     const name = body.querySelector<HTMLElement>('.tree-file .tree-name, .tree-directory:not(.tree-vault-row) .tree-name');
     if (!name) return;
@@ -566,7 +577,8 @@ export function FileTree({
   useEffect(() => {
     const body = bodyRef.current;
     const scroller = body?.closest('.rail-view');
-    if (!body || !scroller) return;
+    // Behind another view nothing here can be measured; it runs again when the tree is shown.
+    if (!body || !scroller || !shown) return;
     let frame = 0;
     const mark = () => {
       frame = 0;
@@ -612,6 +624,7 @@ export function FileTree({
       }
     };
     const onScroll = () => {
+      scrolledTo.current = scroller.scrollTop;
       // A name shown whole belongs to a row that has just moved.
       window.clearTimeout(peekTimer.current);
       peekRow.current = null;
@@ -643,7 +656,17 @@ export function FileTree({
       scroller.removeEventListener('scroll', onScroll);
       if (frame !== 0) cancelAnimationFrame(frame);
     };
-  }, [children, expanded, root, activePath, focus, heldFolders, readMeasure]);
+  }, [children, expanded, root, activePath, focus, heldFolders, readMeasure, shown]);
+
+  // Back in front: the tree is where it was left. A layout effect, so the
+  // place is restored before the effect above brings a note opened meanwhile
+  // into view, which then wins.
+  useLayoutEffect(() => {
+    if (!shown) return;
+    const scroller = bodyRef.current?.closest<HTMLElement>('.rail-view');
+    if (scroller && scroller.scrollTop !== scrolledTo.current) scroller.scrollTop = scrolledTo.current;
+    readMeasure();
+  }, [shown, readMeasure]);
 
   /*
    * Hold a dragged row at the top or bottom of the rail and the tree scrolls

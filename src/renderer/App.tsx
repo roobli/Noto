@@ -3145,8 +3145,9 @@ function NotoWorkspace({ platform }: { platform: NotoPlatform }) {
       {/* A column of its own, floor to ceiling, as Typora and Finder have it:
           the traffic lights and the toggle sit on its head, and the title bar
           lies across it without a ground of its own. */}
-      {rail.open && (
+      {/* Mounted while closed, hidden, so the tree keeps the folder focused on. */}
           <WorkspaceRail
+            open={rail.open}
             links={{
               currentPath: active?.opened.path ?? null,
               onLinks: noteLinks,
@@ -3208,7 +3209,6 @@ function NotoWorkspace({ platform }: { platform: NotoPlatform }) {
             }}
             onCollapseTree={() => setTreeCollapse((current) => current + 1)}
           />
-      )}
 
       <header className="titlebar">
         <div className="title-left">
