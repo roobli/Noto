@@ -1580,3 +1580,25 @@ same way, with embedded pages named rather than loaded.
 
 An `<svg>` inside a sentence is still source, as inline HTML with attributes
 is; a block of one is what charts are written as.
+
+## 75. Charts were drawn in mermaid's cream, peach and yellow. Closed.
+
+The vault holds 244 mermaid diagrams, 51 of them xycharts. Mermaid's `base`
+theme took the few colours Noto gave it and left every chart colour at its
+own defaults: bars in #FFF4DD (1.05:1 against the paper), a line in peach,
+pie slices after the first in the paper's own colour, gantt tasks in white,
+a journey's faces in cornsilk. On the light theme those were pale smears with
+a yellow line through them.
+
+The theme now defines a chart series, `--chart-1` to `--chart-8`: muted earth
+and ink hues that sit with the paper and the terracotta accent, each at least
+4.5:1 against the paper (light) and 5.5 to 6.5:1 (dark, lifted no further so
+a slice is not the brightest thing on screen). `src/renderer/diagram/chart-theme.ts`
+gives mermaid every chart variable from it: bars, lines, slices and git
+branches in the full colour; areas behind text (timeline, mindmap, gantt,
+quadrant, journey) in a tint of the same hue with the ink on it, ruled in
+that hue rather than mermaid's inverted complement. After drawing, a label
+on a fill the note chose itself (`classDef ... fill:#fff3e0`, the vault's
+commonest) is set in whichever ink reads on it, and the strokes mermaid draws
+in plain black are drawn in the theme's line colour. An audit over one diagram
+of each kind found no label under 4.5:1 in either theme.

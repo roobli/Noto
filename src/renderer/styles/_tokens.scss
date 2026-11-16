@@ -68,6 +68,19 @@
      sentence. Layered like the rest, so a custom stylesheet can retune them. */
   --ink-strong: #201E1C;
   --line-strong: #C9C3BB;
+  /* The chart series: bars, lines and slices in a diagram, in this order.
+     Muted earth and ink hues that sit with the paper and the terracotta
+     accent, each at least 4.5:1 against the paper, so a line reads on the
+     page and a label in the paper's colour reads on a slice. Mermaid's own
+     list opens with cream, peach and a bright yellow, near white here. */
+  --chart-1: #A5562F;
+  --chart-2: #3E6187;
+  --chart-3: #4F7543;
+  --chart-4: #8C6514;
+  --chart-5: #7E4C6E;
+  --chart-6: #2E6E69;
+  --chart-7: #6E655B;
+  --chart-8: #5C5B9A;
   --surface-active: #EBE8E2;
   --quote-ink: #575754;
   --quote-line: #C7C5BF;
@@ -123,6 +136,17 @@
   /* A clear step above the dark hairline, or the table's outer rules vanish
      into the paper at night. */
   --line-strong: #5C584F;
+  /* The same hues lifted for the dark paper only as far as they need: each
+     5.5 to 6.5:1 against it, so a filled slice is not the brightest thing on
+     the screen and the series does not read as a status chart. */
+  --chart-1: #C98A63;
+  --chart-2: #7F98BC;
+  --chart-3: #8DA874;
+  --chart-4: #BE9B52;
+  --chart-5: #B489A8;
+  --chart-6: #6CA59E;
+  --chart-7: #A39A8D;
+  --chart-8: #9594C8;
   --surface-active: #34322F;
   --quote-ink: #A6A199;
   --quote-line: #4A4740;

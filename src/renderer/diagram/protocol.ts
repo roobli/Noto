@@ -9,6 +9,8 @@ export interface DiagramPalette {
   readonly hairline: string;
   readonly lineStrong: string;
   readonly accent: string;
+  /** The chart series, `--chart-1` onwards: bars, lines, slices, branches. */
+  readonly series: readonly string[];
 }
 
 export interface DiagramRequest {

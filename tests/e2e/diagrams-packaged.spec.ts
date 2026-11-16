@@ -149,6 +149,59 @@ test.describe('diagrams', () => {
     }
   });
 
+  test('draws charts in the theme\'s series, never near-white, with every label readable on its fill', async () => {
+    const charts = [
+      '# Charts', '',
+      '```mermaid', 'xychart-beta', '  x-axis [a, b, c]', '  bar [1, 3, 2]', '  line [2, 1, 3]', '```', '',
+      '```mermaid', 'pie', '  "One" : 50', '  "Two" : 30', '  "Three" : 20', '```', '',
+      '```mermaid', 'flowchart LR', '  A[Pastel] --> B[Plain]', '  classDef warm fill:#fff3e0', '  class A warm', '```', '',
+    ].join('\n');
+    for (const theme of ['light', 'dark'] as const) {
+      const { app, page } = await launch(`charts-${theme}`, charts);
+      try {
+        // A theme change redraws every diagram with the palette it now has.
+        await page.evaluate((wanted) => { document.documentElement.dataset.theme = wanted; }, theme);
+        const diagrams = page.locator('pre.noto-fence[data-lang="mermaid"] .noto-diagram');
+        await expect(diagrams).toHaveCount(3);
+        const series = await page.evaluate(() => Array.from({ length: 3 }, (_, at) => getComputedStyle(document.documentElement).getPropertyValue(`--chart-${at + 1}`).trim().toLowerCase()));
+        for (let at = 0; at < 3; at += 1) {
+          const diagram = diagrams.nth(at);
+          await diagram.scrollIntoViewIfNeeded();
+          await expect(diagram).toHaveAttribute('data-state', 'rendered', { timeout: 20_000 });
+        }
+        const audit = async (at: number) => {
+          const frame = await (await diagrams.nth(at).locator('iframe').elementHandle())!.contentFrame();
+          return frame!.evaluate(() => {
+            const hex = (colour: string) => { const m = colour.match(/\d+/g); return m ? `#${m.slice(0, 3).map((v) => Number(v).toString(16).padStart(2, '0')).join('')}` : colour; };
+            const lum = (colour: string) => { const m = (colour.match(/\d+/g) ?? ['0', '0', '0']).slice(0, 3).map((v) => { const c = Number(v) / 255; return c <= 0.03928 ? c / 12.92 : ((c + 0.055) / 1.055) ** 2.4; }); return 0.2126 * m[0]! + 0.7152 * m[1]! + 0.0722 * m[2]!; };
+            const ratio = (a: string, b: string) => { const [x, y] = [lum(a), lum(b)].sort((p, q) => q - p); return (x! + 0.05) / (y! + 0.05); };
+            const fills = [...document.querySelectorAll('svg rect, svg path, svg circle')]
+              .filter((el) => { const r = el.getBoundingClientRect(); return r.width * r.height > 60; })
+              .map((el) => getComputedStyle(el).fill).filter((fill) => fill.startsWith('rgb') && fill !== 'rgb(0, 0, 0)');
+            const worst = [...document.querySelectorAll('svg foreignObject')].map((label) => {
+              const leaf = [...label.querySelectorAll('*')].reverse().find((node) => node.childElementCount === 0 && (node.textContent ?? '').trim()) ?? label;
+              const node = label.closest('g.node');
+              const shape = node && [...node.children].find((child) => /rect|path|polygon/.test(child.localName));
+              return shape ? ratio(getComputedStyle(leaf).color, getComputedStyle(shape).fill) : 21;
+            });
+            return { fills: fills.map(hex), worst: Math.min(21, ...worst) };
+          });
+        };
+        // The bars are the first series colour; mermaid's cream and yellow are gone.
+        const bars = await audit(0);
+        expect(bars.fills).toContain(series[0]);
+        expect(bars.fills.some((fill) => ['#fff4dd', '#ffd74d', '#fffff0', '#ffd8b1'].includes(fill))).toBe(false);
+        // Every slice is a series colour, none of them the paper.
+        const pie = await audit(1);
+        for (const colour of series) expect(pie.fills).toContain(colour);
+        // A node the note filled with a pastel keeps a label that reads on it, in both themes.
+        expect((await audit(2)).worst).toBeGreaterThanOrEqual(4.5);
+      } finally {
+        await app.close();
+      }
+    }
+  });
+
   test('says when a diagram cannot be drawn, without touching the source', async () => {
     const broken = SOURCE.replace('graph TD\n  A[Start] --> B[End]', 'graph TD\n  A[Start] --> ');
     const { app, page } = await launch('broken', broken);
