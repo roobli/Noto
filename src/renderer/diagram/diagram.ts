@@ -11,7 +11,7 @@
 
 import mermaid from 'mermaid';
 import { isXyChart, readXyShape, xyLayout } from './chart-layout';
-import { bundleFanOuts } from './flow-bundle';
+import { drawWholeGroups } from './flow-groups';
 import { chartVariables, labelColourOn, mix } from './chart-theme';
 import type { DiagramReply, DiagramRequest } from './protocol';
 
@@ -100,8 +100,11 @@ async function draw(request: DiagramRequest): Promise<void> {
       mainBkg: palette.raised,
       nodeBorder: palette.lineStrong,
       nodeTextColor: palette.ink,
-      clusterBkg: palette.paper,
-      clusterBorder: palette.hairline,
+      // A group is a thing an arrow can point at (flow-groups.ts), so its edge
+      // is drawn as plainly as a box's, at 3:1 against the paper, not as a
+      // hairline that all but disappears.
+      clusterBkg: mix(palette.raised, palette.paper, 0.45),
+      clusterBorder: mix(palette.muted, palette.paper, dark ? 0.75 : 0.8),
       titleColor: palette.inkStrong,
       edgeLabelBackground: palette.paper,
       actorBkg: palette.raised,
@@ -122,11 +125,10 @@ async function draw(request: DiagramRequest): Promise<void> {
     },
   });
   try {
-    // A many-to-many statement is drawn as one bundle through a junction (flow-bundle.ts).
-    const { svg } = await mermaid.render(`noto-diagram-${serial}`, bundleFanOuts(source));
+    // A statement naming every node of a group is drawn to or from the group (flow-groups.ts).
+    const { svg } = await mermaid.render(`noto-diagram-${serial}`, drawWholeGroups(source));
     if (serial !== latest) return;
     container.innerHTML = svg;
-    settleJunctions(palette);
     if (xyChart) {
       settleBars(xyChart.chartOrientation);
       capValueLabels(xyChart.xAxis.labelFontSize);
@@ -138,21 +140,6 @@ async function draw(request: DiagramRequest): Promise<void> {
     container.replaceChildren();
     const text = error instanceof Error ? error.message : String(error);
     reply({ type: 'noto-diagram-failed', serial, message: text.split('\n', 1)[0].slice(0, 200) });
-  }
-}
-
-/**
- * The junctions a fan-out is drawn through (flow-bundle.ts), as small dots
- * in the colour of the lines they join. Mermaid draws its small circle as an
- * empty ring in the node colours, which on the paper all but disappears and
- * reads, where it shows, as a node with nothing in it.
- */
-function settleJunctions(palette: DiagramRequest['palette']): void {
-  for (const dot of container.querySelectorAll<SVGCircleElement>('svg g.node[id*="noto_junction_"] circle')) {
-    dot.setAttribute('r', '3.5');
-    dot.style.setProperty('fill', palette.muted, 'important');
-    dot.style.setProperty('stroke', palette.muted, 'important');
-    dot.style.setProperty('stroke-width', '1px', 'important');
   }
 }
 

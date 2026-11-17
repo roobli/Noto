@@ -1606,7 +1606,7 @@ of each kind found no label under 4.5:1 in either theme.
 ## 76. An xychart with many categories was a smear of overlapping labels. Closed.
 
 Mermaid draws every xychart at 700 by 500 whatever the column, and never
-looks at its labels. The daily digest's ParseBench chart put twelve model
+looks at its labels. A daily digest's benchmark chart put twelve model
 names under twelve bars, and they ran into one another; across the vault's
 51 xycharts, 65 pairs of labels overlapped and a long title was cut off.
 
@@ -1636,15 +1636,27 @@ text, nothing clipped, no text under 13px.
 ## 77. A flowchart's `A & B --> C & D` drew every pair, and tangled. Closed.
 
 Mermaid's `&` joins every node on the left to every node on the right, and
-draws each pair as its own line: `P1 & P2 & P3 & P4 & P5 --> B & Q & L` is
-fifteen curves, which its layout cannot keep apart. The author's Credits note
-drew 21 lines with 16 crossings, nine of them through boxes they had nothing
-to do with.
+draws each pair as its own line: a note of the author's wrote
+`P1 & P2 & P3 & P4 & P5 --> B & Q & L`, fifteen curves that its layout could
+not keep apart, 21 lines in all with 16 crossings, nine through unrelated boxes.
 
-`src/renderer/diagram/flow-bundle.ts` draws a plain many-to-many statement
-through a junction: the sources joined to a small dot and the dot to the
-targets, five lines and three instead of fifteen, which says the same thing.
-The dot is drawn filled, in the line colour. Only the plain form is read, node
-ids on both sides and at least two of each; a labelled arrow or a node shaped
-in the statement is left as written, and so is the note's source. The same
-note now draws 14 lines with one crossing and none through a box.
+A first attempt drew such a statement through an unlabelled junction dot. It
+was cleaner and wrong: the dot was something the note never said, and a
+reader could not tell what it stood for. It is gone.
+
+What the statement says, in that note, is that the whole platform group writes
+every table: P1 to P5 are every node of its billing subgraph. So
+`src/renderer/diagram/flow-groups.ts` draws a side that is exactly a subgraph's
+sources as the subgraph, under the title the note gave it: one arrow from the
+billing box to each table. Only many-to-many statements are rewritten, and
+only their sources: every arrow still ends on a named box, since an arrow
+ending on a group's border landed far from anything in it and could be read
+three ways. Sources naming only part of a group are drawn as written, and so
+are the targets, so a service writing two of the three tables still shows which
+two, and the ledger's single arrow says billing writes it and the service
+does not. A group drawn this way keeps the chart's
+direction, which mermaid would otherwise turn. Labelled arrows, nodes shaped
+in the statement and groups that share a node are left alone, and so is the
+note's source. Group borders are drawn at 3:1 against the paper, since an arrow
+can now start at one. The note now draws 9 lines, each a real relation, with 3
+crossings and none through a box.

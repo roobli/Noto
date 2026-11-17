@@ -1,10 +1,10 @@
 import { describe, expect, it } from 'vitest';
 import { isXyChart, labelWidth, readXyShape, xyLayout } from '../../src/renderer/diagram/chart-layout';
 
-// The daily digest's ParseBench chart, as written: twelve model names under twelve bars.
+// A daily digest's benchmark chart, as written: twelve model names under twelve bars.
 const DIGEST = [
   'xychart-beta',
-  '    title "ParseBench-2 总分（六维平均，0 到 100）"',
+  '    title "Parsing benchmark 总分（六维平均，0 到 100）"',
   '    x-axis ["LP Agentic Plus", "LP Agentic", "Claude Opus 5.5", "LP Cost Eff.", "Gemini 4 argon", "Reducto agentic", "Extend Parse 2", "Pulse Ultra 2", "Datalab", "GPT-5.6 terra", "Infinity-Parser2 Pro", "Databricks"]',
   '    y-axis "分数" 70 --> 92',
   '    bar [89.8, 86.0, 85.7, 84.6, 84.2, 83.9, 83.2, 82.7, 81.3, 77.1, 77.1, 76.9]',

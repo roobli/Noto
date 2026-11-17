@@ -208,7 +208,7 @@ test.describe('diagrams', () => {
       '# Bench', '',
       '```mermaid',
       'xychart-beta',
-      '    title "ParseBench-2"',
+      '    title "Parsing benchmark"',
       '    x-axis ["LP Agentic Plus", "LP Agentic", "Claude Opus 5.5", "LP Cost Eff.", "Gemini 4 argon", "Reducto agentic", "Extend Parse 2", "Pulse Ultra 2", "Datalab", "GPT-5.6 terra", "Infinity-Parser2 Pro", "Databricks"]',
       '    y-axis "score" 70 --> 92',
       '    bar [89.8, 86.0, 85.7, 84.6, 84.2, 83.9, 83.2, 82.7, 81.3, 77.1, 77.1, 76.9]',
@@ -252,24 +252,24 @@ test.describe('diagrams', () => {
     }
   });
 
-  test('draws a many-to-many statement as one bundle through a junction dot, and leaves the file alone', async () => {
-    const fan = ['# Fan', '', '```mermaid', 'flowchart LR', '  P1 & P2 & P3 & P4 & P5 --> B & Q & L', '```', ''].join('\n');
-    const { app, page, file } = await launch('fan', fan);
+  test('draws a statement naming a whole group as arrows from the group, every other line as written', async () => {
+    const fan = [
+      '# Credits', '', '```mermaid', 'flowchart LR',
+      '  subgraph P["platform"]', '    P1', '    P2', '    P3', '  end',
+      '  subgraph DB["db"]', '    B', '    Q', '    L', '  end',
+      '  M1 & M2', '  P1 & P2 & P3 --> B & Q & L', '  M1 & M2 --> B & Q',
+      '```', '',
+    ].join('\n');
+    const { app, page, file } = await launch('groups', fan);
     try {
       const diagram = page.locator('pre.noto-fence[data-lang="mermaid"] .noto-diagram');
       await expect(diagram).toHaveAttribute('data-state', 'rendered', { timeout: 20_000 });
       const frame = await (await diagram.locator('iframe').elementHandle())!.contentFrame();
-      const drawn = await frame!.evaluate(() => ({
-        lines: document.querySelectorAll('svg g.edgePaths path, svg path.flowchart-link').length,
-        dots: [...document.querySelectorAll('svg g.node[id*="noto_junction_"] circle')].map((dot) => ({ r: dot.getAttribute('r'), fill: getComputedStyle(dot).fill })),
-        boxes: document.querySelectorAll('svg g.node:not([id*="noto_junction_"])').length,
-      }));
-      // Five in and three out, not fifteen; one dot, filled, in the line colour; the eight boxes as written.
-      expect(drawn.lines).toBe(8);
-      expect(drawn.dots).toHaveLength(1);
-      expect(drawn.dots[0]!.r).toBe('3.5');
-      expect(drawn.dots[0]!.fill).not.toBe('none');
-      expect(drawn.boxes).toBe(8);
+      const lines = await frame!.evaluate(() => [...document.querySelectorAll('svg g.edgePaths path, svg path.flowchart-link')]
+        .map((path) => (path.id.match(/L_(.*)_\d+$/) ?? [, path.id])[1]).filter((id, at, all) => all.indexOf(id) === at).sort());
+      // The platform group to each table, three lines instead of nine; the partial statement as written; nothing invented.
+      expect(lines).toEqual(['M1_B', 'M1_Q', 'M2_B', 'M2_Q', 'P_B', 'P_L', 'P_Q']);
+      expect(await frame!.evaluate(() => document.querySelectorAll('svg [id*="junction"]').length)).toBe(0);
       expect(await readFile(file, 'utf8')).toBe(fan);
     } finally {
       await app.close();
