@@ -1632,3 +1632,19 @@ three times as long; that is the writer's choice to make.
 
 Measured over the 51 charts at windows of 1440, 1000 and 820: no overlapping
 text, nothing clipped, no text under 13px.
+
+## 77. A flowchart's `A & B --> C & D` drew every pair, and tangled. Closed.
+
+Mermaid's `&` joins every node on the left to every node on the right, and
+draws each pair as its own line: `P1 & P2 & P3 & P4 & P5 --> B & Q & L` is
+fifteen curves, which its layout cannot keep apart. The author's Credits note
+drew 21 lines with 16 crossings, nine of them through boxes they had nothing
+to do with.
+
+`src/renderer/diagram/flow-bundle.ts` draws a plain many-to-many statement
+through a junction: the sources joined to a small dot and the dot to the
+targets, five lines and three instead of fifteen, which says the same thing.
+The dot is drawn filled, in the line colour. Only the plain form is read, node
+ids on both sides and at least two of each; a labelled arrow or a node shaped
+in the statement is left as written, and so is the note's source. The same
+note now draws 14 lines with one crossing and none through a box.

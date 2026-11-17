@@ -252,6 +252,30 @@ test.describe('diagrams', () => {
     }
   });
 
+  test('draws a many-to-many statement as one bundle through a junction dot, and leaves the file alone', async () => {
+    const fan = ['# Fan', '', '```mermaid', 'flowchart LR', '  P1 & P2 & P3 & P4 & P5 --> B & Q & L', '```', ''].join('\n');
+    const { app, page, file } = await launch('fan', fan);
+    try {
+      const diagram = page.locator('pre.noto-fence[data-lang="mermaid"] .noto-diagram');
+      await expect(diagram).toHaveAttribute('data-state', 'rendered', { timeout: 20_000 });
+      const frame = await (await diagram.locator('iframe').elementHandle())!.contentFrame();
+      const drawn = await frame!.evaluate(() => ({
+        lines: document.querySelectorAll('svg g.edgePaths path, svg path.flowchart-link').length,
+        dots: [...document.querySelectorAll('svg g.node[id*="noto_junction_"] circle')].map((dot) => ({ r: dot.getAttribute('r'), fill: getComputedStyle(dot).fill })),
+        boxes: document.querySelectorAll('svg g.node:not([id*="noto_junction_"])').length,
+      }));
+      // Five in and three out, not fifteen; one dot, filled, in the line colour; the eight boxes as written.
+      expect(drawn.lines).toBe(8);
+      expect(drawn.dots).toHaveLength(1);
+      expect(drawn.dots[0]!.r).toBe('3.5');
+      expect(drawn.dots[0]!.fill).not.toBe('none');
+      expect(drawn.boxes).toBe(8);
+      expect(await readFile(file, 'utf8')).toBe(fan);
+    } finally {
+      await app.close();
+    }
+  });
+
   test('says when a diagram cannot be drawn, without touching the source', async () => {
     const broken = SOURCE.replace('graph TD\n  A[Start] --> B[End]', 'graph TD\n  A[Start] --> ');
     const { app, page } = await launch('broken', broken);
