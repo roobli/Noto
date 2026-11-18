@@ -144,8 +144,8 @@ describe('the skip for blocks that cannot draw', () => {
     expect(drawn(stateFor('`code` then ^sup^ end\n\nelsewhere'))).toEqual(['noto-typora-delim', 'noto-mark-sup', 'noto-typora-delim']);
   });
 
-  it('reads nothing for a kind that is switched off', () => {
-    expect(markCharacters({ highlight: false, superscript: true, subscript: false })).toBe('^');
+  it('reads nothing for a kind that is switched off; an emoji name, which has no switch, is always looked for', () => {
+    expect(markCharacters({ highlight: false, superscript: true, subscript: false })).toBe('^:');
   });
 });
 

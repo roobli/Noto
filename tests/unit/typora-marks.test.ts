@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { typoraMarkRanges } from '../../src/renderer/editor/noto/typora-marks';
+import { ALL_MARK_KINDS, typoraMarkRanges } from '../../src/renderer/editor/noto/typora-marks';
 
 const kinds = (text: string) => typoraMarkRanges(text).map((range) => [range.kind, text.slice(range.innerFrom, range.innerTo)]);
 
@@ -50,5 +50,13 @@ describe('the three switches', () => {
     expect(kinds(text)).toEqual([['subscript', 'long\\ text'], ['superscript', 'a\\ b']]);
     const [sub] = typoraMarkRanges(text);
     expect(sub!.escapes.map((at) => text[at])).toEqual(['\\']);
+  });
+
+  it('reads an emoji shortcode only when it is a real name standing on its own', () => {
+    const names: Record<string, string> = { smile: '\u{1F604}', '+1': '\u{1F44D}' };
+    const emojiFor = (name: string) => names[name];
+    const text = ':smile: :+1: :nope: 10:30:00 a:smile:b';
+    const found = typoraMarkRanges(text, ALL_MARK_KINDS, emojiFor).filter((range) => range.kind === 'emoji');
+    expect(found.map((range) => [text.slice(range.from, range.to), range.emoji])).toEqual([[':smile:', '\u{1F604}'], [':+1:', '\u{1F44D}']]);
   });
 });

@@ -15,6 +15,8 @@ const SOURCE = [
   '',
   'A sentence with a comment<!-- hidden note --> in it, and X~long\\ text~.',
   '',
+  'Done :tada: at 10:30:00.',
+  '',
   '<!-- a block comment -->',
   '',
   '$$',
@@ -63,6 +65,10 @@ test('the specimen cases Typora draws, drawn the same', async () => {
     await expect(page.locator('.ProseMirror p').nth(1)).toHaveText('A sentence with a comment in it, and Xlong text.', { useInnerText: true });
     const block = page.locator('.noto-html-block[data-comment="true"]');
     expect(await block.evaluate((element) => element.getBoundingClientRect().height)).toBe(0);
+
+    // S07: a shortcode is its emoji at rest, a time is a time.
+    const done = page.locator('.ProseMirror p').nth(2);
+    await expect(done).toHaveText('Done \u{1F389} at 10:30:00.', { useInnerText: true });
 
     // M05 to M08: labels, shared macros and chemistry typeset; a broken formula shows its source.
     const errors = page.locator('.noto-math-render[data-state="error"]');

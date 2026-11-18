@@ -21,6 +21,7 @@ import { AddMarkStep, RemoveMarkStep } from 'prosemirror-transform';
 import type { Node as ProseNode } from 'prosemirror-model';
 import { ALL_MARK_KINDS, typoraMarkRanges, type TyporaMarkKinds } from './typora-marks';
 import { closingTag, isInlineComment, openingTag, type InlineTag } from './inline-tag';
+import { EMOJI } from './emoji-names';
 
 export const typoraMarksKey = new PluginKey<DecorationSet>('noto-typora-marks');
 
@@ -37,7 +38,19 @@ const MARK_CLASS = {
   highlight: 'noto-mark-highlight',
   superscript: 'noto-mark-sup',
   subscript: 'noto-mark-sub',
+  emoji: 'noto-mark-emoji',
 } as const;
+
+const emojiFor = (name: string): string | undefined => (Object.hasOwn(EMOJI, name) ? EMOJI[name] : undefined);
+
+/** The emoji a shortcode stands for, drawn where its name is hidden. */
+function emojiWidget(emoji: string): HTMLElement {
+  const span = document.createElement('span');
+  span.className = 'noto-emoji';
+  span.textContent = emoji;
+  span.setAttribute('aria-hidden', 'true');
+  return span;
+}
 
 interface TagNode {
   readonly tag: InlineTag;
@@ -45,9 +58,9 @@ interface TagNode {
   readonly position: number;
 }
 
-/** The characters a mark of each kind cannot do without. */
+/** The characters a mark of each kind cannot do without; `:` for an emoji shortcode. */
 export function markCharacters(kinds: TyporaMarkKinds): string {
-  return (kinds.highlight ? '=' : '') + (kinds.superscript ? '^' : '') + (kinds.subscript ? '~' : '');
+  return (kinds.highlight ? '=' : '') + (kinds.superscript ? '^' : '') + (kinds.subscript ? '~' : '') + ':';
 }
 
 /**
@@ -163,7 +176,17 @@ function blockDecorations(
   });
 
   if (plain) {
-    for (const range of typoraMarkRanges(text, kinds)) {
+    for (const range of typoraMarkRanges(text, kinds, emojiFor)) {
+      if (range.kind === 'emoji') {
+        const emoji = range.emoji!;
+        decorations.push(Decoration.widget(contentStart + range.from, () => emojiWidget(emoji), {
+          side: -1, key: `emoji-${emoji}`, marks: [], ignoreSelection: true, emojiFor: contentStart + range.from,
+        }));
+        spans.push({ from: contentStart + range.from, to: contentStart + range.to, source: [
+          { from: contentStart + range.from, to: contentStart + range.to, node: false, class: 'noto-typora-delim noto-emoji-name' },
+        ] });
+        continue;
+      }
       decorations.push(Decoration.inline(contentStart + range.innerFrom, contentStart + range.innerTo, { class: MARK_CLASS[range.kind] }));
       spans.push({ from: contentStart + range.from, to: contentStart + range.to, source: [
         { from: contentStart + range.from, to: contentStart + range.innerFrom, node: false, class: 'noto-typora-delim' },

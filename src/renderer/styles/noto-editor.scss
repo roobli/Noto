@@ -2761,6 +2761,16 @@
 .ProseMirror .noto-inline-html.noto-inline-quote-open:not(.noto-source-live)::after { content: open-quote; }
 .ProseMirror .noto-inline-html.noto-inline-quote-close:not(.noto-source-live)::after { content: close-quote; }
 
+/* `:smile:` drawn as the emoji it names; the name comes back, and the emoji
+   steps aside, while the caret is on it. */
+.ProseMirror .noto-emoji {
+  font-family: "Apple Color Emoji", "Segoe UI Emoji", "Noto Color Emoji", sans-serif;
+  font-style: normal;
+  font-weight: 400;
+  line-height: 1;
+}
+.noto-editor-host:focus-within .ProseMirror .noto-emoji:has(+ .noto-emoji-name.noto-source-live) { display: none; }
+
 .ProseMirror .noto-typora-delim,
 .ProseMirror .noto-inline-html.noto-inline-tag { display: none; }
 /* Only the span the caret is in shows its source (`typora-marks-plugin.ts`). */

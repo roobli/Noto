@@ -12,7 +12,7 @@
  * the text given, which is how ProseMirror counts positions in a text node.
  */
 
-export type TyporaMarkKind = 'highlight' | 'superscript' | 'subscript';
+export type TyporaMarkKind = 'highlight' | 'superscript' | 'subscript' | 'emoji';
 
 export interface TyporaMarkRange {
   readonly kind: TyporaMarkKind;
@@ -24,6 +24,8 @@ export interface TyporaMarkRange {
   readonly innerTo: number;
   /** Offsets of the backslashes in `\ ` escapes inside, which are not drawn. */
   readonly escapes: readonly number[];
+  /** For an emoji, the character its name stands for. */
+  readonly emoji?: string;
 }
 
 /*
@@ -37,6 +39,14 @@ export interface TyporaMarkRange {
 const HIGHLIGHT = /==([^=\n]+?)==/g;
 const SUPERSCRIPT = /\^((?:\\ |[^\s^\\]|\\(?! ))+?)\^/g;
 const SUBSCRIPT = /(^|[^~])~((?:\\ |[^\s~\\]|\\(?! ))+?)~(?!~)/g;
+
+/*
+ * `:smile:` is GitHub's emoji shortcode, which Typora draws as the emoji. A
+ * name is letters, digits, `_`, `+` and `-`, and counts only when it is a
+ * real name and stands apart from the words around it, so `a:b:c` and
+ * `10:30:00` stay as they are.
+ */
+const EMOJI_NAME = /(^|[^\w:])(:([a-z0-9_+-]{1,40}):)(?![\w:])/gi;
 
 function escapesIn(inner: string, start: number): number[] {
   const found: number[] = [];
@@ -53,8 +63,19 @@ export interface TyporaMarkKinds {
 
 export const ALL_MARK_KINDS: TyporaMarkKinds = { highlight: true, superscript: true, subscript: true };
 
-export function typoraMarkRanges(text: string, kinds: TyporaMarkKinds = ALL_MARK_KINDS): TyporaMarkRange[] {
+export function typoraMarkRanges(
+  text: string,
+  kinds: TyporaMarkKinds = ALL_MARK_KINDS,
+  emojiFor: (name: string) => string | undefined = () => undefined,
+): TyporaMarkRange[] {
   const ranges: TyporaMarkRange[] = [];
+  if (text.includes(':')) for (const match of text.matchAll(EMOJI_NAME)) {
+    const emoji = emojiFor(match[3]!.toLowerCase());
+    if (emoji === undefined) continue;
+    const from = match.index + match[1]!.length;
+    const to = from + match[2]!.length;
+    ranges.push({ kind: 'emoji', from, to, innerFrom: to, innerTo: to, escapes: [], emoji });
+  }
   if (kinds.highlight) for (const match of text.matchAll(HIGHLIGHT)) {
     const from = match.index;
     ranges.push({ kind: 'highlight', from, to: from + match[0].length, innerFrom: from + 2, innerTo: from + 2 + match[1].length, escapes: [] });
