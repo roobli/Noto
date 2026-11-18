@@ -238,10 +238,10 @@
      radius and even padding all round. The rule down the left made it read as
      a quotation of something rather than as the note's own header. */
   background: var(--raised);
-  padding: 16px;
+  padding: 12px 16px;
   border-radius: 8px;
   color: var(--muted);
-  font: 0.85em/1.55 tokens.$mono;
+  font: 0.8em/1.5 tokens.$mono;
   white-space: pre-wrap;
 }
 
@@ -425,7 +425,7 @@
 .ProseMirror .noto-toc {
   display: grid;
   gap: 0;
-  margin: var(--block-gap) 0 calc(1.4 * var(--lead));
+  margin: var(--block-gap) 0;
   padding: 0.9em 1.1em;
   border-radius: 8px;
   background: var(--raised);
@@ -1132,13 +1132,14 @@
 
 /* Horizontal rule --------------------------------------------------------- */
 
-/* A line in the middle of its own band, a line and a half above and below,
-   rather than the top edge of a box with the band all underneath it. */
+/* A line in the middle of its own band, 26px above and below at 15 as in
+   the author's theme, rather than the top edge of a box with the band all
+   underneath it. */
 .ProseMirror hr {
   height: 1px;
   border: 0;
   background: var(--rule);
-  margin: calc(1.5 * var(--lead)) 0;
+  margin: calc(1.73 * var(--doc-font-size)) 0;
 }
 
 .ProseMirror hr.ProseMirror-selectednode {
