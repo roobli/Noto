@@ -73,6 +73,7 @@ import { notoInputRules, type InputRuleOptions } from './input-rules';
 import { EDITOR_COMMANDS, insertTable, notoKeymap } from './keymap';
 import { sortTasks, toggleTaskStatus, type TaskStampOptions } from './todo-manager';
 import { activeNodePlugin } from './active-node-plugin';
+import { markBoundaryPlugin } from './mark-boundary';
 import { viewportLayoutPlugin } from './viewport-layout';
 import { mergeStubAwareNodeViews, stubbingEnabled, viewportStubPlugin } from './viewport-stub';
 import { taskClickPlugin, taskStampPlugin } from './task-click';
@@ -473,6 +474,9 @@ export class NotoEditor implements NotoEditorPort {
         smartEllipsis: () => this.substitutions.ellipsis,
         autoPair: () => this.autoPair,
       }),
+      // Ahead of the keymap, which would take the arrow that steps across a
+      // revealed delimiter as an ordinary move.
+      markBoundaryPlugin(this.options.mac),
       ...notoKeymap({
         mac: this.options.mac,
         onWidthStep: (d) => this.options.onWidthStep?.(d),

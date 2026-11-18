@@ -22,6 +22,7 @@
 
 import { Plugin, PluginKey, TextSelection } from 'prosemirror-state';
 import type { EditorView } from 'prosemirror-view';
+import { markBoundaryKey } from './mark-boundary';
 
 export const caretKey = new PluginKey('noto-caret');
 
@@ -158,6 +159,18 @@ class CaretLayer {
       }
     }
     if (bottom - top <= 0) return null;
+    // At the edge of a span whose delimiters are showing, the caret stands on
+    // the side of the delimiter it is on (`mark-boundary.ts`), which the
+    // browser cannot say: both sides are one place in its selection.
+    const boundary = markBoundaryKey.getState(view.state);
+    if (boundary && boundary.at === selection.head) {
+      const widget = view.dom.querySelector<HTMLElement>(`.noto-syntax[data-edge='${boundary.edge}']`);
+      const box = widget?.getBoundingClientRect();
+      if (box && box.width > 0) {
+        const before = (boundary.edge === 'open') === (boundary.side === 'outside');
+        left = before ? box.left : box.right;
+      }
+    }
     const origin = this.layer.getBoundingClientRect();
     return { left: left - origin.left, top: top - origin.top, height: bottom - top };
   }
