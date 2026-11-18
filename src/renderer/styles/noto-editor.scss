@@ -22,11 +22,9 @@
 .ProseMirror table {
   width: 100%;
   border-collapse: collapse;
-  /* No rule over the header: the header's own rule under it is the strong
-     one, and the table ends on a hairline like the rows inside it. */
-  border-top: 0;
-  border-bottom: 1px solid var(--hairline);
-  font-size: 0.94em;
+  border-top: 1px solid var(--line-strong);
+  border-bottom: 1px solid var(--line-strong);
+  font-size: 0.92em;
   font-variant-numeric: lining-nums tabular-nums;
   /* Columns take the width of what they hold, as the theme has it; a fixed
      layout gave every column the same width and broke identifiers mid-word. */
@@ -38,8 +36,8 @@
 .ProseMirror td {
   position: relative;
   border: 0;
-  border-bottom: 1px solid var(--hairline);
-  padding: 0.62em 1.4em 0.62em 0;
+  border-bottom: 1px solid color-mix(in srgb, var(--muted) 24%, transparent);
+  padding: 0.73em 1.2em 0.73em 0;
   vertical-align: top;
   text-align: left;
   line-height: 1.52;
@@ -48,24 +46,19 @@
   overflow-wrap: break-word;
 }
 
-/* The header is a label row: the interface face a step smaller, a little
-   tracking, and the one strong rule in the table under it. */
 .ProseMirror th {
-  border-bottom: 1.5px solid color-mix(in srgb, var(--ink-strong) 70%, var(--paper));
-  padding-top: 0.5em;
-  padding-bottom: 0.55em;
+  border-bottom-color: var(--line-strong);
+  padding-bottom: 0.67em;
   vertical-align: bottom;
-  font-family: tokens.$ui;
-  font-size: 0.9em;
   font-weight: 600;
-  letter-spacing: 0.02em;
   line-height: 1.46;
   color: var(--ink-strong);
 }
 
 /* Collapsed borders let a cell's rule outrank the table's, so the last row
    would otherwise end on the light rule rather than the strong one. */
-.ProseMirror tr:last-child td { border-bottom-color: var(--hairline); }
+.ProseMirror tr:last-child td { border-bottom-color: var(--line-strong); }
+.ProseMirror :is(th, td):first-child { color: var(--ink-strong); }
 .ProseMirror :is(th, td):last-child { padding-right: 0; }
 .ProseMirror tr:hover td { background: color-mix(in srgb, var(--ink) 3.5%, transparent); }
 
@@ -816,9 +809,10 @@
   min-width: calc(var(--fence-digits, 2) * 1ch);
   /* Vertically in step with the code beside it, or the numbers drift off
      their lines. */
-  /* No rule: the numbers are their own column by colour and by the gap. */
-  padding: 1.1em 0 1.1em 1.2em;
-  border-right: 0;
+  /* The same top and bottom as the code (editor.scss), so each number
+     stands on its line. The rule keeps the numbers a column of their own. */
+  padding: 1.1em 0.75em 1.1em 0.9em;
+  border-right: 1px solid color-mix(in srgb, var(--ink) 12%, var(--code-fill));
   /* Read, not glimpsed: 4.5:1 on the code fill in both themes. */
   color: var(--code-gutter);
   text-align: right;
@@ -853,8 +847,8 @@
   gap: 2px;
   padding: 1px;
   border-radius: 6px;
-  background: var(--raised);
-  box-shadow: -14px 0 10px -4px var(--raised);
+  background: var(--code-fill);
+  box-shadow: -14px 0 10px -4px var(--code-fill);
   opacity: 0;
   transition: opacity var(--motion-micro) var(--ease-out);
 }
@@ -3095,9 +3089,6 @@
 .ProseMirror .noto-image-frame.ProseMirror-selectednode > .noto-image-handle { opacity: 1; }
 .ProseMirror .noto-image-frame[data-resizing] > img { outline-color: var(--accent); }
 
-/* The theme's callout box: the block radius and a little more room around. */
-.ProseMirror .noto-alert { border-radius: 6px; }
-.ProseMirror > .noto-alert { margin: 0.9em 0; }
 
 /* The heading the caret is under. A list of headings is asked one question
    while somebody is writing rather than navigating, which is where am I, and
