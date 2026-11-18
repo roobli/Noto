@@ -26,6 +26,8 @@ const SOURCE = [
   '',
   'By $\\eqref{euler}$, $\\vect{v}$ and $\\ce{H2O}$; broken $\\frac{1$ here.',
   '',
+  '- [x] Shipped [it](https://example.com) \u2705 2026-11-10',
+  '',
   'End, then [the next part](#more).',
   '',
   '## More',
@@ -69,6 +71,11 @@ test('the specimen cases Typora draws, drawn the same', async () => {
     // S07: a shortcode is its emoji at rest, a time is a time.
     const done = page.locator('.ProseMirror p').nth(2);
     await expect(done).toHaveText('Done \u{1F389} at 10:30:00.', { useInnerText: true });
+
+    // A finished task is struck through, its date is not.
+    const stamp = page.locator('li[data-checked="true"] .noto-task-stamp');
+    await expect(stamp).toHaveText(' \u2705 2026-11-10');
+    expect(await stamp.evaluate((element) => getComputedStyle(element).display)).toBe('inline-block');
 
     // M05 to M08: labels, shared macros and chemistry typeset; a broken formula shows its source.
     const errors = page.locator('.noto-math-render[data-state="error"]');

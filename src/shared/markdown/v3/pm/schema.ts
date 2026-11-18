@@ -328,7 +328,7 @@ const nodes: Record<string, NodeSpec> = {
     inline: true,
     atom: true,
     attrs: { identifier: { default: '' }, label: { default: '' } },
-    toDOM: (node) => ['sup', { class: 'noto-footnote-reference' }, `[${node.attrs.label || node.attrs.identifier}]`],
+    toDOM: (node) => ['sup', { class: 'noto-footnote-reference' }, `${node.attrs.label || node.attrs.identifier}`],
   },
 
   hard_break: {

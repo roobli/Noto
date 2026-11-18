@@ -75,7 +75,7 @@ import { sortTasks, toggleTaskStatus, type TaskStampOptions } from './todo-manag
 import { activeNodePlugin } from './active-node-plugin';
 import { viewportLayoutPlugin } from './viewport-layout';
 import { mergeStubAwareNodeViews, stubbingEnabled, viewportStubPlugin } from './viewport-stub';
-import { taskClickPlugin } from './task-click';
+import { taskClickPlugin, taskStampPlugin } from './task-click';
 import { indexBlockPlugin } from './index-block';
 import { imageFromTransfer } from './image-drop';
 import { documentDomToHtml, sliceToHtml, sliceToPlainText } from './clipboard';
@@ -499,6 +499,7 @@ export class NotoEditor implements NotoEditorPort {
       viewportStubPlugin(),
       spellCheckScopePlugin(() => this.spellCheck),
       taskClickPlugin(this.taskStampOptions()),
+      taskStampPlugin(),
 
       wikiLinkPlugin({ onFollow: (target) => this.options.onFollowWikiLink?.(target) }),
       indexBlockPlugin({ onFollow: (target) => this.options.onFollowWikiLink?.(target) }),

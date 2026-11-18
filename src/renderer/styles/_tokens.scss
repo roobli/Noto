@@ -101,6 +101,11 @@
   --alert-warning: #85620F;
   --alert-caution: #A4473F;
   --mark-fill: #F6DF7A;
+  /* The page's rules: a rule, a footnote opener. Darker than a hairline so a
+     line drawn to separate things can be seen doing it. */
+  --rule: #D5D3CF;
+  /* Code line numbers, 5.6:1 on the code fill. */
+  --code-gutter: #625C56;
 }
 
 :root[data-theme='dark'] {
@@ -165,6 +170,9 @@
   --alert-warning: #D0A45F;
   --alert-caution: #D88780;
   --mark-fill: #7A6A2A;
+  --rule: #454340;
+  /* 5.4:1 on the dark code fill. */
+  --code-gutter: #A39D94;
 }
 
 }

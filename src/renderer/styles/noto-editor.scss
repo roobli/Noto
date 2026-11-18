@@ -22,9 +22,11 @@
 .ProseMirror table {
   width: 100%;
   border-collapse: collapse;
-  border-top: 1px solid var(--line-strong);
-  border-bottom: 1px solid var(--line-strong);
-  font-size: 0.92em;
+  /* No rule over the header: the header's own rule under it is the strong
+     one, and the table ends on a hairline like the rows inside it. */
+  border-top: 0;
+  border-bottom: 1px solid var(--hairline);
+  font-size: 0.94em;
   font-variant-numeric: lining-nums tabular-nums;
   /* Columns take the width of what they hold, as the theme has it; a fixed
      layout gave every column the same width and broke identifiers mid-word. */
@@ -36,8 +38,8 @@
 .ProseMirror td {
   position: relative;
   border: 0;
-  border-bottom: 1px solid color-mix(in srgb, var(--muted) 24%, transparent);
-  padding: 0.73em 1.2em 0.73em 0;
+  border-bottom: 1px solid var(--hairline);
+  padding: 0.62em 1.4em 0.62em 0;
   vertical-align: top;
   text-align: left;
   line-height: 1.52;
@@ -46,19 +48,24 @@
   overflow-wrap: break-word;
 }
 
+/* The header is a label row: the interface face a step smaller, a little
+   tracking, and the one strong rule in the table under it. */
 .ProseMirror th {
-  border-bottom-color: var(--line-strong);
-  padding-bottom: 0.67em;
+  border-bottom: 1.5px solid color-mix(in srgb, var(--ink-strong) 70%, var(--paper));
+  padding-top: 0.5em;
+  padding-bottom: 0.55em;
   vertical-align: bottom;
+  font-family: tokens.$ui;
+  font-size: 0.9em;
   font-weight: 600;
+  letter-spacing: 0.02em;
   line-height: 1.46;
   color: var(--ink-strong);
 }
 
 /* Collapsed borders let a cell's rule outrank the table's, so the last row
    would otherwise end on the light rule rather than the strong one. */
-.ProseMirror tr:last-child td { border-bottom-color: var(--line-strong); }
-.ProseMirror :is(th, td):first-child { color: var(--ink-strong); }
+.ProseMirror tr:last-child td { border-bottom-color: var(--hairline); }
 .ProseMirror :is(th, td):last-child { padding-right: 0; }
 .ProseMirror tr:hover td { background: color-mix(in srgb, var(--ink) 3.5%, transparent); }
 
@@ -82,18 +89,21 @@
 .ProseMirror li.noto-task-item::before {
   content: '';
   position: absolute;
-  left: -1.25em;
-  top: 0.45em;
+  left: -1.45em;
+  top: 0.34em;
   /* In em, like everything else in the document that has a size, so the box
      grows with the reader's text rather than staying 13 pixels while the
      words around it get bigger. Typora's is a native checkbox at a fixed 12
      pixels, which is 0.8em at its own 16; the same 0.8em here lands on 12 at
      the default and keeps following the setting after that, which its does
      not. */
-  width: 0.8em;
-  height: 0.8em;
-  border: 0.1em solid var(--muted);
-  border-radius: 0.2em;
+  /* A box a finger's width of the text, 15px at the author's size: the
+     12px one was the smallest control on the page and the one used most. */
+  width: 1em;
+  height: 1em;
+  box-sizing: border-box;
+  border: 1.5px solid color-mix(in srgb, var(--muted) 80%, transparent);
+  border-radius: 4px;
   background: transparent;
 }
 
@@ -103,7 +113,19 @@
 /* Only a loose item is struck through, which is the theme's own rule: a
    tight item has no paragraph to strike, and striking the item itself put a
    line through every task in a list nobody writes that way. */
-.ProseMirror li.noto-task-item[data-checked='true'] > p { text-decoration: line-through; }
+.ProseMirror li.noto-task-item[data-checked='true'] > p {
+  text-decoration: line-through;
+  text-decoration-color: color-mix(in srgb, var(--muted) 70%, transparent);
+  text-decoration-thickness: 1px;
+}
+/* The when of it is not struck with the what (`taskStampPlugin`). An inline
+   box is the one thing a parent's line-through does not cross. */
+.ProseMirror li.noto-task-item[data-checked='true'] .noto-task-stamp {
+  display: inline-block;
+  white-space: pre;
+  text-decoration: none;
+  font-size: 0.88em;
+}
 .ProseMirror li.noto-task-item[data-checked='true']::before {
   border-color: var(--accent);
   background: var(--accent);
@@ -112,14 +134,13 @@
 .ProseMirror li.noto-task-item[data-checked='true']::after {
   content: '';
   position: absolute;
-  /* Centred in the box: the box starts at -1.25em and is 0.8em across, so a
-     0.4em tick sits 0.2em in. */
-  left: calc(-1.25em + 0.2em);
-  top: 0.66em;
-  width: 0.4em;
-  height: 0.2em;
-  border-left: 0.1em solid var(--paper);
-  border-bottom: 0.1em solid var(--paper);
+  /* Centred in the box: it starts at -1.45em and is 1em across. */
+  left: calc(-1.45em + 0.3em);
+  top: 0.58em;
+  width: 0.42em;
+  height: 0.22em;
+  border-left: 1.6px solid var(--paper);
+  border-bottom: 1.6px solid var(--paper);
   transform: rotate(-45deg);
 }
 
@@ -161,15 +182,17 @@
    title in place of the marker. The quote is still a quote in the file; the
    marker is hidden and the title is a decoration, and while the caret is
    inside, the two trade places so the syntax can be edited like any other. */
+/* The tint is its identity, so there is no bar down the side: a bar is what
+   a quote has, and a coloured one at the page's left edge reads as the git
+   marks that live beside it. The box is a code block's, edge for edge. */
 .ProseMirror .noto-alert {
   --alert-color: var(--hairline);
   margin-left: 0;
-  border-left: 3px solid var(--alert-color);
-  border-radius: 4px;
-  background: color-mix(in srgb, var(--alert-color) 7%, transparent);
-  padding: 0.7em 0.9em 0.7em 1em;
+  border-left: 0;
+  border-radius: 8px;
+  background: color-mix(in srgb, var(--alert-color) 8%, var(--paper));
+  padding: 0.85em 1.1em;
   color: var(--ink);
-  line-height: 1.56;
 }
 
 .ProseMirror .noto-alert-note { --alert-color: var(--alert-note); }
@@ -190,7 +213,7 @@
   gap: 5px;
   margin: 0 0 0.25em;
   color: var(--alert-color);
-  font: 600 12px/1.4 tokens.$ui;
+  font: 600 12.5px/1.4 tokens.$ui;
   letter-spacing: 0.02em;
   user-select: none;
 
@@ -223,7 +246,7 @@
      a quotation of something rather than as the note's own header. */
   background: var(--raised);
   padding: 16px;
-  border-radius: 6px;
+  border-radius: 8px;
   color: var(--muted);
   font: 0.85em/1.55 tokens.$mono;
   white-space: pre-wrap;
@@ -397,33 +420,59 @@
 }
 
 
-/* `[TOC]` drawn as Typora draws it: the headings as a list, in the accent
-   like the links they are, stepped in by level. The marker's own paragraph
-   is hidden while the list stands in for it. */
+/*
+ * `[TOC]` as a panel the width of the page: the headings in the interface
+ * face, the top two levels in ink and weight, the deeper ones muted and
+ * stepped in, and a long one held to a height and scrolled. As a column of
+ * accent links underlined one by one, an outline of ninety headings was the
+ * loudest thing on the page and three screens tall. The marker's own
+ * paragraph is hidden while the panel stands in for it.
+ */
 .ProseMirror .noto-toc-source { display: none; }
 .ProseMirror .noto-toc {
   display: grid;
-  gap: 2px;
-  margin: 0.4em 0 1em;
-  padding: 0;
+  gap: 0;
+  margin: var(--block-gap) 0 calc(1.4 * var(--lead));
+  padding: 0.9em 1.1em;
+  border-radius: 8px;
+  background: var(--raised);
+  max-height: 28em;
+  overflow: auto;
+  box-sizing: border-box;
+  font-family: tokens.$ui;
+
+  &::before {
+    content: 'Contents';
+    display: block;
+    margin-bottom: 0.4em;
+    color: var(--muted);
+    font-size: 11.5px;
+    letter-spacing: 0.12em;
+  }
 }
 .ProseMirror .noto-toc-item {
   appearance: none;
   border: 0;
+  border-radius: 4px;
   background: transparent;
-  width: fit-content;
-  max-width: 100%;
-  padding: 1px 0;
-  margin-inline-start: calc(var(--toc-depth, 0) * 1.4em);
-  color: var(--accent);
+  /* The row is the hover target across the panel; its wash hangs 0.4em
+     either side so the words keep the panel's left edge. */
+  box-sizing: border-box;
+  width: calc(100% + 0.8em);
+  padding: 0.18em 0.4em;
+  margin: 0 -0.4em;
+  padding-inline-start: calc(0.4em + var(--toc-depth, 0) * 1.1em);
+  color: var(--ink);
   font: inherit;
-  font-size: 0.95em;
-  line-height: 1.5;
+  font-size: 13.5px;
+  line-height: 1.55;
   text-align: start;
   cursor: pointer;
-  border-bottom: 1px solid color-mix(in srgb, var(--accent) 30%, transparent);
 }
-.ProseMirror .noto-toc-item.noto-toc-item:hover { border-bottom-color: var(--accent); background: transparent; }
+.ProseMirror .noto-toc-item:is([style*='--toc-depth: 0'], [style*='--toc-depth: 1']) { font-weight: 600; color: var(--ink-strong); }
+.ProseMirror .noto-toc-item:not([style*='--toc-depth: 0'], [style*='--toc-depth: 1']) { color: var(--muted); font-size: 13px; }
+.ProseMirror .noto-toc-item.noto-toc-item:hover { color: var(--accent); background: color-mix(in srgb, var(--accent) 7%, transparent); }
+.ProseMirror .noto-toc-item:focus-visible { outline: 0; box-shadow: inset 2px 0 0 var(--accent); background: color-mix(in srgb, var(--accent) 7%, transparent); }
 .ProseMirror .noto-toc-empty { margin: 0; color: var(--muted); font-style: italic; }
 
 .ProseMirror .noto-index {
@@ -571,25 +620,40 @@
 
 /* Footnotes and link definitions ------------------------------------------ */
 
+/* A definition is a line of a list: its number in the margin column, the
+   text beside it, small. The first of a run opens with a short rule and a
+   line of room, as the notes at the foot of a page do. */
 .ProseMirror .noto-footnote-definition {
-  border-left: 2px solid var(--hairline);
-  padding-left: 14px;
+  display: grid;
+  grid-template-columns: 1.6em minmax(0, 1fr);
+  align-items: start;
   color: var(--muted);
-  font-size: 0.94em;
-}
+  font-size: 0.88em;
+  line-height: 1.6;
+  margin: 0.3em 0;
 
+  > * { grid-column: 2; margin: 0; }
+}
+.ProseMirror :not(.noto-footnote-definition) + .noto-footnote-definition {
+  margin-top: calc(1.2 * var(--lead));
+  padding-top: calc(0.6 * var(--lead));
+  background: linear-gradient(var(--rule), var(--rule)) 0 0 / 4em 1px no-repeat;
+}
 .ProseMirror .noto-footnote-definition::before {
-  content: '[' attr(data-identifier) ']';
-  margin-right: 6px;
+  content: attr(data-identifier) '.';
+  grid-column: 1;
+  grid-row: 1;
   color: var(--accent);
-  font: 0.7em tokens.$mono;
-  vertical-align: super;
+  font: 600 12px/1.6 tokens.$ui;
 }
 
+/* The number, raised, in the interface face: no brackets, which in a
+   sentence of CJK read as part of it. */
 .ProseMirror .noto-footnote-reference {
+  padding: 0 0.15em;
   color: var(--accent);
-  font: 0.72em tokens.$mono;
-  vertical-align: super;
+  font: 600 10px/0 tokens.$ui;
+  vertical-align: 0.6em;
 }
 
 .ProseMirror .noto-link-definition {
@@ -752,11 +816,11 @@
   min-width: calc(var(--fence-digits, 2) * 1ch);
   /* Vertically in step with the code beside it, or the numbers drift off
      their lines. */
-  padding: 1em 0.7em 0.94em 0.8em;
-  border-right: 1px solid var(--hairline);
-  /* A step under the muted ink, mixed rather than faded, so the numbers
-     recede from the code and still clear 3:1 on the fence. */
-  color: color-mix(in srgb, var(--muted) 80%, var(--paper));
+  /* No rule: the numbers are their own column by colour and by the gap. */
+  padding: 1.1em 0 1.1em 1.2em;
+  border-right: 0;
+  /* Read, not glimpsed: 4.5:1 on the code fill in both themes. */
+  color: var(--code-gutter);
   text-align: right;
   white-space: pre;
   user-select: none;
@@ -764,6 +828,7 @@
 }
 
 :root[data-code-line-numbers='off'] .ProseMirror .noto-fence-gutter { display: none; }
+:root[data-code-line-numbers='off'] .ProseMirror pre code { padding-left: 1.3em; }
 
 /* Long lines wrap unless the setting says scroll (Typora's Auto wrap long
    lines, on by default). Wrapping happens inside a long word too, so a path
@@ -1066,15 +1131,17 @@
 
 /* Horizontal rule --------------------------------------------------------- */
 
+/* A line in the middle of its own band, a line and a half above and below,
+   rather than the top edge of a box with the band all underneath it. */
 .ProseMirror hr {
+  height: 1px;
   border: 0;
-  border-top: 1px solid var(--hairline);
-  margin: 1.73em 0;
-  opacity: 0.75;
+  background: var(--rule);
+  margin: calc(1.5 * var(--lead)) 0;
 }
 
 .ProseMirror hr.ProseMirror-selectednode {
-  border-top-color: var(--accent);
+  background: var(--accent);
 }
 
 /* Gap cursor -------------------------------------------------------------- */
@@ -2668,10 +2735,12 @@
  * inline syntax gets. `<kbd>`, `<sub>`, `<sup>`, `<u>` and `<br>` are drawn
  * the same way: the tag hides, the text between takes the shape.
  */
+/* A marker pen across the lower part of the line, not a box round the words. */
 .ProseMirror .noto-mark-highlight {
-  border-radius: 2px;
-  background: color-mix(in srgb, var(--mark-fill) 62%, transparent);
-  box-shadow: 0 0 0 1px color-mix(in srgb, var(--mark-fill) 62%, transparent);
+  --pen: color-mix(in srgb, var(--mark-fill) 78%, transparent);
+  background: linear-gradient(transparent 38%, var(--pen) 38%, var(--pen) 92%, transparent 92%);
+  box-decoration-break: clone;
+  padding: 0 0.08em;
   color: var(--ink-strong);
 }
 .ProseMirror .noto-mark-sup,
@@ -2696,18 +2765,18 @@
 .ProseMirror .noto-html-del { text-decoration: line-through; }
 .ProseMirror .noto-html-ins { text-decoration: underline; }
 .ProseMirror .noto-html-small { font-size: 0.85em; }
+/* A keycap: paper, a rim, and a floor under it. */
 .ProseMirror .noto-html-kbd {
   display: inline-block;
   margin: 0 0.08em;
-  border: 1px solid var(--hairline);
+  border: 1px solid color-mix(in srgb, var(--ink) 16%, var(--paper));
   border-bottom-width: 2px;
-  border-radius: 4px;
-  padding: 0 0.4em;
-  background: var(--raised);
+  border-radius: 5px;
+  padding: 0.05em 0.45em;
+  background: var(--paper);
+  box-shadow: 0 1px 0 color-mix(in srgb, var(--shadow) 10%, transparent);
   color: var(--ink-strong);
-  font-family: tokens.$mono;
-  font-size: 0.8em;
-  line-height: 1.5;
+  font: 500 0.78em/1.5 tokens.$ui;
   vertical-align: 0.05em;
 }
 
