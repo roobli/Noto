@@ -75,8 +75,14 @@ function placed(tr: Transaction, state: EditorState, boundary: Boundary, mark: M
 }
 
 export function markBoundaryPlugin(mac: boolean): Plugin<Boundary | null> {
-  /** Set by Home or End, read by the selection change that follows it. */
-  let lineEdge = false;
+  /*
+   * Set by Home or End, read by the selection change that follows it. The
+   * key may move nothing (Home at the head of the line already), and then no
+   * change follows, so the flag holds for one key only: the state it was
+   * pressed in, and only until the next key or press of the mouse. A later
+   * change from any other state is not the key's.
+   */
+  let lineEdge: EditorState | null = null;
   return new Plugin<Boundary | null>({
     key: markBoundaryKey,
     state: {
@@ -91,8 +97,8 @@ export function markBoundaryPlugin(mac: boolean): Plugin<Boundary | null> {
       if (markBoundaryKey.getState(newState) !== null) return null;
       if (!transactions.some((tr) => tr.selectionSet || tr.docChanged)) return null;
       const found = edgeAt(newState);
-      const fromLineEdge = lineEdge;
-      lineEdge = false;
+      const fromLineEdge = lineEdge === oldState;
+      lineEdge = null;
       if (!found) return null;
       const { range, edge } = found;
       let side: BoundarySide;
@@ -115,13 +121,20 @@ export function markBoundaryPlugin(mac: boolean): Plugin<Boundary | null> {
       return placed(newState.tr, newState, { at: newState.selection.head, edge, side }, range.mark);
     },
     props: {
+      handleDOMEvents: {
+        mousedown() {
+          lineEdge = null;
+          return false;
+        },
+      },
       handleKeyDown(view: EditorView, event: KeyboardEvent) {
+        lineEdge = null;
         if (event.altKey || event.shiftKey) return false;
         const lineKey = event.key === 'Home' || event.key === 'End'
           || (mac && event.metaKey && (event.key === 'ArrowLeft' || event.key === 'ArrowRight'))
           || (mac && event.ctrlKey && (event.key === 'a' || event.key === 'e'));
         if (lineKey) {
-          lineEdge = true;
+          lineEdge = view.state;
           return false;
         }
         if (event.metaKey || event.ctrlKey || (event.key !== 'ArrowLeft' && event.key !== 'ArrowRight')) return false;
