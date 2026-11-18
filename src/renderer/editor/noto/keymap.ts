@@ -41,6 +41,7 @@ import { moveBlock, moveColumn } from './move-block';
 import { deleteSelectedRowsOrColumns, enterInTable, exitAtEdge, moveCellVertically, tableFromRows, unwrapAtStart } from './block-edges';
 import { openLinkEditor } from './link-plugin';
 import { fenceOnEnter, undoSubstitution } from './input-rules';
+import { leaveMathBlock } from './math-view';
 import {
   sortTasks,
   toggleTaskStatus,
@@ -727,10 +728,12 @@ export function notoBindings({ mac, onWidthStep, taskStamp }: KeymapOptions): Re
     // Out past a quote, a list or a code block at the edge of the note. In a
     // table the arrows move by column first (moveCellVertically), and at the
     // note's edge they stay in the table (exitAtEdge).
-    ArrowDown: chainCommands(moveCellVertically(1), exitAtEdge(1)),
+    // Off the last line of a math block, out into the paragraph after it, as Typora's down key does.
+    ArrowDown: chainCommands(moveCellVertically(1), leaveMathBlock('last-line'), exitAtEdge(1)),
     ArrowUp: chainCommands(moveCellVertically(-1), exitAtEdge(-1)),
     'Shift-Enter': insertHardBreak,
-    [`${mod}-Enter`]: insertHardBreak,
+    // Typora's Command-Enter: out of a math block anywhere in it; elsewhere a line break.
+    [`${mod}-Enter`]: chainCommands(leaveMathBlock('any'), insertHardBreak),
 
     Tab: chainCommands(nextCellOrRow, sinkListItem(nodes.list_item)),
     'Shift-Tab': chainCommands(goToNextCell(-1), liftListItem(nodes.list_item)),

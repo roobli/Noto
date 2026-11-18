@@ -87,6 +87,7 @@ import { ALL_MARK_KINDS, type TyporaMarkKinds } from './typora-marks';
 import { typewriterPlugin } from './typewriter-plugin';
 import { autoPairPlugin } from './auto-pair';
 import { mathEditingPlugin, mathNodeViews } from './math-view';
+import { mathPairPlugin } from './math-pair';
 import { mathAdjacencyPlugin } from './math-adjacency';
 import { tableNodeViews } from './table-view';
 import { fenceNodeViews } from './fence-view';
@@ -486,6 +487,8 @@ export class NotoEditor implements NotoEditorPort {
       imageLinePlugin(),
       typoraMarksPlugin(() => this.markKinds),
       typewriterPlugin(() => this.typewriter),
+      // Before the general pairing, which does not know a dollar opens maths.
+      mathPairPlugin(() => this.autoPair),
       autoPairPlugin(() => this.autoPair),
       // Before the table plugin, which would otherwise take a right press on
       // selected cells as the start of a new selection.

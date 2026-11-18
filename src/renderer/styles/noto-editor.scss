@@ -2376,37 +2376,158 @@
 /* Math
    ------------------------------------------------------------------------- */
 
-/* A formula reads as typeset mathematics until the caret enters it, then shows
-   its LaTeX so it can be edited in place. Both halves are always in the DOM;
-   only which one is visible changes, so the source stays the document and the
-   saved bytes are never touched by presentation. */
+/* A formula reads as typeset mathematics until the caret enters it; then the
+   whole formula is its source, one unit, as Typora's `md-inline-math.md-expand`
+   is: the delimiters it is written with (`$`, or a `$$` line above and below a
+   block), the TeX in the source colour, and the typeset formula as a live
+   preview under it. The delimiters are drawn by the node view and are never
+   part of the document, so the saved bytes are untouched by any of this. */
 
-.ProseMirror .noto-math-block > .noto-math-source,
-.ProseMirror .noto-math-inline > .noto-math-source {
-  /* Not display:none: ProseMirror needs the content in the layout to place a
-     caret, so it is collapsed instead of removed. */
+/* At rest: only the typeset formula. The source is collapsed, not removed:
+   ProseMirror needs it in the layout to place a caret. */
+.ProseMirror .noto-math-edit {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  overflow: hidden;
+  clip-path: inset(50%);
+  white-space: pre;
+}
+
+.ProseMirror .noto-math-delimiter {
+  color: var(--muted);
+  user-select: none;
+  -webkit-user-select: none;
+}
+
+.ProseMirror .noto-math-source {
+  color: var(--code-ink);
+  font-family: tokens.$mono;
+}
+
+/* Inline, editing: `$TeX$` in place of the formula, framed as one thing being
+   edited, and the formula itself floating just under it, redrawn as you type. */
+.ProseMirror .noto-math-inline.noto-math-editing {
+  border-radius: 4px;
+  background: color-mix(in srgb, var(--code-ink) 9%, transparent);
+  box-shadow: 0 0 0 1px color-mix(in srgb, var(--code-ink) 62%, transparent);
+}
+
+.ProseMirror .noto-math-inline.noto-math-editing > .noto-math-edit {
+  position: static;
+  width: auto;
+  height: auto;
+  overflow: visible;
+  clip-path: none;
+  padding: 0 2px;
+  font-size: 0.9em;
+  white-space: pre-wrap;
+}
+
+/* Above the line, as Typora's popover sits, so it never covers the next line
+   you are about to read or click; below only when the formula is too near the
+   top of the page for that (`data-place`, set by the node view). Sized to its
+   own content: the formula is inline, so without `max-content` the card would
+   shrink to the width of one word. It takes clicks, so a press on it never
+   falls through to the text it covers. */
+.ProseMirror .noto-math-inline.noto-math-editing > .noto-math-render {
+  position: absolute;
+  z-index: 20;
+  bottom: calc(100% + 6px);
+  left: 0;
+  width: max-content;
+  min-width: 2.5em;
+  max-width: min(36em, calc(100vw - 24px));
+  padding: 6px 10px;
+  border: 1px solid var(--hairline);
+  border-radius: 7px;
+  background: var(--overlay);
+  box-shadow: 0 6px 18px -6px color-mix(in srgb, var(--shadow) 28%, transparent);
+  color: var(--ink);
+  font-size: 1.02em;
+  line-height: 1.4;
+  white-space: nowrap;
+  overflow-x: auto;
+}
+
+.ProseMirror .noto-math-inline.noto-math-editing[data-place='below'] > .noto-math-render {
+  top: calc(100% + 6px);
+  bottom: auto;
+}
+
+/* A block, editing: Typora's panel. A `$$` line, the TeX, a `$$` line, all on
+   the code fill and set left as code is, and the typeset formula centred under
+   it as the live preview. */
+.ProseMirror .noto-math-block.noto-math-editing {
+  text-align: left;
+}
+
+.ProseMirror .noto-math-block.noto-math-editing > .noto-math-edit {
+  position: static;
+  display: block;
+  width: auto;
+  height: auto;
+  overflow: visible;
+  clip-path: none;
+  padding: 8px 14px;
+  border-radius: 6px;
+  background: var(--code-fill);
+  font-family: tokens.$mono;
+  font-size: 0.9em;
+  line-height: 1.6;
+  white-space: pre-wrap;
+}
+
+.ProseMirror .noto-math-block.noto-math-editing .noto-math-delimiter {
+  display: block;
+}
+
+.ProseMirror .noto-math-block.noto-math-editing .noto-math-source {
+  display: block;
+  min-height: 1.6em;
+}
+
+.ProseMirror .noto-math-block.noto-math-editing > .noto-math-render {
+  display: block;
+  margin-top: 6px;
+  padding: 10px 14px 6px;
+  border-top: 1px dashed color-mix(in srgb, var(--muted) 45%, transparent);
+  text-align: center;
+}
+
+/* The preview of an empty or unfinished formula is a quiet note, not an alarm. */
+.ProseMirror .noto-math-editing > .noto-math-render[data-state='empty'] {
+  color: var(--muted);
+  font-family: tokens.$ui;
+  font-size: 0.82rem;
+  font-style: italic;
+}
+
+/* An error keeps its colour inside the card, and wraps at a readable width. */
+.ProseMirror .noto-math-editing > .noto-math-render[data-state='error'] {
+  max-width: min(26em, calc(100vw - 24px));
+  color: var(--danger);
+  background: color-mix(in srgb, var(--danger) 8%, var(--overlay));
+  font-family: tokens.$mono;
+  font-size: 0.78rem;
+  white-space: normal;
+}
+
+/* An editor without focus has no caret in a formula: show it at rest. */
+.noto-editor-host:not(:focus-within):not([data-semantic-focus='true']) .ProseMirror .noto-math-editing > .noto-math-edit {
   position: absolute;
   width: 1px;
   height: 1px;
   overflow: hidden;
   clip-path: inset(50%);
 }
-
-/* The caret is inside, so the source takes over and the typeset copy steps
-   aside. The class is applied by the math editing plugin from the selection. */
-.ProseMirror .noto-math-editing > .noto-math-source {
+.noto-editor-host:not(:focus-within):not([data-semantic-focus='true']) .ProseMirror .noto-math-editing > .noto-math-render {
   position: static;
-  width: auto;
-  height: auto;
-  overflow: visible;
-  clip-path: none;
-  font-family: var(--mono, ui-monospace, monospace);
-  font-size: 0.88em;
-  color: var(--muted);
-}
-
-.ProseMirror .noto-math-editing > .noto-math-render {
-  display: none;
+  margin: 0;
+  padding: 0;
+  border: 0;
+  background: none;
+  box-shadow: none;
 }
 
 .ProseMirror .noto-math-block {
@@ -2428,7 +2549,7 @@
 .noto-math-render[data-state='error'] {
   display: inline-block;
   padding: 2px 8px;
-  font-family: var(--mono, ui-monospace, monospace);
+  font-family: tokens.$mono;
   font-size: 0.78rem;
   color: var(--danger);
   background: color-mix(in srgb, var(--danger) 8%, transparent);

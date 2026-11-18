@@ -125,6 +125,10 @@ function phrasingFrom(node: ProseNode): PhrasingContent[] {
       return;
     }
     if (child.type.name === 'math_inline') {
+      // An empty formula is one being opened (a typed `$` pairs into one) and
+      // has no Markdown spelling: written as `$$` it would read back as text,
+      // or as the opening of display maths. It is written as nothing.
+      if (child.content.size === 0) return;
       push({ type: 'inlineMath', value: textOf(child) });
       return;
     }

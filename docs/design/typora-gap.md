@@ -1660,3 +1660,32 @@ in the statement and groups that share a node are left alone, and so is the
 note's source. Group borders are drawn at 3:1 against the paper, since an arrow
 can now start at one. The note now draws 9 lines, each a real relation, with 3
 crossings and none through a box.
+
+## 78. Editing a formula showed bare TeX: no dollars, no preview, no pairing. Closed.
+
+Read from Typora 1.14.9's own code (TypeMark `frame.js`, `index.html`,
+`base-control.css`). Its inline formula is `<md-before>$</md-before>` TeX
+`<md-after>$</md-after>`: the dollars are `md-meta`, hidden at rest and shown
+when the span expands, so the caret in a formula shows the whole `$TeX$` as one
+unit while the formulas beside it stay typeset; and a typeset copy floats by it
+(`#math-inline-preview`), redrawn on each keystroke. A typed `$` inserts its
+partner and opens an empty formula whose preview reads "Empty Inline Math". A
+block being edited is a panel: a `$$` line, the TeX, a `$$` line and the
+formula live under it (`.md-mathjax-preview`), left with Command-Enter or the
+down arrow.
+
+Noto showed the TeX alone, in muted mono, with neither dollar, no preview, and
+a typed `$` was a dollar until its partner arrived. Now `math-view.ts` draws the
+delimiters around the source (never part of the document) and keeps the
+typeset copy as a live preview: inline a card above the formula, or below it
+near the top of the page, shifted to stay on the page, redrawn once per frame
+while typing; a block's panel as above. `math-pair.ts` makes a typed `$` an
+empty formula with the caret in it, wraps a selection, steps out at the
+closing dollar, and takes an empty formula away on Backspace or when the caret
+leaves. Unlike Typora it leaves prices alone: the vault has 2,361 dollars before
+a digit, so `$` after a word or before one stays a dollar, and a digit typed
+first into a new formula turns it back into a dollar and the digit. Two dollars
+in a row stay `$$`, and Return on a line of nothing but `$$` opens a block, as
+it did. Command-Enter, or Down from the last line, leaves a block. A click on a
+typeset formula puts the caret as far into its source as the click was across
+it. An empty formula has no Markdown spelling and is written as nothing.
