@@ -37,6 +37,7 @@ import { ConfirmedOpenRecorder } from '../shared/search/v1/confirmed-open';
 import type { NotoDocumentWire } from '../shared/markdown/v3/contracts';
 import { materializeSaveReply } from './file-truth-save';
 import { outlineFromDocument } from './outline';
+import { blockForFragment } from './heading-anchor';
 import { PLUGIN_LIFECYCLE_VERSION, type PluginLifecycleSnapshot } from '../shared/plugins/lifecycle';
 import { rendererProofManifest, sidenotesManifest } from '../shared/plugins/proof-manifests';
 import { chordOfEvent, normalizeChord } from '../shared/shortcuts/chord';
@@ -2127,8 +2128,10 @@ function NotoWorkspace({ platform }: { platform: NotoPlatform }) {
    * scheme again before handing anything to the operating system. Anything
    * else is treated as a note in this folder and resolved the way a wiki link
    * is, by relative path and then by name, so `./chapters/one.md` and `one.md`
-   * both land. An address with a fragment loses it: nothing here scrolls to a
-   * heading yet, and opening the right note is most of the way there.
+   * both land. A bare `#fragment` is a place in this note: a heading by its
+   * slug or its text, or an anchor the note placed (`heading-anchor.ts`), and
+   * the caret goes there as the outline puts it. Another note's fragment is
+   * dropped for now; opening the right note is most of the way there.
    */
   const followLink = useCallback((href: string) => {
     if (/^[a-z][a-z0-9+.-]*:/i.test(href)) {
@@ -2142,7 +2145,13 @@ function NotoWorkspace({ platform }: { platform: NotoPlatform }) {
     }
     const withoutFragment = href.split('#')[0];
     if (withoutFragment.length === 0) {
-      setLocalMessage('A link to a place inside this note is not followed yet.');
+      const blocks = document ? document.spans.map((span) => document.text.slice(span.start, span.end)) : [];
+      const block = document ? blockForFragment(href.slice(1), outlineFromDocument(document), blocks) : null;
+      if (block === null) {
+        setLocalMessage(`Nothing in this note is called “${href.slice(1)}”.`);
+        return;
+      }
+      editorRef.current?.focusBlock(block, { at: 0.1 });
       return;
     }
     let target = withoutFragment;
@@ -2152,7 +2161,7 @@ function NotoWorkspace({ platform }: { platform: NotoPlatform }) {
       // A malformed escape is not worth refusing over; the raw text may match.
     }
     followWikiLink(target.replace(/^\.\//, ''));
-  }, [followWikiLink]);
+  }, [followWikiLink, document]);
   followLinkRef.current = followLink;
 
   /**

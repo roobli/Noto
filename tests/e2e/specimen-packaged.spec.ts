@@ -24,7 +24,11 @@ const SOURCE = [
   '',
   'By $\\eqref{euler}$, $\\vect{v}$ and $\\ce{H2O}$; broken $\\frac{1$ here.',
   '',
-  'End.',
+  'End, then [the next part](#more).',
+  '',
+  '## More',
+  '',
+  'Last.',
   '',
 ].join('\n');
 
@@ -67,13 +71,17 @@ test('the specimen cases Typora draws, drawn the same', async () => {
     await expect(page.locator('.noto-math-block .katex-html .tag')).toHaveText('(1)');
     await expect(page.locator('.noto-math-inline').first()).toContainText('(1)');
 
+    // L03: a link to a heading of this note takes the caret there.
+    await page.locator('.ProseMirror a[href="#more"]').click({ modifiers: ['Meta'] });
+    await expect.poll(() => page.evaluate(() => window.getSelection()?.anchorNode?.parentElement?.closest('h2')?.textContent ?? '')).toBe('More');
+
     // Drawing changed nothing in the file: an edit elsewhere saves every tag and comment as written.
     await placeCaret(page, page.locator('.ProseMirror p').last());
     await page.keyboard.press('End');
     await page.keyboard.type(' Ok.');
     await page.getByTestId('save-button').click();
     await expect(page.getByTestId('file-state')).toHaveText('Saved', { timeout: 15_000 });
-    expect(await readFile(file, 'utf8')).toBe(SOURCE.replace('End.\n', 'End. Ok.\n'));
+    expect(await readFile(file, 'utf8')).toBe(SOURCE.replace('Last.\n', 'Last. Ok.\n'));
   } finally {
     await app.close();
   }
