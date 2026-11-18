@@ -37,8 +37,8 @@
     "verify": "pnpm typecheck && pnpm test"
   },
   "dependencies": {
-    "@roobli/md": "github:roobli/md#0b7035c17ed074c7f4cd327548ddb93c91acdd4e",
-    "@roobli/vault": "github:roobli/vault#3e00be5895454bed51e5b319e2adbed6550b3cdc",
+    "@roobli/md": "github:roobli/md#52c93b7fcb8219b21be9edbb87cb658b74dc72a9",
+    "@roobli/vault": "github:roobli/vault#7eb7ab1bb9fceaa64e3cf9d2e4fe6543be246c87",
     "electron-updater": "6.8.9",
     "mdast-util-from-markdown": "^2.0.3",
     "mdast-util-frontmatter": "^2.0.1",
