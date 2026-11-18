@@ -12,8 +12,8 @@ importers:
         specifier: github:roobli/md#0b7035c17ed074c7f4cd327548ddb93c91acdd4e
         version: https://codeload.github.com/roobli/md/tar.gz/0b7035c17ed074c7f4cd327548ddb93c91acdd4e(@types/mdast@4.0.4)(micromark-util-types@2.0.2)(micromark@4.0.2(supports-color@8.1.1))(supports-color@8.1.1)
       '@roobli/vault':
-        specifier: github:roobli/vault#78d56077bd0217d6398b9bf9320d8b6680dcfffd
-        version: https://codeload.github.com/roobli/vault/tar.gz/78d56077bd0217d6398b9bf9320d8b6680dcfffd
+        specifier: github:roobli/vault#3e00be5895454bed51e5b319e2adbed6550b3cdc
+        version: https://codeload.github.com/roobli/vault/tar.gz/3e00be5895454bed51e5b319e2adbed6550b3cdc
       electron-updater:
         specifier: 6.8.9
         version: 6.8.9(supports-color@8.1.1)
@@ -636,9 +636,9 @@ packages:
     engines: {node: '>=22.12.0'}
     hasBin: true
 
-  '@roobli/vault@https://codeload.github.com/roobli/vault/tar.gz/78d56077bd0217d6398b9bf9320d8b6680dcfffd':
-    resolution: {gitHosted: true, integrity: sha512-zWEV/XOtxCJGhKC0uPOw1sXMPrNqj/1LGxsQh9/7M7j4BEbbOm4DzHAjSHS4OE47FWNzZH+oYZErXqAxZuvA1w==, tarball: https://codeload.github.com/roobli/vault/tar.gz/78d56077bd0217d6398b9bf9320d8b6680dcfffd}
-    version: 0.1.0
+  '@roobli/vault@https://codeload.github.com/roobli/vault/tar.gz/3e00be5895454bed51e5b319e2adbed6550b3cdc':
+    resolution: {gitHosted: true, integrity: sha512-h54T5G/5db1gTz2ZZn+gIbUAeaaEB92lLzK4w3fwckq3Wv5aHS+WIhWsHXPEthFFF3juPSeq5sMHLAhAVqhkXw==, tarball: https://codeload.github.com/roobli/vault/tar.gz/3e00be5895454bed51e5b319e2adbed6550b3cdc}
+    version: 0.2.1
     engines: {node: '>=22.13.0'}
     hasBin: true
 
@@ -4172,7 +4172,7 @@ snapshots:
       - micromark-util-types
       - supports-color
 
-  '@roobli/vault@https://codeload.github.com/roobli/vault/tar.gz/78d56077bd0217d6398b9bf9320d8b6680dcfffd': {}
+  '@roobli/vault@https://codeload.github.com/roobli/vault/tar.gz/3e00be5895454bed51e5b319e2adbed6550b3cdc': {}
 
   '@sindresorhus/is@4.6.0': {}
 

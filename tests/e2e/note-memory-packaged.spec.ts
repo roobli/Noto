@@ -37,8 +37,8 @@ function write(root: string, rel: string, text: string): void {
 /** A folder that keeps memory, with one note read twice and one agent that may not read it. */
 function rememberingFolder(): { root: string; note: string } {
   const root = scratch('memory');
-  write(root, '目标设计说明.md', '---\nsensitivity: private\n---\n\n# 目标设计说明\n\n先看学习方案，再动手。\n');
-  write(root, '学习方案.md', '# 学习方案\n\n一份计划。\n');
+  write(root, '目标设计说明.md', '---\nsensitivity: private\n---\n\n# 目标设计说明\n\n先看学习方案，再动手。分工见 [[学习方案#一份计划]]，步骤见 [[学习方案#步骤]]。\n');
+  write(root, '学习方案.md', '# 学习方案\n\n一份计划。\n\n## 步骤\n\n一步。\n');
   write(root, 'notes.md', '# Notes\n\n见 [[目标设计说明]]。\n');
   write(root, '.noto/brain.yaml', 'kinds:\n  dated_names_are_logs: true\n');
   write(root, '.noto/access.yaml', [
@@ -97,7 +97,12 @@ test.describe('memory in Note Info', () => {
       const linksHere = pane(page).getByTestId('related-links-here');
       await expect(linksHere).toBeVisible({ timeout: 30_000 });
       await expect(linksHere.getByTestId('related-row')).toHaveAttribute('data-path', 'notes.md');
-      await expect(pane(page).getByTestId('related-named-here').getByTestId('related-row')).toHaveAttribute('data-path', '学习方案.md');
+      // It links to the plan, so the plan is no longer named without a link;
+      // one of its two links names a heading the plan does not have.
+      const missing = pane(page).getByTestId('related-missing-headings');
+      await expect(missing).toHaveText('1 to a missing heading');
+      await missing.click();
+      await expect(pane(page).getByTestId('related-outgoing')).toContainText('学习方案#一份计划');
 
       await expect(pane(page).locator('[data-track="dev.lr00rl.noto.memory:reads"]')).toBeVisible();
 

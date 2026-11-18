@@ -209,6 +209,7 @@ function Ask({ host, note }: { readonly host: InfoTabHost; readonly note: string
 function Related({ host }: { readonly host: InfoTabHost }) {
   const { note, answer } = useMemory(host);
   const [brokenOpen, setBrokenOpen] = useState(false);
+  const [anchorsOpen, setAnchorsOpen] = useState(false);
   if (note === null) return null;
   if (!host.vault) return <p className="info-note">Related needs the folder's memory, which this plugin has not been allowed.</p>;
   if (answer?.state === 'no-memory') {
@@ -266,6 +267,22 @@ function Related({ host }: { readonly host: InfoTabHost }) {
             {brokenOpen && (
               <ul className="memory-broken">
                 {memory.outgoing.broken.map((item) => <li key={`${item.target}:${item.line}`}>{item.target} <span className="memory-why">line {item.line}</span></li>)}
+              </ul>
+            )}
+          </>
+        )}
+        {memory.outgoing.brokenAnchorCount > 0 && (
+          <>
+            {', '}
+            <button type="button" className="memory-link" aria-expanded={anchorsOpen} onClick={() => setAnchorsOpen((open) => !open)}
+              data-testid="related-missing-headings">
+              {memory.outgoing.brokenAnchorCount.toLocaleString('en')} to a missing heading
+            </button>
+            {anchorsOpen && (
+              <ul className="memory-broken">
+                {memory.outgoing.brokenAnchors.map((item) => (
+                  <li key={`${item.target}${item.anchor}:${item.line}`}>{item.target}{item.anchor} <span className="memory-why">line {item.line}</span></li>
+                ))}
               </ul>
             )}
           </>

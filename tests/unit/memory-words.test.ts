@@ -44,6 +44,8 @@ describe('a folder in words', () => {
     expect(folderSummary({ notes: 42, broken: 0 })).toBe('42 notes');
     expect(folderSummary({ notes: 1, broken: 1 })).toBe('1 note · 1 broken link');
     expect(folderSummary({ notes: 1200, broken: 3 })).toBe('1,200 notes · 3 broken links');
+    expect(folderSummary({ notes: 9, broken: 0, brokenAnchors: 1 })).toBe('9 notes · 1 link to a missing heading');
+    expect(folderSummary({ notes: 9, broken: 2, brokenAnchors: 4 })).toBe('9 notes · 2 broken links · 4 links to a missing heading');
     expect(folderSummary({ notes: 0, broken: 0 })).toBe('The memory holds no note here yet.');
   });
   it('says how often a note was read and when last', () => {

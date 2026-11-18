@@ -480,8 +480,10 @@ function isNoteMemoryV1(value: unknown): value is NoteMemoryV1 {
     && listOf(value.aboutSame, 200, (item) => exact(item, ['path', 'title', 'why', 'excerpt'])
       && text(item.path) && text(item.title) && Array.isArray(item.why) && item.why.length <= 16
       && item.why.every((reason) => text(reason, 512)) && text(item.excerpt, 8192))
-    && record(outgoing) && exact(outgoing, ['count', 'broken', 'brokenCount']) && whole(outgoing.count) && whole(outgoing.brokenCount)
+    && record(outgoing) && exact(outgoing, ['count', 'broken', 'brokenCount', 'brokenAnchors', 'brokenAnchorCount'])
+    && whole(outgoing.count) && whole(outgoing.brokenCount) && whole(outgoing.brokenAnchorCount)
     && listOf(outgoing.broken, 1000, (item) => exact(item, ['target', 'line']) && text(item.target) && whole(item.line))
+    && listOf(outgoing.brokenAnchors, 1000, (item) => exact(item, ['target', 'anchor', 'line']) && text(item.target) && text(item.anchor) && whole(item.line))
     && listOf(value.reads, 20000, (item) => exact(item, ['day', 'count']) && text(item.day, 10) && whole(item.count))
     && listOf(value.readers, 200, (item) => exact(item, ['actor', 'count', 'last']) && text(item.actor, 256) && whole(item.count) && text(item.last, 64))
     && listOf(value.leadsHere, 200, (item) => exact(item, ['from', 'query', 'count']) && textOrNull(item.from) && textOrNull(item.query, 1024) && whole(item.count))
@@ -808,11 +810,11 @@ export function isWorkspaceFolderMemoryReplyV1(value: unknown): value is Workspa
   if (typeof value.state !== 'string' || value.state === 'unknown' || !MEMORY_STATES.has(value.state)) return false;
   if (value.state !== 'ok') return value.memory === null;
   const memory = value.memory;
-  return record(memory) && exact(memory, ['folder', 'notes', 'warmest', 'mostRead', 'orphans', 'broken'])
+  return record(memory) && exact(memory, ['folder', 'notes', 'warmest', 'mostRead', 'orphans', 'broken', 'brokenAnchors'])
     && typeof memory.folder === 'string' && memory.folder.length <= 1024 && (memory.folder === '' || notePath(memory.folder))
     && whole(memory.notes) && folderNotes(memory.warmest) && folderNotes(memory.mostRead)
     && record(memory.orphans) && exact(memory.orphans, ['count', 'items']) && whole(memory.orphans.count)
-    && folderNotes(memory.orphans.items) && whole(memory.broken);
+    && folderNotes(memory.orphans.items) && whole(memory.broken) && whole(memory.brokenAnchors);
 }
 
 export const isWorkspaceFolderMemoryResultV1 = (
