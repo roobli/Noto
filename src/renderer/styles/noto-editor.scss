@@ -1152,12 +1152,6 @@
   border-top-color: var(--ink);
 }
 
-@media (max-width: 760px) {
-  .ProseMirror table {
-    display: block;
-    overflow-x: auto;
-  }
-}
 
 /* Empty state ------------------------------------------------------------- */
 
@@ -3139,6 +3133,61 @@
  * matter how the columns are sized. */
 .noto-table-frame { position: relative; }
 
+/*
+ * A table scrolls sideways inside the page's column (`table-view.ts`), and
+ * says so: a soft shadow stands at whichever edge has more table past it,
+ * gone at the end it has reached. Drawn as the scroller's own background, the
+ * covers moving with the table and the shadows staying put, so it needs no
+ * script and a table that fits shows nothing. The cells are transparent, so
+ * the shadow reads through them.
+ */
+.noto-table-scroll {
+  overflow-x: auto;
+  overflow-y: hidden;
+  overscroll-behavior-x: contain;
+  container-type: scroll-state;
+  --edge-shadow: color-mix(in srgb, var(--shadow) 16%, transparent);
+  background:
+    linear-gradient(to right, var(--paper) 40%, transparent) left center / 32px 100% no-repeat local,
+    linear-gradient(to left, var(--paper) 40%, transparent) right center / 32px 100% no-repeat local,
+    radial-gradient(farthest-side at 0 50%, var(--edge-shadow), transparent) left center / 12px 100% no-repeat scroll,
+    radial-gradient(farthest-side at 100% 50%, var(--edge-shadow), transparent) right center / 12px 100% no-repeat scroll;
+}
+
+/*
+ * Set wide: each column as wide as its words ask, a long cell wrapping at a
+ * measure of its own (22em, about twenty-two characters of Chinese), and
+ * the table as wide as that comes to, never narrower than the page. Held to
+ * the page instead, the table took its narrowest layout, one that only a URL
+ * in a cell kept from being a single character wide.
+ */
+.noto-table-frame[data-wide] .noto-table {
+  width: max-content;
+  min-width: 100%;
+  max-width: none;
+}
+/* prosemirror-tables sets every table to `overflow: hidden`, which makes the
+   table the scroll container a sticky cell sticks to, and it never scrolls:
+   the first column went with the rest. The table's scroller is its frame's. */
+.ProseMirror .noto-table-frame .noto-table { overflow: visible; }
+.noto-table-frame[data-wide] :is(th, td) { min-width: 3.5em; max-width: 22em; }
+
+/* The first column stays while the rest pass under it, on the paper so they
+   do, with a shadow at its edge once there is table to its left. */
+.noto-table-frame[data-sticky] :is(th, td):first-child {
+  position: sticky;
+  left: 0;
+  z-index: 1;
+  background: var(--paper);
+  transition: box-shadow var(--motion-micro) var(--ease-out);
+}
+.noto-table-frame[data-sticky] tr:hover td:first-child { background: color-mix(in srgb, var(--ink) 3.5%, var(--paper)); }
+@container scroll-state(scrollable: left) {
+  .noto-table-frame[data-sticky] :is(th, td):first-child {
+    box-shadow: 8px 0 8px -8px color-mix(in srgb, var(--shadow) 28%, transparent);
+  }
+}
+
 /* The toolbar above the table's left corner, there while the caret is in
    the table and gone otherwise, as Typora's is. Above the rails, so a click
    on it is a click on it. */
@@ -3247,6 +3296,15 @@
   inset: -4px;
 }
 .noto-table-rail-columns .noto-table-handle::before { inset: -5px -2px -3px; }
+
+/* As wide as the frame and clipped to it across, so the handle of a column
+   scrolled out of sight does not hang past the page's edge. */
+.noto-table-rail-columns {
+  left: 0;
+  right: 0;
+  width: auto;
+  overflow-x: clip;
+}
 
 .noto-table-rail-columns .noto-table-handle {
   /* Inside the header's own top padding rather than above the table. Above it,
