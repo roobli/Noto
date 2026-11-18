@@ -84,7 +84,7 @@ import { alertPlugin } from './alert-plugin';
 import { imageLinePlugin } from './image-line';
 import { RESCAN, typoraMarksKey, typoraMarksPlugin } from './typora-marks-plugin';
 import { editorExtensions, type EditorContextItem } from './editor-extensions';
-import { ALL_MARK_KINDS, type TyporaMarkKinds } from './typora-marks';
+import { ALL_MARK_KINDS, type TyporaMarkKinds } from '@roobli/md/inline';
 import { typewriterPlugin } from './typewriter-plugin';
 import { autoPairPlugin } from './auto-pair';
 import { mathEditingPlugin, mathNodeViews } from './math-view';

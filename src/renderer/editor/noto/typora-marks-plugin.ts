@@ -19,9 +19,8 @@ import { Plugin, PluginKey, type EditorState, type Transaction } from 'prosemirr
 import { Decoration, DecorationSet } from 'prosemirror-view';
 import { AddMarkStep, RemoveMarkStep } from 'prosemirror-transform';
 import type { Node as ProseNode } from 'prosemirror-model';
-import { ALL_MARK_KINDS, typoraMarkRanges, type TyporaMarkKinds } from './typora-marks';
-import { closingTag, isInlineComment, openingTag, type InlineTag } from './inline-tag';
-import { EMOJI } from './emoji-names';
+import { ALL_MARK_KINDS, closingTag, isInlineComment, openingTag, typoraMarkRanges, type InlineTag, type TyporaMarkKinds } from '@roobli/md/inline';
+import { emojiFor } from '@roobli/md/emoji';
 
 export const typoraMarksKey = new PluginKey<DecorationSet>('noto-typora-marks');
 
@@ -40,8 +39,6 @@ const MARK_CLASS = {
   subscript: 'noto-mark-sub',
   emoji: 'noto-mark-emoji',
 } as const;
-
-const emojiFor = (name: string): string | undefined => (Object.hasOwn(EMOJI, name) ? EMOJI[name] : undefined);
 
 /** The emoji a shortcode stands for, drawn where its name is hidden. */
 function emojiWidget(emoji: string): HTMLElement {

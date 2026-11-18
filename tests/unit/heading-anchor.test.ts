@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { blockForFragment, headingSlug } from '../../src/renderer/heading-anchor';
+import { blockForFragment } from '../../src/renderer/heading-anchor';
 
 const outline = [
   { blockIndex: 2, depth: 3, text: 'B12 脚注' },
@@ -10,12 +10,6 @@ const outline = [
 const blocks = ['# T', 'x', '### B12 脚注', 'y', 'z', '## 九、HTML', 'w', '### Setup', '<span id="jump">here</span>', '### Setup'];
 
 describe('a link to a place in its own note', () => {
-  it('slugs headings as GitHub and Typora do, keeping CJK', () => {
-    expect(headingSlug('B12 脚注')).toBe('b12-脚注');
-    expect(headingSlug('九、HTML')).toBe('九html');
-    expect(headingSlug('What’s new?')).toBe('whats-new');
-  });
-
   it('finds a heading by slug, by text, encoded or not, and the second of two by its suffix', () => {
     expect(blockForFragment('b12-脚注', outline, blocks)).toBe(2);
     expect(blockForFragment(encodeURIComponent('b12-脚注'), outline, blocks)).toBe(2);

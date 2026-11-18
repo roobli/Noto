@@ -9,20 +9,8 @@
  * so this is pure and tested on its own.
  */
 
+import { headingForFragment } from '@roobli/md/inline';
 import type { OutlineEntry } from './outline';
-
-/**
- * GitHub's heading slug, which Typora follows: lower case, spaces to hyphens,
- * and every character dropped that is not a letter, a digit, a hyphen, an
- * underscore or a space. CJK text is letters and stays.
- */
-export function headingSlug(text: string): string {
-  return text
-    .trim()
-    .toLowerCase()
-    .replace(/[^\p{L}\p{N}\p{M}\s_-]/gu, '')
-    .replace(/\s/g, '-');
-}
 
 function decoded(fragment: string): string {
   try {
@@ -35,29 +23,19 @@ function decoded(fragment: string): string {
 /**
  * The block a fragment names, or null.
  *
- * Tried in order: a heading whose slug is the fragment, a heading whose text is
- * the fragment, and a block that places an anchor with that id. Two headings
- * with one slug are told apart as GitHub does, `-1`, `-2` after the first.
+ * Tried in order: a heading the fragment names, by GitHub's slug with its
+ * `-1`, `-2` for repeats or by its text (`@roobli/md/inline`, which `md serve`
+ * slugs headings with too), then a block that places an anchor with that id.
  */
 export function blockForFragment(
   fragment: string,
   outline: readonly OutlineEntry[],
   blocks: readonly string[],
 ): number | null {
+  const heading = headingForFragment(fragment, outline.map((entry) => entry.text));
+  if (heading !== null) return outline[heading]!.blockIndex;
   const wanted = decoded(fragment.replace(/^#/, '')).trim();
   if (wanted.length === 0) return null;
-  const lower = wanted.toLowerCase();
-  const seen = new Map<string, number>();
-  for (const entry of outline) {
-    const base = headingSlug(entry.text);
-    const count = seen.get(base) ?? 0;
-    seen.set(base, count + 1);
-    const slug = count === 0 ? base : `${base}-${count}`;
-    if (slug === lower || slug === headingSlug(wanted)) return entry.blockIndex;
-  }
-  for (const entry of outline) {
-    if (entry.text.trim().toLowerCase() === lower) return entry.blockIndex;
-  }
   const escaped = wanted.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
   const anchor = new RegExp(`<(?:a|span)\\b[^>]*\\b(?:id|name)\\s*=\\s*["']?${escaped}["'\\s>]`, 'i');
   const index = blocks.findIndex((block) => anchor.test(block));
