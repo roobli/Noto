@@ -810,9 +810,16 @@
   /* Vertically in step with the code beside it, or the numbers drift off
      their lines. */
   /* The same top and bottom as the code (editor.scss), so each number
-     stands on its line. The rule keeps the numbers a column of their own. */
-  padding: 1.1em 0.75em 1.1em 0.9em;
-  border-right: 1px solid color-mix(in srgb, var(--ink) 12%, var(--code-fill));
+     stands on its line. Across, the column is measured in the code's own
+     character: one character from the last digit to the rule and one from
+     the rule to the code (editor.scss), so the code's first column sits
+     where the next character of the grid would, and the gap reads as a
+     character's room rather than a strip of nothing. The column is a shade
+     deeper than the code, so where the code begins is said by a change of
+     ground, and the rule is only its edge. */
+  padding: 1.1em 1ch 1.1em 1.6ch;
+  background: color-mix(in srgb, var(--ink) 3.5%, var(--code-fill));
+  border-right: 1px solid color-mix(in srgb, var(--ink) 9%, var(--code-fill));
   /* Read, not glimpsed: 4.5:1 on the code fill in both themes. */
   color: var(--code-gutter);
   text-align: right;

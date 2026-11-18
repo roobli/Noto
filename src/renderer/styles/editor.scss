@@ -239,7 +239,8 @@
      top, 1.11 at the right and 0.94 at the bottom. This was a tenth tighter
      all round, which on the commonest block in the vault reads as a different
      theme rather than a different number. */
-  padding: 1.1em 1.3em 1.1em 1em;
+  /* One character from the gutter's rule (noto-editor.scss). */
+  padding: 1.1em 1.3em 1.1em 1ch;
 }
 
 /* Links in the accent, as the theme has them, with the underline held back
