@@ -44,4 +44,11 @@ describe('the three switches', () => {
       .map((range) => range.kind)).toEqual(['highlight']);
     expect(typoraMarkRanges(text, { highlight: false, superscript: false, subscript: false })).toEqual([]);
   });
+
+  it('lets a sub- or superscript hold a space written as an escape, and hides the backslash', () => {
+    const text = 'X~long\\ text~ and Y^a\\ b^ but not ~a b~';
+    expect(kinds(text)).toEqual([['subscript', 'long\\ text'], ['superscript', 'a\\ b']]);
+    const [sub] = typoraMarkRanges(text);
+    expect(sub!.escapes.map((at) => text[at])).toEqual(['\\']);
+  });
 });

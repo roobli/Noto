@@ -21,7 +21,10 @@
  */
 
 import katex from 'katex';
+// `\ce` and `\pu`, which Typora's MathJax carries and KaTeX keeps in a contrib module.
+import 'katex/contrib/mhchem';
 import type { Node as ProseNode } from 'prosemirror-model';
+import { documentMathContext, prepared } from './math-context';
 import { Plugin, PluginKey, TextSelection, type Command, type EditorState } from 'prosemirror-state';
 import { Decoration, DecorationSet, type EditorView, type NodeView } from 'prosemirror-view';
 
@@ -32,9 +35,12 @@ const MATH_TYPES = new Set(['math_block', 'math_inline']);
  *
  * Errors are shown in place rather than thrown. A half typed formula is the
  * normal state of one being written, so it must not blank the document or
- * throw inside a ProseMirror update.
+ * throw inside a ProseMirror update. At rest a formula that does not typeset
+ * shows its own source, as Typora does, with a mark under it and the reason
+ * on hover; KaTeX's sentence is said in full only in the card beside a formula
+ * being edited, where the writer is looking for it.
  */
-function render(target: HTMLElement, latex: string, displayMode: boolean): void {
+function render(target: HTMLElement, latex: string, displayMode: boolean, doc: ProseNode | null): void {
   const source = latex.trim();
   if (source.length === 0) {
     // Typora's own words for the empty state, in its preview.
@@ -42,9 +48,11 @@ function render(target: HTMLElement, latex: string, displayMode: boolean): void 
     target.dataset.state = 'empty';
     return;
   }
+  const ready = prepared(source, displayMode, doc ? documentMathContext(doc) : { labels: new Map(), macros: {} });
   try {
-    katex.render(source, target, {
+    katex.render(ready.source, target, {
       displayMode,
+      macros: ready.macros,
       throwOnError: true,
       // Rendering runs on document content, so anything that could inject
       // markup or load a file is refused rather than trusted.
@@ -52,8 +60,17 @@ function render(target: HTMLElement, latex: string, displayMode: boolean): void 
       strict: false,
     });
     target.dataset.state = 'rendered';
+    target.removeAttribute('title');
   } catch (error) {
-    target.textContent = error instanceof Error ? error.message.replace(/^KaTeX parse error: /, '') : 'Could not render this formula';
+    const reason = error instanceof Error ? error.message.replace(/^KaTeX parse error: /, '') : 'Could not render this formula';
+    const written = globalThis.document.createElement('span');
+    written.className = 'noto-math-written';
+    written.textContent = source;
+    const said = globalThis.document.createElement('span');
+    said.className = 'noto-math-reason';
+    said.textContent = reason;
+    target.replaceChildren(written, said);
+    target.title = reason;
     target.dataset.state = 'error';
   }
 }
@@ -117,7 +134,7 @@ class MathView implements NodeView {
     editing.append(delimiter(tag, mark, 'open'), this.contentDOM, delimiter(tag, mark, 'close'));
     this.dom.append(editing, this.preview);
     this.latex = node.textContent;
-    render(this.preview, this.latex, displayMode);
+    render(this.preview, this.latex, displayMode, view.state.doc);
     views.set(this.dom, this);
   }
 
@@ -130,7 +147,7 @@ class MathView implements NodeView {
       // frame, so a run of typing typesets once per frame, not once per key.
       cancelAnimationFrame(this.redraw);
       this.redraw = requestAnimationFrame(() => {
-        render(this.preview, this.latex, this.displayMode);
+        render(this.preview, this.latex, this.displayMode, this.view.state.doc);
         this.placePreview();
       });
     }

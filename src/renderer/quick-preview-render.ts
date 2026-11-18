@@ -20,6 +20,7 @@
  */
 
 import katex from 'katex';
+import 'katex/contrib/mhchem';
 import { DOMSerializer } from 'prosemirror-model';
 import { splitBlocks } from '../shared/markdown/v3/blocks';
 import { docFromSpans } from '../shared/markdown/v3/pm/from-mdast';

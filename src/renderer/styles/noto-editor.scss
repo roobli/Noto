@@ -276,6 +276,22 @@
   opacity: 1;
 }
 
+/*
+ * At rest a comment takes no line at all, as in Typora: what the reader sees
+ * is the prose on either side of it, with the gap of one block between them.
+ * It is folded rather than removed, so the arrow keys still walk into it and
+ * it opens, small and muted as above, while the caret is there.
+ */
+.ProseMirror .noto-html-block[data-comment='true']:not(.noto-active-block) {
+  max-height: 0;
+  margin-top: 0;
+  margin-bottom: 0;
+  /* `clip`, not `hidden`: it starts no formatting context, so the margins of
+     the blocks either side still meet through it and leave one gap, not two. */
+  overflow: clip;
+  color: transparent;
+}
+
 /* A generated index, drawn as the author's note-assistant plugin draws it in
    Typora: the region's markdown hidden, and in its place a quiet list, one
    note to a line, title first and path after in small type. The measurements
@@ -2546,14 +2562,32 @@
 
 /* A formula being written is usually invalid for a moment, so the message is
    quiet rather than alarming. */
+/*
+ * A formula that does not typeset, at rest: its own source in the code face,
+ * in the ink of code, with a wavy rule under it in the danger colour, as a
+ * misspelling is marked. The sentence saying why is the tooltip, and is what
+ * the card shows while the formula is edited.
+ */
 .noto-math-render[data-state='error'] {
-  display: inline-block;
-  padding: 2px 8px;
+  display: inline;
+  padding: 0;
+  background: none;
   font-family: tokens.$mono;
-  font-size: 0.78rem;
-  color: var(--danger);
-  background: color-mix(in srgb, var(--danger) 8%, transparent);
-  border-radius: 5px;
+  font-size: 0.88em;
+  color: var(--code-ink);
+  white-space: pre-wrap;
+
+  > .noto-math-written {
+    text-decoration: underline wavy color-mix(in srgb, var(--danger) 70%, transparent);
+    text-decoration-thickness: 1px;
+    text-underline-offset: 0.25em;
+  }
+  > .noto-math-reason { display: none; }
+}
+.noto-math-block > .noto-math-render[data-state='error'] { display: block; text-align: start; }
+.ProseMirror .noto-math-editing > .noto-math-render[data-state='error'] {
+  > .noto-math-written { display: none; }
+  > .noto-math-reason { display: inline; }
 }
 
 .noto-math-render[data-state='empty'] {
@@ -2676,6 +2710,56 @@
   line-height: 1.5;
   vertical-align: 0.05em;
 }
+
+.ProseMirror .noto-html-q { font-style: inherit; }
+.ProseMirror .noto-html-cite { font-style: italic; }
+.ProseMirror .noto-html-abbr {
+  text-decoration: underline dotted color-mix(in srgb, var(--muted) 70%, transparent);
+  text-underline-offset: 0.18em;
+  cursor: help;
+}
+.ProseMirror .noto-html-code {
+  border: 1px solid var(--hairline);
+  border-radius: 3px;
+  background: var(--code-fill);
+  color: var(--code-ink);
+  padding: 0.06em 0.3em 0.08em;
+  font-family: tokens.$mono;
+  font-size: 0.9em;
+}
+
+/*
+ * Words a note coloured or sized with `<span style>` or `<font>`
+ * (`inline-tag.ts`). The hue is the note's; the lightness is moved until the
+ * words read on this paper, because a note written on a dark theme says
+ * `color=yellow` and on cream that is invisible. Light paper caps a colour at
+ * L 0.55 and dark paper floors it at L 0.76, which keeps red red and green
+ * green and turns yellow into a legible gold. A fill is held pale on light
+ * paper and deep on dark, so the ink on it stays the ink.
+ */
+.ProseMirror .noto-html-styled {
+  font-size: var(--note-size, inherit);
+  font-weight: var(--note-weight, inherit);
+  font-style: var(--note-slant, inherit);
+  text-decoration-line: var(--note-line, inherit);
+}
+.ProseMirror .noto-html-styled[style*='--note-color'] { color: oklch(from var(--note-color) min(l, 0.55) c h); }
+.ProseMirror .noto-html-styled[style*='--note-fill'] {
+  background: oklch(from var(--note-fill) max(l, 0.9) min(c, 0.1) h);
+  border-radius: 2px;
+  box-decoration-break: clone;
+}
+:root[data-theme='dark'] .ProseMirror .noto-html-styled[style*='--note-color'] { color: oklch(from var(--note-color) max(l, 0.76) c h); }
+:root[data-theme='dark'] .ProseMirror .noto-html-styled[style*='--note-fill'] { background: oklch(from var(--note-fill) min(l, 0.34) min(c, 0.08) h); }
+
+/* `<q>`: its tags hide and the quotation marks the tag stands for show. */
+.ProseMirror .noto-inline-html.noto-inline-quote-open:not(.noto-source-live),
+.ProseMirror .noto-inline-html.noto-inline-quote-close:not(.noto-source-live) {
+  display: inline;
+  > .noto-inline-html-source { display: none; }
+}
+.ProseMirror .noto-inline-html.noto-inline-quote-open:not(.noto-source-live)::after { content: open-quote; }
+.ProseMirror .noto-inline-html.noto-inline-quote-close:not(.noto-source-live)::after { content: close-quote; }
 
 .ProseMirror .noto-typora-delim,
 .ProseMirror .noto-inline-html.noto-inline-tag { display: none; }
