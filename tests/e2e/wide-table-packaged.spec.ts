@@ -53,6 +53,16 @@ test('a table wider than the page scrolls inside it, its first column kept', asy
     await scroller.evaluate((element) => { element.scrollLeft = 0; });
     await placeCaret(page, wide.locator('tr').first().locator('th, td').last());
     await expect.poll(() => scroller.evaluate((element) => element.scrollLeft)).toBeGreaterThan(500);
+
+    // Printed, it is fitted to the page again: nothing past the edge, nothing to scroll.
+    await page.emulateMedia({ media: 'print' });
+    const printed = await scroller.evaluate((element) => ({
+      past: element.querySelector('table')!.getBoundingClientRect().right - element.getBoundingClientRect().right,
+      overflow: getComputedStyle(element).overflowX,
+    }));
+    expect(printed.overflow).toBe('visible');
+    expect(printed.past).toBeLessThanOrEqual(1);
+    await page.emulateMedia({ media: 'screen' });
   } finally {
     await app.close();
   }

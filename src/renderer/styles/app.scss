@@ -3593,6 +3593,11 @@ section.plugin-group > .plugin-market-row.is-set-aside {
   }
   h1, h2, h3, h4, h5, h6 { break-after: avoid-page; }
   pre, blockquote, table, img, .noto-alert { break-inside: avoid; }
+  /* Paper does not scroll: a table set wide on screen is fitted to the page
+     again, its columns wrapping, rather than cut at the edge. */
+  .noto-table-scroll { overflow: visible !important; background: none !important; }
+  .noto-table-frame[data-wide] .noto-table { width: 100% !important; min-width: 0 !important; max-width: 100% !important; }
+  .noto-table-frame[data-wide] :is(th, td) { max-width: none !important; position: static !important; box-shadow: none !important; }
 }
 
 /* The links view: three short lists under small kickers, rows like the
