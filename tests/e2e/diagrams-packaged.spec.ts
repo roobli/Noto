@@ -117,7 +117,7 @@ test.describe('diagrams', () => {
       // that missed.
       await placeCaret(page, code);
       const host = page.locator('.canvas-slot:not([hidden]) [data-testid="noto-editor"]');
-      const entered = await host.getAttribute('data-caret');
+      const entered = Number(await host.getAttribute('data-caret'));
       // The end of the last line of code, found as the last text there rather
       // than as the end of the element: the element's own end maps back to the
       // head of the fence, and typing from there writes the new lines in front
@@ -134,7 +134,12 @@ test.describe('diagrams', () => {
         selection?.removeAllRanges();
         selection?.addRange(range);
       });
-      await expect(host).not.toHaveAttribute('data-caret', entered ?? '');
+      // The editor has taken the move once its caret stands at or past where the press put it
+      // (the end of the source is as far as the caret goes in it; a press in the last line
+      // may already have been there), and holds still.
+      await expect.poll(async () => Number(await host.getAttribute('data-caret'))).toBeGreaterThanOrEqual(entered);
+      await page.waitForTimeout(200);
+      await expect(fence).toHaveClass(/noto-active-block/);
       await page.keyboard.type('\n  B --> C[Then]\n  C --> D[Last]');
       await expect(diagram).toHaveAttribute('data-state', 'rendered');
       await expect.poll(async () => frame.evaluate((element) => element.getBoundingClientRect().height), { timeout: 10_000 })

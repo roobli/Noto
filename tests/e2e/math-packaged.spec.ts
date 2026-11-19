@@ -117,7 +117,10 @@ test.describe('math', () => {
     const { app, page } = await launch('unit');
     try {
       // Inline: the caret in it shows `$E = mc^2$`, both dollars, and the typeset formula floating below.
-      await page.locator('.noto-math-inline .noto-math-render').click();
+      // Pressed at the middle of the typeset formula, where a reader presses. (Playwright's own
+      // click refuses on Linux, where the line box of the text around it overlaps the formula's.)
+      const at = (await page.locator('.noto-math-inline .noto-math-render .katex').boundingBox())!;
+      await page.mouse.click(at.x + at.width / 2, at.y + at.height / 2);
       const inline = page.locator('.noto-math-inline');
       await expect(inline).toHaveClass(/noto-math-editing/);
       const edit = inline.locator('.noto-math-edit');
@@ -134,9 +137,8 @@ test.describe('math', () => {
       // A press on the card stays on the formula being edited.
       await preview.click({ force: true });
       await expect(inline).toHaveClass(/noto-math-editing/);
-      // Typing redraws the preview. (The click on the formula put the caret near where it landed;
-      // End takes it to the end of the source.)
-      await page.keyboard.press('End');
+      // Typing redraws the preview. The click put the caret in the source near where it landed,
+      // and typing goes there. (Not End: on Windows and Linux it leaves for the end of the line.)
       await page.keyboard.type('+1');
       await expect(preview.locator('.katex-html')).toContainText('+1');
 
@@ -214,7 +216,7 @@ test.describe('math', () => {
       await page.keyboard.type('a^2 + b^2 = c^2');
       await expect(block.locator('.noto-math-render .katex-html')).toContainText('=');
       // Command-Enter: out to a new paragraph after it.
-      await page.keyboard.press('Meta+Enter');
+      await page.keyboard.press(process.platform === 'darwin' ? 'Meta+Enter' : 'Control+Enter');
       await expect(block).not.toHaveClass(/noto-math-editing/);
       await page.keyboard.type('After');
       // Back in, and Down from its last line goes to that paragraph, not a new one.

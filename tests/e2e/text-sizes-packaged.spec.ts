@@ -30,6 +30,8 @@ test('the note, the interface and the sidebar each keep the size set for them', 
   });
   try {
     const page = await app.firstWindow();
+    // Wide enough for the page to grow by a quarter, whatever size a new window opens at here.
+    await page.setViewportSize({ width: 1600, height: 900 });
     await page.waitForSelector('[data-testid="noto-editor"]', { state: 'visible', timeout: 30_000 });
     const paragraph = page.locator('.ProseMirror > p').first();
     // Drawn sizes, in screen pixels: the CSS size times the window's zoom.

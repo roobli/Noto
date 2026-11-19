@@ -65,7 +65,10 @@ test('a save, by hand or on leaving the note, says the name and the path it wrot
     await page.getByTestId('tree-directory').filter({ hasText: 'locked' }).click();
     await page.getByTestId('tree-file').filter({ hasText: 'kept.md' }).click();
     await expect(editor.locator('p').first()).toHaveText('Kept.');
-    await chmod(path.join(vault, 'locked'), 0o555);
+    // A folder that cannot be written to on macOS and Linux; Windows keeps no such mode on a
+    // folder, and refuses to replace a file marked read-only instead.
+    if (process.platform === 'win32') await chmod(locked, 0o444);
+    else await chmod(path.join(vault, 'locked'), 0o555);
     await placeCaret(page, editor.locator('p').first());
     await page.keyboard.press(END);
     await page.keyboard.type(' Three');
@@ -74,6 +77,7 @@ test('a save, by hand or on leaving the note, says the name and the path it wrot
     await expect(toast).toContainText('Could not save kept.md');
     await expect(page.getByTestId('save-toast-path')).toHaveText(`to ${locked}`);
   } finally {
+    await chmod(locked, 0o644).catch(() => {});
     await chmod(path.join(vault, 'locked'), 0o755).catch(() => {});
     await app.close();
   }
