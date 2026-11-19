@@ -95,6 +95,7 @@ import { fenceNodeViews } from './fence-view';
 import type { ImageContext } from './image-source';
 import { htmlNodeViews } from './html-view';
 import { imageNodeViews, type Refreshable } from './image-view';
+import { imageSourcePlugin, pictureAt, pictureContextItems, zoomPicture } from './image-source-edit';
 import type { SearchOptions } from './search';
 import {
   getSearchState,
@@ -477,6 +478,8 @@ export class NotoEditor implements NotoEditorPort {
       // Ahead of the keymap, which would take the arrow that steps across a
       // revealed delimiter as an ordinary move.
       markBoundaryPlugin(this.options.mac),
+      // Ahead of the keymap too: an arrow toward a picture goes into its source.
+      imageSourcePlugin(),
       ...notoKeymap({
         mac: this.options.mac,
         onWidthStep: (d) => this.options.onWidthStep?.(d),
@@ -1150,12 +1153,19 @@ export class NotoEditor implements NotoEditorPort {
     this.contextPassage = pos === null || !this.options.onPassageHistory ? null : this.passageAt(pos);
     const history: EditorContextItem[] = this.contextPassage === null ? [] : [{ title: 'History of This Passage', command: PASSAGE_HISTORY }];
     if (this.readOnly) return history;
-    // The table's own lines first: in a table they are what the click is about.
-    return [...tableContextItems(view.state, pos), ...editorExtensions.contextItems(view, { pos, element: hit }), ...history];
+    // A picture's zooms, when the click is on one, and the table's own lines:
+    // what the click is about comes first.
+    this.contextPicture = pictureAt(view.state, pos, hit);
+    const pictures = pictureContextItems(view.state, pos, hit);
+    // Main shows eight at most; a picture's own lines go first, then the history, before a table's.
+    const items = [...pictures, ...tableContextItems(view.state, pos), ...editorExtensions.contextItems(view, { pos, element: hit })];
+    return pictures.length > 0 ? [...pictures, ...history].slice(0, 8) : [...items, ...history].slice(0, 8);
   }
 
   /** The passage a right click was on, for History of This Passage when it is chosen. */
   private contextPassage: string | null = null;
+  /** The picture a right click was on, for its zoom when one is chosen. */
+  private contextPicture: number | null = null;
 
   /** The text the last commit has for the top-level block holding `pos`; null where git has none. */
   private passageAt(pos: number): string | null {
@@ -1191,6 +1201,12 @@ export class NotoEditor implements NotoEditorPort {
     // Bold from the menu while a sidenote is being written would bold the
     // note's words behind the field, not anything in it.
     if (this.fieldFocused(view)) return false;
+    if (name.startsWith('noto.image-zoom-')) {
+      if (this.readOnly) return false;
+      const at = this.contextPicture;
+      this.contextPicture = null;
+      return zoomPicture(view, name, at);
+    }
     // Every editor command changes the document, so read-only refuses them all
     // rather than each one having to remember to check, except the few that
     // only move the selection.

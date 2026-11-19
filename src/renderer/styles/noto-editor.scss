@@ -600,16 +600,9 @@
 
   > .noto-inline-html-source { display: none; }
 }
-.ProseMirror .noto-inline-editing .noto-inline-html[data-preview='image'] {
-  border-radius: 3px;
-  background: var(--raised);
-  padding: 0 3px;
-  color: var(--muted);
-  font: 0.88em tokens.$mono;
-
-  > .noto-inline-html-source { display: inline; }
-  > .noto-html-preview { display: none; }
-}
+/* An `<img>` tag keeps its picture while the caret is in its line; its
+   source opens in the field over it when the caret comes beside it
+   (`image-source-edit.ts`), as a markdown image's does. */
 
 /* Footnotes and link definitions ------------------------------------------ */
 
