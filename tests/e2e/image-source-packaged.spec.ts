@@ -141,3 +141,65 @@ test('a picture beside the caret opens its source, which is edited in place', as
   }
 });
 
+
+/*
+ * A picture on a line of its own, as the notes put them: the zoomed `<img>`
+ * tag is an HTML block there. Its source opens across the column, wrapped,
+ * and an edit to it writes the tag back as a tag, never as escaped text.
+ */
+test('a zoomed picture on its own line keeps its tag through an edit, its source as wide as the text', async () => {
+  const workspace = path.join(process.cwd(), 'test-results', 'image-source-block');
+  await rm(workspace, { recursive: true, force: true });
+  await mkdir(path.join(workspace, 'user-data'), { recursive: true });
+  const vault = path.join(workspace, 'vault');
+  await mkdir(vault, { recursive: true });
+  const file = path.join(vault, 'note.md');
+  await writeFile(path.join(vault, 'a-picture-with-a-rather-long-name-for-wrapping-the-source-line.png'), pngOf(400, 100));
+  const tag = '<img src="a-picture-with-a-rather-long-name-for-wrapping-the-source-line.png" alt="Rows of one person: why nested fields or a joined key are needed" style="zoom:43%;" />';
+  await writeFile(file, `# Pictures\n\n![pic](a-picture-with-a-rather-long-name-for-wrapping-the-source-line.png)\n\nBlank: \\_\\_\\_\\_name\\_\\_\\_\\_\n`, 'utf8');
+  const app = await electron.launch({
+    executablePath: packagedExecutable(),
+    args: [`--user-data-dir=${path.join(workspace, 'user-data')}`, vault],
+  });
+  try {
+    const page = await app.firstWindow();
+    await page.setViewportSize({ width: 1280, height: 900 });
+    await page.waitForSelector('[data-testid="file-tree"]', { state: 'visible', timeout: 30_000 });
+    await page.getByTestId('tree-file').filter({ hasText: 'note.md' }).click();
+    const editor = page.locator('.canvas-slot:not([hidden]) .ProseMirror');
+    const img = editor.locator('img.noto-image');
+    await expect.poll(() => img.evaluate((node) => (node as HTMLImageElement).naturalWidth)).toBe(400);
+    const field = editor.locator('[data-testid="image-source"]');
+
+    // The caret comes to the picture from the line below it; Up walks onto it, Left into the source.
+    await editor.locator('p').last().click({ position: { x: 4, y: 8 } });
+    await page.keyboard.press('ArrowUp');
+    await expect(field).toHaveCount(1);
+    await field.focus();
+    await page.keyboard.press(process.platform === 'darwin' ? 'Meta+a' : 'Control+a');
+    await page.keyboard.insertText(tag);
+    // The whole source shows, on as many lines as the column needs, as wide as the text.
+    const sizes = await field.evaluate((node) => {
+      const area = node as HTMLTextAreaElement;
+      const column = area.closest('.ProseMirror')!.firstElementChild!.getBoundingClientRect().width;
+      return { width: area.getBoundingClientRect().width, column, overflow: area.scrollHeight - area.clientHeight, lineHeight: parseFloat(getComputedStyle(area).lineHeight), height: area.clientHeight };
+    });
+    expect(sizes.width).toBeGreaterThan(sizes.column * 0.95);
+    expect(sizes.overflow).toBeLessThanOrEqual(1);
+    expect(sizes.height).toBeGreaterThan(sizes.lineHeight * 1.5);
+    await page.keyboard.press('Enter');
+    await expect(field).toHaveCount(0);
+    await expect.poll(() => img.evaluate((node) => (node as HTMLElement).style.zoom)).toBe('0.43');
+
+    // An edit in the line of blanks writes no more backslashes than keep them blanks:
+    // the closing run alone stops the pair from being bold.
+    await editor.locator('p').last().click();
+    await page.keyboard.press(process.platform === 'darwin' ? 'Meta+ArrowRight' : 'End');
+    await page.keyboard.type('!');
+    await invokeMenu(app, 'save');
+    await expect.poll(() => readFile(file, 'utf8')).toBe(`# Pictures\n\n${tag}\n\nBlank: ____name\\_\\_\\_\\_!\n`);
+    await expect(editor.locator('p').last()).toHaveText('Blank: ____name____!');
+  } finally {
+    await app.close();
+  }
+});

@@ -73,12 +73,7 @@ function writeSource(view: EditorView, at: number, text: string): boolean {
   if (!isPicture(node)) return false;
   if (text === pictureSource(node)) return false;
   const $at = state.doc.resolve(at);
-  const slice = text.length === 0 ? Slice.empty : sliceFromText(text, $at);
-  // One line of inline content is all a picture's place holds; anything with
-  // blocks in it (a pasted list) goes in as the text it was typed as.
-  const inline = slice.content.childCount === 1 && slice.content.firstChild!.type.name === 'paragraph'
-    ? slice.content.firstChild!.content
-    : Fragment.from(state.schema.text(text));
+  const inline = inlineFor(state, text, $at);
   const tr = state.tr.replaceWith(at, at + node.nodeSize, inline);
   // The caret goes after what was written, where it would be after typing it.
   tr.setSelection(TextSelection.create(tr.doc, Math.min(at + inline.size, tr.doc.content.size)));
@@ -87,16 +82,40 @@ function writeSource(view: EditorView, at: number, text: string): boolean {
   return true;
 }
 
+/**
+ * What a picture's place holds once `text` is written over it.
+ *
+ * One line of inline content is all it holds. A tag alone on its line reads
+ * as an HTML block, which an inline place cannot take: it goes in as the
+ * inline tag it was, so `<img … style="zoom:43%">` stays the picture rather
+ * than becoming its own characters, which were then saved escaped as
+ * `\<img src="https\://…`. Anything else with blocks in it (a pasted list)
+ * goes in as the text it was typed as.
+ */
+function inlineFor(state: EditorState, text: string, $at: ReturnType<EditorState['doc']['resolve']>): Fragment {
+  const trimmed = text.trim();
+  if (trimmed.length === 0) return Fragment.empty;
+  const slice = sliceFromText(trimmed, $at);
+  const only = slice.content.childCount === 1 ? slice.content.firstChild! : null;
+  if (only?.type.name === 'paragraph') return only.content;
+  if (only?.type.name === 'html_block' && !only.textContent.includes('\n')) {
+    return Fragment.from(state.schema.nodes.inline_html.create({ value: only.textContent }));
+  }
+  return Fragment.from(state.schema.text(text));
+}
+
 function field(view: EditorView, at: number, node: ProseNode): HTMLElement {
   const wrap = document.createElement('span');
   wrap.className = 'noto-image-source';
   wrap.contentEditable = 'false';
-  const input = document.createElement('input');
+  // A text area as wide as the column, which wraps a long address onto the
+  // next lines as the note's own text does, as Typora shows a picture's source.
+  const input = document.createElement('textarea');
   input.className = 'noto-image-source-input';
-  input.type = 'text';
+  input.rows = 1;
   input.spellcheck = false;
+  input.wrap = 'soft';
   input.value = pictureSource(node);
-  input.size = Math.max(8, Math.min(120, input.value.length + 1));
   input.setAttribute('aria-label', 'Picture source');
   input.dataset.testid = 'image-source';
   let done = false;
@@ -115,28 +134,49 @@ function field(view: EditorView, at: number, node: ProseNode): HTMLElement {
     }
     view.focus();
   };
-  input.addEventListener('input', () => { input.size = Math.max(8, Math.min(120, input.value.length + 1)); });
   input.addEventListener('keydown', (event) => {
     event.stopPropagation();
     if (event.isComposing) return;
+    const collapsed = input.selectionStart === input.selectionEnd;
     if (event.key === 'Enter') { event.preventDefault(); commit('after'); }
     else if (event.key === 'Escape') { event.preventDefault(); input.value = pictureSource(node); commit(null); }
-    else if (event.key === 'ArrowLeft' && input.selectionStart === 0 && input.selectionEnd === 0) { event.preventDefault(); commit('before'); }
-    else if (event.key === 'ArrowRight' && input.selectionStart === input.value.length) { event.preventDefault(); commit('after'); }
-    else if ((event.key === 'ArrowUp' || event.key === 'ArrowDown')) { commit(null); }
+    else if (event.key === 'ArrowLeft' && collapsed && input.selectionStart === 0 && !event.shiftKey) { event.preventDefault(); commit('before'); }
+    else if (event.key === 'ArrowRight' && collapsed && input.selectionStart === input.value.length && !event.shiftKey) { event.preventDefault(); commit('after'); }
+    else if ((event.key === 'ArrowUp' || event.key === 'ArrowDown') && collapsed && !event.shiftKey) {
+      // Up and down move between the wrapped lines of a long source; from
+      // its first or last line, where the caret cannot move, they leave it.
+      const before = input.selectionStart;
+      requestAnimationFrame(() => {
+        if (!done && input.selectionStart === before) commit(event.key === 'ArrowUp' ? 'before' : 'after');
+      });
+    }
   });
   // Left by a press elsewhere: written back after the press has been handled,
   // never in the middle of the editor drawing the change that removed it.
   input.addEventListener('blur', () => { setTimeout(() => commit(null), 0); });
   // A press in the field is the field's; the editor must not move its selection for it.
   for (const type of ['mousedown', 'pointerdown', 'click']) input.addEventListener(type, (event) => event.stopPropagation());
+  // As tall as its wrapped lines, so the whole source shows without a scroll.
+  const fit = () => {
+    input.style.height = '0px';
+    input.style.height = `${input.scrollHeight}px`;
+  };
+  input.addEventListener('input', fit);
+  requestAnimationFrame(fit);
+  if (typeof ResizeObserver === 'function') {
+    let width = 0;
+    new ResizeObserver(([entry]) => {
+      const next = entry?.contentRect.width ?? 0;
+      if (next !== width) { width = next; fit(); }
+    }).observe(input);
+  }
   wrap.append(input);
   return wrap;
 }
 
 /** Puts the keys in the open field, its caret at the start or the end. */
 export function enterPictureSource(view: EditorView, end: 'start' | 'end'): boolean {
-  const dom = view.dom.querySelector<HTMLInputElement>('.noto-image-source-input');
+  const dom = view.dom.querySelector<HTMLTextAreaElement>('.noto-image-source-input');
   if (!dom) return false;
   dom.focus();
   const at = end === 'start' ? 0 : dom.value.length;

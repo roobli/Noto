@@ -173,6 +173,9 @@ export function fenceOnEnter(state: EditorState, dispatch?: (tr: Transaction) =>
  * `---`, `***` or `___` on a line of its own becomes a rule, and the caret
  * goes to the line after it, a new empty one when the rule is the last
  * thing in its container, so typing goes on under the rule as in Typora.
+ * `-—` and `—-`, which smart dashes made of `---` before that line was kept
+ * from them, are read as `---` too.
+ *
  * The rule used to be put in with the caret left where ProseMirror chose,
  * which after a rule is the block below: the next words went into it.
  *
@@ -181,11 +184,11 @@ export function fenceOnEnter(state: EditorState, dispatch?: (tr: Transaction) =>
  * never what is meant (`frontmatterOnEnter` does the same for Return).
  */
 function ruleInputRule(): InputRule {
-  return new InputRule(/^(?:---|___|\*\*\*)$/, (state, match, start, end) => {
+  return new InputRule(/^(?:---|—-|-—|___|\*\*\*)$/, (state, match, start, end) => {
     const $start = state.doc.resolve(start);
     if ($start.depth !== 1 || $start.parent.type !== nodes.paragraph) return null;
     const before = $start.before();
-    if (match[0] === '---' && before === 0 && state.doc.firstChild?.type !== nodes.frontmatter) {
+    if (/^(?:---|—-|-—)$/.test(match[0]) && before === 0 && state.doc.firstChild?.type !== nodes.frontmatter) {
       return openFrontmatter(state, before, $start.after());
     }
     const tr = state.tr.replaceWith(before, $start.after(), nodes.horizontal_rule.create());
@@ -322,6 +325,10 @@ const emDash = new InputRule(/--$/, (state, _match, start, end) => {
   const $start = state.doc.resolve(start);
   const line = $start.parent.textBetween(0, $start.parentOffset, '\n');
   if (/^\s*\|/.test(line.slice(line.lastIndexOf('\n') + 1))) return null;
+  // Hyphens opening a line are the start of `---`, a rule or front matter.
+  // Taken for a dash, the third hyphen gave `-—`, which is neither, and the
+  // note was saved with `—--` where a rule was meant.
+  if (/^-*$/.test(line.slice(line.lastIndexOf('\n') + 1))) return null;
   return state.tr.insertText('\u2014', start, end);
 });
 

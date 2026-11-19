@@ -268,28 +268,36 @@
 
 /* A picture's source beside the caret, as Typora opens it: the markdown on a
    line of its own over the picture, the picture still below as its preview. */
+/* A picture's source, open beside the caret: the line of markdown the note
+   holds, across the whole text column and wrapped as the note's own lines
+   are, the way Typora shows it, with the picture under it. No box round it:
+   it is the note's text, in the note's own face and size. */
 .ProseMirror .noto-image-source {
   display: block;
-  width: fit-content;
-  max-width: 100%;
-  margin: 0 auto 8px;
+  width: 100%;
+  margin: 0 0 0.45em;
   text-align: left;
 }
 .ProseMirror .noto-image-source-input {
-  box-sizing: content-box;
-  max-width: calc(100% - 16px);
-  padding: 2px 8px;
-  border: 1px solid color-mix(in srgb, var(--ink) 14%, transparent);
-  border-radius: 4px;
-  background: var(--code-fill, var(--raised));
-  color: var(--code-ink, var(--ink));
-  font: calc(var(--doc-font-size, 15px) * 0.86)/1.6 tokens.$mono;
+  display: block;
+  box-sizing: border-box;
+  width: 100%;
+  min-height: 0;
+  margin: 0;
+  padding: 0.15em 0;
+  border: 0;
+  border-radius: 0;
+  background: transparent;
+  color: var(--ink);
+  font: inherit;
+  line-height: var(--doc-line-height, 1.7);
+  letter-spacing: 0;
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+  overflow: hidden;
+  resize: none;
   caret-color: var(--accent);
   outline: none;
-}
-.ProseMirror .noto-image-source-input:focus {
-  border-color: color-mix(in srgb, var(--accent) 60%, transparent);
-  box-shadow: 0 0 0 3px color-mix(in srgb, var(--accent) 14%, transparent);
 }
 /* The picture under an open source, a little quieter, as a preview is. */
 .ProseMirror .noto-image-source-open .noto-image { opacity: 0.9; }
