@@ -466,6 +466,10 @@ function NotoWorkspace({ platform }: { platform: NotoPlatform }) {
      settings as they were at launch and step the width from 66 every time. */
   const settingsRef = useRef(settings);
   settingsRef.current = settings;
+  /** Counts settings writes, so only the latest one's answer is taken. */
+  const settingsWriteRef = useRef(0);
+  /** The writes not yet answered, while which main's echo of an earlier one is not taken. */
+  const settingsWritesInFlightRef = useRef(0);
 
   const [folder, setFolder] = useState<{ root: string | null; name: string | null }>({ root: null, name: null });
   /** What git says about the folder's notes, as main last sent it. */
@@ -1065,7 +1069,10 @@ function NotoWorkspace({ platform }: { platform: NotoPlatform }) {
         if (result.value.settings.sidebarOnLaunch) setRail({ open: true, view: 'files' });
       });
     const unsubscribe = window.notoSettings.onChanged((event) => {
-      if (active) setSettings(event.settings);
+      // While this window's own writes are landing, the echo of an earlier one
+      // would put back a value the reader has already moved past; the answer
+      // to the last write is what is taken then.
+      if (active && settingsWritesInFlightRef.current === 0) setSettings(event.settings);
     });
     return () => { active = false; unsubscribe(); };
   }, []);
@@ -1097,8 +1104,6 @@ function NotoWorkspace({ platform }: { platform: NotoPlatform }) {
   const appliedRailWidth = clampRailWidth(settings.railWidth, viewportWidth);
   const appliedInfoWidth = clampInfoWidth(settings.infoWidth, viewportWidth);
 
-  /** Counts settings writes, so only the latest one's answer is taken. */
-  const settingsWriteRef = useRef(0);
   const changeSettings = useCallback((
     patch: Partial<NotoSettingsV1> | ((current: NotoSettingsV1) => Partial<NotoSettingsV1>),
   ) => {
@@ -1112,9 +1117,11 @@ function NotoWorkspace({ platform }: { platform: NotoPlatform }) {
       // row write twice, and the first answer arriving after the second
       // press used to put the first value back, losing the second.
       settingsWriteRef.current += 1;
+      settingsWritesInFlightRef.current += 1;
       const written = settingsWriteRef.current;
       void window.notoSettings.write({ version: 1, requestId: rid('settings-write'), patch: resolved })
-        .then((result) => { if (result.ok && written === settingsWriteRef.current) setSettings(result.value.settings); });
+        .then((result) => { if (result.ok && written === settingsWriteRef.current) setSettings(result.value.settings); })
+        .finally(() => { settingsWritesInFlightRef.current -= 1; });
       return { ...current, ...resolved };
     });
   }, []);
