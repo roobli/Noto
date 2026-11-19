@@ -64,6 +64,15 @@ test('a heading chosen from the outline rests a tenth of the way down the page',
     const saved = await page.evaluate(() => document.querySelector('.canvas-slot:not([hidden]) .ProseMirror h2:nth-of-type(7)')?.textContent);
     expect(saved).toBe('!Section 7');
 
+    // Scrolled by the reader, the outline lights the section being read, not the caret's.
+    await expect(page.locator('.outline-entry.is-current')).toHaveText('Section 7');
+    const third = await restingSpot(page, 'Section 3', 'h2');
+    await page.mouse.move(550, 400);
+    for (let step = 0; step < 40 && await scrollTop(page) > third + 40; step += 1) await page.mouse.wheel(0, -120);
+    await expect(page.locator('.outline-entry.is-current')).toHaveText('Section 3');
+    await page.mouse.wheel(0, 40 * 120);
+    await expect(page.locator('.outline-entry.is-current')).toHaveText('Section 10');
+
     // The first heading has no page above it to spare: it goes to the very top.
     await page.locator('.outline-entry', { hasText: 'Title' }).click();
     await expect.poll(() => scrollTop(page), { timeout: 10_000 }).toBe(0);

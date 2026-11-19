@@ -306,6 +306,14 @@ function NotoWorkspace({ platform }: { platform: NotoPlatform }) {
   const [themeReload, setThemeReload] = useState(0);
   const [themeProblem, setThemeProblem] = useState('');
   const [activeBlock, setActiveBlock] = useState(-1);
+  /*
+   * The block at the reading line while the note is scrolled, which the
+   * outline lights instead of the caret's, as Typora's does: the last of the
+   * two to move is the one the reader is following. Null once the caret moves.
+   */
+  const [scrolledBlock, setScrolledBlock] = useState<number | null>(null);
+  /** When the caret last moved or the note was typed in, whose own scrolling is not the reader's. */
+  const caretMovedAtRef = useRef(0);
   /** Whether something outside the window can drive it, as main reports it. */
   const [remote, setRemote] = useState<{ listening: boolean; port: number | null }>({
     listening: false, port: null,
@@ -1518,6 +1526,31 @@ function NotoWorkspace({ platform }: { platform: NotoPlatform }) {
   };
   useFocusReturn(shortcuts, focusNoteInFront);
   useFocusReturn(tableDialog, focusNoteInFront);
+
+  useEffect(() => {
+    caretMovedAtRef.current = performance.now();
+    setScrolledBlock(null);
+  }, [activeBlock, activeId]);
+  useEffect(() => {
+    const canvas = globalThis.document.getElementById('document-canvas');
+    if (!canvas) return undefined;
+    let frame = 0;
+    const onScroll = () => {
+      if (frame !== 0) return;
+      frame = requestAnimationFrame(() => {
+        frame = 0;
+        // The page brought along by the caret or by typing is not a scroll of the reader's.
+        if (performance.now() - caretMovedAtRef.current < 250) return;
+        const block = editorRef.current?.blockAtReadingLine(canvas) ?? null;
+        if (block !== null) setScrolledBlock(block);
+      });
+    };
+    canvas.addEventListener('scroll', onScroll, { passive: true });
+    return () => {
+      canvas.removeEventListener('scroll', onScroll);
+      if (frame !== 0) cancelAnimationFrame(frame);
+    };
+  }, [activeId]);
 
   /* Each note keeps its place in the shared page (daily-use audit, finding 7). */
   useReadingAnchors({
@@ -3250,13 +3283,14 @@ function NotoWorkspace({ platform }: { platform: NotoPlatform }) {
    * heading above it.
    */
   const currentHeading = useMemo(() => {
+    const at = scrolledBlock ?? activeBlock;
     let found = -1;
     for (const entry of outline) {
-      if (entry.blockIndex <= activeBlock) found = entry.blockIndex;
+      if (entry.blockIndex <= at) found = entry.blockIndex;
       else break;
     }
     return found;
-  }, [outline, activeBlock]);
+  }, [outline, activeBlock, scrolledBlock]);
 
   const actions = state === 'Opening' || state === 'No document'
     ? []
@@ -3659,6 +3693,7 @@ function NotoWorkspace({ platform }: { platform: NotoPlatform }) {
                 onDirtyChange={(dirty) => onDocumentDirtyChange(doc.document.documentId, dirty)}
                 onDocumentChanged={() => {
                   if (doc.document.documentId === activeIdRef.current) {
+                    caretMovedAtRef.current = performance.now();
                     bumpTyping();
                     scheduleNoteTags(doc.document.documentId);
                   }

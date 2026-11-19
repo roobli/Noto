@@ -1059,6 +1059,27 @@ export class NotoEditor implements NotoEditorPort {
     this.focusTopLevel(topLevelOfWritten(view.state.doc, index), options);
   }
 
+  /**
+   * The written block at the reading line of `scroller`, a quarter of the
+   * page down: the one the reader is looking at, for the outline to light
+   * while the note is scrolled. A heading the outline jumps to lands at a
+   * tenth of the page, above the line, so it is the one lit after the jump.
+   * Null while the note is not laid out.
+   */
+  blockAtReadingLine(scroller: HTMLElement): number | null {
+    const view = this.view;
+    if (!view || !view.dom.isConnected) return null;
+    const page = scroller.getBoundingClientRect();
+    const text = view.dom.getBoundingClientRect();
+    if (text.height === 0) return null;
+    const top = Math.max(text.top + 1, Math.min(text.bottom - 1, page.top + Math.min(scroller.clientHeight * 0.25, 200)));
+    const found = view.posAtCoords({ left: text.left + text.width / 2, top });
+    if (!found) return null;
+    const { doc } = view.state;
+    const at = Math.max(0, Math.min(found.inside >= 0 ? found.inside : found.pos, doc.content.size));
+    return writtenBlocksBefore(doc, Math.min(doc.resolve(at).index(0), doc.childCount - 1));
+  }
+
   /** The same, for a top-level node index. */
   private focusTopLevel(index: number, options?: { readonly at?: number }): void {
     const view = this.view;
