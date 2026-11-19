@@ -1094,7 +1094,8 @@ export class NotoEditor implements NotoEditorPort {
     // while before the editor's state has it, which still held the last one.
     const dom = view.dom.ownerDocument.getSelection();
     const onPage = dom && !dom.isCollapsed && dom.anchorNode && view.dom.contains(dom.anchorNode) ? dom.toString() : '';
-    const text = onPage || (empty ? '' : view.state.doc.textBetween(from, to, '\n', ' '));
+    // Trimmed: a double click on Windows takes the space after the word too.
+    const text = (onPage || (empty ? '' : view.state.doc.textBetween(from, to, '\n', ' '))).trim();
     if (text.trim().length === 0 || text.includes('\n') || text.length > 300) return null;
     return text;
   }
