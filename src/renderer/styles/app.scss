@@ -3305,10 +3305,19 @@ section.plugin-group > .plugin-market-row.is-set-aside {
 /* The document's size, at the end of the status line. Tabular figures so the
    number does not shuffle its neighbours as it grows, and the same quiet grey
    as the path it shares the line with. */
-.count-disclosure {
+/* The end of the line: the zoom, when there is one, then the count. */
+.status-end {
   grid-column: 5;
-  position: relative;
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 6px;
   margin-left: auto;
+  min-width: 0;
+}
+
+.count-disclosure {
+  position: relative;
 }
 
 .status-count {
@@ -3324,6 +3333,21 @@ section.plugin-group > .plugin-market-row.is-set-aside {
   &::-webkit-details-marker { display: none; }
   &:hover { color: var(--ink); }
   .count-disclosure[open] > & { color: var(--ink); }
+}
+
+/* The note's zoom, when it is not 100%: a quiet figure in the same line, a
+   press sets it back. Placed just before the count, in its column. */
+.status-zoom {
+  padding: 0 6px;
+  border: 0;
+  border-radius: 3px;
+  background: color-mix(in srgb, var(--accent) 10%, transparent);
+  color: var(--ink);
+  font: inherit;
+  font-variant-numeric: tabular-nums;
+  cursor: pointer;
+
+  &:hover { background: color-mix(in srgb, var(--accent) 18%, transparent); }
 }
 
 /* The rest of the numbers, above the count, two quiet columns. */

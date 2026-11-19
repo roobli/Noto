@@ -60,7 +60,7 @@ import { GUIDE_EDITION, Shortcuts, tryNeeds, type GuideTry } from './Shortcuts';
 import { RailFooter } from './RailFooter';
 import { Settings, type SettingsSection } from './Settings';
 import {
-  DEFAULT_SETTINGS, SETTING_RANGES, clampRailWidth, stepWidthMode, type NotoSettingsV1, type TreeSortV1,
+  DEFAULT_SETTINGS, clampRailWidth, stepDocZoom, stepWidthMode, type NotoSettingsV1, type TreeSortV1,
 } from '../shared/settings/v1/contracts';
 import type { AssetRefusalV1 } from '../shared/assets/v1/contracts';
 import { copyThroughSelection } from './editor/noto/clipboard';
@@ -970,7 +970,12 @@ function NotoWorkspace({ platform }: { platform: NotoPlatform }) {
      */
     const zoom = settings.uiScale > 0 ? settings.uiScale : 1;
     root.style.setProperty('--ui-scale', String(zoom));
-    root.style.setProperty('--doc-font-size', `${settings.fontSize / zoom}px`);
+    // The note's own zoom multiplies its text and its measure, as a browser's
+    // does a page; `--doc-scale` carries it to sizes set in pixels inside the note.
+    const docZoom = settings.docZoom > 0 ? settings.docZoom : 1;
+    root.style.setProperty('--doc-zoom', String(docZoom));
+    root.style.setProperty('--doc-font-size', `${(settings.fontSize * docZoom) / zoom}px`);
+    root.style.setProperty('--doc-scale', String((settings.fontSize * docZoom) / 15 / zoom));
     root.style.setProperty('--rail-font-size', `${settings.railFontSize / zoom}px`);
     root.style.setProperty('--rail-scale', String(settings.railFontSize / 14 / zoom));
     // A family leads its stack as a name and a comma; names with quotes are refused at the settings boundary.
@@ -999,7 +1004,7 @@ function NotoWorkspace({ platform }: { platform: NotoPlatform }) {
     root.dataset.timelines = settings.timelines ? 'on' : 'off';
     root.dataset.focusMode = settings.focusMode ? 'on' : 'off';
     root.dataset.gitMarks = settings.gitMarks ? 'on' : 'off';
-  }, [settings.fontSize, settings.uiScale, settings.railFontSize, settings.uiFontFamily, settings.railFontFamily,
+  }, [settings.fontSize, settings.docZoom, settings.uiScale, settings.railFontSize, settings.uiFontFamily, settings.railFontFamily,
     settings.lineHeight, settings.widthMode, settings.proseFace, settings.proseFontFamily,
     settings.codeLineNumbers, settings.codeWrap, settings.sheetWidth, settings.codeIndentGuides, settings.codeTabMarkers,
     settings.timelines, settings.focusMode, settings.gitMarks]);
@@ -3093,13 +3098,12 @@ function NotoWorkspace({ platform }: { platform: NotoPlatform }) {
         stepWidthRef.current(1);
         break;
       case 'text-larger': case 'text-smaller': case 'text-default': {
+        // The note's zoom, in a browser's steps; Actual Size is the text size set.
         // Derived from the latest settings, so a key held down steps once a press.
-        const { min, max } = SETTING_RANGES.fontSize;
-        const step = (now: number) => (event.command === 'text-default' ? DEFAULT_SETTINGS.fontSize
-          : Math.min(max, Math.max(min, now + (event.command === 'text-larger' ? 1 : -1))));
-        const next = step(settingsRef.current.fontSize);
-        changeSettings((current) => ({ fontSize: step(current.fontSize) }));
-        window.dispatchEvent(new CustomEvent('noto:notice', { detail: `Text size ${next} px` }));
+        const step = (now: number) => (event.command === 'text-default' ? 1 : stepDocZoom(now, event.command === 'text-larger' ? 1 : -1));
+        const next = step(settingsRef.current.docZoom);
+        changeSettings((current) => ({ docZoom: step(current.docZoom) }));
+        window.dispatchEvent(new CustomEvent('noto:notice', { detail: `Zoom ${Math.round(next * 100)}%` }));
         break;
       }
       case 'narrow':
@@ -3999,6 +4003,16 @@ function NotoWorkspace({ platform }: { platform: NotoPlatform }) {
               nothing else competes with it. Counted after typing stops, so it
               settles a moment behind the words rather than flickering under
               them. */}
+          {/* The note's zoom, while it is not the size set, as a browser's
+              address bar shows its own; a press sets it back. */}
+          <div className="status-end">
+          {Math.abs(settings.docZoom - 1) > 0.005 && (
+            <button type="button" className="status-zoom" data-testid="status-zoom"
+              title="Zoomed with Command and plus or minus. Press to go back to 100%, the text size set in Settings."
+              onClick={() => changeSettings({ docZoom: 1 })}>
+              {Math.round(settings.docZoom * 100)}%
+            </button>
+          )}
           {count !== null && (
             // Typora's word count opens on a click to the rest of the numbers.
             // A disclosure rather than a dialog: it is a glance, and the
@@ -4017,6 +4031,7 @@ function NotoWorkspace({ platform }: { platform: NotoPlatform }) {
               </dl>
             </details>
           )}
+          </div>
         </footer>
       )}
     </div>

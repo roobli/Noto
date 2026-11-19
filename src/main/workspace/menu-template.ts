@@ -295,7 +295,8 @@ export function buildMenuTemplate(options: MenuTemplateOptions): MenuItemConstru
       command('Heading 4', 'CmdOrCtrl+4', 'block-heading-4'),
       command('Heading 5', 'CmdOrCtrl+5', 'block-heading-5'),
       command('Heading 6', 'CmdOrCtrl+6', 'block-heading-6'),
-      command('Paragraph', 'CmdOrCtrl+0', 'block-paragraph'),
+      // Command-0 is the zoom's Actual Size, as in a browser.
+      command('Paragraph', mac ? 'CmdOrCtrl+Alt+0' : 'Ctrl+Shift+0', 'block-paragraph'),
       { type: 'separator' },
       // Command with plus and minus is the text size, as it is a browser's
       // zoom. On a Mac the level walks on Command-Option and the arrows; off
@@ -535,13 +536,13 @@ export function buildMenuTemplate(options: MenuTemplateOptions): MenuItemConstru
         click: () => sendCommand('narrow'),
       },
       { type: 'separator' },
-      /* The document's text size, as a browser's zoom is on these keys: the
-         page and the sidebar keep their own, and the interface's size is set
-         in Settings only. Shift with the equals key is the plus itself. */
-      command('Larger Text', 'CmdOrCtrl+=', 'text-larger'),
-      { ...command('Larger Text', 'CmdOrCtrl+Plus', 'text-larger'), id: 'text-larger-plus', visible: false, acceleratorWorksWhenHidden: true },
-      command('Smaller Text', 'CmdOrCtrl+-', 'text-smaller'),
-      command('Default Text Size', 'CmdOrCtrl+Shift+0', 'text-default'),
+      /* The note's zoom, on a browser's keys and in its steps: the page and
+         the sidebar keep their own, and the interface's size is set in
+         Settings only. Shift with the equals key is the plus itself. */
+      command('Zoom In', 'CmdOrCtrl+=', 'text-larger'),
+      { ...command('Zoom In', 'CmdOrCtrl+Plus', 'text-larger'), id: 'text-larger-plus', visible: false, acceleratorWorksWhenHidden: true },
+      command('Zoom Out', 'CmdOrCtrl+-', 'text-smaller'),
+      command('Actual Size', 'CmdOrCtrl+0', 'text-default'),
       { type: 'separator' },
       { role: 'togglefullscreen' },
     ],

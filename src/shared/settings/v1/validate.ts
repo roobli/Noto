@@ -168,6 +168,7 @@ export function coerceSettings(value: unknown): NotoSettingsV1 {
     sidenotes: typeof value.sidenotes === 'boolean' ? value.sidenotes : DEFAULT_SETTINGS.sidenotes,
     fontSize: numeric(value, 'fontSize'),
     uiScale: numeric(value, 'uiScale'),
+    docZoom: numeric(value, 'docZoom'),
     railFontSize: numeric(value, 'railFontSize'),
     uiFontFamily: isProseFontFamily(value.uiFontFamily) ? value.uiFontFamily : DEFAULT_SETTINGS.uiFontFamily,
     railFontFamily: isProseFontFamily(value.railFontFamily) ? value.railFontFamily : DEFAULT_SETTINGS.railFontFamily,

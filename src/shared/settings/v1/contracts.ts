@@ -55,6 +55,8 @@ export const SETTING_RANGES = Object.freeze({
      sheets, as a browser zooms a page. The document and the sidebar keep the
      sizes set for them. */
   uiScale: { min: 0.8, max: 1.4, step: 0.05 },
+  /* The note's zoom, over its text size, as a browser zooms a page. */
+  docZoom: { min: 0.5, max: 3, step: 0.01 },
   /* The sidebar's names, in pixels; 14 is Typora's sidebar. */
   railFontSize: { min: 11, max: 22, step: 1 },
   lineHeight: { min: 1.3, max: 2.2, step: 0.02 },
@@ -270,6 +272,11 @@ export interface NotoSettingsV1 {
   readonly proseFontFamily: string;
   /** Document text size in CSS pixels. */
   readonly fontSize: number;
+  /**
+   * The note's zoom, 1 for the text size set: Command with plus and minus walk
+   * it through `DOC_ZOOM_STEPS` and Command-0 sets it back, as in a browser.
+   */
+  readonly docZoom: number;
   /** The interface's size, 1 as designed. See `SETTING_RANGES.uiScale`. */
   readonly uiScale: number;
   /** An installed family for the interface, or empty for the system's. Never a path. */
@@ -522,6 +529,7 @@ export const DEFAULT_SETTINGS: NotoSettingsV1 = Object.freeze({
   markSubscript: true,
   sidenotes: true,
   fontSize: 15,
+  docZoom: 1,
   uiScale: 1,
   uiFontFamily: '',
   railFontSize: 14,
@@ -576,6 +584,16 @@ export const DEFAULT_SETTINGS: NotoSettingsV1 = Object.freeze({
 
 
 /** Clamp to the declared range and drop anything that is not a real number. */
+/** The zoom levels a browser steps through, from half size to three times. */
+export const DOC_ZOOM_STEPS: readonly number[] = [0.5, 0.67, 0.75, 0.8, 0.9, 1, 1.1, 1.25, 1.5, 1.75, 2, 2.5, 3];
+
+/** The next zoom level up or down from `current`, as Chrome steps: to the next level, never past the ends. */
+export function stepDocZoom(current: number, direction: 1 | -1): number {
+  const near = (a: number, b: number) => Math.abs(a - b) < 0.005;
+  if (direction > 0) return DOC_ZOOM_STEPS.find((level) => level > current && !near(level, current)) ?? DOC_ZOOM_STEPS[DOC_ZOOM_STEPS.length - 1]!;
+  return [...DOC_ZOOM_STEPS].reverse().find((level) => level < current && !near(level, current)) ?? DOC_ZOOM_STEPS[0]!;
+}
+
 export function clampSetting(key: NotoNumericSetting, value: unknown): number {
   const range = SETTING_RANGES[key];
   if (typeof value !== 'number' || !Number.isFinite(value)) return DEFAULT_SETTINGS[key];

@@ -42,17 +42,30 @@ test('the note, the interface and the sidebar each keep the size set for them', 
     await expect(paragraph).toBeVisible();
     expect(await onScreen('.ProseMirror > p')).toBeCloseTo(15, 1);
 
-    // Command with plus and minus walk the note's size, and Shift-0 sets it back.
-    // Two presses at once land as two steps: a reply for the first does not undo the second.
+    // Command with plus and minus zoom the note in a browser's steps, 110%, 125%,
+    // and Command-0 comes back to 100%, the text size set; the setting stays 15.
+    const width = () => page.locator('.canvas-slot:not([hidden]) .ProseMirror').evaluate((element) => element.getBoundingClientRect().width);
+    const before = await width();
     await menu(app, 'text-larger');
     await menu(app, 'text-larger');
-    await expect.poll(() => onScreen('.ProseMirror > p')).toBeCloseTo(17, 1);
+    await expect.poll(() => onScreen('.ProseMirror > p')).toBeCloseTo(18.75, 1);
     await page.waitForTimeout(400);
-    expect(await onScreen('.ProseMirror > p')).toBeCloseTo(17, 1);
+    expect(await onScreen('.ProseMirror > p')).toBeCloseTo(18.75, 1);
+    await expect(page.getByTestId('status-zoom')).toHaveText('125%');
+    // The page widens with it, as a browser's page does, up to the canvas.
+    expect(await width()).toBeGreaterThan(before * 1.2);
+    const saved = () => readFile(path.join(workspace, 'user-data', 'settings.json'), 'utf8').then((text) => JSON.parse(text));
+    await expect.poll(async () => (await saved()).docZoom).toBe(1.25);
+    expect((await saved()).fontSize ?? 15).toBe(15);
     await menu(app, 'text-smaller');
-    await expect.poll(() => onScreen('.ProseMirror > p')).toBeCloseTo(16, 1);
-    await expect.poll(async () => JSON.parse(await readFile(path.join(workspace, 'user-data', 'settings.json'), 'utf8')).fontSize).toBe(16);
+    await expect.poll(() => onScreen('.ProseMirror > p')).toBeCloseTo(16.5, 1);
     await menu(app, 'text-default');
+    await expect.poll(() => onScreen('.ProseMirror > p')).toBeCloseTo(15, 1);
+    await expect(page.getByTestId('status-zoom')).toHaveCount(0);
+    for (let i = 0; i < 8; i += 1) await menu(app, 'text-smaller');
+    await expect.poll(() => onScreen('.ProseMirror > p')).toBeCloseTo(7.5, 1);
+    // A press on the figure sets it back too.
+    await page.getByTestId('status-zoom').click();
     await expect.poll(() => onScreen('.ProseMirror > p')).toBeCloseTo(15, 1);
 
     // The interface grows; the note and the sidebar's names do not.

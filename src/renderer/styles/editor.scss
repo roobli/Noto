@@ -33,16 +33,16 @@
   /* Caps are divided by the interface's zoom (`--ui-scale`, set on the root),
      so a larger interface does not widen the page: the document keeps the
      size and measure set for it. */
-  --measure-cap: calc(796px / var(--ui-scale, 1));
+  --measure-cap: calc(796px * var(--doc-zoom, 1) / var(--ui-scale, 1));
   --measure: min(100% - 2 * var(--canvas-gutter), var(--measure-cap));
 }
 
 :root[data-width-mode='wide'] {
-  --measure-cap: clamp(calc(1000px / var(--ui-scale, 1)), 78%, calc(1180px / var(--ui-scale, 1)));
+  --measure-cap: clamp(calc(1000px * var(--doc-zoom, 1) / var(--ui-scale, 1)), 78%, calc(1180px * var(--doc-zoom, 1) / var(--ui-scale, 1)));
 }
 
 :root[data-width-mode='full'] {
-  --measure-cap: calc(1680px / var(--ui-scale, 1));
+  --measure-cap: calc(1680px * var(--doc-zoom, 1) / var(--ui-scale, 1));
 }
 
 .noto-editor-host {
@@ -288,7 +288,7 @@
   border: 1px dashed var(--hairline);
   border-radius: 3px;
   color: var(--muted);
-  font: 12px/1.7 tokens.$ui;
+  font: calc(12px * var(--doc-scale, 1))/1.7 tokens.$ui;
   vertical-align: baseline;
   white-space: nowrap;
 }
@@ -307,7 +307,7 @@
 }
 
 .noto-opaque-content { min-width: 0; }
-.noto-opaque-unavailable { color: var(--danger); font: 12px/1.4 tokens.$ui; }
+.noto-opaque-unavailable { color: var(--danger); font: calc(12px * var(--doc-scale, 1))/1.4 tokens.$ui; }
 
 /* A phone-width window spends its pixels on text: the gutter drops to a
    fixed width, as in the plugin below 1024, and the modes all resolve to the

@@ -998,7 +998,7 @@ export function Settings({
                   options={THEMES} value={settings.theme} art={themeArt}
                   onPick={(value) => onChange({ theme: value })} testPrefix="theme" />
                 <p className="pref-group">Document</p>
-                <Slider label="Text size" hint="Also Command with plus and minus in a note, and Command, Shift, 0 for the default."
+                <Slider label="Text size" hint="100% of the zoom. Command with plus and minus zoom a note as a browser does; Command-0 comes back here."
                   setting="fontSize" value={settings.fontSize}
                   format={(value) => `${value} px`} testId="setting-font-size"
                   onChange={(value) => onChange({ fontSize: value })} />

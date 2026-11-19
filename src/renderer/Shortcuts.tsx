@@ -94,6 +94,8 @@ export function shortcutGroups(mac: boolean): Group[] {
         { keys: ['Wrap'], what: 'Long lines in a code block wrap under their one number. Wrap, in the corner of a block with a long line, turns it off and on for every block, as View > Wrap Lines in Code Blocks does.', since: 8 },
         { keys: [mod('F', mac), '↩'], what: 'Find brings each match into view as you type and as Enter, Next and Previous step through them.', since: 7 },
         { keys: mac ? [mod('⌥↑', mac), mod('⌥↓', mac)] : ['Ctrl Shift ]', 'Ctrl Shift ['], what: 'Raise or lower the heading level.' },
+        { keys: [mod('+', mac), mod('−', mac), mod('0', mac)], what: 'Zoom the note in or out as a browser does, and back to the text size set.' },
+        { keys: [mac ? mod('⌥0', mac) : 'Ctrl Shift 0'], what: 'Make the block a paragraph.' },
       ],
     },
     {

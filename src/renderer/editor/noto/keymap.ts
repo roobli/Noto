@@ -679,7 +679,7 @@ export function notoBindings({ mac, onWidthStep, taskStamp }: KeymapOptions): Re
     // that chord, and the menu answers first, so it never reached here.
     // Inline code is on Control and the backtick, as in Typora.
 
-    [`${mod}-0`]: setBlockType(nodes.paragraph),
+    [mac ? 'Meta-Alt-0' : 'Ctrl-Shift-0']: setBlockType(nodes.paragraph),
     ...Object.fromEntries([1, 2, 3, 4, 5, 6].map((level) => [
       `${mod}-${level}`,
       setBlockType(nodes.heading, { level }),

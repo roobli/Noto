@@ -264,7 +264,8 @@ describe('the text size keys', () => {
     expect(items.get('text-larger')?.accelerator).toBe('CmdOrCtrl+=');
     expect(items.get('text-larger-plus')?.accelerator).toBe('CmdOrCtrl+Plus');
     expect(items.get('text-smaller')?.accelerator).toBe('CmdOrCtrl+-');
-    expect(items.get('text-default')?.accelerator).toBe('CmdOrCtrl+Shift+0');
+    expect(items.get('text-default')?.accelerator).toBe('CmdOrCtrl+0');
+    expect(items.get('block-paragraph')?.accelerator).toBe('CmdOrCtrl+Alt+0');
     expect(items.get('block-heading-up')?.accelerator).toBe('CmdOrCtrl+Alt+Up');
     expect(items.get('block-heading-down')?.accelerator).toBe('CmdOrCtrl+Alt+Down');
     // Off a Mac, Control-Alt with an arrow belongs to the desktop.
@@ -282,5 +283,19 @@ describe('the text size keys', () => {
     const visible = [...items.values()].filter((item) => item.visible !== false && typeof item.accelerator === 'string');
     const chords = visible.map((item) => item.accelerator as string);
     expect(new Set(chords).size).toBe(chords.length);
+  });
+});
+
+describe('the note zoom steps', () => {
+  it('walks a browser’s zoom levels and stops at the ends', async () => {
+    const { stepDocZoom } = await import('../../src/shared/settings/v1/contracts');
+    expect(stepDocZoom(1, 1)).toBe(1.1);
+    expect(stepDocZoom(1.1, 1)).toBe(1.25);
+    expect(stepDocZoom(1, -1)).toBe(0.9);
+    expect(stepDocZoom(0.5, -1)).toBe(0.5);
+    expect(stepDocZoom(3, 1)).toBe(3);
+    // Between two levels, a step goes to the next one in that direction.
+    expect(stepDocZoom(1.2, 1)).toBe(1.25);
+    expect(stepDocZoom(1.2, -1)).toBe(1.1);
   });
 });
