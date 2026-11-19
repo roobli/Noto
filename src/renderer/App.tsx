@@ -1092,6 +1092,8 @@ function NotoWorkspace({ platform }: { platform: NotoPlatform }) {
   const appliedRailWidth = clampRailWidth(settings.railWidth, viewportWidth);
   const appliedInfoWidth = clampInfoWidth(settings.infoWidth, viewportWidth);
 
+  /** Counts settings writes, so only the latest one's answer is taken. */
+  const settingsWriteRef = useRef(0);
   const changeSettings = useCallback((
     patch: Partial<NotoSettingsV1> | ((current: NotoSettingsV1) => Partial<NotoSettingsV1>),
   ) => {
@@ -1101,8 +1103,13 @@ function NotoWorkspace({ platform }: { platform: NotoPlatform }) {
     // re-renders does not re-read a stale settingsRef.
     setSettings((current) => {
       const resolved = typeof patch === 'function' ? patch(current) : patch;
+      // Only the latest write's answer is taken: two presses of a key in a
+      // row write twice, and the first answer arriving after the second
+      // press used to put the first value back, losing the second.
+      settingsWriteRef.current += 1;
+      const written = settingsWriteRef.current;
       void window.notoSettings.write({ version: 1, requestId: rid('settings-write'), patch: resolved })
-        .then((result) => { if (result.ok) setSettings(result.value.settings); });
+        .then((result) => { if (result.ok && written === settingsWriteRef.current) setSettings(result.value.settings); });
       return { ...current, ...resolved };
     });
   }, []);

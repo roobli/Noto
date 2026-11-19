@@ -43,9 +43,12 @@ test('the note, the interface and the sidebar each keep the size set for them', 
     expect(await onScreen('.ProseMirror > p')).toBeCloseTo(15, 1);
 
     // Command with plus and minus walk the note's size, and Shift-0 sets it back.
+    // Two presses at once land as two steps: a reply for the first does not undo the second.
     await menu(app, 'text-larger');
     await menu(app, 'text-larger');
     await expect.poll(() => onScreen('.ProseMirror > p')).toBeCloseTo(17, 1);
+    await page.waitForTimeout(400);
+    expect(await onScreen('.ProseMirror > p')).toBeCloseTo(17, 1);
     await menu(app, 'text-smaller');
     await expect.poll(() => onScreen('.ProseMirror > p')).toBeCloseTo(16, 1);
     await expect.poll(async () => JSON.parse(await readFile(path.join(workspace, 'user-data', 'settings.json'), 'utf8')).fontSize).toBe(16);
