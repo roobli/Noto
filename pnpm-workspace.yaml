@@ -12,7 +12,7 @@ strictPeerDependencies: false
 
 allowBuilds:
   '@roobli/md': true
-  '@roobli/md@https://codeload.github.com/roobli/md/tar.gz/52c93b7fcb8219b21be9edbb87cb658b74dc72a9': true
+  '@roobli/md@https://codeload.github.com/roobli/md/tar.gz/223af4cdf81291ed921e4604b6a99222ce091655': true
   # The vault library, pinned to a commit as md is; its prepare script compiles it.
   '@roobli/vault': true
   '@roobli/vault@https://codeload.github.com/roobli/vault/tar.gz/7eb7ab1bb9fceaa64e3cf9d2e4fe6543be246c87': true
