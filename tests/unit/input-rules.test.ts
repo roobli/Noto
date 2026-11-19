@@ -200,3 +200,19 @@ describe('smart punctuation', () => {
     expect(typed('`a "b" -- c...` d', { smart: true, autoPair: false }).markdown).toBe('`a "b" -- c...` d');
   });
 });
+
+describe('three hyphens with smart dashes on', () => {
+  it('make a rule after text, never a dash and a hyphen', () => {
+    const out = typed('above\n---', { smart: true });
+    expect(out.doc.child(1).type).toBe(notoSchema.nodes.horizontal_rule);
+    expect(out.markdown).not.toContain('\u2014');
+  });
+
+  it('make front matter on the first line', () => {
+    expect(typed('---', { smart: true }).doc.firstChild!.type).toBe(notoSchema.nodes.frontmatter);
+  });
+
+  it('still make a dash inside a sentence', () => {
+    expect(typed('a--b', { smart: true }).markdown).toBe('a\u2014b');
+  });
+});

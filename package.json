@@ -1,7 +1,7 @@
 {
   "name": "noto",
   "productName": "Noto",
-  "version": "0.1.0",
+  "version": "0.1.1",
   "license": "AGPL-3.0-only",
   "private": true,
   "description": "Noto, a Markdown editor that keeps your file byte for byte",
@@ -37,8 +37,8 @@
     "verify": "pnpm typecheck && pnpm test"
   },
   "dependencies": {
-    "@roobli/md": "github:roobli/md#39955fe91f767415edb8161496b48369a48373dc",
-    "@roobli/vault": "github:roobli/vault#78d56077bd0217d6398b9bf9320d8b6680dcfffd",
+    "@roobli/md": "github:roobli/md#v0.1.25",
+    "@roobli/vault": "github:roobli/vault#v0.2.1",
     "electron-updater": "6.8.9",
     "mdast-util-from-markdown": "^2.0.3",
     "mdast-util-frontmatter": "^2.0.1",

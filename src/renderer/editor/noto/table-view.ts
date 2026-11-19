@@ -99,12 +99,29 @@ const TOOLS: readonly Tool[] = [
     icon: ICON('<path d="M3 4h10M6 4V2.5h4V4M4 4l.7 9.5h6.6L12 4M6.5 7v4M9.5 7v4"/>') },
 ];
 
+/** The narrowest a column can be and still be read, in the table's em. */
+const READABLE_COLUMN_EM = 6;
+
 export class TableView implements NodeView {
   readonly dom: HTMLElement;
 
   readonly contentDOM: HTMLElement;
 
   private readonly table: HTMLTableElement;
+
+  /**
+   * The table's own horizontal scroll, inside the page's column.
+   *
+   * A table wider than the page used to run past its edge with no way to see
+   * the rest: the canvas does not scroll sideways, and must not, or every
+   * paragraph would. Typora gives a table a scroller of its own, and so does
+   * this. The rails and the tools stay outside it, in the frame.
+   */
+  private readonly scroller: HTMLElement;
+
+  private readonly fitter: ResizeObserver | null;
+
+  private fitFrame: number | null = null;
 
   private readonly rails: HTMLElement;
 
@@ -148,6 +165,9 @@ export class TableView implements NodeView {
     const body = document.createElement('tbody');
     this.table.append(body);
     this.contentDOM = body;
+    this.scroller = document.createElement('div');
+    this.scroller.className = 'noto-table-scroll';
+    this.scroller.append(this.table);
 
     // Typora's table toolbar, above the table's left corner while the caret
     // is in it: the column's alignment, a row, a column, and the whole table
@@ -173,11 +193,48 @@ export class TableView implements NodeView {
       this.tools.append(button);
     }
 
-    this.dom.append(this.rails, this.tools, this.table);
+    this.dom.append(this.rails, this.tools, this.scroller);
+    this.scroller.addEventListener('scroll', this.onScroll, { passive: true });
+    this.fitter = typeof ResizeObserver === 'function' ? new ResizeObserver(() => this.scheduleFit()) : null;
+    this.fitter?.observe(this.scroller);
     this.dom.addEventListener('pointerenter', this.onEnter);
     this.dom.addEventListener('pointerleave', this.onLeave);
     this.dom.addEventListener('pointermove', this.onHover);
     this.dom.addEventListener('pointerdown', this.onPointerDown);
+  }
+
+  /** Handles follow the columns as the table scrolls under them. */
+  private readonly onScroll = (): void => {
+    if (this.hovering) this.scheduleMeasure();
+  };
+
+  private scheduleFit(): void {
+    if (this.fitFrame !== null) return;
+    this.fitFrame = requestAnimationFrame(() => {
+      this.fitFrame = null;
+      this.fit();
+    });
+  }
+
+  /**
+   * Whether this table is set wide: when its columns cannot each have a
+   * readable width in the page, they take the width their words ask for, a
+   * long cell wraps at a measure of its own, and the table scrolls. Squeezed
+   * into the column instead, seventeen columns of Chinese came out four
+   * characters to a line and a row ninety lines tall. A wide table keeps its
+   * first column in place while the rest scroll under it, when that column
+   * leaves room for them.
+   */
+  private fit(): void {
+    const available = this.scroller.clientWidth;
+    if (available === 0) return;
+    const columns = this.node.firstChild?.childCount ?? 0;
+    const unit = Number.parseFloat(getComputedStyle(this.table).fontSize) || 15;
+    const wide = columns * READABLE_COLUMN_EM * unit > available;
+    if (wide) this.dom.dataset.wide = ''; else delete this.dom.dataset.wide;
+    const first = this.table.rows[0]?.cells[0];
+    const sticky = wide && first !== undefined && first.getBoundingClientRect().width * 3 <= available;
+    if (sticky) this.dom.dataset.sticky = ''; else delete this.dom.dataset.sticky;
   }
 
   /** Whether the pointer is over the table, so its handles have to stay true to its shape. */
@@ -248,7 +305,9 @@ export class TableView implements NodeView {
      * is still held is the way to get here.
      */
     if (this.drag && node !== this.node) this.endDrag();
+    const reshaped = node.firstChild?.childCount !== this.node.firstChild?.childCount;
     this.node = node;
+    if (reshaped) this.scheduleFit();
     // The shape may have changed under the pointer: measured again while it
     // is there, and cleared otherwise, since a rail measured for a table that
     // no longer exists would lie.
@@ -273,6 +332,9 @@ export class TableView implements NodeView {
   destroy(): void {
     this.endDrag();
     if (this.remeasure !== null) cancelAnimationFrame(this.remeasure);
+    if (this.fitFrame !== null) cancelAnimationFrame(this.fitFrame);
+    this.fitter?.disconnect();
+    this.scroller.removeEventListener('scroll', this.onScroll);
     this.dom.removeEventListener('pointerenter', this.onEnter);
     this.dom.removeEventListener('pointerleave', this.onLeave);
     this.dom.removeEventListener('pointermove', this.onHover);
@@ -334,7 +396,8 @@ export class TableView implements NodeView {
       handle.style.width = `${columns[i + 1] - columns[i] - HANDLE_INSET * 2}px`;
     });
     this.columnRail.style.top = `${rows[0]}px`;
-    this.rowRail.style.left = `${columns[0]}px`;
+    // At the visible left edge when the first column has scrolled away.
+    this.rowRail.style.left = `${Math.max(columns[0], 0)}px`;
     this.showNear();
   };
 

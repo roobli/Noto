@@ -295,10 +295,15 @@ export function buildMenuTemplate(options: MenuTemplateOptions): MenuItemConstru
       command('Heading 4', 'CmdOrCtrl+4', 'block-heading-4'),
       command('Heading 5', 'CmdOrCtrl+5', 'block-heading-5'),
       command('Heading 6', 'CmdOrCtrl+6', 'block-heading-6'),
-      command('Paragraph', 'CmdOrCtrl+0', 'block-paragraph'),
+      // Command-0 is the zoom's Actual Size, as in a browser.
+      command('Paragraph', mac ? 'CmdOrCtrl+Alt+0' : 'Ctrl+Shift+0', 'block-paragraph'),
       { type: 'separator' },
-      command('Increase Heading Level', 'CmdOrCtrl+=', 'block-heading-up'),
-      command('Decrease Heading Level', 'CmdOrCtrl+-', 'block-heading-down'),
+      // Command with plus and minus is the text size, as it is a browser's
+      // zoom. On a Mac the level walks on Command-Option and the arrows; off
+      // one Control-Alt with an arrow turns the screen or switches desktops
+      // before the window sees it, so it is Control-Shift and a bracket.
+      command('Increase Heading Level', mac ? 'CmdOrCtrl+Alt+Up' : 'Ctrl+Shift+]', 'block-heading-up'),
+      command('Decrease Heading Level', mac ? 'CmdOrCtrl+Alt+Down' : 'Ctrl+Shift+[', 'block-heading-down'),
       { type: 'separator' },
       command('Move Up', 'Alt+Up', 'move-up'),
       command('Move Down', 'Alt+Down', 'move-down'),
@@ -531,13 +536,13 @@ export function buildMenuTemplate(options: MenuTemplateOptions): MenuItemConstru
         click: () => sendCommand('narrow'),
       },
       { type: 'separator' },
-      // Zoom sits on Shift as it does in Typora, which leaves plain Command
-      // with the plus and the minus for walking a block up and down the
-      // heading scale. A menu accelerator wins over the editor's own keys, so
-      // leaving zoom on its default would have made those two do nothing.
-      { role: 'resetZoom', accelerator: 'CmdOrCtrl+Shift+0' },
-      { role: 'zoomIn', accelerator: 'CmdOrCtrl+Shift+=' },
-      { role: 'zoomOut', accelerator: 'CmdOrCtrl+Shift+-' },
+      /* The note's zoom, on a browser's keys and in its steps: the page and
+         the sidebar keep their own, and the interface's size is set in
+         Settings only. Shift with the equals key is the plus itself. */
+      command('Zoom In', 'CmdOrCtrl+=', 'text-larger'),
+      { ...command('Zoom In', 'CmdOrCtrl+Plus', 'text-larger'), id: 'text-larger-plus', visible: false, acceleratorWorksWhenHidden: true },
+      command('Zoom Out', 'CmdOrCtrl+-', 'text-smaller'),
+      command('Actual Size', 'CmdOrCtrl+0', 'text-default'),
       { type: 'separator' },
       { role: 'togglefullscreen' },
     ],

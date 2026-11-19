@@ -32,7 +32,11 @@ describe('recognising what to open', () => {
     expect(languageFor('README.md')).toBeNull();
     expect(languageFor('notes.txt')).toBeNull();
     expect(isMarkdownFileName('a/b/c.MD')).toBe(true);
-    expect(isViewableCodeFile('photo.png')).toBe(false);
+    // A picture is viewable as a picture, with no language; an archive is not.
+    expect(languageFor('photo.png')).toBeNull();
+    expect(isViewableCodeFile('photo.png')).toBe(true);
+    expect(isViewableCodeFile('photo.JPEG')).toBe(true);
+    expect(isViewableCodeFile('backup.zip')).toBe(false);
     expect(languageFor('notes.xyz')).toBe('');
     expect(isViewableCodeFile('notes.xyz')).toBe(true);
     expect(languageFor('SCRIPT.PY')).toBe('python');

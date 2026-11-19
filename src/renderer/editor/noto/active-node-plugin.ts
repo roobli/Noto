@@ -108,9 +108,12 @@ export function containingMarkRanges(state: EditorState, position: number): Mark
  * technology, because the delimiter is a drawing of syntax rather than content
  * anyone needs read to them.
  */
-function delimiter(text: string): HTMLElement {
+function delimiter(text: string, edge: 'open' | 'close'): HTMLElement {
   const element = document.createElement('span');
   element.className = 'noto-syntax';
+  // Which side of the span it stands on, for the caret drawn beside it
+  // (`mark-boundary.ts`).
+  element.dataset.edge = edge;
   element.textContent = text;
   element.spellcheck = false;
   element.contentEditable = 'false';
@@ -137,6 +140,18 @@ export function innermostRange(ranges: readonly MarkRange[]): MarkRange | null {
     (best, range) => (best === null || range.to - range.from < best.to - best.from ? range : best),
     null,
   );
+}
+
+/**
+ * The span whose delimiters a collapsed caret at `position` reveals: the
+ * innermost mark range holding it, edges included, that is written with
+ * delimiters at all. The emphasis inside a strong reveals the emphasis.
+ */
+export function revealedRange(state: EditorState, position: number): MarkRange | null {
+  const ranges = containingMarkRanges(state, position)
+    .filter((range) => DELIMITERS[range.mark.type.name] !== undefined);
+  const innermost = innermostRange(ranges);
+  return innermost && !isBareLink(state, innermost) ? innermost : null;
 }
 
 function holdsInlineHtml(textblock: ProseNode): boolean {
@@ -200,19 +215,15 @@ function activeDecorations(state: EditorState): DecorationSet {
    * shifts the very thing they are looking at.
    */
   if (empty) {
-    const ranges = containingMarkRanges(state, from)
-      .filter((range) => DELIMITERS[range.mark.type.name] !== undefined);
-    // The innermost: the smallest range wins, so emphasis inside strong reveals
-    // the emphasis and leaves the strong alone.
-    const innermost = innermostRange(ranges);
-    if (innermost && !isBareLink(state, innermost)) {
+    const innermost = revealedRange(state, from);
+    if (innermost) {
       const spec = DELIMITERS[innermost.mark.type.name];
       decorations.push(
         // `ignoreSelection` keeps the caret out of the widget entirely, so
         // arrow keys step over a delimiter rather than into it.
-        Decoration.widget(innermost.from, () => delimiter(spec.open),
+        Decoration.widget(innermost.from, () => delimiter(spec.open, 'open'),
           { side: -1, marks: [], ignoreSelection: true }),
-        Decoration.widget(innermost.to, () => delimiter(spec.close(innermost.mark)),
+        Decoration.widget(innermost.to, () => delimiter(spec.close(innermost.mark), 'close'),
           { side: 1, marks: [], ignoreSelection: true }),
       );
     }

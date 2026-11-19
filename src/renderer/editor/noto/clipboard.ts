@@ -233,7 +233,8 @@ export function sliceToHtml(slice: Slice): string {
 const CHROME = [
   '.noto-fence-gutter',
   '.noto-fence-tools',
-  '.noto-math-source',
+  // The source and its drawn delimiters, which only show while a formula is edited.
+  '.noto-math-edit',
   '.noto-table-rail',
   '.noto-table-handle',
   '.ProseMirror-separator',

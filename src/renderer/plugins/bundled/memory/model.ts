@@ -91,10 +91,12 @@ export function heatWords(memory: NoteMemory, now = Date.now()): string {
 
 /** A note's name from its path, as the tree shows it. */
 /** A folder in a line: "42 notes · 3 broken links", or that the memory holds none of it yet. */
-export function folderSummary(memory: { readonly notes: number; readonly broken: number }): string {
+export function folderSummary(memory: { readonly notes: number; readonly broken: number; readonly brokenAnchors?: number }): string {
   if (memory.notes === 0) return 'The memory holds no note here yet.';
   const parts = [`${memory.notes.toLocaleString('en')} ${memory.notes === 1 ? 'note' : 'notes'}`];
   if (memory.broken > 0) parts.push(`${memory.broken.toLocaleString('en')} ${memory.broken === 1 ? 'broken link' : 'broken links'}`);
+  const missing = memory.brokenAnchors ?? 0;
+  if (missing > 0) parts.push(`${missing.toLocaleString('en')} ${missing === 1 ? 'link' : 'links'} to a missing heading`);
   return parts.join(' · ');
 }
 

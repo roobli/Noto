@@ -126,7 +126,7 @@ describe('the menu and the renderer agree on commands', () => {
       'open-dialog', 'open-folder', 'refresh-folder', 'close-tab', 'import-document', 'print', 'paste-plain',
       'reopen-closed', 'theme-none',
       // A second chord for a command the menu already names once.
-      'quick-open-period', 'quick-open-typora',
+      'quick-open-period', 'quick-open-typora', 'text-larger-plus',
     ]);
     const sent = ids.filter((id) => !mainOnly.has(id));
     for (const id of sent) {
@@ -248,5 +248,54 @@ describe('Help carries a quiet update check', () => {
       const help = menu(template(platform), 'help');
       expect(labels(help)).toContain('Check for Updates…');
     }
+  });
+});
+
+describe('the text size keys', () => {
+  it('are Command with plus and minus, as a browser zooms, with heading level on Option and the arrows', () => {
+    const items = new Map<string, MenuItemConstructorOptions>();
+    const walk = (list: readonly MenuItemConstructorOptions[]) => {
+      for (const item of list) {
+        if (item.id) items.set(item.id, item);
+        if (Array.isArray(item.submenu)) walk(item.submenu as MenuItemConstructorOptions[]);
+      }
+    };
+    walk(template('darwin'));
+    expect(items.get('text-larger')?.accelerator).toBe('CmdOrCtrl+=');
+    expect(items.get('text-larger-plus')?.accelerator).toBe('CmdOrCtrl+Plus');
+    expect(items.get('text-smaller')?.accelerator).toBe('CmdOrCtrl+-');
+    expect(items.get('text-default')?.accelerator).toBe('CmdOrCtrl+0');
+    expect(items.get('block-paragraph')?.accelerator).toBe('CmdOrCtrl+Alt+0');
+    expect(items.get('block-heading-up')?.accelerator).toBe('CmdOrCtrl+Alt+Up');
+    expect(items.get('block-heading-down')?.accelerator).toBe('CmdOrCtrl+Alt+Down');
+    // Off a Mac, Control-Alt with an arrow belongs to the desktop.
+    const linux = new Map<string, MenuItemConstructorOptions>();
+    const walkLinux = (list: readonly MenuItemConstructorOptions[]) => {
+      for (const item of list) {
+        if (item.id) linux.set(item.id, item);
+        if (Array.isArray(item.submenu)) walkLinux(item.submenu as MenuItemConstructorOptions[]);
+      }
+    };
+    walkLinux(template('linux'));
+    expect(linux.get('block-heading-up')?.accelerator).toBe('Ctrl+Shift+]');
+    expect(linux.get('block-heading-down')?.accelerator).toBe('Ctrl+Shift+[');
+    // No chord is taken twice by visible items.
+    const visible = [...items.values()].filter((item) => item.visible !== false && typeof item.accelerator === 'string');
+    const chords = visible.map((item) => item.accelerator as string);
+    expect(new Set(chords).size).toBe(chords.length);
+  });
+});
+
+describe('the note zoom steps', () => {
+  it('walks a browser’s zoom levels and stops at the ends', async () => {
+    const { stepDocZoom } = await import('../../src/shared/settings/v1/contracts');
+    expect(stepDocZoom(1, 1)).toBe(1.1);
+    expect(stepDocZoom(1.1, 1)).toBe(1.25);
+    expect(stepDocZoom(1, -1)).toBe(0.9);
+    expect(stepDocZoom(0.5, -1)).toBe(0.5);
+    expect(stepDocZoom(3, 1)).toBe(3);
+    // Between two levels, a step goes to the next one in that direction.
+    expect(stepDocZoom(1.2, 1)).toBe(1.25);
+    expect(stepDocZoom(1.2, -1)).toBe(1.1);
   });
 });

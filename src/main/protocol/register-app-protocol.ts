@@ -4,6 +4,8 @@ import { net, protocol, session } from 'electron';
 import { ASSET_HOST } from '../../shared/assets/v1/contracts';
 import type { StructuredLogger } from '../logger';
 import { serveAsset } from './serve-asset';
+import { servePage, type PageRoot } from './serve-page';
+import { PAGE_SCHEME, pageRequestAllowed } from '../../shared/assets/v1/page';
 
 export const RENDERER_ORIGIN = 'noto://bundle';
 
@@ -29,7 +31,7 @@ const productionCsp = [
   // Web pages a note embeds, which the editor draws only in a sandboxed
   // frame and only once the reader has allowed it (`webEmbeds`, or a press on
   // the page's card). The page itself stays locked to the app.
-  "frame-src 'self' https:",
+  "frame-src 'self' https: noto-page:",
   "connect-src 'none'",
   "worker-src 'self'",
   "object-src 'none'",
@@ -90,12 +92,27 @@ export function registerNotoScheme(): void {
       stream: true,
       },
     },
+    {
+      // A local web page and its files (`shared/assets/v1/page.ts`). Not
+      // CORS-enabled and without fetch, so nothing it loads is readable by
+      // its script.
+      scheme: PAGE_SCHEME,
+      privileges: {
+        standard: true,
+        secure: true,
+        supportFetchAPI: false,
+        corsEnabled: false,
+        stream: true,
+      },
+    },
   ]);
 }
 
 export interface AssetRoots {
   /** The folders images may be read from right now. Asked per request, since they change. */
   readonly roots: () => readonly string[];
+  /** The folders local web pages may be served from, each by the id its addresses use. */
+  readonly pageRoots?: () => readonly PageRoot[];
 }
 
 const notFound = () => new Response('Not found', { status: 404 });
@@ -181,6 +198,8 @@ export async function installNotoProtocol(
     return served;
   });
 
+  await protocol.handle(PAGE_SCHEME, (request) => servePage(new URL(request.url), assets.pageRoots?.() ?? [], logger));
+
   const appSession = session.defaultSession;
   appSession.setPermissionCheckHandler(() => false);
   appSession.setPermissionRequestHandler((_webContents, _permission, callback) => callback(false));
@@ -190,6 +209,15 @@ export async function installNotoProtocol(
   appSession.on('will-download', (event, item) => {
     event.preventDefault();
     logger.log('download_denied', { url: item.getURL().slice(0, 512) });
+  });
+  // A page's files go only to the viewer's page frame (`pageRequestAllowed`).
+  appSession.webRequest.onBeforeRequest({ urls: [`${PAGE_SCHEME}://*/*`] }, (details, callback) => {
+    if (pageRequestAllowed(details.resourceType, details.frame)) {
+      callback({});
+      return;
+    }
+    logger.log('page_request_refused', { type: details.resourceType });
+    callback({ cancel: true });
   });
   appSession.webRequest.onHeadersReceived({ urls: ['noto://bundle/*'] }, (details, callback) => {
     const pathname = new URL(details.url).pathname;

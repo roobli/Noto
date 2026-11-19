@@ -19,7 +19,8 @@ import { Plugin, PluginKey, type EditorState, type Transaction } from 'prosemirr
 import { Decoration, DecorationSet } from 'prosemirror-view';
 import { AddMarkStep, RemoveMarkStep } from 'prosemirror-transform';
 import type { Node as ProseNode } from 'prosemirror-model';
-import { ALL_MARK_KINDS, typoraMarkRanges, type TyporaMarkKinds } from './typora-marks';
+import { ALL_MARK_KINDS, closingTag, isInlineComment, openingTag, typoraMarkRanges, type InlineTag, type TyporaMarkKinds } from '@roobli/md/inline';
+import { emojiFor } from '@roobli/md/emoji';
 
 export const typoraMarksKey = new PluginKey<DecorationSet>('noto-typora-marks');
 
@@ -27,9 +28,6 @@ export const typoraMarksKey = new PluginKey<DecorationSet>('noto-typora-marks');
 export const RESCAN = 'rescan';
 
 /** Tags drawn as what they are; anything with attributes is left as source. */
-const PAIRED_TAGS = new Set(['kbd', 'sub', 'sup', 'u', 'mark', 'b', 'strong', 'i', 'em', 's', 'del', 'ins', 'small']);
-const OPEN_TAG = /^<([a-z]+)>$/;
-const CLOSE_TAG = /^<\/([a-z]+)>$/;
 const BREAK_TAG = /^<br\s*\/?>$/i;
 
 /** A character that no mark can match, standing in for anything that is not plain text. */
@@ -39,17 +37,27 @@ const MARK_CLASS = {
   highlight: 'noto-mark-highlight',
   superscript: 'noto-mark-sup',
   subscript: 'noto-mark-sub',
+  emoji: 'noto-mark-emoji',
 } as const;
 
+/** The emoji a shortcode stands for, drawn where its name is hidden. */
+function emojiWidget(emoji: string): HTMLElement {
+  const span = document.createElement('span');
+  span.className = 'noto-emoji';
+  span.textContent = emoji;
+  span.setAttribute('aria-hidden', 'true');
+  return span;
+}
+
 interface TagNode {
-  readonly tag: string;
+  readonly tag: InlineTag;
   /** Position of the inline_html node. */
   readonly position: number;
 }
 
-/** The characters a mark of each kind cannot do without. */
+/** The characters a mark of each kind cannot do without; `:` for an emoji shortcode. */
 export function markCharacters(kinds: TyporaMarkKinds): string {
-  return (kinds.highlight ? '=' : '') + (kinds.superscript ? '^' : '') + (kinds.subscript ? '~' : '');
+  return (kinds.highlight ? '=' : '') + (kinds.superscript ? '^' : '') + (kinds.subscript ? '~' : '') + ':';
 }
 
 /**
@@ -128,22 +136,34 @@ function blockDecorations(
         spans.push({ from: here, to: here + child.nodeSize, source: [
           { from: here, to: here + child.nodeSize, node: true, class: 'noto-inline-tag noto-inline-break' },
         ] });
+      } else if (isInlineComment(value)) {
+        // A comment says nothing to the reader: hidden, back while the caret is on it.
+        spans.push({ from: here, to: here + child.nodeSize, source: [
+          { from: here, to: here + child.nodeSize, node: true, class: 'noto-inline-tag noto-inline-comment' },
+        ] });
       } else {
-        const open = OPEN_TAG.exec(value);
-        const close = CLOSE_TAG.exec(value);
-        if (open && PAIRED_TAGS.has(open[1])) {
-          const stack = opens.get(open[1]) ?? [];
-          stack.push({ tag: open[1], position: here });
-          opens.set(open[1], stack);
-        } else if (close && PAIRED_TAGS.has(close[1])) {
-          const opener = opens.get(close[1])?.pop();
+        const open = openingTag(value);
+        const close = open ? null : closingTag(value);
+        if (open) {
+          const stack = opens.get(open.name) ?? [];
+          stack.push({ tag: open, position: here });
+          opens.set(open.name, stack);
+        } else if (close) {
+          const opener = opens.get(close)?.pop();
           if (opener) {
+            const quote = close === 'q';
             spans.push({ from: opener.position, to: here + child.nodeSize, source: [
-              { from: opener.position, to: opener.position + 1, node: true, class: 'noto-inline-tag' },
-              { from: here, to: here + child.nodeSize, node: true, class: 'noto-inline-tag' },
+              { from: opener.position, to: opener.position + 1, node: true, class: quote ? 'noto-inline-tag noto-inline-quote-open' : 'noto-inline-tag' },
+              { from: here, to: here + child.nodeSize, node: true, class: quote ? 'noto-inline-tag noto-inline-quote-close' : 'noto-inline-tag' },
             ] });
             if (here > opener.position + 1) {
-              decorations.push(Decoration.inline(opener.position + 1, here, { class: `noto-html-inline noto-html-${close[1]}` }));
+              const attrs: Record<string, string> = { class: `noto-html-inline noto-html-${close}` };
+              if (opener.tag.style.length > 0) {
+                attrs.class += ' noto-html-styled';
+                attrs.style = opener.tag.style;
+              }
+              if (opener.tag.title !== null) attrs.title = opener.tag.title;
+              decorations.push(Decoration.inline(opener.position + 1, here, attrs));
             }
           }
         }
@@ -153,11 +173,22 @@ function blockDecorations(
   });
 
   if (plain) {
-    for (const range of typoraMarkRanges(text, kinds)) {
+    for (const range of typoraMarkRanges(text, kinds, emojiFor)) {
+      if (range.kind === 'emoji') {
+        const emoji = range.emoji!;
+        decorations.push(Decoration.widget(contentStart + range.from, () => emojiWidget(emoji), {
+          side: -1, key: `emoji-${emoji}`, marks: [], ignoreSelection: true, emojiFor: contentStart + range.from,
+        }));
+        spans.push({ from: contentStart + range.from, to: contentStart + range.to, source: [
+          { from: contentStart + range.from, to: contentStart + range.to, node: false, class: 'noto-typora-delim noto-emoji-name' },
+        ] });
+        continue;
+      }
       decorations.push(Decoration.inline(contentStart + range.innerFrom, contentStart + range.innerTo, { class: MARK_CLASS[range.kind] }));
       spans.push({ from: contentStart + range.from, to: contentStart + range.to, source: [
         { from: contentStart + range.from, to: contentStart + range.innerFrom, node: false, class: 'noto-typora-delim' },
         { from: contentStart + range.innerTo, to: contentStart + range.to, node: false, class: 'noto-typora-delim' },
+        ...range.escapes.map((at) => ({ from: contentStart + at, to: contentStart + at + 1, node: false, class: 'noto-typora-delim' })),
       ] });
     }
   }

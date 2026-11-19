@@ -65,12 +65,14 @@ import type { StructuredLogger } from '../logger';
 import type { FileTruthStoreV1 } from '../file-truth/v1/file-truth-store';
 import type { RecentFiles } from './recent-files';
 import { isEditableFile, listDirectory, type FileTreeEntryV1, isInside, type TreeSortV1 } from './file-tree';
-import { languageFor, isViewableCodeFile } from '../../shared/code-viewer/languages';
+import { isPictureFileName, languageFor, isViewableCodeFile } from '../../shared/code-viewer/languages';
 import { isProbablyBinary } from '../../shared/code-viewer/binary';
 import { CODE_VIEW_MAX_BYTES, CODE_VIEW_MAX_LINES } from '../../shared/code-viewer/limits';
 import { standaloneHtml } from '../../shared/export/document-html';
 import { inlineImages } from './inline-images';
 import { resolveAssetPath } from '../protocol/asset-guard';
+import { isPageFile, toPageUrl } from '../../shared/assets/v1/page';
+import type { PageRoot } from '../protocol/serve-page';
 import { readResolvedAsset } from '../protocol/asset-read';
 import { CopyDestinations } from '../file-truth/v1/copy-destinations';
 import { buildSelectionMenu, buildTreeRowMenu, buildVaultRowMenu, type TreeRowActions, trashLabel } from './tree-row-menu';
@@ -282,8 +284,47 @@ export class WorkspaceSession {
    * in front is in. The same containment the file tree enforces, so a note
    * can show what sits beside it and nothing that does not.
    */
+  /**
+   * The folders a local web page may be served from, while one is in front:
+   * the open folder for a page inside it, or the page's own folder for one
+   * opened from outside. Nothing is served while no page shows. Asked per
+   * request.
+   */
+  pageRoots(): PageRoot[] {
+    const page = this.codeViewPath;
+    if (page === null || !isPageFile(page)) return [];
+    const root = this.pageRootOf(page);
+    return [{ id: this.pageRootId(root), root }];
+  }
+
+  /** A random name for each folder pages are served from, so an address says nothing of the disk. */
+  private readonly pageRootIds = new Map<string, string>();
+
+  private pageRootId(root: string): string {
+    let id = this.pageRootIds.get(root);
+    if (!id) {
+      id = randomUUID().replace(/-/g, '');
+      this.pageRootIds.set(root, id);
+    }
+    return id;
+  }
+
+  private pageRootOf(page: string): string {
+    const folder = this.folderRoot === null ? null : path.resolve(this.folderRoot);
+    return folder !== null && isInside(folder, page) ? folder : path.dirname(page);
+  }
+
+  /** Where a web page is served as a page. */
+  private pageUrlFor(resolved: string): string | null {
+    if (!isPageFile(resolved)) return null;
+    const root = this.pageRootOf(resolved);
+    return toPageUrl(this.pageRootId(root), path.relative(root, resolved));
+  }
+
   imageRoots(): string[] {
-    const roots = [this.folderRoot, this.activePath ? path.dirname(this.activePath) : null];
+    // A picture opened from outside the folder is shown from its own folder.
+    const roots = [this.folderRoot, this.activePath ? path.dirname(this.activePath) : null,
+      this.codeViewPath && isPictureFileName(this.codeViewPath) ? path.dirname(this.codeViewPath) : null];
     return roots.filter((root): root is string => root !== null);
   }
 
@@ -419,11 +460,16 @@ export class WorkspaceSession {
   private async loadCodeView(resolved: string): Promise<WorkspaceCodeViewV1> {
     const name = path.basename(resolved);
     const language = languageFor(name) ?? '';
+    // A picture is shown as itself, read by the window from the asset
+    // protocol; there is no text to send.
+    if (isPictureFileName(name)) {
+      return { path: resolved, name, language: 'image', content: '', truncated: false, notice: null, pageUrl: null };
+    }
     try {
       const info = await stat(resolved);
       if (info.size > CODE_VIEW_MAX_BYTES) {
         return {
-          path: resolved, name, language, content: '', truncated: false,
+          path: resolved, name, language, content: '', truncated: false, pageUrl: null,
           notice: `This file is ${info.size.toLocaleString()} bytes, over the ${CODE_VIEW_MAX_BYTES.toLocaleString()}-byte preview limit.`,
         };
       }
@@ -431,7 +477,7 @@ export class WorkspaceSession {
       const text = raw.toString('utf8');
       if (isProbablyBinary(text)) {
         return {
-          path: resolved, name, language, content: '', truncated: false,
+          path: resolved, name, language, content: '', truncated: false, pageUrl: null,
           notice: 'This looks like a binary file, so it is not shown as text.',
         };
       }
@@ -439,15 +485,15 @@ export class WorkspaceSession {
       if (lines.length > CODE_VIEW_MAX_LINES) {
         const kept = lines.slice(0, CODE_VIEW_MAX_LINES).join('\n');
         return {
-          path: resolved, name, language, content: kept, truncated: true,
+          path: resolved, name, language, content: kept, truncated: true, pageUrl: this.pageUrlFor(resolved),
           notice: `Showing the first ${CODE_VIEW_MAX_LINES.toLocaleString()} lines of ${lines.length.toLocaleString()}.`,
         };
       }
-      return { path: resolved, name, language, content: text, truncated: false, notice: null };
+      return { path: resolved, name, language, content: text, truncated: false, notice: null, pageUrl: this.pageUrlFor(resolved) };
     } catch (cause) {
       const reason = cause instanceof Error ? cause.message : 'The file could not be read.';
       return {
-        path: resolved, name, language, content: '', truncated: false,
+        path: resolved, name, language, content: '', truncated: false, pageUrl: null,
         notice: reason,
       };
     }
@@ -1620,6 +1666,15 @@ export class WorkspaceSession {
    * which is what "reveal" means on every platform that has the idea.
    */
   reveal(target: WorkspaceRevealTargetV1): WorkspaceRevealReplyV1 {
+    if (target === 'viewed-in-browser') {
+      // A web page in the viewer, given to the system's browser: the one that
+      // can run what the viewer will not (module scripts, a page's own fetch).
+      const page = this.codeViewPath;
+      if (page === null || !isPageFile(page)) return { version: NOTO_WORKSPACE_VERSION, revealed: false };
+      void shell.openPath(page);
+      this.logger.log('workspace_page_opened_in_browser', {});
+      return { version: NOTO_WORKSPACE_VERSION, revealed: true };
+    }
     const path = target === 'folder' ? this.folderRoot : this.activePath;
     if (!path) return { version: NOTO_WORKSPACE_VERSION, revealed: false };
     shell.showItemInFolder(path);

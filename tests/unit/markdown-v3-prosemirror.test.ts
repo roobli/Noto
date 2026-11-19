@@ -254,8 +254,10 @@ describe('what the serializer must not escape', () => {
     expect(roundTrip('> [!TIP]\n> Something.')).toBe('> [!TIP]\n> Something.');
   });
 
-  it('still escapes an underscore that could open emphasis', () => {
-    expect(roundTrip('a \\_lonely underscore')).toContain('\\_');
+  it('escapes an underscore only where it would open emphasis', () => {
+    // On its own it opens nothing, so it is written as typed, as Typora writes it.
+    expect(roundTrip('a \\_lonely underscore')).toBe('a _lonely underscore');
+    expect(roundTrip('a \\_pair\\_ of them')).toContain('\\_');
   });
 
   it('leaves a star glued to a word, a metric at-sign, and an image alt alone', () => {
@@ -325,8 +327,8 @@ describe('a character reference', () => {
     expect(referencesIn('&notanentity; &amp \\&amp; `&amp;`')).toEqual([]);
     expect(pmDoc('&amp \\&amp; `&amp;`').textContent).toBe('&amp &amp; &amp;');
     expect(roundTrip('&amp \\&amp; `&amp;`')).toBe('&amp \\&amp; `&amp;`');
-    // Escaped because it has the shape of one, which reads the same.
-    expect(roundTrip('&notanentity;')).toBe('\\&notanentity;');
+    // Not a name CommonMark knows, so it is text either way and is written bare.
+    expect(roundTrip('&notanentity;')).toBe('&notanentity;');
   });
 
   it('inside code is the code\'s own character', () => {
@@ -363,9 +365,10 @@ describe('a literal star glued to a word', () => {
   // them into emphasis, so each one written bare has to be one that cannot pair.
   it('stays literal when it could close', () => {
     expect(roundTrip('*nix and a\\*b')).toBe('*nix and a\\*b');
-    expect(roundTrip('a\\*b\\*c')).toBe('a\\*b\\*c');
+    // One of the pair is enough to keep them from being emphasis.
+    expect(roundTrip('a\\*b\\*c')).toBe('a*b\\*c');
     // CJK-friendly flanking lets a star after a CJK character close.
-    expect(roundTrip('漢\\*nix 字\\*BSD')).toBe('漢\\*nix 字\\*BSD');
+    expect(roundTrip('漢\\*nix 字\\*BSD')).toBe('漢*nix 字\\*BSD');
   });
 
   it('stays literal inside emphasis and strong, which are written with stars', () => {
@@ -376,10 +379,10 @@ describe('a literal star glued to a word', () => {
 
   it('keeps the rest of the text escaped as it was', () => {
     // The star takes the escape; the identifier after it is still left whole.
-    expect(roundTrip('a\\*b_c d')).toBe('a\\*b_c d');
+    expect(roundTrip('a\\*b_c d')).toBe('a*b_c d');
     // With its only run skipped, the text is escaped from the paragraph's own
     // start, where `1.` must stay escaped or it opens a list.
-    expect(roundTrip('1\\. a\\*b')).toBe('1\\. a\\*b');
+    expect(roundTrip('1\\. a\\*b')).toBe('1\\. a*b');
   });
 });
 

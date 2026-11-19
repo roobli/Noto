@@ -15,7 +15,10 @@
  * event handlers, forms and anything that could fetch are gone before the
  * markup is ever attached to the document. An `<iframe>` showing a web page
  * becomes an inert placeholder naming its address (`embedPlaceholder`); the
- * view decides whether a sandboxed frame is ever put in it.
+ * view decides whether a sandboxed frame is ever put in it. An `<svg>`
+ * drawing becomes a picture of itself (`svgPicture`): the markup goes in
+ * whole, as an image, where a drawing can neither run a script nor load
+ * anything, so nothing in it needs cleaning.
  *
  * Pure, apart from the parsing, so what survives can be tested exactly.
  */
@@ -270,6 +273,11 @@ export function sanitizeHtml(html: string, into: Document = inertDocument()): Do
         if (embed) target.appendChild(embed);
         continue;
       }
+      if (element.namespaceURI === SVG_NS && element.localName === 'svg') {
+        const picture = svgPicture(element, into);
+        if (picture) target.appendChild(picture);
+        continue;
+      }
       const verdict = verdictFor(element.tagName.toLowerCase());
       if (verdict === 'drop') continue;
       if (verdict === 'unwrap') { walk(element, target); continue; }
@@ -282,6 +290,57 @@ export function sanitizeHtml(html: string, into: Document = inertDocument()): Do
   const fragment = into.createDocumentFragment();
   walk(parsed.body, fragment);
   return fragment;
+}
+
+const SVG_NS = 'http://www.w3.org/2000/svg';
+
+/** A drawing whose markup is longer than this stays source: it is a file pasted in, not a note's chart. */
+const SVG_LIMIT = 1_000_000;
+
+/** A length an `<svg>` may give its size in that an image can take: plain pixels. */
+const SVG_LENGTH = /^\s*(\d+(?:\.\d+)?)\s*(?:px)?\s*$/;
+
+/**
+ * An `<svg>` a note writes inline, as a picture of itself.
+ *
+ * The element is serialized whole into a `data:image/svg+xml` address and
+ * shown by an `<img>`. A drawing shown as an image is a closed document: its
+ * scripts do not run, its event attributes do nothing, and it loads no
+ * picture, font or style from anywhere, so the markup needs no element list
+ * and the chart is drawn exactly as written, colours, text and all. This is
+ * what the code viewer already does for a `.svg` file.
+ *
+ * The size is the drawing's own: its `width` and `height` when they are
+ * pixels, the other worked out from the `viewBox` when only one is, and the
+ * `viewBox` itself when neither is, since an image with no size of its own
+ * would be drawn at 300 by 150. A share such as `width="100%"` gives no
+ * size, and the stylesheet holds the picture to the column either way.
+ */
+export function svgPicture(source: Element, into: Document = inertDocument()): HTMLImageElement | null {
+  const markup = new XMLSerializer().serializeToString(source);
+  if (markup.length > SVG_LIMIT) return null;
+  const image = into.createElement('img');
+  image.className = 'noto-html-svg';
+  image.setAttribute('src', `data:image/svg+xml;charset=utf-8,${encodeURIComponent(markup)}`);
+  const title = [...source.children].find((child) => child.localName === 'title')?.textContent?.trim();
+  image.setAttribute('alt', title || source.getAttribute('aria-label')?.trim() || 'Drawing');
+  const pixels = (name: string): number | null => {
+    const match = SVG_LENGTH.exec(source.getAttribute(name) ?? '');
+    const value = match ? Number(match[1]) : NaN;
+    return value > 0 ? value : null;
+  };
+  let width = pixels('width');
+  let height = pixels('height');
+  const box = (source.getAttribute('viewBox') ?? '').trim().split(/[\s,]+/).map(Number);
+  const [boxWidth, boxHeight] = [box[2] ?? NaN, box[3] ?? NaN];
+  if (boxWidth > 0 && boxHeight > 0) {
+    if (width === null && height === null) [width, height] = [boxWidth, boxHeight];
+    else if (width === null && height !== null) width = height * boxWidth / boxHeight;
+    else if (height === null && width !== null) height = width * boxHeight / boxWidth;
+  }
+  if (width !== null) image.setAttribute('width', String(Math.round(width)));
+  if (height !== null) image.setAttribute('height', String(Math.round(height)));
+  return image;
 }
 
 /** The same, as markup, which is what a test can read. */

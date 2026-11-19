@@ -1,4 +1,4 @@
-import { EMBED_FRAME_NAME } from '../../shared/embed-frame';
+import { EMBED_FRAME_NAME, PAGE_FRAME_NAME } from '../../shared/embed-frame';
 import { isAllowedRendererUrl } from '../protocol/register-app-protocol';
 
 /** What a navigation check needs of a frame: its name and the frame it is in. */
@@ -25,6 +25,18 @@ export function frameNavigationAllowed(url: string, isMainFrame: boolean, frame:
   if (isMainFrame || frame === null) return isAllowedRendererUrl(url);
   let top = frame;
   while (top.parent !== null && top.parent.parent !== null) top = top.parent;
+  if (top.name === PAGE_FRAME_NAME) {
+    // The page itself stays on the folder's pages; a frame it makes may also
+    // follow the web. Never the app's own pages.
+    try {
+      const target = new URL(url);
+      if (target.protocol === 'noto-page:') return true;
+      if (target.protocol === 'noto:') return false;
+      return top === frame ? target.protocol === 'about:' : EMBED_SCHEMES.has(target.protocol);
+    } catch {
+      return false;
+    }
+  }
   if (top.name !== EMBED_FRAME_NAME) return isAllowedRendererUrl(url);
   try {
     return EMBED_SCHEMES.has(new URL(url).protocol);

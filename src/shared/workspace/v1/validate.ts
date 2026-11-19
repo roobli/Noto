@@ -226,7 +226,8 @@ function isResult<T>(value: unknown, expectedRequestId: string,
 }
 
 function isCodeView(value: unknown): value is WorkspaceCodeViewV1 {
-  return record(value) && exact(value, ['path', 'name', 'language', 'content', 'notice', 'truncated'])
+  return record(value) && exact(value, ['path', 'name', 'language', 'content', 'notice', 'truncated', 'pageUrl'])
+    && (value.pageUrl === null || (typeof value.pageUrl === 'string' && value.pageUrl.startsWith('noto-page://page/') && value.pageUrl.length <= 16384))
     && typeof value.path === 'string' && value.path.length > 0 && value.path.length <= 4096
     && typeof value.name === 'string' && value.name.length > 0 && value.name.length <= 512
     && typeof value.language === 'string' && value.language.length <= 64
@@ -480,8 +481,10 @@ function isNoteMemoryV1(value: unknown): value is NoteMemoryV1 {
     && listOf(value.aboutSame, 200, (item) => exact(item, ['path', 'title', 'why', 'excerpt'])
       && text(item.path) && text(item.title) && Array.isArray(item.why) && item.why.length <= 16
       && item.why.every((reason) => text(reason, 512)) && text(item.excerpt, 8192))
-    && record(outgoing) && exact(outgoing, ['count', 'broken', 'brokenCount']) && whole(outgoing.count) && whole(outgoing.brokenCount)
+    && record(outgoing) && exact(outgoing, ['count', 'broken', 'brokenCount', 'brokenAnchors', 'brokenAnchorCount'])
+    && whole(outgoing.count) && whole(outgoing.brokenCount) && whole(outgoing.brokenAnchorCount)
     && listOf(outgoing.broken, 1000, (item) => exact(item, ['target', 'line']) && text(item.target) && whole(item.line))
+    && listOf(outgoing.brokenAnchors, 1000, (item) => exact(item, ['target', 'anchor', 'line']) && text(item.target) && text(item.anchor) && whole(item.line))
     && listOf(value.reads, 20000, (item) => exact(item, ['day', 'count']) && text(item.day, 10) && whole(item.count))
     && listOf(value.readers, 200, (item) => exact(item, ['actor', 'count', 'last']) && text(item.actor, 256) && whole(item.count) && text(item.last, 64))
     && listOf(value.leadsHere, 200, (item) => exact(item, ['from', 'query', 'count']) && textOrNull(item.from) && textOrNull(item.query, 1024) && whole(item.count))
@@ -808,11 +811,11 @@ export function isWorkspaceFolderMemoryReplyV1(value: unknown): value is Workspa
   if (typeof value.state !== 'string' || value.state === 'unknown' || !MEMORY_STATES.has(value.state)) return false;
   if (value.state !== 'ok') return value.memory === null;
   const memory = value.memory;
-  return record(memory) && exact(memory, ['folder', 'notes', 'warmest', 'mostRead', 'orphans', 'broken'])
+  return record(memory) && exact(memory, ['folder', 'notes', 'warmest', 'mostRead', 'orphans', 'broken', 'brokenAnchors'])
     && typeof memory.folder === 'string' && memory.folder.length <= 1024 && (memory.folder === '' || notePath(memory.folder))
     && whole(memory.notes) && folderNotes(memory.warmest) && folderNotes(memory.mostRead)
     && record(memory.orphans) && exact(memory.orphans, ['count', 'items']) && whole(memory.orphans.count)
-    && folderNotes(memory.orphans.items) && whole(memory.broken);
+    && folderNotes(memory.orphans.items) && whole(memory.broken) && whole(memory.brokenAnchors);
 }
 
 export const isWorkspaceFolderMemoryResultV1 = (
@@ -967,7 +970,7 @@ export function isWorkspaceIndexResultV1(
     && typeof value.error.code === 'string' && typeof value.error.message === 'string';
 }
 
-const revealTargets: readonly WorkspaceRevealTargetV1[] = ['folder', 'document'];
+const revealTargets: readonly WorkspaceRevealTargetV1[] = ['folder', 'document', 'viewed-in-browser'];
 
 export function isWorkspaceRevealRequestV1(value: unknown): value is WorkspaceRevealRequestV1 {
   return record(value) && exact(value, ['version', 'requestId', 'target'])

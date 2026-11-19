@@ -20,6 +20,7 @@ import {
   SETTING_RANGES,
   WIDTH_MODES,
   DIFF_LAYOUTS,
+  LEAVE_UNSAVED,
   type NotoNumericSetting,
   type NotoSettingsV1,
   type NotoTheme,
@@ -30,6 +31,7 @@ import {
   type ThemeCssReplyV1,
   type WidthModeV1,
   type DiffLayoutV1,
+  type LeaveUnsavedV1,
   IMAGE_DESTINATIONS,
   type ImageDestinationV1,
   PROSE_FACES,
@@ -70,6 +72,8 @@ const requestId = /^[A-Za-z0-9._:-]{1,96}$/;
 const themes: readonly NotoTheme[] = ['light', 'dark', 'system'];
 const isDiffLayout = (value: unknown): value is DiffLayoutV1 =>
   (DIFF_LAYOUTS as readonly unknown[]).includes(value);
+const isLeaveUnsaved = (value: unknown): value is LeaveUnsavedV1 =>
+  (LEAVE_UNSAVED as readonly unknown[]).includes(value);
 const isWidthMode = (value: unknown): value is WidthModeV1 =>
   (WIDTH_MODES as readonly unknown[]).includes(value);
 const numericKeys = Object.keys(SETTING_RANGES) as NotoNumericSetting[];
@@ -163,9 +167,15 @@ export function coerceSettings(value: unknown): NotoSettingsV1 {
     markSubscript: typeof value.markSubscript === 'boolean' ? value.markSubscript : DEFAULT_SETTINGS.markSubscript,
     sidenotes: typeof value.sidenotes === 'boolean' ? value.sidenotes : DEFAULT_SETTINGS.sidenotes,
     fontSize: numeric(value, 'fontSize'),
+    uiScale: numeric(value, 'uiScale'),
+    docZoom: numeric(value, 'docZoom'),
+    railFontSize: numeric(value, 'railFontSize'),
+    uiFontFamily: isProseFontFamily(value.uiFontFamily) ? value.uiFontFamily : DEFAULT_SETTINGS.uiFontFamily,
+    railFontFamily: isProseFontFamily(value.railFontFamily) ? value.railFontFamily : DEFAULT_SETTINGS.railFontFamily,
     lineHeight: numeric(value, 'lineHeight'),
     widthMode: isWidthMode(value.widthMode) ? value.widthMode : DEFAULT_SETTINGS.widthMode,
     diffLayout: isDiffLayout(value.diffLayout) ? value.diffLayout : DEFAULT_SETTINGS.diffLayout,
+    leaveUnsaved: isLeaveUnsaved(value.leaveUnsaved) ? value.leaveUnsaved : DEFAULT_SETTINGS.leaveUnsaved,
     /* The three were one switch called `smartTypography`. A file written by
        the older build carries only that, and its answer stands for all three
        rather than being thrown away. */
@@ -272,11 +282,14 @@ export function isSettingsWriteRequestV1(value: unknown): value is SettingsWrite
     if (key === 'theme') return themes.includes(patch.theme as NotoTheme);
     if (key === 'widthMode') return isWidthMode(patch.widthMode);
     if (key === 'diffLayout') return isDiffLayout(patch.diffLayout);
+    if (key === 'leaveUnsaved') return isLeaveUnsaved(patch.leaveUnsaved);
     if (key === 'infoTab') return isInfoTab(patch.infoTab);
     if (key === 'disabledShortcuts') return isDisabledShortcuts(patch.disabledShortcuts);
     if (key === 'pluginMarketplace') return isMarketplaceRepo(patch.pluginMarketplace);
     if (key === 'proseFace') return PROSE_FACES.includes(patch.proseFace as ProseFaceV1);
     if (key === 'proseFontFamily') return isProseFontFamily(patch.proseFontFamily);
+    if (key === 'uiFontFamily') return isProseFontFamily(patch.uiFontFamily);
+    if (key === 'railFontFamily') return isProseFontFamily(patch.railFontFamily);
     if (key === 'treeSort') return TREE_SORTS.includes(patch.treeSort as TreeSortV1);
     if (key === 'treeHeld') return TREE_HELD.includes(patch.treeHeld as TreeHeldV1);
     if (key === 'sheetWidth') return SHEET_WIDTHS.includes(patch.sheetWidth as SheetWidthV1);
@@ -332,6 +345,7 @@ export function isSettingsReplyV1(value: unknown): value is SettingsReplyV1 {
   return themes.includes(settings.theme as NotoTheme)
     && isWidthMode(settings.widthMode)
     && isDiffLayout(settings.diffLayout)
+    && isLeaveUnsaved(settings.leaveUnsaved)
     && numericKeys.every((key) => typeof settings[key] === 'number' && Number.isFinite(settings[key]))
     && typeof settings.smartQuotes === 'boolean'
     && typeof settings.smartDashes === 'boolean'
@@ -374,7 +388,9 @@ export function isSettingsReplyV1(value: unknown): value is SettingsReplyV1 {
     && isImageFolder(settings.imageCustomFolder)
     && isCssPath(settings.customCssPath)
     && PROSE_FACES.includes(settings.proseFace as ProseFaceV1)
-    && isProseFontFamily(settings.proseFontFamily);
+    && isProseFontFamily(settings.proseFontFamily)
+    && isProseFontFamily(settings.uiFontFamily)
+    && isProseFontFamily(settings.railFontFamily);
 }
 
 export function isSystemFontsReplyV1(value: unknown): value is SystemFontsReplyV1 {

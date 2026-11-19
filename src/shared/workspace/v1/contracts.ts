@@ -232,6 +232,8 @@ export interface WorkspaceCodeViewV1 {
   readonly notice: string | null;
   /** True when lines past the viewer cap were omitted. */
   readonly truncated: boolean;
+  /** For a web page in the open folder, where main serves it as a page (`noto-page://page/`); otherwise null. */
+  readonly pageUrl: string | null;
 }
 
 export interface WorkspaceCodeViewEventV1 {
@@ -317,6 +319,9 @@ export const WORKSPACE_MENU_COMMANDS = [
   'block-heading-6',
   'block-heading-up',
   'block-heading-down',
+  'text-larger',
+  'text-smaller',
+  'text-default',
   'block-code',
   'block-math',
   'block-quote',
@@ -420,7 +425,8 @@ export type WorkspaceMenuCommandV1 = typeof WORKSPACE_MENU_COMMANDS[number];
  * capability is then "open the file manager at something this window is already
  * showing you", which is small enough to reason about.
  */
-export type WorkspaceRevealTargetV1 = 'folder' | 'document';
+/** `viewed-in-browser`: the file in the viewer, opened by the system's own app for it (a browser, for a page). */
+export type WorkspaceRevealTargetV1 = 'folder' | 'document' | 'viewed-in-browser';
 
 export interface WorkspaceRevealRequestV1 extends WorkspaceRequestV1 {
   readonly target: WorkspaceRevealTargetV1;
@@ -1165,8 +1171,17 @@ export interface NoteMemoryV1 {
   readonly together: readonly { readonly path: string; readonly title: string; readonly type: string; readonly count: number; readonly weight: number; readonly last: string | null }[];
   readonly togetherCount: number;
   readonly aboutSame: readonly { readonly path: string; readonly title: string; readonly why: readonly string[]; readonly excerpt: string }[];
-  /** `broken` is the first few; `brokenCount` says how many there are. */
-  readonly outgoing: { readonly count: number; readonly broken: readonly { readonly target: string; readonly line: number }[]; readonly brokenCount: number };
+  /**
+   * `broken` is the first few links that reach nothing; `brokenCount` says how many there are.
+   * `brokenAnchors` are the first few that reach their note but not the heading, id or block their `#anchor` names.
+   */
+  readonly outgoing: {
+    readonly count: number;
+    readonly broken: readonly { readonly target: string; readonly line: number }[];
+    readonly brokenCount: number;
+    readonly brokenAnchors: readonly { readonly target: string; readonly anchor: string; readonly line: number }[];
+    readonly brokenAnchorCount: number;
+  };
   readonly reads: readonly { readonly day: string; readonly count: number }[];
   readonly readers: readonly { readonly actor: string; readonly count: number; readonly last: string }[];
   readonly leadsHere: readonly { readonly from: string | null; readonly query: string | null; readonly count: number }[];
@@ -1495,6 +1510,8 @@ export interface FolderMemoryV1 {
   readonly orphans: { readonly count: number; readonly items: readonly FolderNoteV1[] };
   /** Links in its notes that name nothing in the folder. */
   readonly broken: number;
+  /** Links in its notes that reach a note but not the heading their anchor names. */
+  readonly brokenAnchors: number;
 }
 
 export interface WorkspaceFolderMemoryReplyV1 {

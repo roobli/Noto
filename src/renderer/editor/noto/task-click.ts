@@ -13,10 +13,11 @@
  * is drawn to the left of the item's content, so the answer is the geometry.
  */
 
+import type { Node as ProseNode } from 'prosemirror-model';
 import { Plugin } from 'prosemirror-state';
-import type { EditorView } from 'prosemirror-view';
+import { Decoration, DecorationSet, type EditorView } from 'prosemirror-view';
 import { notoSchema } from '../../../shared/markdown/v3/pm/schema';
-import { applyCheckStamp, type TaskStampOptions } from './todo-manager';
+import { applyCheckStamp, CHECK_STAMP_RE, positionAtTextOffset, type TaskStampOptions } from './todo-manager';
 
 /**
  * Whether a press at `clientX` landed on the box rather than on the words.
@@ -59,6 +60,53 @@ export function taskClickPlugin(stamp: TaskStampOptions = {}): Plugin {
         }
         view.dispatch(tr);
         return true;
+      },
+    },
+  });
+}
+
+/**
+ * The ` ✅ 2026-11-10` a finished task carries, marked so it is not struck
+ * through with the words.
+ *
+ * The words are done and the line through them says so; the stamp says when,
+ * and a line through the emoji and the date read as damage. A decoration
+ * over the stamp's characters, found again in each finished item's last
+ * paragraph, so the file keeps them exactly as written.
+ */
+function stampDecorations(doc: ProseNode): DecorationSet {
+  const found: Decoration[] = [];
+  doc.descendants((node, position) => {
+    if (node.type !== notoSchema.nodes.list_item) return true;
+    if (node.attrs.checked === true) {
+      const paragraph = node.firstChild;
+      if (paragraph?.isTextblock) {
+        const text = paragraph.textContent;
+        const match = CHECK_STAMP_RE.exec(text);
+        if (match) {
+          // Text offsets, not positions: a link or a formula earlier in the
+          // line is one character of text and several positions.
+          const content = position + 2;
+          const from = positionAtTextOffset(paragraph, content, match.index);
+          const to = positionAtTextOffset(paragraph, content, match.index + match[0].length);
+          found.push(Decoration.inline(from, to, { class: 'noto-task-stamp' }));
+        }
+      }
+    }
+    return true;
+  });
+  return DecorationSet.create(doc, found);
+}
+
+export function taskStampPlugin(): Plugin<DecorationSet> {
+  return new Plugin<DecorationSet>({
+    state: {
+      init: (_config, state) => stampDecorations(state.doc),
+      apply: (tr, previous) => (tr.docChanged ? stampDecorations(tr.doc) : previous),
+    },
+    props: {
+      decorations(state) {
+        return this.getState(state) ?? DecorationSet.empty;
       },
     },
   });

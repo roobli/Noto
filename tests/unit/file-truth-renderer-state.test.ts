@@ -151,7 +151,7 @@ describe('shell failure containment', () => {
 
   it('rejects a refused capture before pending or IPC, without fabricating a recovery barrier', async () => {
     const app = await shell();
-    const saveFlow = between(app, 'const save = async () => {', '  const recover = async () => {');
+    const saveFlow = between(app, 'const save = async (targetId?: string) => {', '  const recover = async () => {');
     const captureIndex = saveFlow.indexOf('editor.captureSaveTicket()');
     const captureCatch = saveFlow.indexOf('catch (error) {', captureIndex);
     const rejection = saveFlow.slice(captureCatch, saveFlow.indexOf('try {', captureCatch));
@@ -159,7 +159,7 @@ describe('shell failure containment', () => {
     expect(captureCatch).toBeLessThan(saveFlow.indexOf('setPending(true)'));
     expect(saveFlow.indexOf('setPending(true)')).toBeLessThan(saveFlow.indexOf('await window.notoFileTruth.save'));
     expect(rejection).toContain('The editor refused this save.');
-    expect(rejection).toContain("setState('Unsaved changes');");
+    expect(rejection).toContain("mark('Unsaved changes');");
     expect(rejection).toContain('return;');
     expect(rejection).not.toContain('setPending(');
     expect(rejection).not.toContain('window.notoFileTruth.save');
@@ -168,7 +168,7 @@ describe('shell failure containment', () => {
 
   it('guards save with a synchronous ref and resolves only its own capture', async () => {
     const app = await shell();
-    const saveFlow = between(app, 'const save = async () => {', '  const recover = async () => {');
+    const saveFlow = between(app, 'const save = async (targetId?: string) => {', '  const recover = async () => {');
     // React state does not change until the next render, so a second trigger in
     // the same tick would pass a `pending` check. The ref is checked and set
     // before anything is captured, and released only once the save is over.
@@ -186,7 +186,7 @@ describe('shell failure containment', () => {
 
   it('contains a rejected save transport and leaves the editor dirty', async () => {
     const app = await shell();
-    const saveFlow = between(app, 'const save = async () => {', '  const recover = async () => {');
+    const saveFlow = between(app, 'const save = async (targetId?: string) => {', '  const recover = async () => {');
     const invoke = saveFlow.indexOf('await window.notoFileTruth.save');
     const transportCatch = saveFlow.indexOf('catch (error) {', invoke);
     expect(saveFlow.indexOf('present(result.value, capture.captureId, { id: documentId, editor });')).toBeGreaterThan(invoke);

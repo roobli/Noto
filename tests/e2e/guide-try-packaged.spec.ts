@@ -45,7 +45,8 @@ async function launch(args: string[]): Promise<{ app: ElectronApplication; page:
   const app = await electron.launch({ executablePath: packagedExecutable(), args: [`--user-data-dir=${scratch('user-data')}`, ...args] });
   const page = await app.firstWindow();
   await page.setViewportSize({ width: 1280, height: 800 });
-  await page.waitForSelector('[data-testid="file-tree"], [data-testid="empty-state"]', { timeout: 30_000 });
+  // The tree is kept, hidden, while the rail is closed, so the one to wait for is the one in sight.
+  await page.waitForSelector('[data-testid="file-tree"]:visible, [data-testid="empty-state"]:visible', { timeout: 30_000 });
   return { app, page };
 }
 

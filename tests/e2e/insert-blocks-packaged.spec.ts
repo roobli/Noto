@@ -101,7 +101,7 @@ test.describe('the things Typora\'s Paragraph menu inserts', () => {
       // document, and clicking a menu item returns when main has sent the
       // command, not when the renderer has applied it.
       await expect(definitions(page)).toHaveCount(1);
-      await expect(page.locator('.ProseMirror > p').first()).toContainText('[1]');
+      await expect(page.locator('.ProseMirror > p').first().locator('.noto-footnote-reference')).toHaveText('1');
       // Verify the caret actually landed before asking for the second
       // footnote. `placeCaret` waits for a `selectionchange`, and the first
       // insert moves the selection into its own definition, which fires the
@@ -111,7 +111,7 @@ test.describe('the things Typora\'s Paragraph menu inserts', () => {
       await page.keyboard.press(process.platform === 'darwin' ? 'Meta+ArrowRight' : 'End');
       await run(app, 'insert-footnote');
       await expect(definitions(page)).toHaveCount(2);
-      await expect(page.locator('.ProseMirror > p').nth(1)).toContainText('[2]');
+      await expect(page.locator('.ProseMirror > p').nth(1).locator('.noto-footnote-reference')).toHaveText('2');
       await page.getByTestId('save-button').click();
       await expect.poll(() => readFile(file, 'utf8'), { timeout: 15_000 }).toContain('[^2]');
       const written = await readFile(file, 'utf8');

@@ -996,7 +996,11 @@ export function renderMarkdown(node: Nodes, options: RenderOptions = {}): string
   markTextBesideStarRuns(node);
   try {
     const markdown = toMarkdown(node, serializerOptions);
-    return options.keepDollarEscapes ? markdown : withoutNeedlessDollarEscapes(markdown);
+    // Code, maths and raw HTML hold their text as written: nothing in them is an escape.
+    if (LITERAL_BLOCKS.has(node.type)) return markdown;
+    const keepDollars = options.keepDollarEscapes === true;
+    if (options.readsAs) return withoutNeedlessEscapes(markdown, ESCAPE, keepDollars, options.readsAs);
+    return keepDollars ? markdown : withoutNeedlessEscapes(markdown, DOLLAR_ESCAPE, false, micromarkShape);
   } finally {
     textBesideStarRuns.clear();
   }
@@ -1009,46 +1013,90 @@ export interface RenderOptions {
    * editor that wants `\\$` keeps the author's style when it is edited.
    */
   readonly keepDollarEscapes?: boolean;
+  /**
+   * How the block reads, as a key that is equal when two texts read the
+   * same. Given, every escape the block reads the same without is dropped;
+   * without it only needless dollar escapes are, judged by micromark alone.
+   */
+  readonly readsAs?: (markdown: string) => string;
 }
 
-/** At most this many escaped dollars are tried per block, so a table of prices stays cheap. */
-const DOLLAR_ESCAPES_TRIED = 64;
+/** How micromark reads a text, positions left out. */
+export function micromarkShape(text: string): string {
+  return JSON.stringify(parseMarkdown(text), (key, value) => (key === 'position' ? undefined : value));
+}
+
+/** At most this many runs of escapes are tried one by one per block, so a table full of them stays cheap. */
+const ESCAPES_TRIED = 48;
+/** A block longer than this is tried whole only, never a run at a time. */
+const ESCAPE_TRIAL_CHARS = 6000;
+
+/** Blocks whose text is literal, where a backslash is the author's character and never an escape. */
+const LITERAL_BLOCKS: ReadonlySet<string> = new Set(['code', 'math', 'html', 'yaml']);
 
 /**
- * Drop each `\$` the text reads the same without.
- *
- * The serializer escapes every dollar in text, because under micromark's rule
- * any `$` could open math. Under Pandoc's rule (`math-text-pandoc.ts`) most
- * prices cannot, and an edited line of them was saved as `\$8,000 - \$50,000`
- * where the author wrote `$8,000 - $50,000`. Which dollars are safe depends on
- * what comes after them in the block, so each escape is tried: it goes when
- * the block parses to the same tree without it, and stays otherwise.
+ * A backslash before ASCII punctuation, the only escape CommonMark has, but
+ * never before a bracket. Whether `[x]` is a link depends on a definition
+ * that may be anywhere in the note, and the block is parsed here on its own,
+ * so a bracket's escape is the one that cannot be judged and always stays.
  */
-function withoutNeedlessDollarEscapes(markdown: string): string {
-  if (!markdown.includes('\\$')) return markdown;
-  const shape = (text: string) => JSON.stringify(parseMarkdown(text), (key, value) => (key === 'position' ? undefined : value));
-  const meant = shape(markdown);
-  // Most often every escape can go (a line or a table of prices): one parse says so.
-  const bare = markdown.replace(/\\\$/g, '$');
-  if (shape(bare) === meant) return bare;
-  // Otherwise one at a time; a block with more than the budget keeps them all,
-  // so the same text always saves the same way.
-  const escapes = markdown.split('\\$').length - 1;
-  if (escapes > DOLLAR_ESCAPES_TRIED) return markdown;
-  let out = markdown;
-  let from = 0;
-  for (;;) {
-    const at = out.indexOf('\\$', from);
-    if (at < 0) break;
-    const candidate = out.slice(0, at) + out.slice(at + 1);
-    if (shape(candidate) === meant) {
-      out = candidate;
-      from = at + 1;
-    } else {
-      from = at + 2;
-    }
+const ESCAPE = /\\[!-\/:-@\\^-`{-~]/g;
+
+/** An escaped dollar. */
+const DOLLAR_ESCAPE = /\\\$/g;
+
+/**
+ * Drop each escape the block reads the same without.
+ *
+ * The serializer escapes any character that could open markup somewhere,
+ * because it cannot see whether it does here: every underscore, every `<`,
+ * the colon after `https`, a `#` or a `$`. Typora writes what the reader
+ * typed, and an edited line of underscores for a form's blanks was saved as
+ * `\_\_\_\_`, a picture's tag that had become text as
+ * `\<img src="https\://…`, and a line of prices as `\$8,000 - \$50,000`.
+ * Which escapes matter depends on everything else in the block, so each is
+ * tried: it goes when the block parses to the same tree without it, and
+ * stays otherwise. A block with more than the budget keeps every escape, so
+ * the same text always saves the same way.
+ *
+ * `keepDollars` keeps every `\$`, for a block whose source already escaped
+ * one: a note written for an editor that wants them keeps the author's style.
+ * `shape` is how a text reads; an escape goes only when it reads the same.
+ */
+function withoutNeedlessEscapes(markdown: string, pattern: RegExp, keepDollars: boolean, shape: (text: string) => string): string {
+  const escapes = [...markdown.matchAll(pattern)].filter((match) => !(keepDollars && match[0] === '\\$'));
+  if (escapes.length === 0) return markdown;
+  // A run of the same escape, `\_\_\_\_` for a form's blank, goes or stays
+  // whole, so a blank is never written half escaped.
+  const runs: number[][] = [];
+  for (const match of escapes) {
+    const last = runs[runs.length - 1];
+    const prev = last ? escapes.find((m) => m.index === last[last.length - 1]) : undefined;
+    if (last && prev && prev[0] === match[0] && prev.index + 2 === match.index) last.push(match.index);
+    else runs.push([match.index]);
   }
-  return out;
+  const without = (text: string, drop: ReadonlySet<number>) => {
+    let out = '';
+    let from = 0;
+    for (const at of [...drop].sort((a, b) => a - b)) {
+      out += text.slice(from, at);
+      from = at + 1;
+    }
+    return out + text.slice(from);
+  };
+  const meant = shape(markdown);
+  // Most often every escape can go (a line of prices, a form's blanks): one parse says so.
+  const all = new Set(escapes.map((match) => match.index));
+  const bare = without(markdown, all);
+  if (shape(bare) === meant) return bare;
+  if (runs.length > ESCAPES_TRIED || markdown.length > ESCAPE_TRIAL_CHARS) return markdown;
+  // Otherwise a run at a time, left to right, each tried with what is dropped so far.
+  const dropped = new Set<number>();
+  for (const run of runs) {
+    const trial = new Set([...dropped, ...run]);
+    if (shape(without(markdown, trial)) === meant) for (const at of run) dropped.add(at);
+  }
+  return without(markdown, dropped);
 }
 
 /**

@@ -43,7 +43,8 @@ describe('listing a workspace folder', () => {
     expect(without).not.toContain('sample.py');
     const withCode = (await listDirectory(root, root, 'name', true)).map((entry) => entry.name);
     expect(withCode).toContain('sample.py');
-    expect(withCode).not.toContain('image.png');
+    // A picture opens in the viewer as a picture, so it is listed with the code.
+    expect(withCode).toContain('image.png');
   });
 
   it('leaves out files the editor cannot open', async () => {

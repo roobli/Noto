@@ -5,7 +5,7 @@ import { splitBlocks } from '../../src/shared/markdown/v3/blocks';
 import { docFromSpans } from '../../src/shared/markdown/v3/pm/from-mdast';
 import { notoSchema } from '../../src/shared/markdown/v3/pm/schema';
 import { markCharacters, mightDecorate, typoraMarksKey, typoraMarksPlugin } from '../../src/renderer/editor/noto/typora-marks-plugin';
-import { ALL_MARK_KINDS, typoraMarkRanges } from '../../src/renderer/editor/noto/typora-marks';
+import { ALL_MARK_KINDS, typoraMarkRanges } from '@roobli/md/inline';
 import { readdirSync, readFileSync } from 'node:fs';
 import path from 'node:path';
 
@@ -144,8 +144,8 @@ describe('the skip for blocks that cannot draw', () => {
     expect(drawn(stateFor('`code` then ^sup^ end\n\nelsewhere'))).toEqual(['noto-typora-delim', 'noto-mark-sup', 'noto-typora-delim']);
   });
 
-  it('reads nothing for a kind that is switched off', () => {
-    expect(markCharacters({ highlight: false, superscript: true, subscript: false })).toBe('^');
+  it('reads nothing for a kind that is switched off; an emoji name, which has no switch, is always looked for', () => {
+    expect(markCharacters({ highlight: false, superscript: true, subscript: false })).toBe('^:');
   });
 });
 

@@ -92,8 +92,8 @@ function SectionGlyph({ name }: { name: SettingsSection }) {
 }
 
 const SECTIONS: readonly { value: SettingsSection; label: string; keywords: string; buried?: boolean }[] = [
-  { value: 'appearance', label: 'Appearance', keywords: 'theme dark light text size line height width rail stylesheet css font serif sans mono system family always on top float window links graph moc related backlinks' },
-  { value: 'editor', label: 'Editor', keywords: 'spell check images brackets pairs focus typewriter save autosave line numbers guides reload external disk sync watch file tags frontmatter' },
+  { value: 'appearance', label: 'Appearance', keywords: 'theme dark light text size zoom interface sidebar rail tree font scale line height width rail stylesheet css font serif sans mono system family always on top float window links graph moc related backlinks' },
+  { value: 'editor', label: 'Editor', keywords: 'spell check images brackets pairs focus typewriter save autosave leave unsaved draft ask line numbers guides reload external disk sync watch file tags frontmatter' },
   { value: 'markdown', label: 'Markdown', keywords: 'smart quotes dashes ellipsis punctuation typography syntax' },
   { value: 'images', label: 'Images', keywords: 'image picture paste drop screenshot assets folder copy relative path escape url upload picgo bucket web remote iframe embed page video' },
   { value: 'updates', label: 'Updates', keywords: 'update upgrade release version github alpha stable testing channel download auto check launch' },
@@ -256,7 +256,7 @@ const WIDTHS: readonly { value: WidthModeV1; label: string; hint: string }[] = [
  * value between them, so coarse search and exact setting each have the control
  * they want.
  */
-function Slider({ label, hint, setting, value, format, onChange, testId }: {
+function Slider({ label, hint, setting, value, format, onChange, testId, onRelease = false }: {
   label: string;
   hint?: string;
   setting: NotoNumericSetting;
@@ -264,8 +264,16 @@ function Slider({ label, hint, setting, value, format, onChange, testId }: {
   format: (value: number) => string;
   onChange: (value: number) => void;
   testId: string;
+  /** Apply only when the thumb is let go: for a setting that rescales the page the thumb is on. */
+  onRelease?: boolean;
 }) {
   const range = SETTING_RANGES[setting];
+  const [held, setHeld] = useState<number | null>(null);
+  const shown = held ?? value;
+  const commit = () => {
+    if (held !== null && held !== value) onChange(held);
+    setHeld(null);
+  };
   return (
     <div className="pref-row pref-slider-row">
       <span className="pref-label">
@@ -273,16 +281,19 @@ function Slider({ label, hint, setting, value, format, onChange, testId }: {
         {hint && <small>{hint}</small>}
       </span>
       <span className="pref-slider">
-        <output className="pref-value">{format(value)}</output>
+        <output className="pref-value">{format(shown)}</output>
         <input
           type="range"
           data-testid={testId}
           min={range.min}
           max={range.max}
           step={range.step}
-          value={value}
+          value={shown}
           aria-label={label}
-          onChange={(event) => onChange(Number(event.target.value))}
+          onChange={(event) => (onRelease ? setHeld(Number(event.target.value)) : onChange(Number(event.target.value)))}
+          onPointerUp={onRelease ? commit : undefined}
+          onKeyUp={onRelease ? commit : undefined}
+          onBlur={onRelease ? commit : undefined}
         />
       </span>
     </div>
@@ -472,10 +483,8 @@ function ImageFolder({ settings, onChange }: {
  * what you get. Picking a system font keeps the last preset as fallback.
  * Serif is the recommended default.
  */
-function DocumentFont({ settings, onChange }: {
-  settings: NotoSettingsV1;
-  onChange: (patch: Partial<NotoSettingsV1>) => void;
-}) {
+/** The families installed on this machine, read once from main. */
+function useFamilies(): readonly string[] {
   const [families, setFamilies] = useState<readonly string[]>([]);
   useEffect(() => {
     let active = true;
@@ -487,7 +496,40 @@ function DocumentFont({ settings, onChange }: {
       .catch(() => { /* presets still work */ });
     return () => { active = false; };
   }, []);
+  return families;
+}
 
+/** One installed family to lead a stack, or none. */
+function FamilyPicker({ label, hint, value, families, none, onPick, testId }: {
+  label: string;
+  hint: string;
+  value: string;
+  families: readonly string[];
+  none: string;
+  onPick: (family: string) => void;
+  testId: string;
+}) {
+  return (
+    <div className="pref-row">
+      <span className="pref-label">
+        {label}
+        <small>{hint}</small>
+      </span>
+      <select className="pref-select" data-testid={testId} aria-label={label} value={value}
+        onChange={(event) => onPick(event.target.value)}>
+        <option value="">{none}</option>
+        {value && !families.includes(value) && <option value={value}>{value}</option>}
+        {families.map((family) => <option key={family} value={family}>{family}</option>)}
+      </select>
+    </div>
+  );
+}
+
+function DocumentFont({ settings, onChange, families }: {
+  settings: NotoSettingsV1;
+  onChange: (patch: Partial<NotoSettingsV1>) => void;
+  families: readonly string[];
+}) {
   return (
     <>
       <Tiles
@@ -499,27 +541,9 @@ function DocumentFont({ settings, onChange }: {
         onPick={(value) => onChange({ proseFace: value, proseFontFamily: '' })}
         testPrefix="face"
       />
-      <div className="pref-row">
-        <span className="pref-label">
-          System font
-          <small>Installed families from this machine. Empty uses the preset alone.</small>
-        </span>
-        <select
-          className="pref-select"
-          data-testid="setting-prose-font-family"
-          aria-label="System font"
-          value={settings.proseFontFamily}
-          onChange={(event) => onChange({ proseFontFamily: event.target.value })}
-        >
-          <option value="">Preset default</option>
-          {settings.proseFontFamily
-            && !families.includes(settings.proseFontFamily)
-            && <option value={settings.proseFontFamily}>{settings.proseFontFamily}</option>}
-          {families.map((family) => (
-            <option key={family} value={family}>{family}</option>
-          ))}
-        </select>
-      </div>
+      <FamilyPicker label="System font" hint="Installed families from this machine. Empty uses the preset alone."
+        value={settings.proseFontFamily} families={families} none="Preset default"
+        onPick={(family) => onChange({ proseFontFamily: family })} testId="setting-prose-font-family" />
     </>
   );
 }
@@ -809,6 +833,7 @@ export function Settings({
   pluginDetailId, onPluginDetailClear, pluginDetailName,
   themeProblem, onReloadCss,
 }: SettingsProps) {
+  const families = useFamilies();
   const dialogRef = useRef<HTMLElement>(null);
   const [query, setQuery] = useState('');
 
@@ -972,13 +997,31 @@ export function Settings({
                 <Tiles label="Theme" hint="System follows the computer between light and dark."
                   options={THEMES} value={settings.theme} art={themeArt}
                   onPick={(value) => onChange({ theme: value })} testPrefix="theme" />
-                <Slider label="Text size" setting="fontSize" value={settings.fontSize}
+                <p className="pref-group">Document</p>
+                <Slider label="Text size" hint="100% of the zoom. Command with plus and minus zoom a note as a browser does; Command-0 comes back here."
+                  setting="fontSize" value={settings.fontSize}
                   format={(value) => `${value} px`} testId="setting-font-size"
                   onChange={(value) => onChange({ fontSize: value })} />
                 <Slider label="Line height" setting="lineHeight" value={settings.lineHeight}
                   format={(value) => value.toFixed(2)} testId="setting-line-height"
                   onChange={(value) => onChange({ lineHeight: Number(value.toFixed(2)) })} />
-                <DocumentFont settings={settings} onChange={onChange} />
+                <DocumentFont settings={settings} onChange={onChange} families={families} />
+                <p className="pref-group">Interface</p>
+                <Slider label="Interface size" hint="The title bar, status line, panels and these settings, all in proportion. The note and the sidebar keep their own sizes."
+                  setting="uiScale" value={settings.uiScale}
+                  format={(value) => `${Math.round(value * 100)}%`} testId="setting-ui-scale" onRelease
+                  onChange={(value) => onChange({ uiScale: Number(value.toFixed(2)) })} />
+                <FamilyPicker label="Interface font" hint="Menus aside, which are the system's."
+                  value={settings.uiFontFamily} families={families} none="System default"
+                  onPick={(family) => onChange({ uiFontFamily: family })} testId="setting-ui-font-family" />
+                <p className="pref-group">Sidebar</p>
+                <Slider label="Sidebar text size" hint="The file tree, outline, search and links. Rows grow with the names."
+                  setting="railFontSize" value={settings.railFontSize}
+                  format={(value) => `${value} px`} testId="setting-rail-font-size"
+                  onChange={(value) => onChange({ railFontSize: value })} />
+                <FamilyPicker label="Sidebar font" hint="Empty sets the tree in the document's serif, as Typora's sidebar is."
+                  value={settings.railFontFamily} families={families} none="Document serif"
+                  onPick={(family) => onChange({ railFontFamily: family })} testId="setting-rail-font-family" />
                 <Tiles label="Page width" hint="Also on the View menu."
                   options={WIDTHS} value={settings.widthMode} art={widthArt}
                   onPick={(value) => onChange({ widthMode: value })} testPrefix="width" />
@@ -1131,6 +1174,13 @@ export function Settings({
                     format={(value) => `${(value / 1000).toFixed(1)} s`} testId="setting-auto-save-delay"
                     onChange={(value) => onChange({ autoSaveDelayMs: Math.round(value) })} />
                 )}
+                <Choices label="Leaving a note with unsaved changes"
+                  hint="When another note or file is opened over it. Saving keeps no draft behind to meet a change on disk or a quit later."
+                  options={[
+                    { value: 'save' as const, label: 'Save it' },
+                    { value: 'ask' as const, label: 'Ask' },
+                  ]}
+                  value={settings.leaveUnsaved} onPick={(value) => onChange({ leaveUnsaved: value })} testPrefix="leave-unsaved" />
                 <Switch
                   label="Follow changes made outside Noto"
                   hint="Another program edits the file and the note follows it, as one undoable step. A note with unsaved changes is never replaced this way: it asks."

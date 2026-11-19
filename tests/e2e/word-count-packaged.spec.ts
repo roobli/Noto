@@ -25,7 +25,7 @@ test.describe('the size of a note', () => {
   test('is counted from what the document draws, not from the file', async () => {
     // Nine words of prose, and an image whose address is longer than all of
     // them. Counting the file would say far more.
-    const body = '# Title\n\nOne two three four five six seven eight nine.\n\n![a](https://example.com/a/very/long/address/that/nobody/reads.png)\n';
+    const body = '# Title\n\nOne two three four five six seven eight nine.\n\n![a](https://images.invalid/a/very/long/address/that/nobody/reads.png)\n';
     const { app, page } = await launch('drawn', body);
     try {
       // "Title" and the nine, and nothing from the address or the alt text.

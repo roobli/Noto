@@ -10,7 +10,7 @@ import { packagedExecutable, placeCaret } from './packaged-app';
  * build asks only when `NOTO_UNSAVED_PROMPT` opts in, since every other spec
  * closes the app with notes left unsaved.
  */
-async function launch(name: string): Promise<{ app: ElectronApplication; page: Page; vault: string }> {
+async function launch(name: string, settings: Record<string, unknown> = {}): Promise<{ app: ElectronApplication; page: Page; vault: string }> {
   const workspace = path.join(process.cwd(), 'test-results', 'unsaved-guard', name);
   await rm(workspace, { recursive: true, force: true });
   const vault = path.join(workspace, 'vault');
@@ -18,6 +18,7 @@ async function launch(name: string): Promise<{ app: ElectronApplication; page: P
   await mkdir(path.join(workspace, 'user-data'), { recursive: true });
   await writeFile(path.join(vault, 'alpha.md'), '# Alpha\n\nFirst note.\n', 'utf8');
   await writeFile(path.join(vault, 'beta.md'), '# Beta\n\nSecond note.\n', 'utf8');
+  await writeFile(path.join(workspace, 'user-data', 'settings.json'), JSON.stringify(settings), 'utf8');
   const app = await electron.launch({
     executablePath: packagedExecutable(),
     args: [`--user-data-dir=${path.join(workspace, 'user-data')}`, vault],
@@ -55,28 +56,107 @@ const menu = (app: ElectronApplication, id: string) => app.evaluate(({ Menu }, i
   find(Menu.getApplicationMenu()!.items)!.click();
 }, id);
 
-async function editAlphaThenOpenBeta(page: Page): Promise<void> {
+async function editAlpha(page: Page): Promise<void> {
   await page.getByTestId('tree-file').filter({ hasText: 'alpha.md' }).click();
   await placeCaret(page, page.locator('.ProseMirror > p').first());
   await page.keyboard.type(' Typed, not saved.');
   await expect(page.locator('.ProseMirror')).toContainText('Typed, not saved.');
-  await page.getByTestId('tree-file').filter({ hasText: 'beta.md' }).click();
-  await expect(page.locator('.titlebar')).toContainText('beta.md');
 }
 
+const alphaOnDisk = (vault: string) => readFile(path.join(vault, 'alpha.md'), 'utf8');
+
 test.describe('unsaved edits are asked about before they are lost', () => {
-  test('quitting with a note left unsaved behind another asks, and Review brings it back', async () => {
+  test('leaving a note for another saves it first, by default', async () => {
+    const { app, page, vault } = await launch('leave-save');
+    try {
+      await editAlpha(page);
+      await page.getByTestId('tree-file').filter({ hasText: 'beta.md' }).click();
+      await expect(page.locator('.titlebar')).toContainText('beta.md');
+      await expect.poll(() => alphaOnDisk(vault)).toBe('# Alpha\n\nFirst note. Typed, not saved.\n');
+      // Nothing is left behind to ask about.
+      await expect(page.getByTestId('leave-unsaved')).toHaveCount(0);
+    } finally {
+      await app.close();
+    }
+  });
+
+  test('a note left by a way main opens, New Note, is saved too', async () => {
+    const { app, page, vault } = await launch('leave-main');
+    try {
+      await editAlpha(page);
+      await menu(app, 'new-file');
+      await expect(page.locator('.titlebar')).not.toContainText('alpha.md');
+      await expect.poll(() => alphaOnDisk(vault)).toBe('# Alpha\n\nFirst note. Typed, not saved.\n');
+    } finally {
+      await app.close();
+    }
+  });
+
+  test('a save refused on the way out keeps the reader on the note, its changes kept', async () => {
+    const { app, page, vault } = await launch('leave-refused');
+    try {
+      await editAlpha(page);
+      // Another program writes the file underneath, so the save is refused.
+      await writeFile(path.join(vault, 'alpha.md'), '# Alpha\n\nChanged elsewhere.\n', 'utf8');
+      await page.waitForTimeout(800);
+      await page.getByTestId('tree-file').filter({ hasText: 'beta.md' }).click();
+      await page.waitForTimeout(800);
+      await expect(page.locator('.titlebar')).toContainText('alpha.md');
+      await expect(page.locator('.canvas-slot:not([hidden]) .ProseMirror')).toContainText('Typed, not saved.');
+      expect(await alphaOnDisk(vault)).toBe('# Alpha\n\nChanged elsewhere.\n');
+    } finally {
+      await answer(app, 1).catch(() => {});
+      await app.close();
+    }
+  });
+
+  test('asked instead, Cancel stays, Don\'t Save puts the note back as on disk, Save writes it', async () => {
+    const { app, page, vault } = await launch('leave-ask', { leaveUnsaved: 'ask' });
+    try {
+      await editAlpha(page);
+      const beta = page.getByTestId('tree-file').filter({ hasText: 'beta.md' });
+      await beta.click();
+      const question = page.getByTestId('leave-unsaved');
+      await expect(question).toContainText('alpha.md');
+      await page.getByTestId('leave-unsaved-cancel').click();
+      await expect(question).toHaveCount(0);
+      await expect(page.locator('.titlebar')).toContainText('alpha.md');
+      await expect(page.locator('.ProseMirror:visible')).toContainText('Typed, not saved.');
+
+      await beta.click();
+      await page.getByTestId('leave-unsaved-discard').click();
+      await expect(page.locator('.titlebar')).toContainText('beta.md');
+      expect(await alphaOnDisk(vault)).toBe('# Alpha\n\nFirst note.\n');
+      // Back on alpha, it is the file on disk, with nothing unsaved.
+      await page.getByTestId('tree-file').filter({ hasText: 'alpha.md' }).click();
+      await expect(page.locator('.titlebar')).toContainText('alpha.md');
+      const alphaPage = page.locator('.canvas-slot:not([hidden]) .ProseMirror');
+      await expect(alphaPage).toContainText('First note.');
+      await expect(alphaPage).not.toContainText('Typed, not saved.');
+
+      await placeCaret(page, alphaPage.locator('p').first());
+      await page.keyboard.type(' Second try.');
+      await beta.click();
+      // Return presses Save.
+      await page.keyboard.press('Enter');
+      await expect(page.locator('.titlebar')).toContainText('beta.md');
+      await expect.poll(() => alphaOnDisk(vault)).toContain('Second try.');
+    } finally {
+      await app.close();
+    }
+  });
+
+  test('quitting with a note unsaved asks, and Review brings it back', async () => {
     const { app, page, vault } = await launch('quit');
     let gone = false;
     app.process().once('exit', () => { gone = true; });
     try {
-      await editAlphaThenOpenBeta(page);
+      await editAlpha(page);
       // Answer 0 is Review Changes.
       await answer(app, 0);
       await app.evaluate(({ app: electronApp }) => { electronApp.quit(); });
       await expect.poll(() => asked(app)).toEqual(['"alpha.md" has unsaved changes.']);
       await expect(page.locator('.titlebar')).toContainText('alpha.md');
-      // Each loaded note keeps its editor; the one in front is the visible one.
       await expect(page.locator('.ProseMirror:visible')).toContainText('Typed, not saved.');
 
       // Discard and Quit: the app goes, and the file on disk is as it was.

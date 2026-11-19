@@ -73,9 +73,10 @@ import { notoInputRules, type InputRuleOptions } from './input-rules';
 import { EDITOR_COMMANDS, insertTable, notoKeymap } from './keymap';
 import { sortTasks, toggleTaskStatus, type TaskStampOptions } from './todo-manager';
 import { activeNodePlugin } from './active-node-plugin';
+import { markBoundaryPlugin } from './mark-boundary';
 import { viewportLayoutPlugin } from './viewport-layout';
 import { mergeStubAwareNodeViews, stubbingEnabled, viewportStubPlugin } from './viewport-stub';
-import { taskClickPlugin } from './task-click';
+import { taskClickPlugin, taskStampPlugin } from './task-click';
 import { indexBlockPlugin } from './index-block';
 import { imageFromTransfer } from './image-drop';
 import { documentDomToHtml, sliceToHtml, sliceToPlainText } from './clipboard';
@@ -83,16 +84,18 @@ import { alertPlugin } from './alert-plugin';
 import { imageLinePlugin } from './image-line';
 import { RESCAN, typoraMarksKey, typoraMarksPlugin } from './typora-marks-plugin';
 import { editorExtensions, type EditorContextItem } from './editor-extensions';
-import { ALL_MARK_KINDS, type TyporaMarkKinds } from './typora-marks';
+import { ALL_MARK_KINDS, type TyporaMarkKinds } from '@roobli/md/inline';
 import { typewriterPlugin } from './typewriter-plugin';
 import { autoPairPlugin } from './auto-pair';
 import { mathEditingPlugin, mathNodeViews } from './math-view';
+import { mathPairPlugin } from './math-pair';
 import { mathAdjacencyPlugin } from './math-adjacency';
 import { tableNodeViews } from './table-view';
 import { fenceNodeViews } from './fence-view';
 import type { ImageContext } from './image-source';
 import { htmlNodeViews } from './html-view';
 import { imageNodeViews, type Refreshable } from './image-view';
+import { imageSourcePlugin, pictureAt, pictureContextItems, zoomPicture } from './image-source-edit';
 import type { SearchOptions } from './search';
 import {
   getSearchState,
@@ -472,6 +475,11 @@ export class NotoEditor implements NotoEditorPort {
         smartEllipsis: () => this.substitutions.ellipsis,
         autoPair: () => this.autoPair,
       }),
+      // Ahead of the keymap, which would take the arrow that steps across a
+      // revealed delimiter as an ordinary move.
+      markBoundaryPlugin(this.options.mac),
+      // Ahead of the keymap too: an arrow toward a picture goes into its source.
+      imageSourcePlugin(),
       ...notoKeymap({
         mac: this.options.mac,
         onWidthStep: (d) => this.options.onWidthStep?.(d),
@@ -486,6 +494,8 @@ export class NotoEditor implements NotoEditorPort {
       imageLinePlugin(),
       typoraMarksPlugin(() => this.markKinds),
       typewriterPlugin(() => this.typewriter),
+      // Before the general pairing, which does not know a dollar opens maths.
+      mathPairPlugin(() => this.autoPair),
       autoPairPlugin(() => this.autoPair),
       // Before the table plugin, which would otherwise take a right press on
       // selected cells as the start of a new selection.
@@ -496,6 +506,7 @@ export class NotoEditor implements NotoEditorPort {
       viewportStubPlugin(),
       spellCheckScopePlugin(() => this.spellCheck),
       taskClickPlugin(this.taskStampOptions()),
+      taskStampPlugin(),
 
       wikiLinkPlugin({ onFollow: (target) => this.options.onFollowWikiLink?.(target) }),
       indexBlockPlugin({ onFollow: (target) => this.options.onFollowWikiLink?.(target) }),
@@ -1048,6 +1059,46 @@ export class NotoEditor implements NotoEditorPort {
     this.focusTopLevel(topLevelOfWritten(view.state.doc, index), options);
   }
 
+  /**
+   * The written block at the reading line of `scroller`, a quarter of the
+   * page down: the one the reader is looking at, for the outline to light
+   * while the note is scrolled. A heading the outline jumps to lands at a
+   * tenth of the page, above the line, so it is the one lit after the jump.
+   * Null while the note is not laid out.
+   */
+  blockAtReadingLine(scroller: HTMLElement): number | null {
+    const view = this.view;
+    if (!view || !view.dom.isConnected) return null;
+    const page = scroller.getBoundingClientRect();
+    const text = view.dom.getBoundingClientRect();
+    if (text.height === 0) return null;
+    const top = Math.max(text.top + 1, Math.min(text.bottom - 1, page.top + Math.min(scroller.clientHeight * 0.25, 200)));
+    const found = view.posAtCoords({ left: text.left + text.width / 2, top });
+    if (!found) return null;
+    const { doc } = view.state;
+    const at = Math.max(0, Math.min(found.inside >= 0 ? found.inside : found.pos, doc.content.size));
+    return writtenBlocksBefore(doc, Math.min(doc.resolve(at).index(0), doc.childCount - 1));
+  }
+
+  /**
+   * The words selected in the note, for Find to search as it opens, as a
+   * browser's and Typora's do. Only while the note itself holds the keys, so
+   * a selection left behind when the find bar was focused is not taken back;
+   * and only a run on one line, which is what a find field holds.
+   */
+  selectionForFind(): string | null {
+    const view = this.view;
+    if (!view || !view.hasFocus()) return null;
+    const { from, to, empty } = view.state.selection;
+    // The page's own selection first: a double click's word is on screen a
+    // while before the editor's state has it, which still held the last one.
+    const dom = view.dom.ownerDocument.getSelection();
+    const onPage = dom && !dom.isCollapsed && dom.anchorNode && view.dom.contains(dom.anchorNode) ? dom.toString() : '';
+    const text = onPage || (empty ? '' : view.state.doc.textBetween(from, to, '\n', ' '));
+    if (text.trim().length === 0 || text.includes('\n') || text.length > 300) return null;
+    return text;
+  }
+
   /** The same, for a top-level node index. */
   private focusTopLevel(index: number, options?: { readonly at?: number }): void {
     const view = this.view;
@@ -1142,12 +1193,19 @@ export class NotoEditor implements NotoEditorPort {
     this.contextPassage = pos === null || !this.options.onPassageHistory ? null : this.passageAt(pos);
     const history: EditorContextItem[] = this.contextPassage === null ? [] : [{ title: 'History of This Passage', command: PASSAGE_HISTORY }];
     if (this.readOnly) return history;
-    // The table's own lines first: in a table they are what the click is about.
-    return [...tableContextItems(view.state, pos), ...editorExtensions.contextItems(view, { pos, element: hit }), ...history];
+    // A picture's zooms, when the click is on one, and the table's own lines:
+    // what the click is about comes first.
+    this.contextPicture = pictureAt(view.state, pos, hit);
+    const pictures = pictureContextItems(view.state, pos, hit);
+    // Main shows eight at most; a picture's own lines go first, then the history, before a table's.
+    const items = [...pictures, ...tableContextItems(view.state, pos), ...editorExtensions.contextItems(view, { pos, element: hit })];
+    return pictures.length > 0 ? [...pictures, ...history].slice(0, 8) : [...items, ...history].slice(0, 8);
   }
 
   /** The passage a right click was on, for History of This Passage when it is chosen. */
   private contextPassage: string | null = null;
+  /** The picture a right click was on, for its zoom when one is chosen. */
+  private contextPicture: number | null = null;
 
   /** The text the last commit has for the top-level block holding `pos`; null where git has none. */
   private passageAt(pos: number): string | null {
@@ -1183,6 +1241,12 @@ export class NotoEditor implements NotoEditorPort {
     // Bold from the menu while a sidenote is being written would bold the
     // note's words behind the field, not anything in it.
     if (this.fieldFocused(view)) return false;
+    if (name.startsWith('noto.image-zoom-')) {
+      if (this.readOnly) return false;
+      const at = this.contextPicture;
+      this.contextPicture = null;
+      return zoomPicture(view, name, at);
+    }
     // Every editor command changes the document, so read-only refuses them all
     // rather than each one having to remember to check, except the few that
     // only move the selection.

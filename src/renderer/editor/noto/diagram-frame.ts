@@ -63,6 +63,7 @@ export function paletteNow(): DiagramPalette {
     hairline: read('--hairline'),
     lineStrong: read('--line-strong'),
     accent: read('--accent'),
+    series: Array.from({ length: 8 }, (_, at) => read(`--chart-${at + 1}`)).filter((colour) => colour.length > 0),
   };
 }
 

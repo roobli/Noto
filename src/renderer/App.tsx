@@ -37,6 +37,7 @@ import { ConfirmedOpenRecorder } from '../shared/search/v1/confirmed-open';
 import type { NotoDocumentWire } from '../shared/markdown/v3/contracts';
 import { materializeSaveReply } from './file-truth-save';
 import { outlineFromDocument } from './outline';
+import { blockForFragment } from './heading-anchor';
 import { PLUGIN_LIFECYCLE_VERSION, type PluginLifecycleSnapshot } from '../shared/plugins/lifecycle';
 import { rendererProofManifest, sidenotesManifest } from '../shared/plugins/proof-manifests';
 import { chordOfEvent, normalizeChord } from '../shared/shortcuts/chord';
@@ -54,11 +55,12 @@ import { WorkspaceRail, type RailView } from './WorkspaceRail';
 import { SourceMode } from './SourceMode';
 import { TableDialog } from './TableDialog';
 import { ReloadConfirmDialog } from './ReloadConfirmDialog';
+import { LeaveUnsavedDialog, type LeaveChoice } from './LeaveUnsavedDialog';
 import { GUIDE_EDITION, Shortcuts, tryNeeds, type GuideTry } from './Shortcuts';
 import { RailFooter } from './RailFooter';
 import { Settings, type SettingsSection } from './Settings';
 import {
-  DEFAULT_SETTINGS, clampRailWidth, stepWidthMode, type NotoSettingsV1, type TreeSortV1,
+  DEFAULT_SETTINGS, clampRailWidth, stepDocZoom, stepWidthMode, type NotoSettingsV1, type TreeSortV1,
 } from '../shared/settings/v1/contracts';
 import type { AssetRefusalV1 } from '../shared/assets/v1/contracts';
 import { copyThroughSelection } from './editor/noto/clipboard';
@@ -232,6 +234,30 @@ interface OpenDocumentState {
  * files. The least recently used are let go past this many, never the one in
  * front and never one with unsaved changes.
  */
+/** The last save, as its toast says it. */
+interface SaveToast {
+  readonly key: number;
+  readonly ok: boolean;
+  /** A copy written elsewhere by Save a Copy, rather than the note itself. */
+  readonly copy: boolean;
+  /** The full path written to. */
+  readonly path: string;
+  /** Why it failed, when it did. */
+  readonly reason: string | null;
+}
+
+/** Why a save that came back was not written, in a line. */
+function refusedSaveReason(outcome: FileTruthSaveOutcomeV1): string {
+  switch (outcome.status) {
+    case 'external-conflict': return 'The file changed on disk after it was opened. Your edits are still here.';
+    case 'stale-editor-revision': return 'The note changed while it was being saved. Save again.';
+    case 'recovery-needed': return 'An earlier save left a recovery record, which has to be dealt with first.';
+    case 'recovery-failed': return 'Recovering an earlier save failed. Your edits are still here.';
+    case 'cleanup-failed': return 'The file was written, but cleaning up after it failed.';
+    default: return 'The save was refused. Your edits are still here.';
+  }
+}
+
 const KEEP_LOADED = 12;
 
 function NotoWorkspace({ platform }: { platform: NotoPlatform }) {
@@ -304,6 +330,14 @@ function NotoWorkspace({ platform }: { platform: NotoPlatform }) {
   const [themeReload, setThemeReload] = useState(0);
   const [themeProblem, setThemeProblem] = useState('');
   const [activeBlock, setActiveBlock] = useState(-1);
+  /*
+   * The block at the reading line while the note is scrolled, which the
+   * outline lights instead of the caret's, as Typora's does: the last of the
+   * two to move is the one the reader is following. Null once the caret moves.
+   */
+  const [scrolledBlock, setScrolledBlock] = useState<number | null>(null);
+  /** When the caret last moved or the note was typed in, whose own scrolling is not the reader's. */
+  const caretMovedAtRef = useRef(0);
   /** Whether something outside the window can drive it, as main reports it. */
   const [remote, setRemote] = useState<{ listening: boolean; port: number | null }>({
     listening: false, port: null,
@@ -325,6 +359,8 @@ function NotoWorkspace({ platform }: { platform: NotoPlatform }) {
   }, []);
   /** Typora's Insert Table dialog, open or not. */
   const [tableDialog, setTableDialog] = useState(false);
+  /** The question asked before a note with unsaved changes is left, when the reader wants to be asked. */
+  const [leaveAsk, setLeaveAsk] = useState<{ readonly name: string; readonly answer: (choice: LeaveChoice) => void } | null>(null);
   /** Dirty-buffer confirm before a reload that would discard unsaved edits. */
   const [reloadConfirm, setReloadConfirm] = useState<
     { documentId: string; offerSaveCopy: boolean } | null
@@ -462,6 +498,10 @@ function NotoWorkspace({ platform }: { platform: NotoPlatform }) {
      settings as they were at launch and step the width from 66 every time. */
   const settingsRef = useRef(settings);
   settingsRef.current = settings;
+  /** Counts settings writes, so only the latest one's answer is taken. */
+  const settingsWriteRef = useRef(0);
+  /** The writes not yet answered, while which main's echo of an earlier one is not taken. */
+  const settingsWritesInFlightRef = useRef(0);
 
   const [folder, setFolder] = useState<{ root: string | null; name: string | null }>({ root: null, name: null });
   /** What git says about the folder's notes, as main last sent it. */
@@ -605,6 +645,20 @@ function NotoWorkspace({ platform }: { platform: NotoPlatform }) {
    * it as a button, such as the plain text in place of a tidied paste.
    */
   const [notice, setNotice] = useState<string | null>(null);
+  /*
+   * What the last save did, said every time: the note's name, the full path
+   * it was written to, and, when it failed, why. Each save replaces the one
+   * before, so saves in a row refresh one toast rather than stacking.
+   */
+  const [saveToast, setSaveToast] = useState<SaveToast | null>(null);
+  const saveToastTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const toastSave = useCallback((ok: boolean, filePath: string | null | undefined, reason: string | null = null, copy = false) => {
+    if (!filePath) return;
+    if (saveToastTimerRef.current !== null) clearTimeout(saveToastTimerRef.current);
+    setSaveToast((last) => ({ key: (last?.key ?? 0) + 1, ok, copy, path: filePath, reason }));
+    saveToastTimerRef.current = setTimeout(() => { saveToastTimerRef.current = null; setSaveToast(null); }, ok ? 2800 : 8000);
+  }, []);
+  useEffect(() => () => { if (saveToastTimerRef.current !== null) clearTimeout(saveToastTimerRef.current); }, []);
   const [noticeAction, setNoticeAction] = useState<{ label: string; run: () => void } | null>(null);
   useEffect(() => {
     let timer: ReturnType<typeof setTimeout> | null = null;
@@ -843,7 +897,7 @@ function NotoWorkspace({ platform }: { platform: NotoPlatform }) {
       return { open: true, section, pluginDetailId: null, pluginDetailName: null };
     });
   }, []);
-  const [find, setFind] = useState<{ open: boolean; replace: boolean; query?: string }>(
+  const [find, setFind] = useState<{ open: boolean; replace: boolean; query?: string; seed?: number }>(
     { open: false, replace: false },
   );
   const findRef = useRef(find);
@@ -958,7 +1012,29 @@ function NotoWorkspace({ platform }: { platform: NotoPlatform }) {
    */
   useEffect(() => {
     const root = globalThis.document.documentElement;
-    root.style.setProperty('--doc-font-size', `${settings.fontSize}px`);
+    /*
+     * The interface is zoomed as a whole by main (`uiScale`), as a browser
+     * zooms a page. The document's text and the sidebar's names are held to
+     * the sizes set for them by dividing by that zoom, so each is set on its
+     * own: a larger interface is not a larger page.
+     */
+    const zoom = settings.uiScale > 0 ? settings.uiScale : 1;
+    root.style.setProperty('--ui-scale', String(zoom));
+    // The note's own zoom multiplies its text and its measure, as a browser's
+    // does a page; `--doc-scale` carries it to sizes set in pixels inside the note.
+    const docZoom = settings.docZoom > 0 ? settings.docZoom : 1;
+    root.style.setProperty('--doc-zoom', String(docZoom));
+    root.style.setProperty('--doc-font-size', `${(settings.fontSize * docZoom) / zoom}px`);
+    root.style.setProperty('--doc-scale', String((settings.fontSize * docZoom) / 15 / zoom));
+    root.style.setProperty('--rail-font-size', `${settings.railFontSize / zoom}px`);
+    root.style.setProperty('--rail-scale', String(settings.railFontSize / 14 / zoom));
+    // A family leads its stack as a name and a comma; names with quotes are refused at the settings boundary.
+    const lead = (name: string, family: string) => {
+      if (family) root.style.setProperty(name, `"${family}",`);
+      else root.style.removeProperty(name);
+    };
+    lead('--ui-lead', settings.uiFontFamily);
+    lead('--rail-lead', settings.railFontFamily);
     root.style.setProperty('--doc-line-height', `${settings.lineHeight}`);
     root.dataset.widthMode = settings.widthMode;
     root.dataset.proseFace = settings.proseFace;
@@ -978,7 +1054,8 @@ function NotoWorkspace({ platform }: { platform: NotoPlatform }) {
     root.dataset.timelines = settings.timelines ? 'on' : 'off';
     root.dataset.focusMode = settings.focusMode ? 'on' : 'off';
     root.dataset.gitMarks = settings.gitMarks ? 'on' : 'off';
-  }, [settings.fontSize, settings.lineHeight, settings.widthMode, settings.proseFace, settings.proseFontFamily,
+  }, [settings.fontSize, settings.docZoom, settings.uiScale, settings.railFontSize, settings.uiFontFamily, settings.railFontFamily,
+    settings.lineHeight, settings.widthMode, settings.proseFace, settings.proseFontFamily,
     settings.codeLineNumbers, settings.codeWrap, settings.sheetWidth, settings.codeIndentGuides, settings.codeTabMarkers,
     settings.timelines, settings.focusMode, settings.gitMarks]);
 
@@ -1038,7 +1115,10 @@ function NotoWorkspace({ platform }: { platform: NotoPlatform }) {
         if (result.value.settings.sidebarOnLaunch) setRail({ open: true, view: 'files' });
       });
     const unsubscribe = window.notoSettings.onChanged((event) => {
-      if (active) setSettings(event.settings);
+      // While this window's own writes are landing, the echo of an earlier one
+      // would put back a value the reader has already moved past; the answer
+      // to the last write is what is taken then.
+      if (active && settingsWritesInFlightRef.current === 0) setSettings(event.settings);
     });
     return () => { active = false; unsubscribe(); };
   }, []);
@@ -1079,8 +1159,15 @@ function NotoWorkspace({ platform }: { platform: NotoPlatform }) {
     // re-renders does not re-read a stale settingsRef.
     setSettings((current) => {
       const resolved = typeof patch === 'function' ? patch(current) : patch;
+      // Only the latest write's answer is taken: two presses of a key in a
+      // row write twice, and the first answer arriving after the second
+      // press used to put the first value back, losing the second.
+      settingsWriteRef.current += 1;
+      settingsWritesInFlightRef.current += 1;
+      const written = settingsWriteRef.current;
       void window.notoSettings.write({ version: 1, requestId: rid('settings-write'), patch: resolved })
-        .then((result) => { if (result.ok) setSettings(result.value.settings); });
+        .then((result) => { if (result.ok && written === settingsWriteRef.current) setSettings(result.value.settings); })
+        .finally(() => { settingsWritesInFlightRef.current -= 1; });
       return { ...current, ...resolved };
     });
   }, []);
@@ -1478,6 +1565,31 @@ function NotoWorkspace({ platform }: { platform: NotoPlatform }) {
   useFocusReturn(shortcuts, focusNoteInFront);
   useFocusReturn(tableDialog, focusNoteInFront);
 
+  useEffect(() => {
+    caretMovedAtRef.current = performance.now();
+    setScrolledBlock(null);
+  }, [activeBlock, activeId]);
+  useEffect(() => {
+    const canvas = globalThis.document.getElementById('document-canvas');
+    if (!canvas) return undefined;
+    let frame = 0;
+    const onScroll = () => {
+      if (frame !== 0) return;
+      frame = requestAnimationFrame(() => {
+        frame = 0;
+        // The page brought along by the caret or by typing is not a scroll of the reader's.
+        if (performance.now() - caretMovedAtRef.current < 250) return;
+        const block = editorRef.current?.blockAtReadingLine(canvas) ?? null;
+        if (block !== null) setScrolledBlock(block);
+      });
+    };
+    canvas.addEventListener('scroll', onScroll, { passive: true });
+    return () => {
+      canvas.removeEventListener('scroll', onScroll);
+      if (frame !== 0) cancelAnimationFrame(frame);
+    };
+  }, [activeId]);
+
   /* Each note keeps its place in the shared page (daily-use audit, finding 7). */
   useReadingAnchors({
     canvasId: 'document-canvas',
@@ -1490,7 +1602,9 @@ function NotoWorkspace({ platform }: { platform: NotoPlatform }) {
   });
 
   const activateTab = useCallback((filePath: string) => {
-    void window.notoWorkspace.activateTab({ version: 1, requestId: rid('tab-activate'), path: filePath });
+    void leaveNoteInFrontRef.current(filePath).then((leave) => {
+      if (leave) void window.notoWorkspace.activateTab({ version: 1, requestId: rid('tab-activate'), path: filePath });
+    });
   }, []);
 
   /** The folders opened before, refreshed whenever one is. */
@@ -1612,7 +1726,7 @@ function NotoWorkspace({ platform }: { platform: NotoPlatform }) {
    * and an external conflict resolved automatically is data loss nobody
    * watched happen.
    */
-  const saveRef = useRef<() => Promise<void>>(async () => {});
+  const saveRef = useRef<(targetId?: string) => Promise<void>>(async () => {});
   // Autosave debounce without setState on every keystroke: a typingTick state
   // re-rendered the whole shell (~React commit) on the caret-in-viewport path.
   const autoSaveTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
@@ -1665,18 +1779,27 @@ function NotoWorkspace({ platform }: { platform: NotoPlatform }) {
     if (noteTagsTimerRef.current !== null) clearTimeout(noteTagsTimerRef.current);
   }, []);
 
-  const save = async () => {
-    const editor = editorRef.current;
+  /**
+   * Save a note: the one in front, or `targetId`, one that is loaded behind it
+   * (a note just left). Everything is read for that note, its editor and its
+   * save token, so a save started as the reader moves on lands on its own note.
+   */
+  const save = async (targetId?: string) => {
     // Captured with the editor: the reply may come back after the reader has
     // moved to another note, and must land on this one.
-    const documentId = activeIdRef.current;
+    const documentId = targetId ?? activeIdRef.current;
+    const inFront = documentId === activeIdRef.current;
+    const editor = documentId ? editorsRef.current.get(documentId) ?? (inFront ? editorRef.current : null) : editorRef.current;
+    const token = documentId ? docsRef.current.get(documentId)?.token ?? null : null;
+    const savedPath = documentId ? docsRef.current.get(documentId)?.opened.path ?? null : null;
+    const mark = (value: UiState) => { if (documentId) patchDoc(documentId, { state: value }); else setState(value); };
     // Text still settling in the source view goes into the document first,
     // so a save a moment after typing there writes what is on screen.
-    sourceFlushRef.current?.();
+    if (inFront) sourceFlushRef.current?.();
     if (!editor || !token) return;
     // The editor's own word on being dirty, because the flush above may have
     // just made it so and the state this closure holds is from before.
-    const dirty = editorDirty || editor.isDirty;
+    const dirty = (inFront && editorDirty) || editor.isDirty;
     // A save asked for while one is landing is kept, not dropped: it runs once
     // that one has landed, if there is still something to save. Checked and
     // set before anything is captured, so a second trigger in the same tick
@@ -1697,14 +1820,15 @@ function NotoWorkspace({ platform }: { platform: NotoPlatform }) {
     } catch (error) {
       // Nothing was captured, so there is nothing of this save to abandon.
       fileTruthBusyRef.current = false;
-      setLocalMessage(actionableFileTruthMessage(error,
-        'The editor refused this save. Finish the current word, then save again.'));
-      setState('Unsaved changes');
+      const message = actionableFileTruthMessage(error, 'The editor refused this save. Finish the current word, then save again.');
+      if (inFront) setLocalMessage(message);
+      toastSave(false, savedPath, message);
+      mark('Unsaved changes');
       return;
     }
     try {
       setPending(true);
-      setState('Saving');
+      mark('Saving');
       const reply = await window.notoFileTruth.save({
         version: 1,
         requestId: rid('ft-save'),
@@ -1721,6 +1845,7 @@ function NotoWorkspace({ platform }: { platform: NotoPlatform }) {
         setPending(false);
         if (documentId) patchDoc(documentId, { outcome: null, state: 'Save failed' });
         if (documentId === activeIdRef.current) setLocalMessage(message);
+        toastSave(false, savedPath, message);
       };
       if (!result.ok) {
         failed(actionableFileTruthMessage(result.error.message, 'The save transport failed. Your edits are still here.'));
@@ -1728,16 +1853,20 @@ function NotoWorkspace({ platform }: { platform: NotoPlatform }) {
       }
       // A refusal (a conflict, another transaction) never commits, and this
       // capture is done with either way.
-      if (!acceptedSaveOutcome(result.value)) editor.abandonSave(capture.captureId);
+      const accepted = acceptedSaveOutcome(result.value) !== null;
+      if (!accepted) editor.abandonSave(capture.captureId);
       present(result.value, capture.captureId, { id: documentId, editor });
+      toastSave(accepted, savedPath, accepted ? null : refusedSaveReason(result.value));
     } catch (error) {
       editor.abandonSave(capture.captureId);
       setPending(false);
       if (documentId) patchDoc(documentId, { outcome: null, state: 'Save failed' });
+      const message = actionableFileTruthMessage(error, 'The save transport failed. Your edits are still here.');
       if (documentId === activeIdRef.current) {
         updateRecoveryBarrier(true);
-        setLocalMessage(actionableFileTruthMessage(error, 'The save transport failed. Your edits are still here.'));
+        setLocalMessage(message);
       }
+      toastSave(false, savedPath, message);
     } finally {
       fileTruthBusyRef.current = false;
     }
@@ -1769,16 +1898,18 @@ function NotoWorkspace({ platform }: { platform: NotoPlatform }) {
 
   saveRef.current = save;
 
-  // The save that waited for another to land, now that it has: on the same
-  // note only, and not past a refusal (a conflict, a recovery record, a
-  // failed write), which waits for the person as the first save did.
+  // The save that waited for another to land, now that it has: on its own
+  // note, in front or not, and not past a refusal (a conflict, a recovery
+  // record, a failed write), which waits for the person as the first save did.
   useEffect(() => {
     if (pending || saveAgainRef.current === null) return;
     const again = saveAgainRef.current;
     saveAgainRef.current = null;
-    if (again !== activeIdRef.current) return;
-    if (recoveryBarrier || state === 'External conflict' || state === 'Stale editor revision' || state === 'Save failed') return;
-    void saveRef.current();
+    const held = docsRef.current.get(again);
+    if (!held) return;
+    if (again === activeIdRef.current && recoveryBarrier) return;
+    if (held.recovery || held.state === 'External conflict' || held.state === 'Stale editor revision' || held.state === 'Save failed') return;
+    void saveRef.current(again);
   }, [pending, recoveryBarrier, state]);
 
   const saveCopy = async (): Promise<boolean> => {
@@ -1810,16 +1941,23 @@ function NotoWorkspace({ platform }: { platform: NotoPlatform }) {
       });
       if (!result.ok) {
         setPending(false);
-        setLocalMessage(actionableFileTruthMessage(result.error.message, 'Save a copy failed. The original is unchanged.'));
+        const message = actionableFileTruthMessage(result.error.message, 'Save a copy failed. The original is unchanged.');
+        setLocalMessage(message);
+        toastSave(false, chosen.value.path, message, true);
         setState('Save failed');
         return false;
       }
       present(result.value);
-      return result.value.status === 'copy-saved';
+      const copied = result.value.status === 'copy-saved';
+      toastSave(copied, copied && result.value.status === 'copy-saved' ? result.value.destinationPath : chosen.value.path,
+        copied ? null : refusedSaveReason(result.value), true);
+      return copied;
     } catch (error) {
       setPending(false);
       setOutcome(null);
-      setLocalMessage(actionableFileTruthMessage(error, 'Save a copy failed. The original is unchanged.'));
+      const message = actionableFileTruthMessage(error, 'Save a copy failed. The original is unchanged.');
+      setLocalMessage(message);
+      toastSave(false, chosen.value.path, message, true);
       setState('Save failed');
       return false;
     } finally {
@@ -1848,8 +1986,117 @@ function NotoWorkspace({ platform }: { platform: NotoPlatform }) {
     }
   }, []);
 
+  /**
+   * Before the note in front is left for another file: its unsaved changes are
+   * saved, or, when the reader asked to be asked, saved, put back as on disk,
+   * or kept by staying. A note is never left behind as a draft, which a change
+   * on disk, a return to it or a quit would each have to reckon with. Resolves
+   * false when the reader stays.
+   */
+  /** Set while a note is being settled before it is left, so a second leave waits its turn rather than asking twice. */
+  const leavingRef = useRef(false);
+  /** The notes settled on the way out, so the watch on the front below does not settle them again. */
+  const settledRef = useRef(new Set<string>());
+
+  /**
+   * Save a note, or put it back as it is on disk, or bring it back to the
+   * front: what the reader chose for a note being left. Resolves whether the
+   * note is settled, nothing of it left unsaved.
+   */
+  const settleNote = useCallback(async (id: string, choice: LeaveChoice): Promise<boolean> => {
+    const editor = editorsRef.current.get(id);
+    if (!editor) return true;
+    if (choice === 'cancel') return false;
+    // A save already landing is waited for, so this one is not parked behind
+    // it and forgotten once the note is no longer in front.
+    for (let waited = 0; fileTruthBusyRef.current && waited < 200; waited += 1) {
+      await new Promise((resolve) => setTimeout(resolve, 25));
+    }
+    if (choice === 'discard') await reloadFromDiskRef.current(id);
+    else await saveRef.current(id);
+    return !editor.isDirty;
+  }, []);
+  const settleNoteRef = useRef(settleNote);
+  settleNoteRef.current = settleNote;
+
+  const askAboutLeaving = (name: string): Promise<LeaveChoice> => new Promise<LeaveChoice>((resolve) => {
+    setLeaveAsk({ name, answer: (choice) => { setLeaveAsk(null); resolve(choice); } });
+  });
+
+  const nameOfDocument = (id: string) => {
+    const where = docsRef.current.get(id)?.opened.path ?? '';
+    return where.split(/[\\/]/).pop() ?? where;
+  };
+
+  const leaveNoteInFront = useCallback(async (target: string | null): Promise<boolean> => {
+    // One leave at a time: a second one, from a key pressed while the first
+    // is asking or saving, waits for the reader to come back to it.
+    if (leavingRef.current) return false;
+    const id = activeIdRef.current;
+    const doc = id ? docsRef.current.get(id) : undefined;
+    const editor = id ? editorsRef.current.get(id) : undefined;
+    sourceFlushRef.current?.();
+    if (!id || !doc || !editor || !editor.isDirty) return true;
+    if (target !== null && doc.opened.path === target) return true;
+    leavingRef.current = true;
+    try {
+      clearAutoSaveTimer();
+      const choice = settingsRef.current.leaveUnsaved === 'ask' ? await askAboutLeaving(nameOfDocument(id)) : 'save';
+      // Something else came to the front while the question was up (a menu
+      // item, a file from Finder); the watch on the front settles it.
+      if (activeIdRef.current !== id) return false;
+      if (choice === 'cancel') {
+        editor.focus();
+        return false;
+      }
+      settledRef.current.add(id);
+      const settled = await settleNoteRef.current(id, choice);
+      if (!settled) {
+        settledRef.current.delete(id);
+        // Refused or failed: the note stays in front with its changes, and says why.
+        window.dispatchEvent(new CustomEvent('noto:notice', { detail: `"${nameOfDocument(id)}" could not be saved, so it stays open with its changes.` }));
+        editor.focus();
+        return false;
+      }
+      return true;
+    } finally {
+      leavingRef.current = false;
+    }
+  }, [clearAutoSaveTimer]);
+  const leaveNoteInFrontRef = useRef(leaveNoteInFront);
+  leaveNoteInFrontRef.current = leaveNoteInFront;
+
+  /*
+   * A note left by a way that did not ask first: New Note, Open, Open Recent,
+   * Reopen Closed, a file from Finder or the command line, all opened by main.
+   * Its changes are saved now, or, when the reader asked to be asked, the
+   * question comes now, and Cancel brings the note back to the front.
+   */
+  const lastFrontRef = useRef<string | null>(null);
+  useEffect(() => {
+    const left = lastFrontRef.current;
+    const front = codeView ? null : activeId;
+    lastFrontRef.current = front;
+    if (left === null || left === front) return;
+    if (settledRef.current.delete(left)) return;
+    const editor = editorsRef.current.get(left);
+    if (!editor || !editor.isDirty || !docsRef.current.has(left)) return;
+    void (async () => {
+      const choice = settingsRef.current.leaveUnsaved === 'ask' ? await askAboutLeaving(nameOfDocument(left)) : 'save';
+      if (choice === 'cancel') {
+        const where = docsRef.current.get(left)?.opened.path;
+        if (where) void window.notoWorkspace.activateTab({ version: 1, requestId: rid('tab-activate'), path: where });
+        return;
+      }
+      if (!(await settleNoteRef.current(left, choice))) {
+        window.dispatchEvent(new CustomEvent('noto:notice', { detail: `"${nameOfDocument(left)}" could not be saved; its changes are kept, and it is in the recent notes.` }));
+      }
+    })();
+  }, [activeId, codeView]);
+
   const openPath = useCallback(async (filePath: string, from?: string | null, options?: { readonly caret?: boolean }) => {
     setOpenError(null);
+    if (!(await leaveNoteInFrontRef.current(filePath))) return;
     // An automatic save waiting on the note being left goes now. Its timer was
     // cleared when the note left the front, so a note left within the delay
     // stayed unsaved; the save captures its own note and lands there.
@@ -2055,9 +2302,13 @@ function NotoWorkspace({ platform }: { platform: NotoPlatform }) {
   const stepTrail = useCallback((direction: -1 | 1) => {
     const step = direction < 0 ? stepBack(trail) : stepForward(trail);
     if (!step) return;
-    replayingRef.current = true;
-    setTrail(step.trail);
-    void openPath(step.target);
+    // Settled before the trail moves, so staying on the note leaves the trail where it was.
+    void leaveNoteInFrontRef.current(step.target).then((leave) => {
+      if (!leave) return;
+      replayingRef.current = true;
+      setTrail(step.trail);
+      void openPath(step.target);
+    });
   }, [trail, openPath]);
   const stepTrailRef = useRef(stepTrail);
   stepTrailRef.current = stepTrail;
@@ -2127,8 +2378,10 @@ function NotoWorkspace({ platform }: { platform: NotoPlatform }) {
    * scheme again before handing anything to the operating system. Anything
    * else is treated as a note in this folder and resolved the way a wiki link
    * is, by relative path and then by name, so `./chapters/one.md` and `one.md`
-   * both land. An address with a fragment loses it: nothing here scrolls to a
-   * heading yet, and opening the right note is most of the way there.
+   * both land. A bare `#fragment` is a place in this note: a heading by its
+   * slug or its text, or an anchor the note placed (`heading-anchor.ts`), and
+   * the caret goes there as the outline puts it. Another note's fragment is
+   * dropped for now; opening the right note is most of the way there.
    */
   const followLink = useCallback((href: string) => {
     if (/^[a-z][a-z0-9+.-]*:/i.test(href)) {
@@ -2142,7 +2395,13 @@ function NotoWorkspace({ platform }: { platform: NotoPlatform }) {
     }
     const withoutFragment = href.split('#')[0];
     if (withoutFragment.length === 0) {
-      setLocalMessage('A link to a place inside this note is not followed yet.');
+      const blocks = document ? document.spans.map((span) => document.text.slice(span.start, span.end)) : [];
+      const block = document ? blockForFragment(href.slice(1), outlineFromDocument(document), blocks) : null;
+      if (block === null) {
+        setLocalMessage(`Nothing in this note is called “${href.slice(1)}”.`);
+        return;
+      }
+      editorRef.current?.focusBlock(block, { at: 0.1 });
       return;
     }
     let target = withoutFragment;
@@ -2152,7 +2411,7 @@ function NotoWorkspace({ platform }: { platform: NotoPlatform }) {
       // A malformed escape is not worth refusing over; the raw text may match.
     }
     followWikiLink(target.replace(/^\.\//, ''));
-  }, [followWikiLink]);
+  }, [followWikiLink, document]);
   followLinkRef.current = followLink;
 
   /**
@@ -2246,8 +2505,12 @@ function NotoWorkspace({ platform }: { platform: NotoPlatform }) {
     // Recorded before the open, not after it. The document is adopted through
     // an event rather than through the reply, so the editor can be mounted and
     // asking for a pending query before the promise this awaits has settled.
-    pendingMatchRef.current = query;
-    void openPath(filePath);
+    // Settled first, so staying on the note does not leave the match waiting for the next open.
+    void leaveNoteInFrontRef.current(filePath).then((leave) => {
+      if (!leave) return;
+      pendingMatchRef.current = query;
+      void openPath(filePath);
+    });
   }, [openPath]);
 
   /** The link text for a note, relative to the one being edited. */
@@ -2926,6 +3189,15 @@ function NotoWorkspace({ platform }: { platform: NotoPlatform }) {
       case 'widen':
         stepWidthRef.current(1);
         break;
+      case 'text-larger': case 'text-smaller': case 'text-default': {
+        // The note's zoom, in a browser's steps; Actual Size is the text size set.
+        // Derived from the latest settings, so a key held down steps once a press.
+        const step = (now: number) => (event.command === 'text-default' ? 1 : stepDocZoom(now, event.command === 'text-larger' ? 1 : -1));
+        const next = step(settingsRef.current.docZoom);
+        changeSettings((current) => ({ docZoom: step(current.docZoom) }));
+        window.dispatchEvent(new CustomEvent('noto:notice', { detail: `Zoom ${Math.round(next * 100)}%` }));
+        break;
+      }
       case 'narrow':
         stepWidthRef.current(-1);
         break;
@@ -2953,13 +3225,16 @@ function NotoWorkspace({ platform }: { platform: NotoPlatform }) {
         break;
       }
       case 'find':
+      case 'find-replace': {
         setPrefs((current) => ({ ...current, open: false }));
-        setFind({ open: true, replace: false });
+        // Selected words are searched for at once; the field only opens empty-handed without them.
+        const selected = sourceModeRef.current ? null : editorRef.current?.selectionForFind() ?? null;
+        const replace = event.command === 'find-replace';
+        setFind((current) => (selected === null
+          ? { open: true, replace }
+          : { open: true, replace, query: selected, seed: (current.seed ?? 0) + 1 }));
         break;
-      case 'find-replace':
-        setPrefs((current) => ({ ...current, open: false }));
-        setFind({ open: true, replace: true });
-        break;
+      }
       default:
         break;
     }
@@ -3063,13 +3338,14 @@ function NotoWorkspace({ platform }: { platform: NotoPlatform }) {
    * heading above it.
    */
   const currentHeading = useMemo(() => {
+    const at = scrolledBlock ?? activeBlock;
     let found = -1;
     for (const entry of outline) {
-      if (entry.blockIndex <= activeBlock) found = entry.blockIndex;
+      if (entry.blockIndex <= at) found = entry.blockIndex;
       else break;
     }
     return found;
-  }, [outline, activeBlock]);
+  }, [outline, activeBlock, scrolledBlock]);
 
   const actions = state === 'Opening' || state === 'No document'
     ? []
@@ -3145,8 +3421,9 @@ function NotoWorkspace({ platform }: { platform: NotoPlatform }) {
       {/* A column of its own, floor to ceiling, as Typora and Finder have it:
           the traffic lights and the toggle sit on its head, and the title bar
           lies across it without a ground of its own. */}
-      {rail.open && (
+      {/* Mounted while closed, hidden, so the tree keeps the folder focused on. */}
           <WorkspaceRail
+            open={rail.open}
             links={{
               currentPath: active?.opened.path ?? null,
               onLinks: noteLinks,
@@ -3208,7 +3485,6 @@ function NotoWorkspace({ platform }: { platform: NotoPlatform }) {
             }}
             onCollapseTree={() => setTreeCollapse((current) => current + 1)}
           />
-      )}
 
       <header className="titlebar">
         <div className="title-left">
@@ -3339,6 +3615,7 @@ function NotoWorkspace({ platform }: { platform: NotoPlatform }) {
       >
         {shortcuts && <Shortcuts mac={platform === 'darwin'} sheet={sheetWidth} seen={guideSeen} onClose={closeGuide} onTry={tryGuide}
           unavailable={(action) => tryNeeds(action, { folder: folder.root !== null, note: active !== null })} />}
+        {leaveAsk && <LeaveUnsavedDialog name={leaveAsk.name} onChoose={leaveAsk.answer} />}
         {reloadConfirm && (
           <ReloadConfirmDialog
             offerSaveCopy={reloadConfirm.offerSaveCopy}
@@ -3383,6 +3660,7 @@ function NotoWorkspace({ platform }: { platform: NotoPlatform }) {
             open={find.open}
             showReplace={find.replace}
             initialQuery={find.query}
+            seed={find.seed}
             onSearch={(options) => {
               const { query, ...rest } = options;
               findOptionsRef.current = rest;
@@ -3471,6 +3749,7 @@ function NotoWorkspace({ platform }: { platform: NotoPlatform }) {
                 onDirtyChange={(dirty) => onDocumentDirtyChange(doc.document.documentId, dirty)}
                 onDocumentChanged={() => {
                   if (doc.document.documentId === activeIdRef.current) {
+                    caretMovedAtRef.current = performance.now();
                     bumpTyping();
                     scheduleNoteTags(doc.document.documentId);
                   }
@@ -3745,6 +4024,22 @@ function NotoWorkspace({ platform }: { platform: NotoPlatform }) {
           element that stays on the page. */}
       <p className="announcer" role="status" aria-live="polite" aria-atomic="true" data-testid="announcer">{notice ?? ''}</p>
 
+      {saveToast && (
+        <div key={saveToast.key} className={saveToast.ok ? 'save-toast' : 'save-toast is-failed'}
+          role={saveToast.ok ? 'status' : 'alert'} data-testid="save-toast" data-ok={saveToast.ok ? 'true' : 'false'}
+          onClick={() => setSaveToast(null)}>
+          <span className="save-toast-mark" aria-hidden="true">{saveToast.ok ? '\u2713' : '!'}</span>
+          <span className="save-toast-body">
+            <span className="save-toast-title">
+              {saveToast.ok ? (saveToast.copy ? 'Saved a copy as ' : 'Saved ') : (saveToast.copy ? 'Could not save a copy as ' : 'Could not save ')}
+              <strong>{saveToast.path.split(/[\\/]/).pop()}</strong>
+            </span>
+            <span className="save-toast-path" data-testid="save-toast-path">to {saveToast.path}</span>
+            {saveToast.reason && <span className="save-toast-reason">{saveToast.reason}</span>}
+          </span>
+        </div>
+      )}
+
       {/* Where the file lives, and what state it is in.
           Deliberately not the file name: the title bar already shows that, and
           repeating it in the corner spends the only other line the window has
@@ -3822,6 +4117,16 @@ function NotoWorkspace({ platform }: { platform: NotoPlatform }) {
               nothing else competes with it. Counted after typing stops, so it
               settles a moment behind the words rather than flickering under
               them. */}
+          {/* The note's zoom, while it is not the size set, as a browser's
+              address bar shows its own; a press sets it back. */}
+          <div className="status-end">
+          {Math.abs(settings.docZoom - 1) > 0.005 && (
+            <button type="button" className="status-zoom" data-testid="status-zoom"
+              title="Zoomed with Command and plus or minus. Press to go back to 100%, the text size set in Settings."
+              onClick={() => changeSettings({ docZoom: 1 })}>
+              {Math.round(settings.docZoom * 100)}%
+            </button>
+          )}
           {count !== null && (
             // Typora's word count opens on a click to the rest of the numbers.
             // A disclosure rather than a dialog: it is a glance, and the
@@ -3840,6 +4145,7 @@ function NotoWorkspace({ platform }: { platform: NotoPlatform }) {
               </dl>
             </details>
           )}
+          </div>
         </footer>
       )}
     </div>

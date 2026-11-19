@@ -25,6 +25,19 @@ describe('where a frame of the editor window may go', () => {
     }
   });
 
+  it('keeps a local page on the folder’s pages, and lets its own frames follow the web', () => {
+    const page: FrameLike = { name: 'noto-page', parent: top };
+    const insidePage: FrameLike = { name: '', parent: page };
+    expect(frameNavigationAllowed('noto-page://page/0123456789abcdef0123456789abcdef/map.html', false, page)).toBe(true);
+    expect(frameNavigationAllowed('about:blank', false, page)).toBe(true);
+    expect(frameNavigationAllowed('https://example.org/', false, page)).toBe(false);
+    expect(frameNavigationAllowed('https://www.youtube.com/embed/x', false, insidePage)).toBe(true);
+    for (const url of ['noto://bundle/index.html', 'noto://asset/%2Fetc%2Fpasswd', 'file:///etc/passwd', 'javascript:alert(1)']) {
+      expect(frameNavigationAllowed(url, false, page), url).toBe(false);
+      expect(frameNavigationAllowed(url, false, insidePage), url).toBe(false);
+    }
+  });
+
   it('keeps the app’s own frames, a diagram, inside the app', () => {
     expect(frameNavigationAllowed('noto://bundle/diagram.html', false, diagram)).toBe(true);
     expect(frameNavigationAllowed('https://example.com/', false, diagram)).toBe(false);

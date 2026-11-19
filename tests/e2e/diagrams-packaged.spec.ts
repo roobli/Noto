@@ -149,6 +149,133 @@ test.describe('diagrams', () => {
     }
   });
 
+  test('draws charts in the theme\'s series, never near-white, with every label readable on its fill', async () => {
+    const charts = [
+      '# Charts', '',
+      '```mermaid', 'xychart-beta', '  x-axis [a, b, c]', '  bar [1, 3, 2]', '  line [2, 1, 3]', '```', '',
+      '```mermaid', 'pie', '  "One" : 50', '  "Two" : 30', '  "Three" : 20', '```', '',
+      '```mermaid', 'flowchart LR', '  A[Pastel] --> B[Plain]', '  classDef warm fill:#fff3e0', '  class A warm', '```', '',
+    ].join('\n');
+    for (const theme of ['light', 'dark'] as const) {
+      const { app, page } = await launch(`charts-${theme}`, charts);
+      try {
+        // A theme change redraws every diagram with the palette it now has.
+        await page.evaluate((wanted) => { document.documentElement.dataset.theme = wanted; }, theme);
+        const diagrams = page.locator('pre.noto-fence[data-lang="mermaid"] .noto-diagram');
+        await expect(diagrams).toHaveCount(3);
+        const series = await page.evaluate(() => Array.from({ length: 3 }, (_, at) => getComputedStyle(document.documentElement).getPropertyValue(`--chart-${at + 1}`).trim().toLowerCase()));
+        for (let at = 0; at < 3; at += 1) {
+          const diagram = diagrams.nth(at);
+          await diagram.scrollIntoViewIfNeeded();
+          await expect(diagram).toHaveAttribute('data-state', 'rendered', { timeout: 20_000 });
+        }
+        const audit = async (at: number) => {
+          const frame = await (await diagrams.nth(at).locator('iframe').elementHandle())!.contentFrame();
+          return frame!.evaluate(() => {
+            const hex = (colour: string) => { const m = colour.match(/\d+/g); return m ? `#${m.slice(0, 3).map((v) => Number(v).toString(16).padStart(2, '0')).join('')}` : colour; };
+            const lum = (colour: string) => { const m = (colour.match(/\d+/g) ?? ['0', '0', '0']).slice(0, 3).map((v) => { const c = Number(v) / 255; return c <= 0.03928 ? c / 12.92 : ((c + 0.055) / 1.055) ** 2.4; }); return 0.2126 * m[0]! + 0.7152 * m[1]! + 0.0722 * m[2]!; };
+            const ratio = (a: string, b: string) => { const [x, y] = [lum(a), lum(b)].sort((p, q) => q - p); return (x! + 0.05) / (y! + 0.05); };
+            const fills = [...document.querySelectorAll('svg rect, svg path, svg circle')]
+              .filter((el) => { const r = el.getBoundingClientRect(); return r.width * r.height > 60; })
+              .map((el) => getComputedStyle(el).fill).filter((fill) => fill.startsWith('rgb') && fill !== 'rgb(0, 0, 0)');
+            const worst = [...document.querySelectorAll('svg foreignObject')].map((label) => {
+              const leaf = [...label.querySelectorAll('*')].reverse().find((node) => node.childElementCount === 0 && (node.textContent ?? '').trim()) ?? label;
+              const node = label.closest('g.node');
+              const shape = node && [...node.children].find((child) => /rect|path|polygon/.test(child.localName));
+              return shape ? ratio(getComputedStyle(leaf).color, getComputedStyle(shape).fill) : 21;
+            });
+            return { fills: fills.map(hex), worst: Math.min(21, ...worst) };
+          });
+        };
+        // The bars are the first series colour; mermaid's cream and yellow are gone.
+        const bars = await audit(0);
+        expect(bars.fills).toContain(series[0]);
+        expect(bars.fills.some((fill) => ['#fff4dd', '#ffd74d', '#fffff0', '#ffd8b1'].includes(fill))).toBe(false);
+        // Every slice is a series colour, none of them the paper.
+        const pie = await audit(1);
+        for (const colour of series) expect(pie.fills).toContain(colour);
+        // A node the note filled with a pastel keeps a label that reads on it, in both themes.
+        expect((await audit(2)).worst).toBeGreaterThanOrEqual(4.5);
+      } finally {
+        await app.close();
+      }
+    }
+  });
+
+  test('lays out an xychart for the column: labels that do not fit turn it on its side, each in full, bars from zero', async () => {
+    // The daily digest's chart, as written: twelve model names under twelve bars, an axis from 70.
+    const chart = [
+      '# Bench', '',
+      '```mermaid',
+      'xychart-beta',
+      '    title "Parsing benchmark"',
+      '    x-axis ["LP Agentic Plus", "LP Agentic", "Claude Opus 5.5", "LP Cost Eff.", "Gemini 4 argon", "Reducto agentic", "Extend Parse 2", "Pulse Ultra 2", "Datalab", "GPT-5.6 terra", "Infinity-Parser2 Pro", "Databricks"]',
+      '    y-axis "score" 70 --> 92',
+      '    bar [89.8, 86.0, 85.7, 84.6, 84.2, 83.9, 83.2, 82.7, 81.3, 77.1, 77.1, 76.9]',
+      '```', '',
+    ].join('\n');
+    const { app, page } = await launch('xychart', chart);
+    try {
+      await page.setViewportSize({ width: 1440, height: 900 });
+      const diagram = page.locator('pre.noto-fence[data-lang="mermaid"] .noto-diagram');
+      await expect(diagram).toHaveAttribute('data-state', 'rendered', { timeout: 20_000 });
+      const frame = await (await diagram.locator('iframe').elementHandle())!.contentFrame();
+      await expect.poll(() => frame!.evaluate(() => document.querySelectorAll('svg g.left-axis g.label text').length)).toBe(12);
+      const shape = await frame!.evaluate(() => {
+        const svg = document.querySelector('svg')!;
+        const texts = [...svg.querySelectorAll('text')].map((text) => text.getBoundingClientRect()).filter((box) => box.width > 0);
+        let overlaps = 0;
+        for (let a = 0; a < texts.length; a += 1) for (let b = a + 1; b < texts.length; b += 1) {
+          const [p, q] = [texts[a]!, texts[b]!];
+          if (Math.min(p.right, q.right) - Math.max(p.left, q.left) > 1 && Math.min(p.bottom, q.bottom) - Math.max(p.top, q.top) > 1) overlaps += 1;
+        }
+        const labels = [...svg.querySelectorAll('g.left-axis g.label text')].map((text) => text.textContent);
+        const values = [...svg.querySelectorAll('g[class^="bar-plot"] text')].map((text) => text.textContent);
+        const tick = svg.querySelector<SVGTextElement>('g.top-axis g.label text')!;
+        const tickX = Number(/translate\(\s*([-\d.]+)/.exec(tick.getAttribute('transform') ?? '')![1]);
+        const starts = [...svg.querySelectorAll('g[class^="bar-plot"] rect')].map((rect) => Number(rect.getAttribute('x')));
+        return { width: svg.getBoundingClientRect().width, overlaps, labels, values, tickValue: tick.textContent, tickX, starts };
+      });
+      // Every model named in full, one row each, no text on top of other text.
+      expect(shape.labels).toContain('Infinity-Parser2 Pro');
+      expect(shape.overlaps).toBe(0);
+      // Read by its numbers: each bar carries its value.
+      expect(shape.values).toEqual(['89.8', '86', '85.7', '84.6', '84.2', '83.9', '83.2', '82.7', '81.3', '77.1', '77.1', '76.9']);
+      // As wide as the room it has (the column, capped at 960), not mermaid's fixed 700.
+      const room = await diagram.locator('iframe').evaluate((element) => element.getBoundingClientRect().width);
+      expect(Math.abs(shape.width - Math.min(960, room))).toBeLessThan(4);
+      // Every bar starts where the axis starts, so lengths compare.
+      expect(shape.tickValue).toBe('70');
+      for (const start of shape.starts) expect(Math.abs(start - shape.tickX)).toBeLessThan(1);
+    } finally {
+      await app.close();
+    }
+  });
+
+  test('draws a statement naming a whole group as arrows from the group, every other line as written', async () => {
+    const fan = [
+      '# Credits', '', '```mermaid', 'flowchart LR',
+      '  subgraph P["platform"]', '    P1', '    P2', '    P3', '  end',
+      '  subgraph DB["db"]', '    B', '    Q', '    L', '  end',
+      '  M1 & M2', '  P1 & P2 & P3 --> B & Q & L', '  M1 & M2 --> B & Q',
+      '```', '',
+    ].join('\n');
+    const { app, page, file } = await launch('groups', fan);
+    try {
+      const diagram = page.locator('pre.noto-fence[data-lang="mermaid"] .noto-diagram');
+      await expect(diagram).toHaveAttribute('data-state', 'rendered', { timeout: 20_000 });
+      const frame = await (await diagram.locator('iframe').elementHandle())!.contentFrame();
+      const lines = await frame!.evaluate(() => [...document.querySelectorAll('svg g.edgePaths path, svg path.flowchart-link')]
+        .map((path) => (path.id.match(/L_(.*)_\d+$/) ?? [, path.id])[1]).filter((id, at, all) => all.indexOf(id) === at).sort());
+      // The platform group to each table, three lines instead of nine; the partial statement as written; nothing invented.
+      expect(lines).toEqual(['M1_B', 'M1_Q', 'M2_B', 'M2_Q', 'P_B', 'P_L', 'P_Q']);
+      expect(await frame!.evaluate(() => document.querySelectorAll('svg [id*="junction"]').length)).toBe(0);
+      expect(await readFile(file, 'utf8')).toBe(fan);
+    } finally {
+      await app.close();
+    }
+  });
+
   test('says when a diagram cannot be drawn, without touching the source', async () => {
     const broken = SOURCE.replace('graph TD\n  A[Start] --> B[End]', 'graph TD\n  A[Start] --> ');
     const { app, page } = await launch('broken', broken);

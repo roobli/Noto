@@ -9,6 +9,76 @@ How releases are made, and what each channel receives, is in
 
 ## [Unreleased]
 
+## [0.1.1] - 2026-11-19
+
+The round that brings the page closer to Typora's: formulas, pictures,
+rules, front matter, timelines and wide tables are drawn and edited the way
+Typora draws and edits them, and an edited paragraph is written back with
+only the backslashes it needs. Quick Open is rebuilt as one page with a
+real preview. A note is saved before it is left, every save says where it
+went, and the note zooms as a browser page does. Like `0.1.0`, unsigned.
+
+### Added
+
+- **Quick Open is one page with a real preview.** The results on the left,
+  the highlighted note drawn as it reads on the right, with a divider you
+  can move. Escape closes it from anywhere in the sheet.
+- **Formulas are edited as Typora edits them.** The caret in a formula
+  opens its whole source, delimiters and all, with the formula drawn live
+  beside it.
+- **A picture's source opens beside the caret.** Walk the caret to a
+  picture and its markdown opens above it, as wide as the text and wrapped,
+  with the picture under it as the preview. A right click offers Zoom
+  Picture at 33 to 200%, written as Typora writes it, an `<img>` tag with
+  its zoom.
+- **Typing `---` on the first line opens front matter,** as in Typora.
+  Front matter is coloured as YAML. A rule is a clear 2 px line across the
+  column, and typing goes on under it.
+- **Timelines are drawn as a line of dated stops,** with tasks that tick.
+- **A table wider than the page scrolls inside itself,** its first column
+  kept in view, and prints fitted to the page.
+- **Links to a heading in the same note are followed,** and Note Info says
+  which links name a heading that is not there.
+- **Emoji shortcodes, coloured words, HTML comments and note-wide maths**
+  are drawn as Typora draws them, and a chart a note writes as `<svg>` is
+  drawn in the page and in Quick Open.
+- **Local web pages open in the page,** sandboxed, with Open in Browser for
+  the ones that need more. Pictures open from the tree.
+- **The note zooms as a browser page does.** Command-plus and minus step
+  through a browser's zoom levels, Command-0 returns to the size set, and
+  the status line shows the zoom while it is not 100%. Paragraph moved to
+  Command-Option-0. The interface and the sidebar have sizes and faces of
+  their own in Settings.
+- **Every save says what it did:** the note's name and the full path it was
+  written to, or why it could not be.
+- **Find searches the selected words** as it opens.
+- **The outline follows the page** as it is scrolled, lighting the section
+  being read.
+
+### Changed
+
+- **A note is saved before it is left** for another, by every way it can be
+  left, or, if you choose in Settings, you are asked. A note whose save
+  fails stays in front with its changes.
+- **Mermaid charts use the theme's colours,** and flowcharts, xycharts and
+  svg drawings are laid out for the column.
+
+### Fixed
+
+- **An edited paragraph no longer fills with backslashes.** Underscores used
+  as blanks, angle brackets and colons are written as typed; an escape stays
+  only where the text would otherwise read as markup.
+- **A zoomed picture on its own line stays a picture** after its source is
+  edited, instead of being saved as escaped text.
+- **With smart dashes on, `---` makes a rule** rather than a dash and a
+  hyphen.
+- **An input method finishes at the end of a note,** where the gap cursor
+  threw on every key.
+- **The caret can stand either side of a revealed delimiter,** and the file
+  tree keeps its focused folder through a look at the outline.
+- **Quick changes to settings all stand,** where a fast run of them could
+  undo one another.
+
 ## [0.1.0] - 2026-11-10
 
 The milestone the horizon named: the folder's memory lives in the window, and
@@ -1109,7 +1179,8 @@ The first release with downloadable builds for macOS, Windows and Linux.
   to link a note.
 - An optional loopback-only remote control for scripts on the same machine.
 
-[Unreleased]: https://github.com/roobli/Noto/compare/v0.0.3...main
+[Unreleased]: https://github.com/roobli/Noto/compare/v0.1.1...main
+[0.1.1]: https://github.com/roobli/Noto/compare/v0.1.0...v0.1.1
 [0.0.3]: https://github.com/roobli/Noto/compare/v0.0.1...v0.0.3
 [0.0.2-alpha.114]: https://github.com/roobli/Noto/compare/v0.0.2-alpha.113...v0.0.2-alpha.114
 [0.0.2-alpha]: https://github.com/roobli/Noto/compare/v0.0.1...v0.0.2-alpha.113

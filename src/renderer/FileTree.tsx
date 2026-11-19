@@ -92,6 +92,14 @@ export interface FileTreeProps {
   readonly focusRequest?: { readonly path: string; readonly token: number } | null;
   /** F2 on a row: name it again where it sits, as Rename in its menu does. */
   readonly onRename?: (rowPath: string) => void;
+  /**
+   * Whether the tree is in sight. The rail keeps it mounted while another
+   * view (the outline, search) is in front, so the folder focused on, the
+   * folders open and the place scrolled to are all there on coming back;
+   * hidden, it measures nothing, and brings a note opened meanwhile into
+   * view once it is shown again.
+   */
+  readonly shown?: boolean;
 }
 
 /**
@@ -250,6 +258,11 @@ function NewFolderRow({ depth, onDone }: { depth: number; onDone: (name: string 
 /** The height of one row, which the sticky offsets are multiples of. */
 export const TREE_ROW_HEIGHT = 32;
 
+/** A row's height as drawn: 32 at the sidebar's default size, more or less as its text size is set. */
+function rowHeight(body: HTMLElement): number {
+  return body.querySelector<HTMLElement>('.tree-row')?.offsetHeight || TREE_ROW_HEIGHT;
+}
+
 /** True when `target` is inside `folder`, at any depth. */
 function isUnder(folder: string, target: string): boolean {
   // A root that ends in its separator (`/`, `C:\\`) is its own prefix.
@@ -287,7 +300,7 @@ function foldersBetween(root: string, target: string | null): string[] {
 export function FileTree({
   root, rootName, activePath, list, onOpenFile, onRowMenu, onChooseFolder, onMoveEntry, vaultMenu,
   editing = null, onEditingDone, reloadToken = 0, reloadOnly = null, collapseToken = 0, gitMarks = null, privacyMarks = null,
-  heldFolders = 'stack', noteExtensions = true, focusRequest = null, onRename,
+  heldFolders = 'stack', noteExtensions = true, focusRequest = null, onRename, shown = true,
 }: FileTreeProps) {
   const [children, setChildren] = useState<ReadonlyMap<string, readonly WorkspaceEntryV1[]>>(new Map());
   const [expanded, setExpanded] = useState<ReadonlySet<string>>(new Set());
@@ -313,6 +326,8 @@ export function FileTree({
   const edgeDown = useRef<HTMLDivElement>(null);
   /** The folder the rail is focused on, drawn as its root; null for the whole open folder. */
   const [focus, setFocus] = useState<string | null>(null);
+  /** Where the tree was scrolled to, kept while another view is in front of it. */
+  const scrolledTo = useRef(0);
   /** Which way focus last went, so the tree slides in from that side; null until it first moves. */
   const [focusWay, setFocusWay] = useState<'in' | 'out' | null>(null);
   /** The tree's inner width, which the step per level and every cut name are worked out from. */
@@ -376,7 +391,8 @@ export function FileTree({
    */
   const readMeasure = useCallback(() => {
     const body = bodyRef.current;
-    if (!body) return;
+    // Hidden behind another view, the tree has no width to fit names to.
+    if (!body || body.clientWidth === 0) return;
     setTreeWidth(body.clientWidth);
     const name = body.querySelector<HTMLElement>('.tree-file .tree-name, .tree-directory:not(.tree-vault-row) .tree-name');
     if (!name) return;
@@ -390,7 +406,11 @@ export function FileTree({
     if (typeof ResizeObserver === 'undefined') return undefined;
     const observer = new ResizeObserver(() => readMeasure());
     observer.observe(scroller);
-    return () => observer.disconnect();
+    // The sidebar's size or font set in Settings changes the names' face
+    // without changing the rail's width; the root's style says when.
+    const styles = new MutationObserver(() => readMeasure());
+    styles.observe(document.documentElement, { attributes: true, attributeFilter: ['style'] });
+    return () => { observer.disconnect(); styles.disconnect(); };
   }, [root, focus, readMeasure]);
 
   /** The latest listing asked for per folder, so an older answer arriving late is dropped. */
@@ -566,7 +586,8 @@ export function FileTree({
   useEffect(() => {
     const body = bodyRef.current;
     const scroller = body?.closest('.rail-view');
-    if (!body || !scroller) return;
+    // Behind another view nothing here can be measured; it runs again when the tree is shown.
+    if (!body || !scroller || !shown) return;
     let frame = 0;
     const mark = () => {
       frame = 0;
@@ -606,12 +627,13 @@ export function FileTree({
         const held: string[] = [];
         for (const row of body.querySelectorAll<HTMLElement>('.tree-directory[aria-expanded="true"][data-path]')) {
           const box = row.parentElement?.getBoundingClientRect();
-          if (box && box.top < line + TREE_ROW_HEIGHT / 2 && box.bottom > line + TREE_ROW_HEIGHT) held.push(row.dataset.path!);
+          if (box && box.top < line + rowHeight(body) / 2 && box.bottom > line + rowHeight(body)) held.push(row.dataset.path!);
         }
         setTrail((current) => (current.length === held.length && current.every((path, index) => path === held[index]) ? current : held));
       }
     };
     const onScroll = () => {
+      scrolledTo.current = scroller.scrollTop;
       // A name shown whole belongs to a row that has just moved.
       window.clearTimeout(peekTimer.current);
       peekRow.current = null;
@@ -643,7 +665,17 @@ export function FileTree({
       scroller.removeEventListener('scroll', onScroll);
       if (frame !== 0) cancelAnimationFrame(frame);
     };
-  }, [children, expanded, root, activePath, focus, heldFolders, readMeasure]);
+  }, [children, expanded, root, activePath, focus, heldFolders, readMeasure, shown]);
+
+  // Back in front: the tree is where it was left. A layout effect, so the
+  // place is restored before the effect above brings a note opened meanwhile
+  // into view, which then wins.
+  useLayoutEffect(() => {
+    if (!shown) return;
+    const scroller = bodyRef.current?.closest<HTMLElement>('.rail-view');
+    if (scroller && scroller.scrollTop !== scrolledTo.current) scroller.scrollTop = scrolledTo.current;
+    readMeasure();
+  }, [shown, readMeasure]);
 
   /*
    * Hold a dragged row at the top or bottom of the rail and the tree scrolls
@@ -807,7 +839,7 @@ export function FileTree({
     const row = body?.querySelector<HTMLElement>(`.tree-row[data-path="${CSS.escape(folder)}"]`);
     if (!body || !scroller || !row) return;
     const bar = body.parentElement?.querySelector<HTMLElement>('.tree-focusbar')?.offsetHeight ?? 0;
-    const by = row.getBoundingClientRect().top - scroller.getBoundingClientRect().top - bar - TREE_ROW_HEIGHT;
+    const by = row.getBoundingClientRect().top - scroller.getBoundingClientRect().top - bar - rowHeight(body);
     const smooth = !window.matchMedia('(prefers-reduced-motion: reduce)').matches;
     scroller.scrollBy({ top: by, behavior: smooth ? 'smooth' : 'auto' });
   };

@@ -108,7 +108,7 @@ describe('the memory in main', () => {
     expect((await host.aboutFolder(path.join(root, 'Work'))).state).toBe('opening');
     worker.reply({ id: worker.last('open').id, ok: true, value: null });
     await flush();
-    const known = { folder: 'Work', notes: 2, warmest: [], mostRead: [], orphans: { count: 0, items: [] }, broken: 1 };
+    const known = { folder: 'Work', notes: 2, warmest: [], mostRead: [], orphans: { count: 0, items: [] }, broken: 1, brokenAnchors: 0 };
     const asking = host.aboutFolder(path.join(root, 'Work'));
     await flush();
     expect(worker.last('folder')).toMatchObject({ kind: 'folder', rel: 'Work' });
@@ -477,7 +477,7 @@ describe('what the window accepts of the memory', () => {
 
   it('takes what a folder\'s info is told only in its shapes', () => {
     const note = { path: 'Work/plan.md', title: 'Plan', heat: 1.5, reads: 3, lastRead: '2026-11-05T10:00:00.000Z' };
-    const memory = { folder: 'Work', notes: 2, warmest: [note], mostRead: [note], orphans: { count: 9, items: [note] }, broken: 0 };
+    const memory = { folder: 'Work', notes: 2, warmest: [note], mostRead: [note], orphans: { count: 9, items: [note] }, broken: 0, brokenAnchors: 0 };
     expect(isWorkspaceFolderMemoryReplyV1({ version: 1, state: 'ok', memory })).toBe(true);
     expect(isWorkspaceFolderMemoryReplyV1({ version: 1, state: 'ok', memory: { ...memory, folder: '' } })).toBe(true);
     expect(isWorkspaceFolderMemoryReplyV1({ version: 1, state: 'no-memory', memory: null })).toBe(true);

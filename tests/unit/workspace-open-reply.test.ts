@@ -33,7 +33,7 @@ describe('the reply to an open', () => {
   });
 
   it('passes a code view through untouched', () => {
-    const codeView = { path: '/a.ts', name: 'a.ts', language: 'ts', content: 'x', notice: null, truncated: false };
+    const codeView = { path: '/a.ts', name: 'a.ts', language: 'ts', content: 'x', notice: null, truncated: false, pageUrl: null };
     const reply = openReply({ version: 1, codeView });
     expect(reply).toEqual({ version: 1, codeView });
     expect(isWorkspaceOpenResultV1(result(reply), 'r-1')).toBe(true);

@@ -51,6 +51,14 @@ export type NotoTheme = 'light' | 'dark' | 'system';
  */
 export const SETTING_RANGES = Object.freeze({
   fontSize: { min: 13, max: 26, step: 1 },
+  /* The interface as a whole: the title bar, the status line, the panels and
+     sheets, as a browser zooms a page. The document and the sidebar keep the
+     sizes set for them. */
+  uiScale: { min: 0.8, max: 1.4, step: 0.05 },
+  /* The note's zoom, over its text size, as a browser zooms a page. */
+  docZoom: { min: 0.5, max: 3, step: 0.01 },
+  /* The sidebar's names, in pixels; 14 is Typora's sidebar. */
+  railFontSize: { min: 11, max: 22, step: 1 },
   lineHeight: { min: 1.3, max: 2.2, step: 0.02 },
   autoSaveDelayMs: { min: 400, max: 10_000, step: 100 },
   /* A vault six levels deep spends 90px of the rail on indentation before the
@@ -171,6 +179,16 @@ export const DIFF_LAYOUTS = ['side', 'stacked', 'inline'] as const;
 
 export type DiffLayoutV1 = (typeof DIFF_LAYOUTS)[number];
 
+/**
+ * What happens to a note's unsaved changes when another note or file is
+ * opened over it. `save` writes them first, so nothing is left as a draft
+ * that a later change on disk, a return to the note or a quit has to reckon
+ * with; `ask` asks each time, with Save, Don't Save and Cancel.
+ */
+export const LEAVE_UNSAVED = ['save', 'ask'] as const;
+
+export type LeaveUnsavedV1 = (typeof LEAVE_UNSAVED)[number];
+
 export type TreeSortV1 = (typeof TREE_SORTS)[number];
 
 /**
@@ -254,6 +272,19 @@ export interface NotoSettingsV1 {
   readonly proseFontFamily: string;
   /** Document text size in CSS pixels. */
   readonly fontSize: number;
+  /**
+   * The note's zoom, 1 for the text size set: Command with plus and minus walk
+   * it through `DOC_ZOOM_STEPS` and Command-0 sets it back, as in a browser.
+   */
+  readonly docZoom: number;
+  /** The interface's size, 1 as designed. See `SETTING_RANGES.uiScale`. */
+  readonly uiScale: number;
+  /** An installed family for the interface, or empty for the system's. Never a path. */
+  readonly uiFontFamily: string;
+  /** The sidebar's text size in CSS pixels. */
+  readonly railFontSize: number;
+  /** An installed family for the sidebar, or empty for the document's preset face. Never a path. */
+  readonly railFontFamily: string;
   /** Unitless line height for document text. */
   readonly lineHeight: number;
   /** How much of the canvas the text column takes. See `WIDTH_MODES`. */
@@ -405,6 +436,8 @@ export interface NotoSettingsV1 {
    */
   readonly autoSave: boolean;
   readonly autoSaveDelayMs: number;
+  /** Leaving a note with unsaved changes for another. See `LEAVE_UNSAVED`. */
+  readonly leaveUnsaved: LeaveUnsavedV1;
   /**
    * Absolute path to a stylesheet layered over the theme, or '' for none.
    *
@@ -496,6 +529,11 @@ export const DEFAULT_SETTINGS: NotoSettingsV1 = Object.freeze({
   markSubscript: true,
   sidenotes: true,
   fontSize: 15,
+  docZoom: 1,
+  uiScale: 1,
+  uiFontFamily: '',
+  railFontSize: 14,
+  railFontFamily: '',
   lineHeight: 1.58,
   widthMode: 'default',
   // Off by default, unlike Typora. Each one changes the bytes the file ends up
@@ -525,6 +563,7 @@ export const DEFAULT_SETTINGS: NotoSettingsV1 = Object.freeze({
   railWidth: 272,
   autoSave: false,
   autoSaveDelayMs: 1_200,
+  leaveUnsaved: 'save',
   customCssPath: '',
   // Typora's own default, and the one that keeps a note portable: the note and
   // its pictures move together.
@@ -545,6 +584,16 @@ export const DEFAULT_SETTINGS: NotoSettingsV1 = Object.freeze({
 
 
 /** Clamp to the declared range and drop anything that is not a real number. */
+/** The zoom levels a browser steps through, from half size to three times. */
+export const DOC_ZOOM_STEPS: readonly number[] = [0.5, 0.67, 0.75, 0.8, 0.9, 1, 1.1, 1.25, 1.5, 1.75, 2, 2.5, 3];
+
+/** The next zoom level up or down from `current`, as Chrome steps: to the next level, never past the ends. */
+export function stepDocZoom(current: number, direction: 1 | -1): number {
+  const near = (a: number, b: number) => Math.abs(a - b) < 0.005;
+  if (direction > 0) return DOC_ZOOM_STEPS.find((level) => level > current && !near(level, current)) ?? DOC_ZOOM_STEPS[DOC_ZOOM_STEPS.length - 1]!;
+  return [...DOC_ZOOM_STEPS].reverse().find((level) => level < current && !near(level, current)) ?? DOC_ZOOM_STEPS[0]!;
+}
+
 export function clampSetting(key: NotoNumericSetting, value: unknown): number {
   const range = SETTING_RANGES[key];
   if (typeof value !== 'number' || !Number.isFinite(value)) return DEFAULT_SETTINGS[key];

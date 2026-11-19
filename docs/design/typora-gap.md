@@ -1553,3 +1553,139 @@ redirect. Pages on this machine or the local network are refused outright,
 and while a block's source is being edited its pages wait for the caret to
 leave, so a half-typed address is never fetched. Zhihu answers with its own
 error page inside a frame, which is the site's choice.
+
+## 74. A chart a note wrote as `<svg>` showed nothing. Closed.
+
+The vault holds 28 `<svg>` blocks outside code fences, and the daily digest
+now writes one most mornings: a bar chart of the week's markets, coloured
+bars and Chinese labels. Typora draws them. Noto's HTML cleaning dropped
+`<svg>` with everything inside it, so the block drew as nothing at all and
+the chart could only be read as source with the caret in it.
+
+An `<svg>` element in a block is now drawn as a picture of itself: the markup
+is serialized whole into a `data:image/svg+xml` address and shown by an
+`<img>`, which is what the code viewer already does for a `.svg` file. An SVG
+shown as an image is a closed document, so its scripts, event attributes,
+`javascript:` links and `<foreignObject>` content do nothing, and it loads no
+picture, font or stylesheet from anywhere; the chart is drawn exactly as
+written without the element list the rest of a note's HTML goes through. The
+size is the drawing's own (`width` and `height` in pixels, the missing one
+from the `viewBox`, or the `viewBox` alone), held to the column and centred in
+it, as a diagram and a picture on its own line are, unless the note sets it
+left or right with `align`. On the dark
+theme the drawing sits on light paper, since a chart written for a page has
+black text; the box around it is the same in both themes so it does not move
+when the theme changes. Quick Open's preview draws a note's HTML blocks the
+same way, with embedded pages named rather than loaded.
+
+An `<svg>` inside a sentence is still source, as inline HTML with attributes
+is; a block of one is what charts are written as.
+
+## 75. Charts were drawn in mermaid's cream, peach and yellow. Closed.
+
+The vault holds 244 mermaid diagrams, 51 of them xycharts. Mermaid's `base`
+theme took the few colours Noto gave it and left every chart colour at its
+own defaults: bars in #FFF4DD (1.05:1 against the paper), a line in peach,
+pie slices after the first in the paper's own colour, gantt tasks in white,
+a journey's faces in cornsilk. On the light theme those were pale smears with
+a yellow line through them.
+
+The theme now defines a chart series, `--chart-1` to `--chart-8`: muted earth
+and ink hues that sit with the paper and the terracotta accent, each at least
+4.5:1 against the paper (light) and 5.5 to 6.5:1 (dark, lifted no further so
+a slice is not the brightest thing on screen). `src/renderer/diagram/chart-theme.ts`
+gives mermaid every chart variable from it: bars, lines, slices and git
+branches in the full colour; areas behind text (timeline, mindmap, gantt,
+quadrant, journey) in a tint of the same hue with the ink on it, ruled in
+that hue rather than mermaid's inverted complement. After drawing, a label
+on a fill the note chose itself (`classDef ... fill:#fff3e0`, the vault's
+commonest) is set in whichever ink reads on it, and the strokes mermaid draws
+in plain black are drawn in the theme's line colour. An audit over one diagram
+of each kind found no label under 4.5:1 in either theme.
+
+## 76. An xychart with many categories was a smear of overlapping labels. Closed.
+
+Mermaid draws every xychart at 700 by 500 whatever the column, and never
+looks at its labels. A daily digest's benchmark chart put twelve model
+names under twelve bars, and they ran into one another; across the vault's
+51 xycharts, 65 pairs of labels overlapped and a long title was cut off.
+
+`src/renderer/diagram/chart-layout.ts` now lays out each xychart from what it
+holds and the room it has. The chart takes the column's width, capped at
+960. When its category labels would not fit under their bars, it is turned
+on its side: one row per category, each label in full, the chart as tall as
+its rows. A single series of bars carries its values, at the size of the
+axis labels. An upright chart of six categories or fewer is drawn narrower
+and centred, so a bar is not a slab, and gets the height its value axis
+needs. A long title is set smaller rather than cut. The frame lays the chart
+out again when the column changes enough to matter.
+
+Three things mermaid draws wrong are mended after drawing: on its side, every
+bar started at the plot's edge rather than at the value axis, so 41 and 565
+on an axis to 80,000 were the same length; a bar's value was sized to the bar,
+up to 85 pixels or down to 3; and a line was drawn under the bars it crossed.
+
+What the note says still wins: an orientation after `xychart`, an `%%{init}`
+directive or front-matter config. What the note means is left alone too: an
+axis written `70 --> 92` is drawn from 70, which makes a 16 per cent gap look
+three times as long; that is the writer's choice to make.
+
+Measured over the 51 charts at windows of 1440, 1000 and 820: no overlapping
+text, nothing clipped, no text under 13px.
+
+## 77. A flowchart's `A & B --> C & D` drew every pair, and tangled. Closed.
+
+Mermaid's `&` joins every node on the left to every node on the right, and
+draws each pair as its own line: a note of the author's wrote
+`P1 & P2 & P3 & P4 & P5 --> B & Q & L`, fifteen curves that its layout could
+not keep apart, 21 lines in all with 16 crossings, nine through unrelated boxes.
+
+A first attempt drew such a statement through an unlabelled junction dot. It
+was cleaner and wrong: the dot was something the note never said, and a
+reader could not tell what it stood for. It is gone.
+
+What the statement says, in that note, is that the whole platform group writes
+every table: P1 to P5 are every node of its billing subgraph. So
+`src/renderer/diagram/flow-groups.ts` draws a side that is exactly a subgraph's
+sources as the subgraph, under the title the note gave it: one arrow from the
+billing box to each table. Only many-to-many statements are rewritten, and
+only their sources: every arrow still ends on a named box, since an arrow
+ending on a group's border landed far from anything in it and could be read
+three ways. Sources naming only part of a group are drawn as written, and so
+are the targets, so a service writing two of the three tables still shows which
+two, and the ledger's single arrow says billing writes it and the service
+does not. A group drawn this way keeps the chart's
+direction, which mermaid would otherwise turn. Labelled arrows, nodes shaped
+in the statement and groups that share a node are left alone, and so is the
+note's source. Group borders are drawn at 3:1 against the paper, since an arrow
+can now start at one. The note now draws 9 lines, each a real relation, with 3
+crossings and none through a box.
+
+## 78. Editing a formula showed bare TeX: no dollars, no preview, no pairing. Closed.
+
+Read from Typora 1.14.9's own code (TypeMark `frame.js`, `index.html`,
+`base-control.css`). Its inline formula is `<md-before>$</md-before>` TeX
+`<md-after>$</md-after>`: the dollars are `md-meta`, hidden at rest and shown
+when the span expands, so the caret in a formula shows the whole `$TeX$` as one
+unit while the formulas beside it stay typeset; and a typeset copy floats by it
+(`#math-inline-preview`), redrawn on each keystroke. A typed `$` inserts its
+partner and opens an empty formula whose preview reads "Empty Inline Math". A
+block being edited is a panel: a `$$` line, the TeX, a `$$` line and the
+formula live under it (`.md-mathjax-preview`), left with Command-Enter or the
+down arrow.
+
+Noto showed the TeX alone, in muted mono, with neither dollar, no preview, and
+a typed `$` was a dollar until its partner arrived. Now `math-view.ts` draws the
+delimiters around the source (never part of the document) and keeps the
+typeset copy as a live preview: inline a card above the formula, or below it
+near the top of the page, shifted to stay on the page, redrawn once per frame
+while typing; a block's panel as above. `math-pair.ts` makes a typed `$` an
+empty formula with the caret in it, wraps a selection, steps out at the
+closing dollar, and takes an empty formula away on Backspace or when the caret
+leaves. Unlike Typora it leaves prices alone: the vault has 2,361 dollars before
+a digit, so `$` after a word or before one stays a dollar, and a digit typed
+first into a new formula turns it back into a dollar and the digit. Two dollars
+in a row stay `$$`, and Return on a line of nothing but `$$` opens a block, as
+it did. Command-Enter, or Down from the last line, leaves a block. A click on a
+typeset formula puts the caret as far into its source as the click was across
+it. An empty formula has no Markdown spelling and is written as nothing.

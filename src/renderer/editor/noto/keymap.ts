@@ -40,7 +40,8 @@ import type { Node as ProseNode, ResolvedPos } from 'prosemirror-model';
 import { moveBlock, moveColumn } from './move-block';
 import { deleteSelectedRowsOrColumns, enterInTable, exitAtEdge, moveCellVertically, tableFromRows, unwrapAtStart } from './block-edges';
 import { openLinkEditor } from './link-plugin';
-import { fenceOnEnter, undoSubstitution } from './input-rules';
+import { fenceOnEnter, frontmatterOnEnter, undoSubstitution } from './input-rules';
+import { leaveMathBlock } from './math-view';
 import {
   sortTasks,
   toggleTaskStatus,
@@ -322,6 +323,7 @@ export const outdentEmptyListItem: Command = (state, dispatch) => {
 
 const enter: Command = chainCommands(
   tableFromRows,
+  frontmatterOnEnter,
   fenceOnEnter,
   enterInTable,
   newlineInCode,
@@ -678,7 +680,7 @@ export function notoBindings({ mac, onWidthStep, taskStamp }: KeymapOptions): Re
     // that chord, and the menu answers first, so it never reached here.
     // Inline code is on Control and the backtick, as in Typora.
 
-    [`${mod}-0`]: setBlockType(nodes.paragraph),
+    [mac ? 'Meta-Alt-0' : 'Ctrl-Shift-0']: setBlockType(nodes.paragraph),
     ...Object.fromEntries([1, 2, 3, 4, 5, 6].map((level) => [
       `${mod}-${level}`,
       setBlockType(nodes.heading, { level }),
@@ -704,11 +706,11 @@ export function notoBindings({ mac, onWidthStep, taskStamp }: KeymapOptions): Re
     [mac ? 'Ctrl-m' : 'Alt-Shift-m']: wrapInMath,
     [`${mod}-u`]: surroundTag('u'),
     [`${mod}-Shift-h`]: surround('==', '=='),
-    // Typora names these Command+plus and Command+minus. The plus, Command
-    // with Shift and the equals key, is Zoom In in the View menu, which
-    // answers first; the equals key alone is the heading's.
-    [`${mod}-=`]: shiftHeading(true),
-    [`${mod}--`]: shiftHeading(false),
+    // Typora puts these on Command with plus and minus, which here are the
+    // text size, as in a browser; the heading level walks on Option and the
+    // arrows, with the menu.
+    [mac ? 'Meta-Alt-ArrowUp' : 'Ctrl-Shift-]']: shiftHeading(true),
+    [mac ? 'Meta-Alt-ArrowDown' : 'Ctrl-Shift-[']: shiftHeading(false),
     [`${mod}-Shift-q`]: wrapIn(nodes.blockquote),
     [`${mod}-k`]: openLinkEditor,
     [`${mod}-Shift-Backspace`]: clearFormat,
@@ -727,10 +729,12 @@ export function notoBindings({ mac, onWidthStep, taskStamp }: KeymapOptions): Re
     // Out past a quote, a list or a code block at the edge of the note. In a
     // table the arrows move by column first (moveCellVertically), and at the
     // note's edge they stay in the table (exitAtEdge).
-    ArrowDown: chainCommands(moveCellVertically(1), exitAtEdge(1)),
+    // Off the last line of a math block, out into the paragraph after it, as Typora's down key does.
+    ArrowDown: chainCommands(moveCellVertically(1), leaveMathBlock('last-line'), exitAtEdge(1)),
     ArrowUp: chainCommands(moveCellVertically(-1), exitAtEdge(-1)),
     'Shift-Enter': insertHardBreak,
-    [`${mod}-Enter`]: insertHardBreak,
+    // Typora's Command-Enter: out of a math block anywhere in it; elsewhere a line break.
+    [`${mod}-Enter`]: chainCommands(leaveMathBlock('any'), insertHardBreak),
 
     Tab: chainCommands(nextCellOrRow, sinkListItem(nodes.list_item)),
     'Shift-Tab': chainCommands(goToNextCell(-1), liftListItem(nodes.list_item)),
