@@ -297,8 +297,10 @@ export function buildMenuTemplate(options: MenuTemplateOptions): MenuItemConstru
       command('Heading 6', 'CmdOrCtrl+6', 'block-heading-6'),
       command('Paragraph', 'CmdOrCtrl+0', 'block-paragraph'),
       { type: 'separator' },
-      command('Increase Heading Level', 'CmdOrCtrl+=', 'block-heading-up'),
-      command('Decrease Heading Level', 'CmdOrCtrl+-', 'block-heading-down'),
+      // On Option with the arrows: Command with plus and minus is the text
+      // size, as it is a browser's zoom.
+      command('Increase Heading Level', 'CmdOrCtrl+Alt+Up', 'block-heading-up'),
+      command('Decrease Heading Level', 'CmdOrCtrl+Alt+Down', 'block-heading-down'),
       { type: 'separator' },
       command('Move Up', 'Alt+Up', 'move-up'),
       command('Move Down', 'Alt+Down', 'move-down'),
@@ -531,13 +533,13 @@ export function buildMenuTemplate(options: MenuTemplateOptions): MenuItemConstru
         click: () => sendCommand('narrow'),
       },
       { type: 'separator' },
-      // Zoom sits on Shift as it does in Typora, which leaves plain Command
-      // with the plus and the minus for walking a block up and down the
-      // heading scale. A menu accelerator wins over the editor's own keys, so
-      // leaving zoom on its default would have made those two do nothing.
-      { role: 'resetZoom', accelerator: 'CmdOrCtrl+Shift+0' },
-      { role: 'zoomIn', accelerator: 'CmdOrCtrl+Shift+=' },
-      { role: 'zoomOut', accelerator: 'CmdOrCtrl+Shift+-' },
+      /* The document's text size, as a browser's zoom is on these keys: the
+         page and the sidebar keep their own, and the interface's size is set
+         in Settings only. Shift with the equals key is the plus itself. */
+      command('Larger Text', 'CmdOrCtrl+=', 'text-larger'),
+      { ...command('Larger Text', 'CmdOrCtrl+Plus', 'text-larger'), id: 'text-larger-plus', visible: false, acceleratorWorksWhenHidden: true },
+      command('Smaller Text', 'CmdOrCtrl+-', 'text-smaller'),
+      command('Default Text Size', 'CmdOrCtrl+Shift+0', 'text-default'),
       { type: 'separator' },
       { role: 'togglefullscreen' },
     ],

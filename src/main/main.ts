@@ -245,12 +245,24 @@ function holdQuitForUnsaved(): void {
   });
 }
 
+/**
+ * The interface's size (`uiScale`), applied as the window's zoom, as a
+ * browser zooms a page, so every part of the interface grows in proportion.
+ * The renderer holds the document's text and the sidebar's names to their
+ * own sizes against it. Set again on each load, since a reload starts over.
+ */
+let interfaceZoom = 1;
+function applyInterfaceZoom(): void {
+  if (editorWindow && !editorWindow.isDestroyed()) editorWindow.webContents.setZoomFactor(interfaceZoom);
+}
+
 function createApplicationWindow(preloadPath: string, theme: NotoTheme = 'system'): BrowserWindow {
   editorWindow = createEditorWindow(preloadPath, logger, rendererConsole, {
     theme,
     shouldUseDarkColors: nativeTheme.shouldUseDarkColors,
   });
   if (windowAlwaysOnTop) editorWindow.setAlwaysOnTop(true);
+  editorWindow.webContents.on('did-finish-load', applyInterfaceZoom);
   editorWindow.on('closed', () => { editorWindow = null; });
   // Closing the window quits the app (`window-all-closed`), so it asks the
   // same question quitting does, while the window is still there to go back to.
@@ -435,6 +447,7 @@ async function run(): Promise<void> {
   const frontAtQuit = new FrontAtQuit(path.join(userData, 'front-at-quit.json'));
   const settings = new SettingsStore(path.join(userData, 'settings.json'));
   await settings.load();
+  interfaceZoom = settings.current().uiScale;
   const updater = new AppUpdater({
     getWindow: () => editorWindow,
     logger,
@@ -936,6 +949,10 @@ async function run(): Promise<void> {
     onChanged: (reply) => {
       logger.log('settings_changed', { theme: reply.settings.theme });
       syncWindowChromeTheme(reply.settings.theme);
+      if (reply.settings.uiScale !== interfaceZoom) {
+        interfaceZoom = reply.settings.uiScale;
+        applyInterfaceZoom();
+      }
       // The window has to be told, and the menu's tick has to follow, or the
       // preference and what the window is doing drift apart.
       if (!reply.settings.codeViewer) session?.clearCodeView();

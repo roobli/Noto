@@ -51,6 +51,12 @@ export type NotoTheme = 'light' | 'dark' | 'system';
  */
 export const SETTING_RANGES = Object.freeze({
   fontSize: { min: 13, max: 26, step: 1 },
+  /* The interface as a whole: the title bar, the status line, the panels and
+     sheets, as a browser zooms a page. The document and the sidebar keep the
+     sizes set for them. */
+  uiScale: { min: 0.8, max: 1.4, step: 0.05 },
+  /* The sidebar's names, in pixels; 14 is Typora's sidebar. */
+  railFontSize: { min: 11, max: 22, step: 1 },
   lineHeight: { min: 1.3, max: 2.2, step: 0.02 },
   autoSaveDelayMs: { min: 400, max: 10_000, step: 100 },
   /* A vault six levels deep spends 90px of the rail on indentation before the
@@ -264,6 +270,14 @@ export interface NotoSettingsV1 {
   readonly proseFontFamily: string;
   /** Document text size in CSS pixels. */
   readonly fontSize: number;
+  /** The interface's size, 1 as designed. See `SETTING_RANGES.uiScale`. */
+  readonly uiScale: number;
+  /** An installed family for the interface, or empty for the system's. Never a path. */
+  readonly uiFontFamily: string;
+  /** The sidebar's text size in CSS pixels. */
+  readonly railFontSize: number;
+  /** An installed family for the sidebar, or empty for the document's preset face. Never a path. */
+  readonly railFontFamily: string;
   /** Unitless line height for document text. */
   readonly lineHeight: number;
   /** How much of the canvas the text column takes. See `WIDTH_MODES`. */
@@ -508,6 +522,10 @@ export const DEFAULT_SETTINGS: NotoSettingsV1 = Object.freeze({
   markSubscript: true,
   sidenotes: true,
   fontSize: 15,
+  uiScale: 1,
+  uiFontFamily: '',
+  railFontSize: 14,
+  railFontFamily: '',
   lineHeight: 1.58,
   widthMode: 'default',
   // Off by default, unlike Typora. Each one changes the bytes the file ends up

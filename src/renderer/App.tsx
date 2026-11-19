@@ -60,7 +60,7 @@ import { GUIDE_EDITION, Shortcuts, tryNeeds, type GuideTry } from './Shortcuts';
 import { RailFooter } from './RailFooter';
 import { Settings, type SettingsSection } from './Settings';
 import {
-  DEFAULT_SETTINGS, clampRailWidth, stepWidthMode, type NotoSettingsV1, type TreeSortV1,
+  DEFAULT_SETTINGS, SETTING_RANGES, clampRailWidth, stepWidthMode, type NotoSettingsV1, type TreeSortV1,
 } from '../shared/settings/v1/contracts';
 import type { AssetRefusalV1 } from '../shared/assets/v1/contracts';
 import { copyThroughSelection } from './editor/noto/clipboard';
@@ -962,7 +962,24 @@ function NotoWorkspace({ platform }: { platform: NotoPlatform }) {
    */
   useEffect(() => {
     const root = globalThis.document.documentElement;
-    root.style.setProperty('--doc-font-size', `${settings.fontSize}px`);
+    /*
+     * The interface is zoomed as a whole by main (`uiScale`), as a browser
+     * zooms a page. The document's text and the sidebar's names are held to
+     * the sizes set for them by dividing by that zoom, so each is set on its
+     * own: a larger interface is not a larger page.
+     */
+    const zoom = settings.uiScale > 0 ? settings.uiScale : 1;
+    root.style.setProperty('--ui-scale', String(zoom));
+    root.style.setProperty('--doc-font-size', `${settings.fontSize / zoom}px`);
+    root.style.setProperty('--rail-font-size', `${settings.railFontSize / zoom}px`);
+    root.style.setProperty('--rail-scale', String(settings.railFontSize / 14 / zoom));
+    // A family leads its stack as a name and a comma; names with quotes are refused at the settings boundary.
+    const lead = (name: string, family: string) => {
+      if (family) root.style.setProperty(name, `"${family}",`);
+      else root.style.removeProperty(name);
+    };
+    lead('--ui-lead', settings.uiFontFamily);
+    lead('--rail-lead', settings.railFontFamily);
     root.style.setProperty('--doc-line-height', `${settings.lineHeight}`);
     root.dataset.widthMode = settings.widthMode;
     root.dataset.proseFace = settings.proseFace;
@@ -982,7 +999,8 @@ function NotoWorkspace({ platform }: { platform: NotoPlatform }) {
     root.dataset.timelines = settings.timelines ? 'on' : 'off';
     root.dataset.focusMode = settings.focusMode ? 'on' : 'off';
     root.dataset.gitMarks = settings.gitMarks ? 'on' : 'off';
-  }, [settings.fontSize, settings.lineHeight, settings.widthMode, settings.proseFace, settings.proseFontFamily,
+  }, [settings.fontSize, settings.uiScale, settings.railFontSize, settings.uiFontFamily, settings.railFontFamily,
+    settings.lineHeight, settings.widthMode, settings.proseFace, settings.proseFontFamily,
     settings.codeLineNumbers, settings.codeWrap, settings.sheetWidth, settings.codeIndentGuides, settings.codeTabMarkers,
     settings.timelines, settings.focusMode, settings.gitMarks]);
 
@@ -2982,6 +3000,16 @@ function NotoWorkspace({ platform }: { platform: NotoPlatform }) {
       case 'widen':
         stepWidthRef.current(1);
         break;
+      case 'text-larger': case 'text-smaller': case 'text-default': {
+        // Derived from the latest settings, so a key held down steps once a press.
+        const { min, max } = SETTING_RANGES.fontSize;
+        const step = (now: number) => (event.command === 'text-default' ? DEFAULT_SETTINGS.fontSize
+          : Math.min(max, Math.max(min, now + (event.command === 'text-larger' ? 1 : -1))));
+        const next = step(settingsRef.current.fontSize);
+        changeSettings((current) => ({ fontSize: step(current.fontSize) }));
+        window.dispatchEvent(new CustomEvent('noto:notice', { detail: `Text size ${next} px` }));
+        break;
+      }
       case 'narrow':
         stepWidthRef.current(-1);
         break;

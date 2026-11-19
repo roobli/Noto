@@ -30,16 +30,19 @@
   /* Typora caps its page at 860 including its own 32px gutters, so the column
      of text is 796. Measured from the running window, not guessed: the cap
      used to be set to the whole box, which made every line 64px longer. */
-  --measure-cap: 796px;
+  /* Caps are divided by the interface's zoom (`--ui-scale`, set on the root),
+     so a larger interface does not widen the page: the document keeps the
+     size and measure set for it. */
+  --measure-cap: calc(796px / var(--ui-scale, 1));
   --measure: min(100% - 2 * var(--canvas-gutter), var(--measure-cap));
 }
 
 :root[data-width-mode='wide'] {
-  --measure-cap: clamp(1000px, 78%, 1180px);
+  --measure-cap: clamp(calc(1000px / var(--ui-scale, 1)), 78%, calc(1180px / var(--ui-scale, 1)));
 }
 
 :root[data-width-mode='full'] {
-  --measure-cap: 1680px;
+  --measure-cap: calc(1680px / var(--ui-scale, 1));
 }
 
 .noto-editor-host {

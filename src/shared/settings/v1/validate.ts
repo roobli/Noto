@@ -167,6 +167,10 @@ export function coerceSettings(value: unknown): NotoSettingsV1 {
     markSubscript: typeof value.markSubscript === 'boolean' ? value.markSubscript : DEFAULT_SETTINGS.markSubscript,
     sidenotes: typeof value.sidenotes === 'boolean' ? value.sidenotes : DEFAULT_SETTINGS.sidenotes,
     fontSize: numeric(value, 'fontSize'),
+    uiScale: numeric(value, 'uiScale'),
+    railFontSize: numeric(value, 'railFontSize'),
+    uiFontFamily: isProseFontFamily(value.uiFontFamily) ? value.uiFontFamily : DEFAULT_SETTINGS.uiFontFamily,
+    railFontFamily: isProseFontFamily(value.railFontFamily) ? value.railFontFamily : DEFAULT_SETTINGS.railFontFamily,
     lineHeight: numeric(value, 'lineHeight'),
     widthMode: isWidthMode(value.widthMode) ? value.widthMode : DEFAULT_SETTINGS.widthMode,
     diffLayout: isDiffLayout(value.diffLayout) ? value.diffLayout : DEFAULT_SETTINGS.diffLayout,
@@ -283,6 +287,8 @@ export function isSettingsWriteRequestV1(value: unknown): value is SettingsWrite
     if (key === 'pluginMarketplace') return isMarketplaceRepo(patch.pluginMarketplace);
     if (key === 'proseFace') return PROSE_FACES.includes(patch.proseFace as ProseFaceV1);
     if (key === 'proseFontFamily') return isProseFontFamily(patch.proseFontFamily);
+    if (key === 'uiFontFamily') return isProseFontFamily(patch.uiFontFamily);
+    if (key === 'railFontFamily') return isProseFontFamily(patch.railFontFamily);
     if (key === 'treeSort') return TREE_SORTS.includes(patch.treeSort as TreeSortV1);
     if (key === 'treeHeld') return TREE_HELD.includes(patch.treeHeld as TreeHeldV1);
     if (key === 'sheetWidth') return SHEET_WIDTHS.includes(patch.sheetWidth as SheetWidthV1);
@@ -381,7 +387,9 @@ export function isSettingsReplyV1(value: unknown): value is SettingsReplyV1 {
     && isImageFolder(settings.imageCustomFolder)
     && isCssPath(settings.customCssPath)
     && PROSE_FACES.includes(settings.proseFace as ProseFaceV1)
-    && isProseFontFamily(settings.proseFontFamily);
+    && isProseFontFamily(settings.proseFontFamily)
+    && isProseFontFamily(settings.uiFontFamily)
+    && isProseFontFamily(settings.railFontFamily);
 }
 
 export function isSystemFontsReplyV1(value: unknown): value is SystemFontsReplyV1 {

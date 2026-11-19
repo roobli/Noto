@@ -718,7 +718,7 @@ button:disabled { color: var(--muted); opacity: 0.7; }
 .rail-empty {
   margin: 10px 8px;
   color: var(--muted);
-  font-size: 12px;
+  font-size: calc(12px * var(--rail-scale, 1));
   line-height: 1.5;
 }
 
@@ -3470,7 +3470,7 @@ section.plugin-group > .plugin-market-row.is-set-aside {
   background: transparent;
   color: var(--ink);
   font: inherit;
-  font-size: 13px;
+  font-size: calc(13px * var(--rail-scale, 1));
   outline: none;
   appearance: none;
 
@@ -3512,7 +3512,7 @@ section.plugin-group > .plugin-market-row.is-set-aside {
   display: flex;
   align-items: baseline;
   gap: 6px;
-  font-size: 13px;
+  font-size: calc(13px * var(--rail-scale, 1));
   line-height: 1.4;
 }
 
@@ -3533,7 +3533,7 @@ section.plugin-group > .plugin-market-row.is-set-aside {
   text-overflow: ellipsis;
   white-space: nowrap;
   color: var(--muted);
-  font-size: 11px;
+  font-size: calc(11px * var(--rail-scale, 1));
   opacity: 0.7;
 }
 
@@ -3541,14 +3541,14 @@ section.plugin-group > .plugin-market-row.is-set-aside {
   margin-left: auto;
   flex: 0 0 auto;
   color: var(--muted);
-  font-size: 11px;
+  font-size: calc(11px * var(--rail-scale, 1));
   font-variant-numeric: tabular-nums;
   opacity: 0.7;
 }
 
 .rail-hit-line {
   padding-left: 16px;
-  font-size: 11.5px;
+  font-size: calc(11.5px * var(--rail-scale, 1));
   line-height: 1.5;
   color: var(--muted);
 }
@@ -3607,7 +3607,7 @@ section.plugin-group > .plugin-market-row.is-set-aside {
 .rail-links-kicker {
   margin: 6px 8px 2px;
   color: var(--muted);
-  font-size: 11px;
+  font-size: calc(11px * var(--rail-scale, 1));
   font-weight: 500;
   letter-spacing: 0.02em;
   text-transform: none;
@@ -3615,7 +3615,7 @@ section.plugin-group > .plugin-market-row.is-set-aside {
 }
 .rail-links-count { margin-left: 4px; font-variant-numeric: tabular-nums; opacity: 0.7; }
 .rail-link { display: flex; }
-.rail-empty code { font-family: tokens.$mono; font-size: 11px; }
+.rail-empty code { font-family: tokens.$mono; font-size: calc(11px * var(--rail-scale, 1)); }
 
 /* Typora's Insert Table: two numbers in a small panel over the note. */
 .table-dialog-scrim {

@@ -126,7 +126,7 @@ describe('the menu and the renderer agree on commands', () => {
       'open-dialog', 'open-folder', 'refresh-folder', 'close-tab', 'import-document', 'print', 'paste-plain',
       'reopen-closed', 'theme-none',
       // A second chord for a command the menu already names once.
-      'quick-open-period', 'quick-open-typora',
+      'quick-open-period', 'quick-open-typora', 'text-larger-plus',
     ]);
     const sent = ids.filter((id) => !mainOnly.has(id));
     for (const id of sent) {
@@ -248,5 +248,28 @@ describe('Help carries a quiet update check', () => {
       const help = menu(template(platform), 'help');
       expect(labels(help)).toContain('Check for Updates…');
     }
+  });
+});
+
+describe('the text size keys', () => {
+  it('are Command with plus and minus, as a browser zooms, with heading level on Option and the arrows', () => {
+    const items = new Map<string, MenuItemConstructorOptions>();
+    const walk = (list: readonly MenuItemConstructorOptions[]) => {
+      for (const item of list) {
+        if (item.id) items.set(item.id, item);
+        if (Array.isArray(item.submenu)) walk(item.submenu as MenuItemConstructorOptions[]);
+      }
+    };
+    walk(template('darwin'));
+    expect(items.get('text-larger')?.accelerator).toBe('CmdOrCtrl+=');
+    expect(items.get('text-larger-plus')?.accelerator).toBe('CmdOrCtrl+Plus');
+    expect(items.get('text-smaller')?.accelerator).toBe('CmdOrCtrl+-');
+    expect(items.get('text-default')?.accelerator).toBe('CmdOrCtrl+Shift+0');
+    expect(items.get('block-heading-up')?.accelerator).toBe('CmdOrCtrl+Alt+Up');
+    expect(items.get('block-heading-down')?.accelerator).toBe('CmdOrCtrl+Alt+Down');
+    // No chord is taken twice by visible items.
+    const visible = [...items.values()].filter((item) => item.visible !== false && typeof item.accelerator === 'string');
+    const chords = visible.map((item) => item.accelerator as string);
+    expect(new Set(chords).size).toBe(chords.length);
   });
 });

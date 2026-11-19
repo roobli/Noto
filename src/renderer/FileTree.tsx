@@ -258,6 +258,11 @@ function NewFolderRow({ depth, onDone }: { depth: number; onDone: (name: string 
 /** The height of one row, which the sticky offsets are multiples of. */
 export const TREE_ROW_HEIGHT = 32;
 
+/** A row's height as drawn: 32 at the sidebar's default size, more or less as its text size is set. */
+function rowHeight(body: HTMLElement): number {
+  return body.querySelector<HTMLElement>('.tree-row')?.offsetHeight || TREE_ROW_HEIGHT;
+}
+
 /** True when `target` is inside `folder`, at any depth. */
 function isUnder(folder: string, target: string): boolean {
   // A root that ends in its separator (`/`, `C:\\`) is its own prefix.
@@ -618,7 +623,7 @@ export function FileTree({
         const held: string[] = [];
         for (const row of body.querySelectorAll<HTMLElement>('.tree-directory[aria-expanded="true"][data-path]')) {
           const box = row.parentElement?.getBoundingClientRect();
-          if (box && box.top < line + TREE_ROW_HEIGHT / 2 && box.bottom > line + TREE_ROW_HEIGHT) held.push(row.dataset.path!);
+          if (box && box.top < line + rowHeight(body) / 2 && box.bottom > line + rowHeight(body)) held.push(row.dataset.path!);
         }
         setTrail((current) => (current.length === held.length && current.every((path, index) => path === held[index]) ? current : held));
       }
@@ -830,7 +835,7 @@ export function FileTree({
     const row = body?.querySelector<HTMLElement>(`.tree-row[data-path="${CSS.escape(folder)}"]`);
     if (!body || !scroller || !row) return;
     const bar = body.parentElement?.querySelector<HTMLElement>('.tree-focusbar')?.offsetHeight ?? 0;
-    const by = row.getBoundingClientRect().top - scroller.getBoundingClientRect().top - bar - TREE_ROW_HEIGHT;
+    const by = row.getBoundingClientRect().top - scroller.getBoundingClientRect().top - bar - rowHeight(body);
     const smooth = !window.matchMedia('(prefers-reduced-motion: reduce)').matches;
     scroller.scrollBy({ top: by, behavior: smooth ? 'smooth' : 'auto' });
   };

@@ -705,11 +705,11 @@ export function notoBindings({ mac, onWidthStep, taskStamp }: KeymapOptions): Re
     [mac ? 'Ctrl-m' : 'Alt-Shift-m']: wrapInMath,
     [`${mod}-u`]: surroundTag('u'),
     [`${mod}-Shift-h`]: surround('==', '=='),
-    // Typora names these Command+plus and Command+minus. The plus, Command
-    // with Shift and the equals key, is Zoom In in the View menu, which
-    // answers first; the equals key alone is the heading's.
-    [`${mod}-=`]: shiftHeading(true),
-    [`${mod}--`]: shiftHeading(false),
+    // Typora puts these on Command with plus and minus, which here are the
+    // text size, as in a browser; the heading level walks on Option and the
+    // arrows, with the menu.
+    [`${mod}-Alt-ArrowUp`]: shiftHeading(true),
+    [`${mod}-Alt-ArrowDown`]: shiftHeading(false),
     [`${mod}-Shift-q`]: wrapIn(nodes.blockquote),
     [`${mod}-k`]: openLinkEditor,
     [`${mod}-Shift-Backspace`]: clearFormat,

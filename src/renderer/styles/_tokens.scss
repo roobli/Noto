@@ -183,5 +183,9 @@
    without them a machine missing all three serif faces drops to Times, where
    Typora would still be setting Chinese in PingFang. */
 $prose: "Songti SC", "Noto Serif CJK SC", "Source Han Serif SC", "PingFang SC", "Hiragino Sans GB", serif;
-$ui: "PingFang SC", "Noto Sans CJK SC", "Source Han Sans SC", sans-serif;
+/* The document's sans face, which the interface font setting leaves alone. */
+$sans: "PingFang SC", "Noto Sans CJK SC", "Source Han Sans SC", sans-serif;
+/* The interface: led by the family chosen in Settings (`--ui-lead`, a name and
+   a comma, set on the root), else the system's. */
+$ui: var(--ui-lead,) $sans;
 $mono: Menlo, Monaco, "SF Mono", Consolas, monospace;
