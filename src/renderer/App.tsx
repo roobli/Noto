@@ -498,6 +498,18 @@ function NotoWorkspace({ platform }: { platform: NotoPlatform }) {
      settings as they were at launch and step the width from 66 every time. */
   const settingsRef = useRef(settings);
   settingsRef.current = settings;
+  /*
+   * The settings as last decided here, ahead of React's render: what a change
+   * is worked out from. A change used to be worked out, and written to main,
+   * inside React's state updater, which React may run later than the press or
+   * more than once; eight quick presses of Zoom Out then wrote stale steps and
+   * the note settled at 67% rather than 50%.
+   */
+  const latestSettingsRef = useRef(settings);
+  const adoptSettings = useCallback((next: NotoSettingsV1) => {
+    latestSettingsRef.current = next;
+    setSettings(next);
+  }, []);
   /** Counts settings writes, so only the latest one's answer is taken. */
   const settingsWriteRef = useRef(0);
   /** The writes not yet answered, while which main's echo of an earlier one is not taken. */
@@ -1111,14 +1123,14 @@ function NotoWorkspace({ platform }: { platform: NotoPlatform }) {
     void window.notoSettings.read({ version: 1, requestId: rid('settings-read') })
       .then((result) => {
         if (!active || !result.ok) return;
-        setSettings(result.value.settings);
+        adoptSettings(result.value.settings);
         if (result.value.settings.sidebarOnLaunch) setRail({ open: true, view: 'files' });
       });
     const unsubscribe = window.notoSettings.onChanged((event) => {
       // While this window's own writes are landing, the echo of an earlier one
       // would put back a value the reader has already moved past; the answer
       // to the last write is what is taken then.
-      if (active && settingsWritesInFlightRef.current === 0) setSettings(event.settings);
+      if (active && settingsWritesInFlightRef.current === 0) adoptSettings(event.settings);
     });
     return () => { active = false; unsubscribe(); };
   }, []);
@@ -1157,20 +1169,19 @@ function NotoWorkspace({ platform }: { platform: NotoPlatform }) {
     // which is the value that survives a restart. Patches may be derived from
     // the latest state (page-width ring) so a second chord before React
     // re-renders does not re-read a stale settingsRef.
-    setSettings((current) => {
-      const resolved = typeof patch === 'function' ? patch(current) : patch;
-      // Only the latest write's answer is taken: two presses of a key in a
-      // row write twice, and the first answer arriving after the second
-      // press used to put the first value back, losing the second.
-      settingsWriteRef.current += 1;
-      settingsWritesInFlightRef.current += 1;
-      const written = settingsWriteRef.current;
-      void window.notoSettings.write({ version: 1, requestId: rid('settings-write'), patch: resolved })
-        .then((result) => { if (result.ok && written === settingsWriteRef.current) setSettings(result.value.settings); })
-        .finally(() => { settingsWritesInFlightRef.current -= 1; });
-      return { ...current, ...resolved };
-    });
-  }, []);
+    const current = latestSettingsRef.current;
+    const resolved = typeof patch === 'function' ? patch(current) : patch;
+    adoptSettings({ ...current, ...resolved });
+    // Only the latest write's answer is taken: two presses of a key in a
+    // row write twice, and the first answer arriving after the second
+    // press used to put the first value back, losing the second.
+    settingsWriteRef.current += 1;
+    settingsWritesInFlightRef.current += 1;
+    const written = settingsWriteRef.current;
+    void window.notoSettings.write({ version: 1, requestId: rid('settings-write'), patch: resolved })
+      .then((result) => { if (result.ok && written === settingsWriteRef.current) adoptSettings(result.value.settings); })
+      .finally(() => { settingsWritesInFlightRef.current -= 1; });
+  }, [adoptSettings]);
 
   // A code block's Wrap button asks for the setting View > Wrap Lines in Code Blocks flips.
   useEffect(() => {
@@ -3193,7 +3204,7 @@ function NotoWorkspace({ platform }: { platform: NotoPlatform }) {
         // The note's zoom, in a browser's steps; Actual Size is the text size set.
         // Derived from the latest settings, so a key held down steps once a press.
         const step = (now: number) => (event.command === 'text-default' ? 1 : stepDocZoom(now, event.command === 'text-larger' ? 1 : -1));
-        const next = step(settingsRef.current.docZoom);
+        const next = step(latestSettingsRef.current.docZoom);
         changeSettings((current) => ({ docZoom: step(current.docZoom) }));
         window.dispatchEvent(new CustomEvent('noto:notice', { detail: `Zoom ${Math.round(next * 100)}%` }));
         break;

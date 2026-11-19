@@ -128,7 +128,7 @@ test.describe('agents and privacy', () => {
 
       // The server the setup starts answers to the key, and only as codex.
       const status = cli(['status', '--root', root], key);
-      expect(status.status).toBe(0);
+      expect(status.status, status.out).toBe(0);
 
       await answerSheets(app, 0);
       await pane.locator('[data-testid="memory-agent"][data-name="codex"]').getByTestId('memory-agent-revoke').click();
@@ -155,7 +155,9 @@ test.describe('agents and privacy', () => {
         Menu.prototype.popup = function popup(this: Electron.Menu) { shown.push(this); };
       });
       const privacy = () => app.evaluate(() => {
-        const menu = (globalThis as { shownMenus?: Electron.Menu[] }).shownMenus!.at(-1)!;
+        // Asked before the press has drawn its menu, there is none yet: say so, and the poll asks again.
+        const menu = (globalThis as { shownMenus?: Electron.Menu[] }).shownMenus?.at(-1);
+        if (!menu) return null;
         const item = menu.items.find((entry) => entry.label === 'Privacy');
         return item?.submenu?.items.map((entry) => ({ label: entry.label, checked: entry.checked })) ?? null;
       });

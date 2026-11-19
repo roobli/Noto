@@ -7,7 +7,7 @@
  * more of the text than it needs to.
  */
 
-import { useEffect, useRef, useState } from 'react';
+import { useEffect, useLayoutEffect, useRef, useState } from 'react';
 import type { SearchOptions } from './editor/noto/search';
 import { isComposing } from './ime';
 
@@ -58,10 +58,24 @@ export function FindBar({ open, showReplace, initialQuery, seed, onSearch, onGo,
   useEffect(() => {
     if (!open || !initialQuery) return;
     setQuery(initialQuery);
-    // Selected once it is in the field, so typing replaces the words handed in.
-    const frame = requestAnimationFrame(() => inputRef.current?.select());
-    return () => cancelAnimationFrame(frame);
+    selectWhenShownRef.current = initialQuery;
   }, [open, initialQuery, seed]);
+
+  /*
+   * Selected once the field holds the words handed in, so typing replaces
+   * them. Not before: writing the value into the field puts the caret at its
+   * end, and a selection made a frame earlier was lost on Linux and Windows,
+   * where the next letter typed went after the words.
+   */
+  const selectWhenShownRef = useRef<string | null>(null);
+  useLayoutEffect(() => {
+    const wanted = selectWhenShownRef.current;
+    const input = inputRef.current;
+    if (wanted === null || !input || input.value !== wanted) return;
+    selectWhenShownRef.current = null;
+    input.focus();
+    input.select();
+  }, [query]);
 
   useEffect(() => {
     if (!open) return;

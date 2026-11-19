@@ -1,29 +1,62 @@
 name: CI
 
+# What runs when, and why.
+#
+# A pull request runs everything: the unit tests, the packaged suite on all
+# three systems, and the installers. That is the gate, and `CI passed` (the
+# last job) is the one status the ruleset on `main` requires, so a change
+# whose packaged suite is red cannot merge. The suite runs against the pull
+# request's merge with `main`, which is what `main` becomes when it merges.
+#
+# A push to `main` then runs the unit tests only. The tree it lands was
+# already tested as the pull request's merge, and running the half-hour suite
+# again on it found nothing the pull request had not. Once a week the whole
+# suite runs on `main` anyway, so a change in a runner image is caught on a
+# quiet day rather than in the next pull request.
+#
+# `release.yml` calls this workflow with `full: true` before it builds
+# anything, so a tag whose tree is red never becomes a release.
+#
 # A change to prose alone (the changelog, the docs, a README) cannot break the
-# build or the app, and the packaged suite takes half an hour on three systems,
-# so it does not start one.
+# build or the app, so it does not start a run.
 on:
   push:
     branches: [main]
     paths-ignore: ['**/*.md', 'docs/**', 'LICENSE']
   pull_request:
     paths-ignore: ['**/*.md', 'docs/**', 'LICENSE']
+  schedule:
+    - cron: '17 3 * * 1'
   workflow_dispatch:
+  workflow_call:
+    inputs:
+      full:
+        description: Run the packaged suite and the installers too
+        type: boolean
+        default: true
+      ref:
+        description: The ref to test; the caller's when empty
+        type: string
+        default: ''
 
-# A newer push supersedes an in-flight run on the same ref.
+# A newer push supersedes an in-flight run on the same ref. Prefixed, so a run
+# called from the release workflow (where `github.workflow` is the caller's
+# name) never shares a group with the caller, and is never cancelled.
 concurrency:
-  group: ${{ github.workflow }}-${{ github.ref }}
-  cancel-in-progress: true
+  group: ci-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: ${{ github.workflow == 'CI' }}
 
 jobs:
   # Static checks and unit tests are platform independent, so they run once
-  # rather than three times.
+  # rather than three times, and first: everything else waits for them.
   check:
     name: Typecheck and unit tests
     runs-on: ubuntu-latest
+    timeout-minutes: 15
     steps:
       - uses: actions/checkout@v4
+        with:
+          ref: ${{ inputs.ref }}
       - uses: pnpm/action-setup@v4
         with:
           version: 11.18.0
@@ -44,27 +77,38 @@ jobs:
   # The packaged suite is the only thing that proves the app actually runs, and
   # it has to prove it on every platform Noto ships to.
   #
-  # In two shards per system, which start without waiting for `check`: a
-  # whole run is about eight minutes on Windows and eleven on macOS, so each
-  # half finishes in about five. `check` is still the required status, so a
-  # change that fails it cannot merge whatever the shards say.
+  # After `check`, not beside it: a change that breaks a unit test used to keep
+  # six runners busy for twenty minutes each with a suite that could not pass.
+  # Sharded so no job runs past about ten minutes: macOS, whose runner takes
+  # 36 minutes for the whole suite where the others take about ten, in four,
+  # the other two in two.
   e2e:
-    name: Packaged e2e (${{ matrix.os }}, ${{ matrix.shard }}/2)
+    name: Packaged e2e (${{ matrix.os }}, ${{ matrix.shard }}/${{ matrix.shards }})
+    needs: check
+    if: github.event_name != 'push' || inputs.full
     runs-on: ${{ matrix.os }}
     # A hung app should fail the job, not hold a runner for six hours.
     timeout-minutes: 30
     strategy:
       fail-fast: false
       matrix:
-        shard: [1, 2]
-        # 24.04, not ubuntu-latest: the installers job is pinned for the same
-        # reason, and a moving runner image makes an e2e-only failure
-        # impossible to attribute to the change under test. macos-15, not
-        # macos-latest, for the same reason; GitHub retired macos-14 on
-        # 2026-11-02, and a job asking for it fails before it starts.
-        os: [macos-15, windows-latest, ubuntu-24.04]
+        # Pinned images rather than `-latest`: a moving runner image makes an
+        # e2e-only failure impossible to attribute to the change under test.
+        # GitHub retired macos-14 on 2026-11-02, and a job asking for it fails
+        # before it starts.
+        include:
+          - { os: macos-15, shard: 1, shards: 4 }
+          - { os: macos-15, shard: 2, shards: 4 }
+          - { os: macos-15, shard: 3, shards: 4 }
+          - { os: macos-15, shard: 4, shards: 4 }
+          - { os: windows-latest, shard: 1, shards: 2 }
+          - { os: windows-latest, shard: 2, shards: 2 }
+          - { os: ubuntu-24.04, shard: 1, shards: 2 }
+          - { os: ubuntu-24.04, shard: 2, shards: 2 }
     steps:
       - uses: actions/checkout@v4
+        with:
+          ref: ${{ inputs.ref }}
       - uses: pnpm/action-setup@v4
         with:
           version: 11.18.0
@@ -74,6 +118,19 @@ jobs:
           cache: pnpm
           cache-dependency-path: pnpm-lock.yaml
       - run: pnpm install --frozen-lockfile
+
+      # Electron's download, about 100 MB a job, kept between runs. These are
+      # `@electron/get`'s default caches on the three systems; the key is the
+      # lockfile, which names the Electron version.
+      - name: Cache the Electron download
+        uses: actions/cache@v4
+        with:
+          path: |
+            ~/.cache/electron
+            ~/Library/Caches/electron
+            ~/AppData/Local/electron/Cache
+          key: electron-${{ runner.os }}-${{ hashFiles('pnpm-lock.yaml') }}
+          restore-keys: electron-${{ runner.os }}-
 
       # Fetch Electron's binary explicitly.
       #
@@ -87,13 +144,15 @@ jobs:
         run: node node_modules/electron/install.js
 
       # Electron needs a display server on Linux. xvfb-run supplies one.
+      # A suite that stops after 15 failures has said what it needs to: a
+      # broken build used to retry every one of 400 tests for half an hour.
       - name: Package and test (Linux)
         if: runner.os == 'Linux'
         run: |
           sudo apt-get update
           sudo apt-get install -y xvfb libnss3 libatk1.0-0 libatk-bridge2.0-0 libgtk-3-0 libgbm1 libasound2t64
           pnpm package:e2e
-          xvfb-run --auto-servernum pnpm exec playwright test --shard=${{ matrix.shard }}/2
+          xvfb-run --auto-servernum pnpm exec playwright test --shard=${{ matrix.shard }}/${{ matrix.shards }} --max-failures=15
 
       # Bash on Windows too, so a package that fails stops the step. Under
       # PowerShell the suite ran on regardless, and 308 tests failed against an
@@ -103,7 +162,7 @@ jobs:
         shell: bash
         run: |
           pnpm package:e2e
-          pnpm exec playwright test --shard=${{ matrix.shard }}/2
+          pnpm exec playwright test --shard=${{ matrix.shard }}/${{ matrix.shards }} --max-failures=15
 
       # Checks what was decided at package time rather than at run time: the
       # fuses, what went into the asar, and the platform's own metadata. The
@@ -125,22 +184,21 @@ jobs:
           retention-days: 7
 
   # Proves the release variant packages and that installers can actually be
-  # produced on each platform. Unsigned here: signing secrets belong to the
-  # release workflow, not to pull requests.
+  # built on each system, which the packaged suite (an e2e variant) does not.
   installers:
     name: Installers (${{ matrix.os }})
     needs: check
+    if: github.event_name != 'push' || inputs.full
     runs-on: ${{ matrix.os }}
+    timeout-minutes: 30
     strategy:
       fail-fast: false
       matrix:
-        # ubuntu-24.04, not ubuntu-latest: latest moved to 26.04 on
-        # 2026-10-20, and its rpm 6 builds in a directory electron-installer-
-        # redhat's spec does not expect (`cp -r usr/*` finds nothing), so every
-        # .rpm failed. Unpin once the installer copes with rpm >= 4.20.
         os: [macos-15, windows-latest, ubuntu-24.04]
     steps:
       - uses: actions/checkout@v4
+        with:
+          ref: ${{ inputs.ref }}
       - uses: pnpm/action-setup@v4
         with:
           version: 11.18.0
@@ -151,14 +209,16 @@ jobs:
           cache-dependency-path: pnpm-lock.yaml
       - run: pnpm install --frozen-lockfile
 
-      # Fetch Electron's binary explicitly.
-      #
-      # The copy of electron that pnpm 11 installs has no `scripts` field, so
-      # its `postinstall` never runs and `node_modules/electron/dist` is never
-      # fetched. `pnpm ignored-builds` reports none and `pnpm rebuild electron`
-      # does nothing, because from pnpm's side there is no build to run.
-      # Without the binary, packaging fails on `electron/dist/LICENSE` and every
-      # packaged test then fails to launch.
+      - name: Cache the Electron download
+        uses: actions/cache@v4
+        with:
+          path: |
+            ~/.cache/electron
+            ~/Library/Caches/electron
+            ~/AppData/Local/electron/Cache
+          key: electron-${{ runner.os }}-${{ hashFiles('pnpm-lock.yaml') }}
+          restore-keys: electron-${{ runner.os }}-
+
       - name: Ensure the Electron binary
         run: node node_modules/electron/install.js
 
@@ -174,11 +234,7 @@ jobs:
         run: pnpm make:release
 
       # `make` packages into `out/` directly rather than into `out/release/`,
-      # which is where `package:release` puts its tree. This step used to read
-      # the fuses from the latter, a path this job never creates, and it only
-      # printed them rather than asserting anything. The same static check the
-      # e2e job runs is better on both counts, and there is no reason to run it
-      # on one platform only: this is the tree that becomes the installer.
+      # which is where `package:release` puts its tree.
       - name: Verify the packaged release tree
         shell: bash
         run: |
@@ -191,3 +247,24 @@ jobs:
           name: installers-${{ matrix.os }}
           path: out/make
           retention-days: 7
+
+  # The one status the ruleset requires. A matrix job reports one status per
+  # cell, under names that change when the matrix does, so requiring them one
+  # by one breaks whenever a shard is added; this stands for all of them. A job
+  # that was skipped (the suite on a push to `main`) is not a failure; one that
+  # failed or was cancelled is.
+  passed:
+    name: CI passed
+    needs: [check, e2e, installers]
+    if: always()
+    runs-on: ubuntu-latest
+    steps:
+      - name: Every job passed or was not needed
+        env:
+          RESULTS: ${{ toJSON(needs.*.result) }}
+        run: |
+          echo "$RESULTS"
+          if echo "$RESULTS" | grep -Eq '"(failure|cancelled)"'; then
+            echo "::error::A required job failed or was cancelled."
+            exit 1
+          fi
