@@ -29,8 +29,8 @@ import { toAssetUrl } from '../shared/assets/v1/contracts';
 import { PAGE_FRAME_NAME } from '../shared/embed-frame';
 import { highlightCodeLines } from './code-viewer-highlight';
 
-/* Scripts and their dialogs, and nothing that gives the page an origin, a form, a popup or a download. */
-const PAGE_SANDBOX = 'allow-scripts allow-modals';
+/* Scripts, and nothing that gives the page an origin, a form, a popup, a dialog that holds the window, or a download. */
+const PAGE_SANDBOX = 'allow-scripts';
 
 export interface CodeViewerProps {
   readonly view: WorkspaceCodeViewV1;
@@ -167,6 +167,17 @@ function CodeText({ view }: CodeViewerProps) {
             onClick={() => setMode((current) => (current === 'preview' ? 'source' : 'preview'))}
           >
             {mode === 'preview' ? 'Source' : 'Preview'}
+          </button>
+        ) : null}
+        {pageUrl ? (
+          <button
+            type="button"
+            className="code-viewer-toggle"
+            data-testid="code-viewer-open-browser"
+            title="Open the page in your browser, where module scripts and the page's own requests run too"
+            onClick={() => { void window.notoWorkspace.reveal({ version: 1, requestId: `page-browser-${Date.now()}`, target: 'viewed-in-browser' }); }}
+          >
+            Open in Browser
           </button>
         ) : null}
         <span className="code-viewer-ro">Read-only</span>

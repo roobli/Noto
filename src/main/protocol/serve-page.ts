@@ -1,5 +1,5 @@
 /**
- * Answering a `noto://page/` request: a local web page, or a file it names.
+ * Answering a `noto-page:` request: a local web page, or a file it names.
  *
  * Only inside the folder the session has open, by real path, as pictures are
  * (`asset-guard.ts`), and read through a handle checked to still be that path
@@ -25,17 +25,19 @@ import { nodeAssetFs, openResolvedAsset, type AssetFs } from './asset-read';
  * beside `'self'`; nothing of the app's is ever on it.
  */
 export const PAGE_CSP = [
-  "default-src 'self' noto://page https: data: blob:",
-  "script-src 'self' noto://page 'unsafe-inline' 'unsafe-eval' https: blob:",
-  "style-src 'self' noto://page 'unsafe-inline' https:",
-  "img-src 'self' noto://page https: data: blob:",
-  "font-src 'self' noto://page https: data:",
-  "media-src 'self' noto://page https: data: blob:",
+  // The response holds the page to an opaque origin itself, whatever frames it.
+  'sandbox allow-scripts',
+  "default-src 'self' noto-page: https: data: blob:",
+  "script-src 'self' noto-page: 'unsafe-inline' 'unsafe-eval' https: blob:",
+  "style-src 'self' noto-page: 'unsafe-inline' https:",
+  "img-src 'self' noto-page: https: data: blob:",
+  "font-src 'self' noto-page: https: data:",
+  "media-src 'self' noto-page: https: data: blob:",
   // Not 'self': a page may not read the folder's other files by script, as a
   // browser opening it from disk will not let it either.
   "connect-src https:",
-  "frame-src 'self' noto://page https:",
-  "worker-src 'self' noto://page blob:",
+  "frame-src 'self' noto-page: https:",
+  "worker-src 'self' noto-page: blob:",
   "object-src 'none'",
   "base-uri 'self'",
   "form-action 'none'",
@@ -56,12 +58,18 @@ const TYPES = new Map<string, string>([
 
 const refused = () => new Response('Not found', { status: 404, headers: { 'Content-Security-Policy': PAGE_CSP } });
 
-/** The real path of a page file to serve, or null. `root` must be one the session has open. */
-export async function resolvePagePath(url: URL, roots: readonly string[], realpath: (target: string) => Promise<string>): Promise<string | null> {
+/** A folder pages are served from, by the id its addresses use. */
+export interface PageRoot {
+  readonly id: string;
+  readonly root: string;
+}
+
+/** The real path of a page file to serve, or null. The folder must be one the session serves pages from. */
+export async function resolvePagePath(url: URL, roots: readonly PageRoot[], realpath: (target: string) => Promise<string>): Promise<string | null> {
   const asked = fromPageUrl(url);
-  if (!asked || !path.isAbsolute(asked.root) || /^[\\/]{2}/.test(asked.root)) return null;
-  const root = path.resolve(asked.root);
-  if (!roots.some((open) => path.resolve(open) === root)) return null;
+  const served = asked ? roots.find((candidate) => candidate.id === asked.rootId) : undefined;
+  if (!asked || !served || !path.isAbsolute(served.root)) return null;
+  const root = path.resolve(served.root);
   const target = path.resolve(root, asked.relative);
   if (!isInside(root, target) || target === root) return null;
   try {
@@ -74,7 +82,7 @@ export async function resolvePagePath(url: URL, roots: readonly string[], realpa
 
 export async function servePage(
   url: URL,
-  roots: readonly string[],
+  roots: readonly PageRoot[],
   logger: Pick<StructuredLogger, 'log'>,
   fs: AssetFs = nodeAssetFs,
 ): Promise<Response> {
@@ -94,9 +102,6 @@ export async function servePage(
       'X-Content-Type-Options': 'nosniff',
       'Cache-Control': 'no-store',
       'Referrer-Policy': 'no-referrer',
-      // A module script or a font is fetched with CORS, from a frame with no
-      // origin; only the page frame may ask at all (`pageRequestAllowed`).
-      'Access-Control-Allow-Origin': '*',
     },
   });
 }

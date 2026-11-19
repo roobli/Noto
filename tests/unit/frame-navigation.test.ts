@@ -28,7 +28,7 @@ describe('where a frame of the editor window may go', () => {
   it('keeps a local page on the folder’s pages, and lets its own frames follow the web', () => {
     const page: FrameLike = { name: 'noto-page', parent: top };
     const insidePage: FrameLike = { name: '', parent: page };
-    expect(frameNavigationAllowed('noto://page/%2FUsers%2Fme%2Fnotes/map.html', false, page)).toBe(true);
+    expect(frameNavigationAllowed('noto-page://page/0123456789abcdef0123456789abcdef/map.html', false, page)).toBe(true);
     expect(frameNavigationAllowed('about:blank', false, page)).toBe(true);
     expect(frameNavigationAllowed('https://example.org/', false, page)).toBe(false);
     expect(frameNavigationAllowed('https://www.youtube.com/embed/x', false, insidePage)).toBe(true);

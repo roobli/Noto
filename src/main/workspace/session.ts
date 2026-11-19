@@ -72,6 +72,7 @@ import { standaloneHtml } from '../../shared/export/document-html';
 import { inlineImages } from './inline-images';
 import { resolveAssetPath } from '../protocol/asset-guard';
 import { isPageFile, toPageUrl } from '../../shared/assets/v1/page';
+import type { PageRoot } from '../protocol/serve-page';
 import { readResolvedAsset } from '../protocol/asset-read';
 import { CopyDestinations } from '../file-truth/v1/copy-destinations';
 import { buildSelectionMenu, buildTreeRowMenu, buildVaultRowMenu, type TreeRowActions, trashLabel } from './tree-row-menu';
@@ -284,19 +285,40 @@ export class WorkspaceSession {
    * can show what sits beside it and nothing that does not.
    */
   /**
-   * The folders a local web page may be served from: the open folder, and
-   * the folder of a page in front that is outside it. Asked per request.
+   * The folders a local web page may be served from, while one is in front:
+   * the open folder for a page inside it, or the page's own folder for one
+   * opened from outside. Nothing is served while no page shows. Asked per
+   * request.
    */
-  pageRoots(): string[] {
-    const roots = [this.folderRoot, this.codeViewPath ? path.dirname(this.codeViewPath) : null];
-    return roots.filter((root): root is string => root !== null);
+  pageRoots(): PageRoot[] {
+    const page = this.codeViewPath;
+    if (page === null || !isPageFile(page)) return [];
+    const root = this.pageRootOf(page);
+    return [{ id: this.pageRootId(root), root }];
   }
 
-  /** Where a web page is served as a page: from the open folder when it is inside it, else from its own. */
+  /** A random name for each folder pages are served from, so an address says nothing of the disk. */
+  private readonly pageRootIds = new Map<string, string>();
+
+  private pageRootId(root: string): string {
+    let id = this.pageRootIds.get(root);
+    if (!id) {
+      id = randomUUID().replace(/-/g, '');
+      this.pageRootIds.set(root, id);
+    }
+    return id;
+  }
+
+  private pageRootOf(page: string): string {
+    const folder = this.folderRoot === null ? null : path.resolve(this.folderRoot);
+    return folder !== null && isInside(folder, page) ? folder : path.dirname(page);
+  }
+
+  /** Where a web page is served as a page. */
   private pageUrlFor(resolved: string): string | null {
     if (!isPageFile(resolved)) return null;
-    const inFolder = this.folderRoot !== null && isInside(path.resolve(this.folderRoot), resolved);
-    return toPageUrl(inFolder ? path.resolve(this.folderRoot!) : path.dirname(resolved), resolved);
+    const root = this.pageRootOf(resolved);
+    return toPageUrl(this.pageRootId(root), path.relative(root, resolved));
   }
 
   imageRoots(): string[] {
@@ -1644,6 +1666,15 @@ export class WorkspaceSession {
    * which is what "reveal" means on every platform that has the idea.
    */
   reveal(target: WorkspaceRevealTargetV1): WorkspaceRevealReplyV1 {
+    if (target === 'viewed-in-browser') {
+      // A web page in the viewer, given to the system's browser: the one that
+      // can run what the viewer will not (module scripts, a page's own fetch).
+      const page = this.codeViewPath;
+      if (page === null || !isPageFile(page)) return { version: NOTO_WORKSPACE_VERSION, revealed: false };
+      void shell.openPath(page);
+      this.logger.log('workspace_page_opened_in_browser', {});
+      return { version: NOTO_WORKSPACE_VERSION, revealed: true };
+    }
     const path = target === 'folder' ? this.folderRoot : this.activePath;
     if (!path) return { version: NOTO_WORKSPACE_VERSION, revealed: false };
     shell.showItemInFolder(path);

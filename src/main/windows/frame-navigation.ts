@@ -30,7 +30,8 @@ export function frameNavigationAllowed(url: string, isMainFrame: boolean, frame:
     // follow the web. Never the app's own pages.
     try {
       const target = new URL(url);
-      if (target.protocol === 'noto:') return target.hostname === 'page';
+      if (target.protocol === 'noto-page:') return true;
+      if (target.protocol === 'noto:') return false;
       return top === frame ? target.protocol === 'about:' : EMBED_SCHEMES.has(target.protocol);
     } catch {
       return false;

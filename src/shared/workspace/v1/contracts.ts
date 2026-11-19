@@ -232,7 +232,7 @@ export interface WorkspaceCodeViewV1 {
   readonly notice: string | null;
   /** True when lines past the viewer cap were omitted. */
   readonly truncated: boolean;
-  /** For a web page in the open folder, where main serves it as a page (`noto://page/`); otherwise null. */
+  /** For a web page in the open folder, where main serves it as a page (`noto-page://page/`); otherwise null. */
   readonly pageUrl: string | null;
 }
 
@@ -422,7 +422,8 @@ export type WorkspaceMenuCommandV1 = typeof WORKSPACE_MENU_COMMANDS[number];
  * capability is then "open the file manager at something this window is already
  * showing you", which is small enough to reason about.
  */
-export type WorkspaceRevealTargetV1 = 'folder' | 'document';
+/** `viewed-in-browser`: the file in the viewer, opened by the system's own app for it (a browser, for a page). */
+export type WorkspaceRevealTargetV1 = 'folder' | 'document' | 'viewed-in-browser';
 
 export interface WorkspaceRevealRequestV1 extends WorkspaceRequestV1 {
   readonly target: WorkspaceRevealTargetV1;
