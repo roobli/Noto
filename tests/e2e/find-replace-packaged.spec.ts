@@ -260,6 +260,39 @@ test.describe('find and replace', () => {
     }
   });
 
+  test('searches the selected words as it opens, and again for another selection', async () => {
+    const { app, page } = await launch('selection');
+    try {
+      const editor = page.locator('.canvas-slot:not([hidden]) .ProseMirror');
+      await editor.locator('h1').dblclick({ position: { x: 20, y: 10 } });
+      await invokeMenu(app, 'find');
+      await expect(page.getByTestId('find-input')).toHaveValue('Needle');
+      await expect(page.getByTestId('find-status')).toHaveText('1 of 5');
+      // Typing replaces the words handed in, as the field opens with them selected.
+      await page.keyboard.type('appears');
+      await expect(page.getByTestId('find-status')).toHaveText('1 of 2');
+      // Back in the note with another word selected: Find takes that one.
+      await editor.locator('p').last().evaluate((paragraph) => {
+        const text = paragraph.firstChild!;
+        const at = text.textContent!.indexOf('closing');
+        const range = document.createRange();
+        range.setStart(text, at);
+        range.setEnd(text, at + 'closing'.length);
+        getSelection()!.removeAllRanges();
+        getSelection()!.addRange(range);
+      });
+      await invokeMenu(app, 'find');
+      await expect(page.getByTestId('find-input')).toHaveValue('closing');
+      await expect(page.getByTestId('find-status')).toHaveText('1 of 1');
+      // Nothing selected: the field keeps what it had.
+      await editor.locator('p').last().click();
+      await invokeMenu(app, 'find');
+      await expect(page.getByTestId('find-input')).toHaveValue('closing');
+    } finally {
+      await app.close();
+    }
+  });
+
   test('closes on escape and clears the highlight', async () => {
     const { app, page } = await launch('escape');
     try {

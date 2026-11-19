@@ -1080,6 +1080,25 @@ export class NotoEditor implements NotoEditorPort {
     return writtenBlocksBefore(doc, Math.min(doc.resolve(at).index(0), doc.childCount - 1));
   }
 
+  /**
+   * The words selected in the note, for Find to search as it opens, as a
+   * browser's and Typora's do. Only while the note itself holds the keys, so
+   * a selection left behind when the find bar was focused is not taken back;
+   * and only a run on one line, which is what a find field holds.
+   */
+  selectionForFind(): string | null {
+    const view = this.view;
+    if (!view || !view.hasFocus()) return null;
+    const { from, to, empty } = view.state.selection;
+    // The page's own selection first: a double click's word is on screen a
+    // while before the editor's state has it, which still held the last one.
+    const dom = view.dom.ownerDocument.getSelection();
+    const onPage = dom && !dom.isCollapsed && dom.anchorNode && view.dom.contains(dom.anchorNode) ? dom.toString() : '';
+    const text = onPage || (empty ? '' : view.state.doc.textBetween(from, to, '\n', ' '));
+    if (text.trim().length === 0 || text.includes('\n') || text.length > 300) return null;
+    return text;
+  }
+
   /** The same, for a top-level node index. */
   private focusTopLevel(index: number, options?: { readonly at?: number }): void {
     const view = this.view;

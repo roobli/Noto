@@ -17,6 +17,8 @@ export interface FindBarProps {
   /** A query to start from, when the bar was opened by something that already
    *  knows what is being looked for. Empty means the reader will type it. */
   readonly initialQuery?: string;
+  /** Changed each time the query is handed in again, so the same words opened twice are taken twice. */
+  readonly seed?: number;
   /** Reports the query as it is typed, so matches highlight while typing. */
   readonly onSearch: (options: SearchOptions) => { matches: number; active: number };
   readonly onGo: (direction: 'forward' | 'backward') => { matches: number; active: number };
@@ -26,7 +28,7 @@ export interface FindBarProps {
 
 const NO_RESULTS = { matches: 0, active: -1 };
 
-export function FindBar({ open, showReplace, initialQuery, onSearch, onGo, onReplace, onClose }: FindBarProps) {
+export function FindBar({ open, showReplace, initialQuery, seed, onSearch, onGo, onReplace, onClose }: FindBarProps) {
   const [query, setQuery] = useState('');
   const [replacement, setReplacement] = useState('');
   const [caseSensitive, setCaseSensitive] = useState(false);
@@ -54,15 +56,19 @@ export function FindBar({ open, showReplace, initialQuery, onSearch, onGo, onRep
    * highlighted text, which is what it did.
    */
   useEffect(() => {
-    if (open && initialQuery) setQuery(initialQuery);
-  }, [open, initialQuery]);
+    if (!open || !initialQuery) return;
+    setQuery(initialQuery);
+    // Selected once it is in the field, so typing replaces the words handed in.
+    const frame = requestAnimationFrame(() => inputRef.current?.select());
+    return () => cancelAnimationFrame(frame);
+  }, [open, initialQuery, seed]);
 
   useEffect(() => {
     if (!open) return;
     // Select the existing query so a second press of the shortcut replaces it.
     inputRef.current?.focus();
     inputRef.current?.select();
-  }, [open, showReplace]);
+  }, [open, showReplace, seed]);
 
   if (!open) return null;
 

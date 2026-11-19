@@ -859,7 +859,7 @@ function NotoWorkspace({ platform }: { platform: NotoPlatform }) {
       return { open: true, section, pluginDetailId: null, pluginDetailName: null };
     });
   }, []);
-  const [find, setFind] = useState<{ open: boolean; replace: boolean; query?: string }>(
+  const [find, setFind] = useState<{ open: boolean; replace: boolean; query?: string; seed?: number }>(
     { open: false, replace: false },
   );
   const findRef = useRef(find);
@@ -3173,13 +3173,16 @@ function NotoWorkspace({ platform }: { platform: NotoPlatform }) {
         break;
       }
       case 'find':
+      case 'find-replace': {
         setPrefs((current) => ({ ...current, open: false }));
-        setFind({ open: true, replace: false });
+        // Selected words are searched for at once; the field only opens empty-handed without them.
+        const selected = sourceModeRef.current ? null : editorRef.current?.selectionForFind() ?? null;
+        const replace = event.command === 'find-replace';
+        setFind((current) => (selected === null
+          ? { open: true, replace }
+          : { open: true, replace, query: selected, seed: (current.seed ?? 0) + 1 }));
         break;
-      case 'find-replace':
-        setPrefs((current) => ({ ...current, open: false }));
-        setFind({ open: true, replace: true });
-        break;
+      }
       default:
         break;
     }
@@ -3605,6 +3608,7 @@ function NotoWorkspace({ platform }: { platform: NotoPlatform }) {
             open={find.open}
             showReplace={find.replace}
             initialQuery={find.query}
+            seed={find.seed}
             onSearch={(options) => {
               const { query, ...rest } = options;
               findOptionsRef.current = rest;
