@@ -287,7 +287,7 @@ async function run(): Promise<void> {
   // protocol asks this map for a plugin's code, so it is declared first.
   let userPlugins = new Map<string, UserPlugin>();
   let userPluginsSetAside: SetAsidePlugin[] = [];
-  await installNotoProtocol(rendererRoot, logger, { roots: () => session?.imageRoots() ?? [] }, async (id, digest, trust) => {
+  await installNotoProtocol(rendererRoot, logger, { roots: () => session?.imageRoots() ?? [], pageRoots: () => session?.pageRoots() ?? [] }, async (id, digest, trust) => {
     // Served only at the address for the trust it has: a sandboxed plugin's
     // code never at the page's own origin.
     const plugin = userPlugins.get(id);

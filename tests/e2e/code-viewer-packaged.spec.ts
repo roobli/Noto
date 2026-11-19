@@ -101,7 +101,9 @@ test.describe('code viewer', () => {
       await expect(htmlPreview).toHaveAttribute('data-preview-kind', 'html');
       const frame = htmlPreview.locator('iframe.code-viewer-preview-frame');
       await expect(frame).toBeVisible();
-      await expect(frame).toHaveAttribute('sandbox', '');
+      // Scripts run, as in a browser; no origin, so nothing of the app's is in reach.
+      await expect(frame).toHaveAttribute('sandbox', 'allow-scripts allow-modals');
+      await expect(frame).toHaveAttribute('src', /^noto:\/\/page\//);
       await expect(page.getByTestId('code-viewer-mode-toggle')).toHaveText('Source');
 
       await page.getByTestId('code-viewer-mode-toggle').click();
@@ -123,4 +125,57 @@ test.describe('code viewer', () => {
     }
   });
 
+
+  test('runs a page\'s own scripts and files beside it, with no reach into the app', async () => {
+    const workspace = path.join(resultRoot, 'page');
+    await rm(workspace, { recursive: true, force: true });
+    await mkdir(path.join(workspace, 'site'), { recursive: true });
+    await writeFile(path.join(workspace, 'site', 'map.html'), [
+      '<!doctype html><html><head><link rel="stylesheet" href="styles.css"><script src="data.js"></script></head>',
+      '<body><ul id="list"></ul><script>',
+      'for (const name of DATA) { const li = document.createElement("li"); li.textContent = name; document.getElementById("list").append(li); }',
+      'let reach = "blocked"; try { reach = parent.document.title; } catch {}',
+      'document.body.dataset.reach = reach;',
+      'fetch("noto://bundle/index.html").then(() => { document.body.dataset.fetched = "yes"; }, () => { document.body.dataset.fetched = "no"; });',
+      '</script></body></html>',
+    ].join('\n'), 'utf8');
+    await writeFile(path.join(workspace, 'site', 'data.js'), 'const DATA = ["Kafka", "Iceberg", "DuckDB"];\n', 'utf8');
+    await writeFile(path.join(workspace, 'site', 'styles.css'), 'li { color: rgb(226, 90, 28); }\n', 'utf8');
+    const { app, page } = await launch(workspace);
+    try {
+      await page.locator('[data-testid="tree-directory"][data-path$="site"], .tree-directory[data-path$="site"]').first().click();
+      await page.locator('[data-testid="tree-file"][data-path$="map.html"]').click();
+      await expect(page.getByTestId('code-viewer')).toHaveAttribute('data-preview-mode', 'preview');
+      await expect.poll(() => page.frames().some((frame) => frame.url().startsWith('noto://page/'))).toBe(true);
+      const frame = page.frames().find((candidate) => candidate.url().startsWith('noto://page/'))!;
+      await expect(frame.locator('li')).toHaveText(['Kafka', 'Iceberg', 'DuckDB']);
+      await expect(frame.locator('li').first()).toHaveCSS('color', 'rgb(226, 90, 28)');
+      await expect(frame.locator('body')).toHaveAttribute('data-reach', 'blocked');
+      await expect(frame.locator('body')).toHaveAttribute('data-fetched', 'no');
+    } finally {
+      await app.close();
+    }
+  });
+
+  test('lists the pictures in a folder, and shows one opened from the tree', async () => {
+    const workspace = path.join(resultRoot, 'pictures');
+    await rm(workspace, { recursive: true, force: true });
+    await mkdir(path.join(workspace, 'shots'), { recursive: true });
+    // A 2 by 1 PNG, red then blue.
+    const png = Buffer.from('iVBORw0KGgoAAAANSUhEUgAAAAIAAAABCAIAAAB7QOjdAAAAEElEQVR4nGP4z8DAwMDAAAAPAgF/yvwh9QAAAABJRU5ErkJggg==', 'base64');
+    await writeFile(path.join(workspace, 'shots', 'one.png'), png);
+    await writeFile(path.join(workspace, 'shots', 'two.jpg'), png);
+    const { app, page } = await launch(workspace);
+    try {
+      await page.locator('[data-testid="tree-directory"][data-path$="shots"], .tree-directory[data-path$="shots"]').first().click();
+      await expect(page.locator('[data-testid="tree-file"][data-path$="one.png"]')).toBeVisible();
+      await expect(page.locator('[data-testid="tree-file"][data-path$="two.jpg"]')).toBeVisible();
+      await page.locator('[data-testid="tree-file"][data-path$="one.png"]').click();
+      const viewer = page.getByTestId('code-viewer');
+      await expect(viewer).toHaveAttribute('data-picture', '1');
+      await expect(page.getByTestId('picture-size')).toHaveText('2 × 1');
+    } finally {
+      await app.close();
+    }
+  });
 });

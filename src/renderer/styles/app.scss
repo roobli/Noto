@@ -4511,6 +4511,9 @@ section.plugin-group > .plugin-market-row.is-set-aside {
   border-bottom: 1px solid var(--rule, rgba(128, 128, 128, 0.25));
 }
 
+.code-viewer-picture .code-viewer-preview { flex: 1 1 auto; align-items: center; padding: 32px; }
+.code-viewer-picture .code-viewer-preview-img { max-width: 100%; max-height: calc(100vh - 160px); object-fit: contain; }
+
 .code-viewer-preview-img {
   max-width: min(100%, 960px);
   height: auto;
@@ -4524,6 +4527,11 @@ section.plugin-group > .plugin-market-row.is-set-aside {
   background: #fff;
   align-items: stretch;
 }
+
+/* A page fills the pane below the bar, as it fills a browser's window. */
+.code-viewer[data-markup-preview='html'][data-preview-mode='preview'] { height: 100%; }
+.code-viewer-preview-page { min-height: 0; overflow: hidden; }
+.code-viewer-preview-page .code-viewer-preview-frame { height: 100%; min-height: 0; }
 
 .code-viewer-preview-frame {
   flex: 1 1 auto;

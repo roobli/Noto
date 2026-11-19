@@ -226,7 +226,8 @@ function isResult<T>(value: unknown, expectedRequestId: string,
 }
 
 function isCodeView(value: unknown): value is WorkspaceCodeViewV1 {
-  return record(value) && exact(value, ['path', 'name', 'language', 'content', 'notice', 'truncated'])
+  return record(value) && exact(value, ['path', 'name', 'language', 'content', 'notice', 'truncated', 'pageUrl'])
+    && (value.pageUrl === null || (typeof value.pageUrl === 'string' && value.pageUrl.startsWith('noto://page/') && value.pageUrl.length <= 16384))
     && typeof value.path === 'string' && value.path.length > 0 && value.path.length <= 4096
     && typeof value.name === 'string' && value.name.length > 0 && value.name.length <= 512
     && typeof value.language === 'string' && value.language.length <= 64

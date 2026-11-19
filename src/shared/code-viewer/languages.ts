@@ -141,7 +141,15 @@ export function languageFor(fileName: string): string | null {
   return EXT_LANG[lowerExt] ?? '';
 }
 
-/** Whether the tree / open path should offer this file to the code viewer. */
+/** Pictures the viewer shows as pictures, through the app's asset protocol. */
+const PICTURE_EXTS = new Set(['png', 'jpg', 'jpeg', 'gif', 'webp', 'bmp', 'ico', 'avif']);
+
+/** True for a picture the viewer shows as itself (`.svg` is markup and has its own preview). */
+export function isPictureFileName(fileName: string): boolean {
+  return PICTURE_EXTS.has(splitExt(fileName).ext.toLowerCase());
+}
+
+/** Whether the tree / open path should offer this file to the viewer: text and code, or a picture. */
 export function isViewableCodeFile(fileName: string): boolean {
-  return languageFor(fileName) !== null;
+  return languageFor(fileName) !== null || isPictureFileName(fileName);
 }

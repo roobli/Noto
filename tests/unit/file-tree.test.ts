@@ -50,7 +50,7 @@ afterEach(async () => {
 });
 
 describe('listing a folder', () => {
-  it('hides code files until includeCode is asked for', async () => {
+  it('hides code files and pictures until includeCode is asked for', async () => {
     const root = await mkdtemp(path.join(os.tmpdir(), 'noto-tree-'));
     roots.push(root);
     await writeFile(path.join(root, 'note.md'), '# hi\n', 'utf8');
@@ -62,6 +62,7 @@ describe('listing a folder', () => {
     expect(plain.map((row) => row.name).sort()).toEqual(['note.md', 'src']);
 
     const withCode = await listDirectory(root, root, 'name', true);
-    expect(withCode.map((row) => row.name).sort()).toEqual(['main.ts', 'note.md', 'src']);
+    // A picture is listed, and opens in the viewer as a picture.
+    expect(withCode.map((row) => row.name).sort()).toEqual(['main.ts', 'note.md', 'photo.png', 'src']);
   });
 });

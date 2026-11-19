@@ -4,6 +4,8 @@ import { net, protocol, session } from 'electron';
 import { ASSET_HOST } from '../../shared/assets/v1/contracts';
 import type { StructuredLogger } from '../logger';
 import { serveAsset } from './serve-asset';
+import { servePage } from './serve-page';
+import { PAGE_HOST } from '../../shared/assets/v1/page';
 
 export const RENDERER_ORIGIN = 'noto://bundle';
 
@@ -29,7 +31,7 @@ const productionCsp = [
   // Web pages a note embeds, which the editor draws only in a sandboxed
   // frame and only once the reader has allowed it (`webEmbeds`, or a press on
   // the page's card). The page itself stays locked to the app.
-  "frame-src 'self' https:",
+  "frame-src 'self' https: noto://page",
   "connect-src 'none'",
   "worker-src 'self'",
   "object-src 'none'",
@@ -96,6 +98,8 @@ export function registerNotoScheme(): void {
 export interface AssetRoots {
   /** The folders images may be read from right now. Asked per request, since they change. */
   readonly roots: () => readonly string[];
+  /** The folders local web pages may be served from: the open folder, or the page's own. */
+  readonly pageRoots?: () => readonly string[];
 }
 
 const notFound = () => new Response('Not found', { status: 404 });
@@ -140,6 +144,7 @@ export async function installNotoProtocol(
   await protocol.handle('noto', async (request) => {
     const url = new URL(request.url);
     if (url.hostname === ASSET_HOST) return serveAsset(url, assets.roots(), logger);
+    if (url.hostname === PAGE_HOST) return servePage(url, assets.pageRoots?.() ?? [], logger);
     if (url.hostname === 'bundle' && url.pathname.startsWith('/plugins/')) {
       const match = TRUSTED_CODE_PATH.exec(url.pathname);
       const code = match && pluginCode ? await pluginCode(match[1]!, match[2]!, 'full') : null;

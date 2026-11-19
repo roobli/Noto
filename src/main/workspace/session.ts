@@ -65,12 +65,13 @@ import type { StructuredLogger } from '../logger';
 import type { FileTruthStoreV1 } from '../file-truth/v1/file-truth-store';
 import type { RecentFiles } from './recent-files';
 import { isEditableFile, listDirectory, type FileTreeEntryV1, isInside, type TreeSortV1 } from './file-tree';
-import { languageFor, isViewableCodeFile } from '../../shared/code-viewer/languages';
+import { isPictureFileName, languageFor, isViewableCodeFile } from '../../shared/code-viewer/languages';
 import { isProbablyBinary } from '../../shared/code-viewer/binary';
 import { CODE_VIEW_MAX_BYTES, CODE_VIEW_MAX_LINES } from '../../shared/code-viewer/limits';
 import { standaloneHtml } from '../../shared/export/document-html';
 import { inlineImages } from './inline-images';
 import { resolveAssetPath } from '../protocol/asset-guard';
+import { isPageFile, toPageUrl } from '../../shared/assets/v1/page';
 import { readResolvedAsset } from '../protocol/asset-read';
 import { CopyDestinations } from '../file-truth/v1/copy-destinations';
 import { buildSelectionMenu, buildTreeRowMenu, buildVaultRowMenu, type TreeRowActions, trashLabel } from './tree-row-menu';
@@ -282,8 +283,26 @@ export class WorkspaceSession {
    * in front is in. The same containment the file tree enforces, so a note
    * can show what sits beside it and nothing that does not.
    */
+  /**
+   * The folders a local web page may be served from: the open folder, and
+   * the folder of a page in front that is outside it. Asked per request.
+   */
+  pageRoots(): string[] {
+    const roots = [this.folderRoot, this.codeViewPath ? path.dirname(this.codeViewPath) : null];
+    return roots.filter((root): root is string => root !== null);
+  }
+
+  /** Where a web page is served as a page: from the open folder when it is inside it, else from its own. */
+  private pageUrlFor(resolved: string): string | null {
+    if (!isPageFile(resolved)) return null;
+    const inFolder = this.folderRoot !== null && isInside(path.resolve(this.folderRoot), resolved);
+    return toPageUrl(inFolder ? path.resolve(this.folderRoot!) : path.dirname(resolved), resolved);
+  }
+
   imageRoots(): string[] {
-    const roots = [this.folderRoot, this.activePath ? path.dirname(this.activePath) : null];
+    // A picture opened from outside the folder is shown from its own folder.
+    const roots = [this.folderRoot, this.activePath ? path.dirname(this.activePath) : null,
+      this.codeViewPath && isPictureFileName(this.codeViewPath) ? path.dirname(this.codeViewPath) : null];
     return roots.filter((root): root is string => root !== null);
   }
 
@@ -419,11 +438,16 @@ export class WorkspaceSession {
   private async loadCodeView(resolved: string): Promise<WorkspaceCodeViewV1> {
     const name = path.basename(resolved);
     const language = languageFor(name) ?? '';
+    // A picture is shown as itself, read by the window from the asset
+    // protocol; there is no text to send.
+    if (isPictureFileName(name)) {
+      return { path: resolved, name, language: 'image', content: '', truncated: false, notice: null, pageUrl: null };
+    }
     try {
       const info = await stat(resolved);
       if (info.size > CODE_VIEW_MAX_BYTES) {
         return {
-          path: resolved, name, language, content: '', truncated: false,
+          path: resolved, name, language, content: '', truncated: false, pageUrl: null,
           notice: `This file is ${info.size.toLocaleString()} bytes, over the ${CODE_VIEW_MAX_BYTES.toLocaleString()}-byte preview limit.`,
         };
       }
@@ -431,7 +455,7 @@ export class WorkspaceSession {
       const text = raw.toString('utf8');
       if (isProbablyBinary(text)) {
         return {
-          path: resolved, name, language, content: '', truncated: false,
+          path: resolved, name, language, content: '', truncated: false, pageUrl: null,
           notice: 'This looks like a binary file, so it is not shown as text.',
         };
       }
@@ -439,15 +463,15 @@ export class WorkspaceSession {
       if (lines.length > CODE_VIEW_MAX_LINES) {
         const kept = lines.slice(0, CODE_VIEW_MAX_LINES).join('\n');
         return {
-          path: resolved, name, language, content: kept, truncated: true,
+          path: resolved, name, language, content: kept, truncated: true, pageUrl: this.pageUrlFor(resolved),
           notice: `Showing the first ${CODE_VIEW_MAX_LINES.toLocaleString()} lines of ${lines.length.toLocaleString()}.`,
         };
       }
-      return { path: resolved, name, language, content: text, truncated: false, notice: null };
+      return { path: resolved, name, language, content: text, truncated: false, notice: null, pageUrl: this.pageUrlFor(resolved) };
     } catch (cause) {
       const reason = cause instanceof Error ? cause.message : 'The file could not be read.';
       return {
-        path: resolved, name, language, content: '', truncated: false,
+        path: resolved, name, language, content: '', truncated: false, pageUrl: null,
         notice: reason,
       };
     }

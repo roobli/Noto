@@ -8,11 +8,12 @@
  *
  * Markup preview (HTML / SVG / drawio.svg): default isolated Preview with a
  * Preview ↔ Source toggle. SVG (including `.drawio.svg`) uses `<img>` + a
- * blob `image/svg+xml` URL so scripts do not run. HTML uses a sandboxed
- * iframe + blob `text/html` with an empty `sandbox` attribute (no scripts,
- * no same-origin, no forms) — stricter than plugin-lite's unsandboxed
- * `file://` iframe. Fail → Source. Plain `.drawio` XML stays source-only.
- * Not markdown/ProseMirror; no WYSIWYG; no trust-scripts in v1.
+ * blob `image/svg+xml` URL so scripts do not run. An HTML page is opened as
+ * a browser opens the file: served by main from its folder at `pageUrl`
+ * (`shared/assets/v1/page.ts`), so its scripts run and the files beside it
+ * load, in a frame sandboxed without `allow-same-origin`, so it has no
+ * origin and cannot reach the app. Without a `pageUrl` it falls back to a
+ * blob with scripts off. Fail → Source. Plain `.drawio` XML stays source-only.
  */
 
 import { useEffect, useMemo, useState } from 'react';
@@ -21,9 +22,15 @@ import {
   isDrawioFileName,
   isDrawioSvgFileName,
   isHtmlMarkupFileName,
+  isPictureFileName,
   isSvgMarkupFileName,
 } from '../shared/code-viewer/languages';
+import { toAssetUrl } from '../shared/assets/v1/contracts';
+import { PAGE_FRAME_NAME } from '../shared/embed-frame';
 import { highlightCodeLines } from './code-viewer-highlight';
+
+/* Scripts and their dialogs, and nothing that gives the page an origin, a form, a popup or a download. */
+const PAGE_SANDBOX = 'allow-scripts allow-modals';
 
 export interface CodeViewerProps {
   readonly view: WorkspaceCodeViewV1;
@@ -59,7 +66,41 @@ export function markupPreviewKindFor(
   return null;
 }
 
+/** A picture opened from the tree: shown whole on the checkerboard, with its size. */
+function PictureView({ view }: CodeViewerProps) {
+  const [size, setSize] = useState<{ width: number; height: number } | null>(null);
+  const [failed, setFailed] = useState(false);
+  useEffect(() => { setSize(null); setFailed(false); }, [view.path]);
+  return (
+    <div className="code-viewer code-viewer-picture" data-testid="code-viewer" data-path={view.path} data-picture="1">
+      <header className="code-viewer-head">
+        <span className="code-viewer-dot" aria-hidden />
+        <span className="code-viewer-name">{view.name}</span>
+        {size ? <span className="code-viewer-lang" data-testid="picture-size">{size.width} × {size.height}</span> : null}
+        <span className="code-viewer-ro">Read-only</span>
+      </header>
+      {failed ? (
+        <div className="code-viewer-notice" role="status">This picture could not be read.</div>
+      ) : (
+        <div className="code-viewer-preview" data-testid="code-viewer-preview" data-preview-kind="picture">
+          <img
+            className="code-viewer-preview-img"
+            src={toAssetUrl(view.path)}
+            alt={view.name}
+            onLoad={(event) => setSize({ width: event.currentTarget.naturalWidth, height: event.currentTarget.naturalHeight })}
+            onError={() => setFailed(true)}
+          />
+        </div>
+      )}
+    </div>
+  );
+}
+
 export function CodeViewer({ view }: CodeViewerProps) {
+  return isPictureFileName(view.name) ? <PictureView view={view} /> : <CodeText view={view} />;
+}
+
+function CodeText({ view }: CodeViewerProps) {
   const drawioSvg = isDrawioSvgFileName(view.name);
   const drawioXml = isDrawioFileName(view.name);
   const previewKind = markupPreviewKindFor(view.name, view.content, view.notice);
@@ -78,11 +119,12 @@ export function CodeViewer({ view }: CodeViewerProps) {
   const showPreview = effectiveCanPreview && mode === 'preview';
   const showSource = !showPreview;
 
+  const pageUrl = previewKind === 'html' ? view.pageUrl : null;
   const previewUrl = useMemo(() => {
-    if (!canPreview || !previewKind) return null;
+    if (!canPreview || !previewKind || pageUrl) return null;
     const type = previewKind === 'svg' ? 'image/svg+xml' : 'text/html';
     return URL.createObjectURL(new Blob([view.content], { type }));
-  }, [canPreview, previewKind, view.content]);
+  }, [canPreview, previewKind, pageUrl, view.content]);
 
   useEffect(() => {
     if (!previewUrl) return undefined;
@@ -145,6 +187,22 @@ export function CodeViewer({ view }: CodeViewerProps) {
             src={previewUrl}
             alt={view.name}
             onError={onPreviewError}
+          />
+        </div>
+      ) : null}
+      {showPreview && pageUrl ? (
+        <div
+          className="code-viewer-preview code-viewer-preview-html code-viewer-preview-page"
+          data-testid="code-viewer-preview"
+          data-preview-kind="html"
+        >
+          <iframe
+            className="code-viewer-preview-frame"
+            name={PAGE_FRAME_NAME}
+            title={view.name}
+            src={pageUrl}
+            sandbox={PAGE_SANDBOX}
+            referrerPolicy="no-referrer"
           />
         </div>
       ) : null}

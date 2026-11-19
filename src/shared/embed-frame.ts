@@ -4,3 +4,10 @@
  * alone may follow links on the web.
  */
 export const EMBED_FRAME_NAME = 'noto-embed';
+
+/**
+ * The name of the frame the code viewer draws a local web page in. It may
+ * move between the open folder's pages (`noto://page`), and the frames the
+ * page makes may follow the web, as an embed's do.
+ */
+export const PAGE_FRAME_NAME = 'noto-page';

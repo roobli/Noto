@@ -232,6 +232,8 @@ export interface WorkspaceCodeViewV1 {
   readonly notice: string | null;
   /** True when lines past the viewer cap were omitted. */
   readonly truncated: boolean;
+  /** For a web page in the open folder, where main serves it as a page (`noto://page/`); otherwise null. */
+  readonly pageUrl: string | null;
 }
 
 export interface WorkspaceCodeViewEventV1 {
