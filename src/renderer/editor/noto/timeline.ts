@@ -215,22 +215,29 @@ function itemHtml(item: TimelineItem): string {
 }
 
 /** The HTML a successful parse draws. */
+/**
+ * The HTML a successful parse draws: an ordered list of stops, each with its
+ * own dot and the length of rail that runs down to the next, so the rail is
+ * one unbroken line through the dots however tall a stop's content is. The
+ * last stop's rail fades out rather than ending in a stub.
+ */
 export function timelineHtml(data: TimelineData): string {
-  const buckets = data.buckets.map((bucket) => {
+  const buckets = data.buckets.map((bucket, index) => {
     const items = bucket.items.map(itemHtml).join('');
+    const last = index === data.buckets.length - 1 ? ' is-last' : '';
     return [
-      '<div class="noto-timeline-line"><div class="noto-timeline-circle"></div></div>',
-      '<div class="noto-timeline-wrapper">',
+      `<li class="noto-timeline-stop${last}">`,
+      '<span class="noto-timeline-rail" aria-hidden="true"><span class="noto-timeline-dot"></span></span>',
       `<div class="noto-timeline-time">${escapeHtml(bucket.time)}</div>`,
-      `<div class="noto-timeline-event">${items}</div>`,
-      '</div>',
+      items ? `<div class="noto-timeline-event">${items}</div>` : '',
+      '</li>',
     ].join('');
   }).join('');
 
   const title = data.title
     ? `<div class="noto-timeline-title">${escapeHtml(data.title)}</div>`
     : '';
-  return `<div class="noto-timeline">${title}<div class="noto-timeline-content">${buckets}</div></div>`;
+  return `<div class="noto-timeline">${title}<ol class="noto-timeline-stops">${buckets}</ol></div>`;
 }
 
 /**

@@ -248,8 +248,49 @@
 /* Front matter is shown whole, as Typora shows it: a metadata block is a
    few lines long and a reader who opens a note wants to see all of them, not
    the first one and a fold. It was collapsed to a line once, and every note
-   with three keys hid two of them. */
-.ProseMirror .noto-frontmatter { margin-top: 0; }
+   with three keys hid two of them.
+
+   It reads as the note's header, not as code: the `---` that fence it in the
+   file are drawn as short quiet rules above and below while the caret is in
+   it, and as one thin rule under it at rest, so the page under it begins
+   where the note does. Keys are coloured as the names a file defines, the
+   values as text, as YAML is in a code block. An empty block, just opened by
+   typing `---` at the head of a note, names what usually goes there. */
+.ProseMirror .noto-frontmatter {
+  position: relative;
+  margin-top: 0;
+  margin-bottom: calc(1.2 * var(--doc-font-size, 15px));
+  padding: 10px 16px;
+  border-radius: 6px;
+  color: var(--code-text, var(--ink));
+  line-height: 1.65;
+}
+.ProseMirror .noto-frontmatter::after {
+  content: '';
+  position: absolute;
+  left: 0;
+  right: 0;
+  bottom: calc(-0.6 * var(--doc-font-size, 15px));
+  height: 1px;
+  background: var(--rule);
+}
+/* With the caret in it, the block takes a quiet ring instead of growing
+   `---` lines: a block that grew under the pointer moved its lines as the
+   reader pressed them. */
+.ProseMirror .noto-frontmatter.noto-active-block {
+  box-shadow: inset 0 0 0 1px var(--hairline);
+}
+/* The block just opened, nothing in it yet: the keys a note usually has, as a hint over the empty line. */
+.ProseMirror .noto-frontmatter.noto-active-block:has(> br:only-child)::before,
+.ProseMirror .noto-frontmatter.noto-active-block:empty::before {
+  content: 'title, tags, date: one per line';
+  position: absolute;
+  left: 16px;
+  top: 10px;
+  color: color-mix(in srgb, var(--muted) 75%, transparent);
+  pointer-events: none;
+  user-select: none;
+}
 
 .ProseMirror .noto-inline-html {
   border-radius: 3px;
@@ -1055,6 +1096,7 @@
  * colour, and structure stays quiet. A rainbow competes with the prose.
  */
 .ProseMirror pre .token,
+.ProseMirror .noto-frontmatter .token,
 .code-viewer .token {
   /* The five colours the author's theme actually gives code, read from its
      own rules rather than borrowed from a Prism theme: a purple for what the
@@ -1128,15 +1170,30 @@
 /* A line in the middle of its own band, 26px above and below at 15 as in
    the author's theme, rather than the top edge of a box with the band all
    underneath it. */
+/* The line itself is the author's theme's (1px of the rule colour), drawn a
+   shade stronger at the middle and fading to the edges, so it reads as a
+   break in the page rather than as the edge of a box; the band round it
+   gives the press room enough to select it. */
 .ProseMirror hr {
-  height: 1px;
+  position: relative;
+  height: 2px;
+  overflow: visible;
   border: 0;
-  background: var(--rule);
+  border-radius: 1px;
+  background: color-mix(in srgb, var(--ink) 45%, var(--paper));
   margin: calc(1.73 * var(--doc-font-size)) 0;
+  cursor: default;
+}
+/* A larger target than one pixel: the band above and below the line. */
+.ProseMirror hr::before {
+  content: '';
+  position: absolute;
+  inset: calc(-0.6 * var(--doc-font-size)) 0;
 }
 
 .ProseMirror hr.ProseMirror-selectednode {
   background: var(--accent);
+  outline: none;
 }
 
 /* Gap cursor -------------------------------------------------------------- */
@@ -2938,7 +2995,7 @@
   position: relative;
   min-height: 32px;
   border-top: 1px solid var(--hairline);
-  padding: 12px 14px;
+  padding: 14px 16px;
   background: var(--paper);
   font: calc(13px * var(--doc-scale, 1)) tokens.$ui;
   white-space: normal;
@@ -2952,83 +3009,173 @@
 }
 .ProseMirror pre .noto-timeline-frame:not([data-state='failed']) .noto-timeline-status { display: none; }
 
+/*
+ * The chronology: a column of stops, each a dot on a rail, its time beside
+ * the dot and its events under the time. The rail is drawn by each stop down
+ * to the next, so it runs unbroken through the dots; the last one fades.
+ * Times are the accent, set in the interface face with figures that line up;
+ * events read in the note's own face and size, a step quieter than prose.
+ */
 .noto-timeline {
-  padding: 4px 8px 12px 8px;
+  --tl-dot: 0.62em;
+  --tl-rail: 2px;
+  --tl-gutter: 1.7em;
+  padding: 0.35em 0 0.2em;
+  font: inherit;
+  font-family: var(--prose-font-family,) tokens.$prose;
+  font-size: var(--doc-font-size, 15px);
+  line-height: 1.6;
 }
+:root[data-prose-face='sans'] .noto-timeline { font-family: tokens.$sans; }
 .noto-timeline-title {
-  font-size: 1.25em;
-  font-weight: 700;
+  margin: 0 0 0.7em;
+  font-family: inherit;
+  font-size: 1em;
+  font-weight: 600;
   color: var(--ink-strong);
-  margin-bottom: 0.75em;
   white-space: break-spaces;
   word-break: break-word;
 }
-.noto-timeline-content {
-  display: grid;
-  grid-template-columns: 3px calc(100% - 3px);
+.noto-timeline-stops {
+  margin: 0;
+  padding: 0;
+  list-style: none;
 }
-.noto-timeline-line {
+/* Two classes deep, so the note's own `li` padding does not win and close the gutter. */
+.ProseMirror .noto-timeline-stops > .noto-timeline-stop {
   position: relative;
-  background-color: color-mix(in srgb, var(--accent) 55%, var(--hairline));
+  margin: 0;
+  padding: 0 0 1.25em var(--tl-gutter);
 }
-.noto-timeline-circle {
+.ProseMirror .noto-timeline-stops > .noto-timeline-stop.is-last { padding-bottom: 0.2em; }
+/* The rail down from this dot to the next one's. */
+.noto-timeline-rail {
   position: absolute;
-  top: 0.35em;
-  left: 50%;
-  width: 11px !important;
-  height: 11px !important;
+  top: 0;
+  bottom: 0;
+  left: calc(var(--tl-dot) / 2 + 1px - var(--tl-rail) / 2);
+  width: var(--tl-rail);
+}
+.noto-timeline-rail::before {
+  content: '';
+  position: absolute;
+  top: calc(0.8em + var(--tl-dot) / 2);
+  bottom: calc(-0.8em + var(--tl-dot) / 2);
+  left: 0;
+  width: 100%;
+  border-radius: var(--tl-rail);
+  background: color-mix(in srgb, var(--accent) 28%, var(--hairline));
+}
+.noto-timeline-stop.is-last .noto-timeline-rail::before {
+  bottom: 0;
+  background: linear-gradient(color-mix(in srgb, var(--accent) 28%, var(--hairline)), transparent);
+}
+.noto-timeline-dot {
+  position: absolute;
+  top: calc(0.8em - var(--tl-dot) / 2);
+  left: calc(var(--tl-rail) / 2 - var(--tl-dot) / 2 - 1px);
+  width: var(--tl-dot);
+  height: var(--tl-dot);
+  box-sizing: border-box;
+  border: 2px solid var(--accent);
   border-radius: 50%;
-  background-color: var(--accent);
-  transform: translateX(-50%);
-  box-shadow: 0 0 0 2px var(--paper);
+  background: var(--paper);
+  box-shadow: 0 0 0 3px var(--paper);
 }
-.noto-timeline-wrapper {
-  margin-left: 1em;
-  text-align: left;
-}
+.noto-timeline-stop:first-child .noto-timeline-dot { background: var(--accent); }
 .noto-timeline-time {
-  font-size: 1.05em;
-  font-weight: 700;
+  font-family: tokens.$ui;
+  font-size: 0.86em;
+  font-weight: 650;
+  font-variant-numeric: tabular-nums;
+  line-height: calc(1.6em / 0.86);
   color: var(--accent);
   white-space: break-spaces;
   word-break: break-word;
 }
 .noto-timeline-event {
-  margin-top: 0.55em;
-  margin-bottom: 1.6em;
+  margin-top: 0.15em;
+  font-size: 0.95em;
   white-space: break-spaces;
   word-break: break-word;
   color: var(--ink);
 }
-.noto-timeline-wrapper:last-child .noto-timeline-event { margin-bottom: 0; }
-.noto-timeline-event > * + * { margin-top: 0.35em; }
+.noto-timeline-event > * { margin: 0; }
+.noto-timeline-event > * + * { margin-top: 0.3em; }
 .noto-timeline-event h3,
 .noto-timeline-event h4,
 .noto-timeline-event h5,
 .noto-timeline-event h6 {
-  margin: 0.4em 0 0.2em;
+  margin: 0.35em 0 0.1em;
+  font-size: 1em;
   font-weight: 650;
   color: var(--ink-strong);
 }
 .noto-timeline-event ul,
 .noto-timeline-event ol {
-  margin: 0.2em 0;
-  padding-left: 1.4em;
+  padding-left: 1.25em;
 }
+.noto-timeline-event li + li { margin-top: 0.1em; }
 .noto-timeline-event blockquote {
-  margin: 0.3em 0;
-  padding-left: 0.7em;
+  padding-left: 0.75em;
   border-left: 2px solid var(--hairline);
   color: var(--muted);
 }
+.noto-timeline-event hr {
+  height: 0;
+  margin: 0.6em 0;
+  border: 0;
+  border-top: 1px solid var(--hairline);
+}
+/* Inline code in an event, which the fence's own `pre code` would otherwise draw as a block. */
+.ProseMirror pre .noto-timeline .noto-timeline-event code {
+  display: inline;
+  overflow: visible;
+  margin: 0;
+  padding: 0.05em 0.3em;
+  border-radius: 3px;
+  background: var(--code-fill, var(--raised));
+  font: 0.88em tokens.$mono;
+  white-space: normal;
+}
 .noto-timeline-task {
   display: flex;
-  align-items: flex-start;
-  gap: 0.45em;
-  padding-left: 2px;
-  margin: 0.15em 0;
+  align-items: baseline;
+  gap: 0.5em;
 }
-.noto-timeline-task input { margin-top: 0.2em; }
+/* Drawn by hand: a disabled box ignores `accent-color` and comes out a dead grey. */
+.noto-timeline-task input {
+  flex: none;
+  appearance: none;
+  position: relative;
+  width: 0.9em;
+  height: 0.9em;
+  margin: 0;
+  border: 1.5px solid var(--muted);
+  border-radius: 3px;
+  background: var(--paper);
+  transform: translateY(0.12em);
+}
+.noto-timeline-task input:checked {
+  border-color: var(--accent);
+  background: var(--accent);
+}
+.noto-timeline-task input:checked::after {
+  content: '';
+  position: absolute;
+  left: 28%;
+  top: 8%;
+  width: 28%;
+  height: 55%;
+  border: solid var(--paper);
+  border-width: 0 0.13em 0.13em 0;
+  transform: rotate(45deg);
+}
+.noto-timeline-task:has(input:checked) > span {
+  color: var(--muted);
+  text-decoration: line-through;
+  text-decoration-color: color-mix(in srgb, var(--muted) 60%, transparent);
+}
 
 :root:not([data-timelines='off']) .ProseMirror pre.noto-fence[data-lang='timeline']:not(.noto-active-block):not(.noto-active-block *) {
   border-color: transparent;

@@ -40,7 +40,7 @@ import type { Node as ProseNode, ResolvedPos } from 'prosemirror-model';
 import { moveBlock, moveColumn } from './move-block';
 import { deleteSelectedRowsOrColumns, enterInTable, exitAtEdge, moveCellVertically, tableFromRows, unwrapAtStart } from './block-edges';
 import { openLinkEditor } from './link-plugin';
-import { fenceOnEnter, undoSubstitution } from './input-rules';
+import { fenceOnEnter, frontmatterOnEnter, undoSubstitution } from './input-rules';
 import { leaveMathBlock } from './math-view';
 import {
   sortTasks,
@@ -323,6 +323,7 @@ export const outdentEmptyListItem: Command = (state, dispatch) => {
 
 const enter: Command = chainCommands(
   tableFromRows,
+  frontmatterOnEnter,
   fenceOnEnter,
   enterInTable,
   newlineInCode,

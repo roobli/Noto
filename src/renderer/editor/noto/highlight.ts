@@ -211,7 +211,8 @@ export function rangesFor(node: ProseNode): readonly TokenRange[] {
   const cached = cache.get(node);
   if (cached) return cached;
 
-  const lang = String(node.attrs.lang ?? '').trim();
+  // Front matter is YAML, whatever it is called.
+  const lang = node.type.name === 'frontmatter' ? 'yaml' : String(node.attrs.lang ?? '').trim();
   // A fence that names no language is drawn as what it reads as, when it
   // reads clearly as one; one that names a language the highlighter does not
   // know stays plain.
@@ -242,6 +243,13 @@ const GUIDE_COLOUR = 'var(--code-guide, color-mix(in srgb, currentcolor 16%, tra
 function decorationsIn(doc: ProseNode, from: number, to: number): Decoration[] {
   const decorations: Decoration[] = [];
   doc.nodesBetween(from, to, (node, position) => {
+    // Front matter takes the tokens alone: it has no indent guides or tab marks to draw.
+    if (node.type.name === 'frontmatter') {
+      for (const range of rangesFor(node)) {
+        decorations.push(Decoration.inline(position + 1 + range.from, position + 1 + range.to, { class: range.className }));
+      }
+      return false;
+    }
     if (node.type.name !== 'code_block') return true;
     // A rule at each tab stop of a line's indentation, drawn on the whitespace
     // itself so a document of ten thousand code lines gains no elements.
@@ -299,7 +307,7 @@ function decorationsForStubWindows(doc: ProseNode, stub: ViewportStubState): Dec
   for (let index = 0; index <= last; index += 1) {
     const child = doc.child(index);
     const end = position + child.nodeSize;
-    if (child.type.name === 'code_block' && isIndexReal(stub, index)) {
+    if ((child.type.name === 'code_block' || child.type.name === 'frontmatter') && isIndexReal(stub, index)) {
       decorations.push(...decorationsIn(doc, position, end));
     }
     position = end;

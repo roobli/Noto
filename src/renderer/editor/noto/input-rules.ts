@@ -170,6 +170,54 @@ export function fenceOnEnter(state: EditorState, dispatch?: (tr: Transaction) =>
 }
 
 /**
+ * `---`, `***` or `___` on a line of its own becomes a rule, and the caret
+ * goes to the line after it, a new empty one when the rule is the last
+ * thing in its container, so typing goes on under the rule as in Typora.
+ * The rule used to be put in with the caret left where ProseMirror chose,
+ * which after a rule is the block below: the next words went into it.
+ *
+ * `---` on the first line of a note opens front matter instead, as Typora
+ * does: that is the only place it is front matter, and a rule there is
+ * never what is meant (`frontmatterOnEnter` does the same for Return).
+ */
+function ruleInputRule(): InputRule {
+  return new InputRule(/^(?:---|___|\*\*\*)$/, (state, match, start, end) => {
+    const $start = state.doc.resolve(start);
+    if ($start.depth !== 1 || $start.parent.type !== nodes.paragraph) return null;
+    const before = $start.before();
+    if (match[0] === '---' && before === 0 && state.doc.firstChild?.type !== nodes.frontmatter) {
+      return openFrontmatter(state, before, $start.after());
+    }
+    const tr = state.tr.replaceWith(before, $start.after(), nodes.horizontal_rule.create());
+    const after = before + 1;
+    const next = tr.doc.resolve(after).nodeAfter;
+    if (!next || !next.isTextblock || next.content.size > 0) tr.insert(after, nodes.paragraph.create());
+    return tr.setSelection(TextSelection.create(tr.doc, after + 1)).scrollIntoView();
+  });
+}
+
+/** Replace the block at `from`..`to` with an empty front matter block, the caret in it. */
+function openFrontmatter(state: EditorState, from: number, to: number): Transaction {
+  const tr = state.tr.replaceWith(from, to, nodes.frontmatter.create());
+  return tr.setSelection(TextSelection.create(tr.doc, from + 1)).scrollIntoView();
+}
+
+/**
+ * Return after `---` on the first line of a note opens front matter, the
+ * caret on its first line, as in Typora. The input rule above does it when
+ * the third hyphen is typed; this is for a line whose `---` came another way
+ * (pasted, or typed with smart dashes taking the hyphens first).
+ */
+export function frontmatterOnEnter(state: EditorState, dispatch?: (tr: Transaction) => void): boolean {
+  const { $from, empty } = state.selection;
+  if (!empty || $from.depth !== 1 || $from.parent.type !== nodes.paragraph) return false;
+  if ($from.before() !== 0 || $from.parent.textContent !== '---') return false;
+  if (state.doc.firstChild?.type === nodes.frontmatter) return false;
+  if (dispatch) dispatch(openFrontmatter(state, 0, $from.after()));
+  return true;
+}
+
+/**
  * Wrap rules so they only fire while `enabled` is true.
  *
  * The rules stay registered either way. Rebuilding the plugin list to add or
@@ -302,8 +350,7 @@ export function notoInputRules(options: InputRuleOptions = {}): Plugin {
         (match) => ({ start: Number(match[1]), spread: false }),
         (match, node) => node.childCount + (node.attrs.start as number) === Number(match[1]),
       ),
-      new InputRule(/^(?:---|___|\*\*\*)$/, (state, _match, start, end) =>
-        state.tr.replaceRangeWith(start, end, nodes.horizontal_rule.create())),
+      ruleInputRule(),
 
       // Inline. Strong is tried before emphasis so `**x**` is not read as `*` plus `*x*`.
       // Emphasis follows CommonMark's flanking: the content neither starts nor
