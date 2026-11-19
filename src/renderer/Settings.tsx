@@ -256,7 +256,7 @@ const WIDTHS: readonly { value: WidthModeV1; label: string; hint: string }[] = [
  * value between them, so coarse search and exact setting each have the control
  * they want.
  */
-function Slider({ label, hint, setting, value, format, onChange, testId }: {
+function Slider({ label, hint, setting, value, format, onChange, testId, onRelease = false }: {
   label: string;
   hint?: string;
   setting: NotoNumericSetting;
@@ -264,8 +264,16 @@ function Slider({ label, hint, setting, value, format, onChange, testId }: {
   format: (value: number) => string;
   onChange: (value: number) => void;
   testId: string;
+  /** Apply only when the thumb is let go: for a setting that rescales the page the thumb is on. */
+  onRelease?: boolean;
 }) {
   const range = SETTING_RANGES[setting];
+  const [held, setHeld] = useState<number | null>(null);
+  const shown = held ?? value;
+  const commit = () => {
+    if (held !== null && held !== value) onChange(held);
+    setHeld(null);
+  };
   return (
     <div className="pref-row pref-slider-row">
       <span className="pref-label">
@@ -273,16 +281,19 @@ function Slider({ label, hint, setting, value, format, onChange, testId }: {
         {hint && <small>{hint}</small>}
       </span>
       <span className="pref-slider">
-        <output className="pref-value">{format(value)}</output>
+        <output className="pref-value">{format(shown)}</output>
         <input
           type="range"
           data-testid={testId}
           min={range.min}
           max={range.max}
           step={range.step}
-          value={value}
+          value={shown}
           aria-label={label}
-          onChange={(event) => onChange(Number(event.target.value))}
+          onChange={(event) => (onRelease ? setHeld(Number(event.target.value)) : onChange(Number(event.target.value)))}
+          onPointerUp={onRelease ? commit : undefined}
+          onKeyUp={onRelease ? commit : undefined}
+          onBlur={onRelease ? commit : undefined}
         />
       </span>
     </div>
@@ -998,7 +1009,7 @@ export function Settings({
                 <p className="pref-group">Interface</p>
                 <Slider label="Interface size" hint="The title bar, status line, panels and these settings, all in proportion. The note and the sidebar keep their own sizes."
                   setting="uiScale" value={settings.uiScale}
-                  format={(value) => `${Math.round(value * 100)}%`} testId="setting-ui-scale"
+                  format={(value) => `${Math.round(value * 100)}%`} testId="setting-ui-scale" onRelease
                   onChange={(value) => onChange({ uiScale: Number(value.toFixed(2)) })} />
                 <FamilyPicker label="Interface font" hint="Menus aside, which are the system's."
                   value={settings.uiFontFamily} families={families} none="System default"

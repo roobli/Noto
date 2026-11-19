@@ -406,7 +406,11 @@ export function FileTree({
     if (typeof ResizeObserver === 'undefined') return undefined;
     const observer = new ResizeObserver(() => readMeasure());
     observer.observe(scroller);
-    return () => observer.disconnect();
+    // The sidebar's size or font set in Settings changes the names' face
+    // without changing the rail's width; the root's style says when.
+    const styles = new MutationObserver(() => readMeasure());
+    styles.observe(document.documentElement, { attributes: true, attributeFilter: ['style'] });
+    return () => { observer.disconnect(); styles.disconnect(); };
   }, [root, focus, readMeasure]);
 
   /** The latest listing asked for per folder, so an older answer arriving late is dropped. */

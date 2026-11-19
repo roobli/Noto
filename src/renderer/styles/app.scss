@@ -234,7 +234,9 @@ button:disabled { color: var(--muted); opacity: 0.7; }
    The room is reserved inside the control groups rather than on the bar, so
    the bar's columns still span the whole window and its middle is the
    window's middle. The bar's own 8px is already on that edge. */
-[data-platform='darwin'] .title-left { padding-left: 70px; }
+/* The traffic lights are drawn by the system at a fixed place, so their room
+   is held against the interface's zoom. */
+[data-platform='darwin'] .title-left { padding-left: calc(70px / var(--ui-scale, 1)); }
 
 [data-platform='win32'] .title-actions,
 [data-platform='linux'] .title-actions {

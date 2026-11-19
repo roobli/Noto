@@ -708,8 +708,8 @@ export function notoBindings({ mac, onWidthStep, taskStamp }: KeymapOptions): Re
     // Typora puts these on Command with plus and minus, which here are the
     // text size, as in a browser; the heading level walks on Option and the
     // arrows, with the menu.
-    [`${mod}-Alt-ArrowUp`]: shiftHeading(true),
-    [`${mod}-Alt-ArrowDown`]: shiftHeading(false),
+    [mac ? 'Meta-Alt-ArrowUp' : 'Ctrl-Shift-]']: shiftHeading(true),
+    [mac ? 'Meta-Alt-ArrowDown' : 'Ctrl-Shift-[']: shiftHeading(false),
     [`${mod}-Shift-q`]: wrapIn(nodes.blockquote),
     [`${mod}-k`]: openLinkEditor,
     [`${mod}-Shift-Backspace`]: clearFormat,

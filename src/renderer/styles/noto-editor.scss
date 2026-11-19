@@ -3597,7 +3597,7 @@
   font-family: var(--prose-font-family), tokens.$prose;
 }
 :root[data-prose-font='custom'][data-prose-face='sans'] :is(.ProseMirror, .pref-specimen-page) {
-  font-family: var(--prose-font-family), tokens.$ui;
+  font-family: var(--prose-font-family), tokens.$sans;
 }
 :root[data-prose-font='custom'][data-prose-face='mono'] :is(.ProseMirror, .pref-specimen-page) {
   font-family: var(--prose-font-family), tokens.$mono;

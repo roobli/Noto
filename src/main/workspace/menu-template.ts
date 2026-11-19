@@ -297,10 +297,12 @@ export function buildMenuTemplate(options: MenuTemplateOptions): MenuItemConstru
       command('Heading 6', 'CmdOrCtrl+6', 'block-heading-6'),
       command('Paragraph', 'CmdOrCtrl+0', 'block-paragraph'),
       { type: 'separator' },
-      // On Option with the arrows: Command with plus and minus is the text
-      // size, as it is a browser's zoom.
-      command('Increase Heading Level', 'CmdOrCtrl+Alt+Up', 'block-heading-up'),
-      command('Decrease Heading Level', 'CmdOrCtrl+Alt+Down', 'block-heading-down'),
+      // Command with plus and minus is the text size, as it is a browser's
+      // zoom. On a Mac the level walks on Command-Option and the arrows; off
+      // one Control-Alt with an arrow turns the screen or switches desktops
+      // before the window sees it, so it is Control-Shift and a bracket.
+      command('Increase Heading Level', mac ? 'CmdOrCtrl+Alt+Up' : 'Ctrl+Shift+]', 'block-heading-up'),
+      command('Decrease Heading Level', mac ? 'CmdOrCtrl+Alt+Down' : 'Ctrl+Shift+[', 'block-heading-down'),
       { type: 'separator' },
       command('Move Up', 'Alt+Up', 'move-up'),
       command('Move Down', 'Alt+Down', 'move-down'),

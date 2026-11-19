@@ -267,6 +267,17 @@ describe('the text size keys', () => {
     expect(items.get('text-default')?.accelerator).toBe('CmdOrCtrl+Shift+0');
     expect(items.get('block-heading-up')?.accelerator).toBe('CmdOrCtrl+Alt+Up');
     expect(items.get('block-heading-down')?.accelerator).toBe('CmdOrCtrl+Alt+Down');
+    // Off a Mac, Control-Alt with an arrow belongs to the desktop.
+    const linux = new Map<string, MenuItemConstructorOptions>();
+    const walkLinux = (list: readonly MenuItemConstructorOptions[]) => {
+      for (const item of list) {
+        if (item.id) linux.set(item.id, item);
+        if (Array.isArray(item.submenu)) walkLinux(item.submenu as MenuItemConstructorOptions[]);
+      }
+    };
+    walkLinux(template('linux'));
+    expect(linux.get('block-heading-up')?.accelerator).toBe('Ctrl+Shift+]');
+    expect(linux.get('block-heading-down')?.accelerator).toBe('Ctrl+Shift+[');
     // No chord is taken twice by visible items.
     const visible = [...items.values()].filter((item) => item.visible !== false && typeof item.accelerator === 'string');
     const chords = visible.map((item) => item.accelerator as string);
