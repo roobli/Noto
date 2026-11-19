@@ -82,7 +82,7 @@ test.describe('workspace file tree', () => {
       // The note was opened on its own and brought its folder with it, so the
       // tree has something to show without being asked a second time.
       await expect(page.getByTestId('tree-vault')).toContainText('notes');
-      await expect(page.getByTestId('tree-file')).toHaveCount(2);
+      await expect(page.getByTestId('tree-file')).toHaveCount(3);
 
       // Choosing a folder still works, and lands on the same one.
       await chooseFolder(app, folder);
@@ -111,17 +111,17 @@ test.describe('workspace file tree', () => {
     }
   });
 
-  test('lists markdown and folders, and leaves out the rest', async () => {
+  test('lists notes, pictures and folders, and leaves out the rest', async () => {
     const { app, page, folder } = await launch('filter');
     try {
       await invokeMenu(app, 'toggle-sidebar');
       await chooseFolder(app, folder);
 
       // Files are alphabetical within their kind.
-      await expect(page.getByTestId('tree-file')).toHaveText(['appendix.md', 'index.md']);
+      // A picture is listed too, and opens in the viewer as itself.
+      await expect(page.getByTestId('tree-file')).toHaveText(['appendix.md', 'index.md', 'picture.png']);
       // Directories come first, and dependency folders are not shown at all.
       await expect(page.getByTestId('tree-directory')).toHaveText(['chapters']);
-      await expect(page.getByTestId('file-tree')).not.toContainText('picture.png');
       await expect(page.getByTestId('file-tree')).not.toContainText('node_modules');
     } finally {
       await app.close();
