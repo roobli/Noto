@@ -171,6 +171,16 @@ export const DIFF_LAYOUTS = ['side', 'stacked', 'inline'] as const;
 
 export type DiffLayoutV1 = (typeof DIFF_LAYOUTS)[number];
 
+/**
+ * What happens to a note's unsaved changes when another note or file is
+ * opened over it. `save` writes them first, so nothing is left as a draft
+ * that a later change on disk, a return to the note or a quit has to reckon
+ * with; `ask` asks each time, with Save, Don't Save and Cancel.
+ */
+export const LEAVE_UNSAVED = ['save', 'ask'] as const;
+
+export type LeaveUnsavedV1 = (typeof LEAVE_UNSAVED)[number];
+
 export type TreeSortV1 = (typeof TREE_SORTS)[number];
 
 /**
@@ -405,6 +415,8 @@ export interface NotoSettingsV1 {
    */
   readonly autoSave: boolean;
   readonly autoSaveDelayMs: number;
+  /** Leaving a note with unsaved changes for another. See `LEAVE_UNSAVED`. */
+  readonly leaveUnsaved: LeaveUnsavedV1;
   /**
    * Absolute path to a stylesheet layered over the theme, or '' for none.
    *
@@ -525,6 +537,7 @@ export const DEFAULT_SETTINGS: NotoSettingsV1 = Object.freeze({
   railWidth: 272,
   autoSave: false,
   autoSaveDelayMs: 1_200,
+  leaveUnsaved: 'save',
   customCssPath: '',
   // Typora's own default, and the one that keeps a note portable: the note and
   // its pictures move together.

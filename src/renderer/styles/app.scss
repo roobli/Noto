@@ -3717,6 +3717,10 @@ section.plugin-group > .plugin-market-row.is-set-aside {
   .is-danger:hover {
     background: color-mix(in srgb, var(--danger) 88%, var(--ink));
   }
+  /* Leaving a note: Don't Save is a discard, but Save is what Return does. */
+  [data-testid='leave-unsaved-discard'] { background: transparent; color: var(--danger); border-color: color-mix(in srgb, var(--danger) 40%, transparent); }
+  [data-testid='leave-unsaved-discard']:hover { background: color-mix(in srgb, var(--danger) 10%, transparent); }
+  .is-primary { background: var(--ink); color: var(--paper); border-color: transparent; }
 }
 
 /* What Noto can do: one sheet, searchable, on the Help menu. Built out of

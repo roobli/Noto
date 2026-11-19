@@ -55,6 +55,7 @@ import { WorkspaceRail, type RailView } from './WorkspaceRail';
 import { SourceMode } from './SourceMode';
 import { TableDialog } from './TableDialog';
 import { ReloadConfirmDialog } from './ReloadConfirmDialog';
+import { LeaveUnsavedDialog, type LeaveChoice } from './LeaveUnsavedDialog';
 import { GUIDE_EDITION, Shortcuts, tryNeeds, type GuideTry } from './Shortcuts';
 import { RailFooter } from './RailFooter';
 import { Settings, type SettingsSection } from './Settings';
@@ -326,6 +327,8 @@ function NotoWorkspace({ platform }: { platform: NotoPlatform }) {
   }, []);
   /** Typora's Insert Table dialog, open or not. */
   const [tableDialog, setTableDialog] = useState(false);
+  /** The question asked before a note with unsaved changes is left, when the reader wants to be asked. */
+  const [leaveAsk, setLeaveAsk] = useState<{ readonly name: string; readonly answer: (choice: LeaveChoice) => void } | null>(null);
   /** Dirty-buffer confirm before a reload that would discard unsaved edits. */
   const [reloadConfirm, setReloadConfirm] = useState<
     { documentId: string; offerSaveCopy: boolean } | null
@@ -1491,7 +1494,9 @@ function NotoWorkspace({ platform }: { platform: NotoPlatform }) {
   });
 
   const activateTab = useCallback((filePath: string) => {
-    void window.notoWorkspace.activateTab({ version: 1, requestId: rid('tab-activate'), path: filePath });
+    void leaveNoteInFrontRef.current(filePath).then((leave) => {
+      if (leave) void window.notoWorkspace.activateTab({ version: 1, requestId: rid('tab-activate'), path: filePath });
+    });
   }, []);
 
   /** The folders opened before, refreshed whenever one is. */
@@ -1849,8 +1854,50 @@ function NotoWorkspace({ platform }: { platform: NotoPlatform }) {
     }
   }, []);
 
+  /**
+   * Before the note in front is left for another file: its unsaved changes are
+   * saved, or, when the reader asked to be asked, saved, put back as on disk,
+   * or kept by staying. A note is never left behind as a draft, which a change
+   * on disk, a return to it or a quit would each have to reckon with. Resolves
+   * false when the reader stays.
+   */
+  const leaveNoteInFront = useCallback(async (target: string | null): Promise<boolean> => {
+    const id = activeIdRef.current;
+    const doc = id ? docsRef.current.get(id) : undefined;
+    const editor = id ? editorsRef.current.get(id) : undefined;
+    sourceFlushRef.current?.();
+    if (!id || !doc || !editor || !editor.isDirty) return true;
+    if (target !== null && doc.opened.path === target) return true;
+    clearAutoSaveTimer();
+    let choice: LeaveChoice = 'save';
+    if (settingsRef.current.leaveUnsaved === 'ask') {
+      const name = doc.opened.path.split(/[\\/]/).pop() ?? doc.opened.path;
+      choice = await new Promise<LeaveChoice>((resolve) => setLeaveAsk({ name, answer: resolve }));
+      setLeaveAsk(null);
+    }
+    if (choice === 'cancel') {
+      editor.focus();
+      return false;
+    }
+    if (choice === 'discard') {
+      const accepted = editor.acceptedDocument;
+      sourceStaleRef.current = true;
+      editor.replaceMarkdown(accepted.text);
+      editor.commit(accepted);
+      setSourceReloads((count) => count + 1);
+      patchDoc(id, { state: doc.cleanState, outcome: null, dirty: false });
+      return true;
+    }
+    // The save captures this note and lands on it, wherever the reader is by then.
+    await saveRef.current();
+    return true;
+  }, [clearAutoSaveTimer, patchDoc]);
+  const leaveNoteInFrontRef = useRef(leaveNoteInFront);
+  leaveNoteInFrontRef.current = leaveNoteInFront;
+
   const openPath = useCallback(async (filePath: string, from?: string | null, options?: { readonly caret?: boolean }) => {
     setOpenError(null);
+    if (!(await leaveNoteInFrontRef.current(filePath))) return;
     // An automatic save waiting on the note being left goes now. Its timer was
     // cleared when the note left the front, so a note left within the delay
     // stayed unsaved; the save captures its own note and lands there.
@@ -3348,6 +3395,7 @@ function NotoWorkspace({ platform }: { platform: NotoPlatform }) {
       >
         {shortcuts && <Shortcuts mac={platform === 'darwin'} sheet={sheetWidth} seen={guideSeen} onClose={closeGuide} onTry={tryGuide}
           unavailable={(action) => tryNeeds(action, { folder: folder.root !== null, note: active !== null })} />}
+        {leaveAsk && <LeaveUnsavedDialog name={leaveAsk.name} onChoose={leaveAsk.answer} />}
         {reloadConfirm && (
           <ReloadConfirmDialog
             offerSaveCopy={reloadConfirm.offerSaveCopy}

@@ -93,7 +93,7 @@ function SectionGlyph({ name }: { name: SettingsSection }) {
 
 const SECTIONS: readonly { value: SettingsSection; label: string; keywords: string; buried?: boolean }[] = [
   { value: 'appearance', label: 'Appearance', keywords: 'theme dark light text size line height width rail stylesheet css font serif sans mono system family always on top float window links graph moc related backlinks' },
-  { value: 'editor', label: 'Editor', keywords: 'spell check images brackets pairs focus typewriter save autosave line numbers guides reload external disk sync watch file tags frontmatter' },
+  { value: 'editor', label: 'Editor', keywords: 'spell check images brackets pairs focus typewriter save autosave leave unsaved draft ask line numbers guides reload external disk sync watch file tags frontmatter' },
   { value: 'markdown', label: 'Markdown', keywords: 'smart quotes dashes ellipsis punctuation typography syntax' },
   { value: 'images', label: 'Images', keywords: 'image picture paste drop screenshot assets folder copy relative path escape url upload picgo bucket web remote iframe embed page video' },
   { value: 'updates', label: 'Updates', keywords: 'update upgrade release version github alpha stable testing channel download auto check launch' },
@@ -1131,6 +1131,13 @@ export function Settings({
                     format={(value) => `${(value / 1000).toFixed(1)} s`} testId="setting-auto-save-delay"
                     onChange={(value) => onChange({ autoSaveDelayMs: Math.round(value) })} />
                 )}
+                <Choices label="Leaving a note with unsaved changes"
+                  hint="When another note or file is opened over it. Saving keeps no draft behind to meet a change on disk or a quit later."
+                  options={[
+                    { value: 'save' as const, label: 'Save it' },
+                    { value: 'ask' as const, label: 'Ask' },
+                  ]}
+                  value={settings.leaveUnsaved} onPick={(value) => onChange({ leaveUnsaved: value })} testPrefix="leave-unsaved" />
                 <Switch
                   label="Follow changes made outside Noto"
                   hint="Another program edits the file and the note follows it, as one undoable step. A note with unsaved changes is never replaced this way: it asks."
