@@ -1636,7 +1636,7 @@ function NotoWorkspace({ platform }: { platform: NotoPlatform }) {
    * and an external conflict resolved automatically is data loss nobody
    * watched happen.
    */
-  const saveRef = useRef<() => Promise<void>>(async () => {});
+  const saveRef = useRef<(targetId?: string) => Promise<void>>(async () => {});
   // Autosave debounce without setState on every keystroke: a typingTick state
   // re-rendered the whole shell (~React commit) on the caret-in-viewport path.
   const autoSaveTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
@@ -1689,18 +1689,26 @@ function NotoWorkspace({ platform }: { platform: NotoPlatform }) {
     if (noteTagsTimerRef.current !== null) clearTimeout(noteTagsTimerRef.current);
   }, []);
 
-  const save = async () => {
-    const editor = editorRef.current;
+  /**
+   * Save a note: the one in front, or `targetId`, one that is loaded behind it
+   * (a note just left). Everything is read for that note, its editor and its
+   * save token, so a save started as the reader moves on lands on its own note.
+   */
+  const save = async (targetId?: string) => {
     // Captured with the editor: the reply may come back after the reader has
     // moved to another note, and must land on this one.
-    const documentId = activeIdRef.current;
+    const documentId = targetId ?? activeIdRef.current;
+    const inFront = documentId === activeIdRef.current;
+    const editor = documentId ? editorsRef.current.get(documentId) ?? (inFront ? editorRef.current : null) : editorRef.current;
+    const token = documentId ? docsRef.current.get(documentId)?.token ?? null : null;
+    const mark = (value: UiState) => { if (documentId) patchDoc(documentId, { state: value }); else setState(value); };
     // Text still settling in the source view goes into the document first,
     // so a save a moment after typing there writes what is on screen.
-    sourceFlushRef.current?.();
+    if (inFront) sourceFlushRef.current?.();
     if (!editor || !token) return;
     // The editor's own word on being dirty, because the flush above may have
     // just made it so and the state this closure holds is from before.
-    const dirty = editorDirty || editor.isDirty;
+    const dirty = (inFront && editorDirty) || editor.isDirty;
     // A save asked for while one is landing is kept, not dropped: it runs once
     // that one has landed, if there is still something to save. Checked and
     // set before anything is captured, so a second trigger in the same tick
@@ -1721,14 +1729,14 @@ function NotoWorkspace({ platform }: { platform: NotoPlatform }) {
     } catch (error) {
       // Nothing was captured, so there is nothing of this save to abandon.
       fileTruthBusyRef.current = false;
-      setLocalMessage(actionableFileTruthMessage(error,
+      if (inFront) setLocalMessage(actionableFileTruthMessage(error,
         'The editor refused this save. Finish the current word, then save again.'));
-      setState('Unsaved changes');
+      mark('Unsaved changes');
       return;
     }
     try {
       setPending(true);
-      setState('Saving');
+      mark('Saving');
       const reply = await window.notoFileTruth.save({
         version: 1,
         requestId: rid('ft-save'),
@@ -1793,16 +1801,18 @@ function NotoWorkspace({ platform }: { platform: NotoPlatform }) {
 
   saveRef.current = save;
 
-  // The save that waited for another to land, now that it has: on the same
-  // note only, and not past a refusal (a conflict, a recovery record, a
-  // failed write), which waits for the person as the first save did.
+  // The save that waited for another to land, now that it has: on its own
+  // note, in front or not, and not past a refusal (a conflict, a recovery
+  // record, a failed write), which waits for the person as the first save did.
   useEffect(() => {
     if (pending || saveAgainRef.current === null) return;
     const again = saveAgainRef.current;
     saveAgainRef.current = null;
-    if (again !== activeIdRef.current) return;
-    if (recoveryBarrier || state === 'External conflict' || state === 'Stale editor revision' || state === 'Save failed') return;
-    void saveRef.current();
+    const held = docsRef.current.get(again);
+    if (!held) return;
+    if (again === activeIdRef.current && recoveryBarrier) return;
+    if (held.recovery || held.state === 'External conflict' || held.state === 'Stale editor revision' || held.state === 'Save failed') return;
+    void saveRef.current(again);
   }, [pending, recoveryBarrier, state]);
 
   const saveCopy = async (): Promise<boolean> => {
@@ -1879,39 +1889,106 @@ function NotoWorkspace({ platform }: { platform: NotoPlatform }) {
    * on disk, a return to it or a quit would each have to reckon with. Resolves
    * false when the reader stays.
    */
+  /** Set while a note is being settled before it is left, so a second leave waits its turn rather than asking twice. */
+  const leavingRef = useRef(false);
+  /** The notes settled on the way out, so the watch on the front below does not settle them again. */
+  const settledRef = useRef(new Set<string>());
+
+  /**
+   * Save a note, or put it back as it is on disk, or bring it back to the
+   * front: what the reader chose for a note being left. Resolves whether the
+   * note is settled, nothing of it left unsaved.
+   */
+  const settleNote = useCallback(async (id: string, choice: LeaveChoice): Promise<boolean> => {
+    const editor = editorsRef.current.get(id);
+    if (!editor) return true;
+    if (choice === 'cancel') return false;
+    // A save already landing is waited for, so this one is not parked behind
+    // it and forgotten once the note is no longer in front.
+    for (let waited = 0; fileTruthBusyRef.current && waited < 200; waited += 1) {
+      await new Promise((resolve) => setTimeout(resolve, 25));
+    }
+    if (choice === 'discard') await reloadFromDiskRef.current(id);
+    else await saveRef.current(id);
+    return !editor.isDirty;
+  }, []);
+  const settleNoteRef = useRef(settleNote);
+  settleNoteRef.current = settleNote;
+
+  const askAboutLeaving = (name: string): Promise<LeaveChoice> => new Promise<LeaveChoice>((resolve) => {
+    setLeaveAsk({ name, answer: (choice) => { setLeaveAsk(null); resolve(choice); } });
+  });
+
+  const nameOfDocument = (id: string) => {
+    const where = docsRef.current.get(id)?.opened.path ?? '';
+    return where.split(/[\\/]/).pop() ?? where;
+  };
+
   const leaveNoteInFront = useCallback(async (target: string | null): Promise<boolean> => {
+    // One leave at a time: a second one, from a key pressed while the first
+    // is asking or saving, waits for the reader to come back to it.
+    if (leavingRef.current) return false;
     const id = activeIdRef.current;
     const doc = id ? docsRef.current.get(id) : undefined;
     const editor = id ? editorsRef.current.get(id) : undefined;
     sourceFlushRef.current?.();
     if (!id || !doc || !editor || !editor.isDirty) return true;
     if (target !== null && doc.opened.path === target) return true;
-    clearAutoSaveTimer();
-    let choice: LeaveChoice = 'save';
-    if (settingsRef.current.leaveUnsaved === 'ask') {
-      const name = doc.opened.path.split(/[\\/]/).pop() ?? doc.opened.path;
-      choice = await new Promise<LeaveChoice>((resolve) => setLeaveAsk({ name, answer: resolve }));
-      setLeaveAsk(null);
-    }
-    if (choice === 'cancel') {
-      editor.focus();
-      return false;
-    }
-    if (choice === 'discard') {
-      const accepted = editor.acceptedDocument;
-      sourceStaleRef.current = true;
-      editor.replaceMarkdown(accepted.text);
-      editor.commit(accepted);
-      setSourceReloads((count) => count + 1);
-      patchDoc(id, { state: doc.cleanState, outcome: null, dirty: false });
+    leavingRef.current = true;
+    try {
+      clearAutoSaveTimer();
+      const choice = settingsRef.current.leaveUnsaved === 'ask' ? await askAboutLeaving(nameOfDocument(id)) : 'save';
+      // Something else came to the front while the question was up (a menu
+      // item, a file from Finder); the watch on the front settles it.
+      if (activeIdRef.current !== id) return false;
+      if (choice === 'cancel') {
+        editor.focus();
+        return false;
+      }
+      settledRef.current.add(id);
+      const settled = await settleNoteRef.current(id, choice);
+      if (!settled) {
+        settledRef.current.delete(id);
+        // Refused or failed: the note stays in front with its changes, and says why.
+        window.dispatchEvent(new CustomEvent('noto:notice', { detail: `"${nameOfDocument(id)}" could not be saved, so it stays open with its changes.` }));
+        editor.focus();
+        return false;
+      }
       return true;
+    } finally {
+      leavingRef.current = false;
     }
-    // The save captures this note and lands on it, wherever the reader is by then.
-    await saveRef.current();
-    return true;
-  }, [clearAutoSaveTimer, patchDoc]);
+  }, [clearAutoSaveTimer]);
   const leaveNoteInFrontRef = useRef(leaveNoteInFront);
   leaveNoteInFrontRef.current = leaveNoteInFront;
+
+  /*
+   * A note left by a way that did not ask first: New Note, Open, Open Recent,
+   * Reopen Closed, a file from Finder or the command line, all opened by main.
+   * Its changes are saved now, or, when the reader asked to be asked, the
+   * question comes now, and Cancel brings the note back to the front.
+   */
+  const lastFrontRef = useRef<string | null>(null);
+  useEffect(() => {
+    const left = lastFrontRef.current;
+    const front = codeView ? null : activeId;
+    lastFrontRef.current = front;
+    if (left === null || left === front) return;
+    if (settledRef.current.delete(left)) return;
+    const editor = editorsRef.current.get(left);
+    if (!editor || !editor.isDirty || !docsRef.current.has(left)) return;
+    void (async () => {
+      const choice = settingsRef.current.leaveUnsaved === 'ask' ? await askAboutLeaving(nameOfDocument(left)) : 'save';
+      if (choice === 'cancel') {
+        const where = docsRef.current.get(left)?.opened.path;
+        if (where) void window.notoWorkspace.activateTab({ version: 1, requestId: rid('tab-activate'), path: where });
+        return;
+      }
+      if (!(await settleNoteRef.current(left, choice))) {
+        window.dispatchEvent(new CustomEvent('noto:notice', { detail: `"${nameOfDocument(left)}" could not be saved; its changes are kept, and it is in the recent notes.` }));
+      }
+    })();
+  }, [activeId, codeView]);
 
   const openPath = useCallback(async (filePath: string, from?: string | null, options?: { readonly caret?: boolean }) => {
     setOpenError(null);
@@ -2121,9 +2198,13 @@ function NotoWorkspace({ platform }: { platform: NotoPlatform }) {
   const stepTrail = useCallback((direction: -1 | 1) => {
     const step = direction < 0 ? stepBack(trail) : stepForward(trail);
     if (!step) return;
-    replayingRef.current = true;
-    setTrail(step.trail);
-    void openPath(step.target);
+    // Settled before the trail moves, so staying on the note leaves the trail where it was.
+    void leaveNoteInFrontRef.current(step.target).then((leave) => {
+      if (!leave) return;
+      replayingRef.current = true;
+      setTrail(step.trail);
+      void openPath(step.target);
+    });
   }, [trail, openPath]);
   const stepTrailRef = useRef(stepTrail);
   stepTrailRef.current = stepTrail;
@@ -2320,8 +2401,12 @@ function NotoWorkspace({ platform }: { platform: NotoPlatform }) {
     // Recorded before the open, not after it. The document is adopted through
     // an event rather than through the reply, so the editor can be mounted and
     // asking for a pending query before the promise this awaits has settled.
-    pendingMatchRef.current = query;
-    void openPath(filePath);
+    // Settled first, so staying on the note does not leave the match waiting for the next open.
+    void leaveNoteInFrontRef.current(filePath).then((leave) => {
+      if (!leave) return;
+      pendingMatchRef.current = query;
+      void openPath(filePath);
+    });
   }, [openPath]);
 
   /** The link text for a note, relative to the one being edited. */

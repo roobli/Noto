@@ -80,6 +80,36 @@ test.describe('unsaved edits are asked about before they are lost', () => {
     }
   });
 
+  test('a note left by a way main opens, New Note, is saved too', async () => {
+    const { app, page, vault } = await launch('leave-main');
+    try {
+      await editAlpha(page);
+      await menu(app, 'new-file');
+      await expect(page.locator('.titlebar')).not.toContainText('alpha.md');
+      await expect.poll(() => alphaOnDisk(vault)).toBe('# Alpha\n\nFirst note. Typed, not saved.\n');
+    } finally {
+      await app.close();
+    }
+  });
+
+  test('a save refused on the way out keeps the reader on the note, its changes kept', async () => {
+    const { app, page, vault } = await launch('leave-refused');
+    try {
+      await editAlpha(page);
+      // Another program writes the file underneath, so the save is refused.
+      await writeFile(path.join(vault, 'alpha.md'), '# Alpha\n\nChanged elsewhere.\n', 'utf8');
+      await page.waitForTimeout(800);
+      await page.getByTestId('tree-file').filter({ hasText: 'beta.md' }).click();
+      await page.waitForTimeout(800);
+      await expect(page.locator('.titlebar')).toContainText('alpha.md');
+      await expect(page.locator('.canvas-slot:not([hidden]) .ProseMirror')).toContainText('Typed, not saved.');
+      expect(await alphaOnDisk(vault)).toBe('# Alpha\n\nChanged elsewhere.\n');
+    } finally {
+      await answer(app, 1).catch(() => {});
+      await app.close();
+    }
+  });
+
   test('asked instead, Cancel stays, Don\'t Save puts the note back as on disk, Save writes it', async () => {
     const { app, page, vault } = await launch('leave-ask', { leaveUnsaved: 'ask' });
     try {
