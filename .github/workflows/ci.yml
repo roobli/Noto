@@ -79,8 +79,9 @@ jobs:
   #
   # After `check`, not beside it: a change that breaks a unit test used to keep
   # six runners busy for twenty minutes each with a suite that could not pass.
-  # Sharded so each job finishes in about five minutes: macOS, the slowest
-  # system by half, in three, the other two in two.
+  # Sharded so no job runs past about ten minutes: macOS, whose runner takes
+  # 36 minutes for the whole suite where the others take about ten, in four,
+  # the other two in two.
   e2e:
     name: Packaged e2e (${{ matrix.os }}, ${{ matrix.shard }}/${{ matrix.shards }})
     needs: check
@@ -96,9 +97,10 @@ jobs:
         # GitHub retired macos-14 on 2026-11-02, and a job asking for it fails
         # before it starts.
         include:
-          - { os: macos-15, shard: 1, shards: 3 }
-          - { os: macos-15, shard: 2, shards: 3 }
-          - { os: macos-15, shard: 3, shards: 3 }
+          - { os: macos-15, shard: 1, shards: 4 }
+          - { os: macos-15, shard: 2, shards: 4 }
+          - { os: macos-15, shard: 3, shards: 4 }
+          - { os: macos-15, shard: 4, shards: 4 }
           - { os: windows-latest, shard: 1, shards: 2 }
           - { os: windows-latest, shard: 2, shards: 2 }
           - { os: ubuntu-24.04, shard: 1, shards: 2 }

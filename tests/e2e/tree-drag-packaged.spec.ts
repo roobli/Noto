@@ -131,7 +131,11 @@ test.describe('dragging in the tree', () => {
       await expect.poll(() => scroller.evaluate((element) => element.scrollHeight > element.clientHeight + 200)).toBe(true);
       await lift(page, 'note-00.md');
       await expect(page.getByTestId('tree-drop-chip')).toHaveText('Drop on a folder · hold at an edge to scroll');
-      await hold(page, { y: 'bottom' }, 900);
+      // Held until the tree has gone a good way, within a few seconds: the scroll is so much a
+      // frame, and a busy runner draws fewer frames in a fixed time than a laptop does.
+      for (let held = 0; held < 8 && await scroller.evaluate((element) => element.scrollTop) <= 200; held += 1) {
+        await hold(page, { y: 'bottom' }, 500);
+      }
       const down = await scroller.evaluate((element) => element.scrollTop);
       expect(down).toBeGreaterThan(200);
       const edge = await page.locator('.tree-edge-down').evaluate((element) => Number(getComputedStyle(element).getPropertyValue('--edge')));

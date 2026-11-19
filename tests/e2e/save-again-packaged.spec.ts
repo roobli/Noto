@@ -50,8 +50,10 @@ test('a save asked for while one is landing writes what was typed in between', a
     await page.keyboard.press(process.platform === 'darwin' ? 'Meta+ArrowRight' : 'End');
     await page.keyboard.type(' one');
     await invokeMenu(app, 'save');
+    // The first save is under way before the next words are typed; otherwise this proves nothing.
+    // Waited for rather than read once: a slow runner can take a frame or two to say so.
+    await expect(page.getByTestId('file-state')).toHaveText('Saving', { timeout: 5_000 });
     await page.keyboard.type(' two');
-    // The first save is still landing when the second is asked for; otherwise this proves nothing.
     const during = await page.getByTestId('file-state').innerText();
     await invokeMenu(app, 'save');
     expect(during).toBe('Saving');
