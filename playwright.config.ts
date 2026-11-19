@@ -34,7 +34,8 @@ export default defineConfig({
   // the report instead of failing a change that did not cause it. Locally a
   // failure is reported at once.
   retries: process.env.CI ? 1 : 0,
-  reporter: [['list']],
+  // In CI, each failure is also an annotation on the pull request, at the line that failed.
+  reporter: process.env.CI ? [['list'], ['github']] : [['list']],
   outputDir: 'test-results/playwright',
   use: { trace: 'retain-on-failure' },
 });

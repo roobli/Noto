@@ -36,6 +36,16 @@ concurrency:
   cancel-in-progress: false
 
 jobs:
+  # The whole of CI on the tagged tree, before anything is published. A tag
+  # used to become a release whatever its tree's tests said, and 0.1.1 went
+  # out over a red suite.
+  ci:
+    name: CI on the tag
+    uses: ./.github/workflows/ci.yml
+    with:
+      full: true
+      ref: ${{ github.event.inputs.tag || github.ref }}
+
   # The release a tag belongs to, with its channel decided by the tag rather
   # than by whoever made it. A version with a prerelease component
   # (`0.0.2-alpha.113`) is a prerelease and never Latest; a plain version is a
@@ -44,6 +54,7 @@ jobs:
   # release-integrity.yml, so re-running an old tag here cannot take it.
   release:
     name: Release for the tag
+    needs: ci
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
