@@ -768,7 +768,7 @@ describe('a struck run against what sits beside it', () => {
   it('escapes a tilde before the closer when an escape precedes it', () => {
     const h = openTracked('Note \\*\\~ here.\n');
     strike(h, '*~');
-    expect(save(h)).toBe('Note ~~\\*\\~~~ here.\n');
+    expect(save(h)).toBe('Note ~~*\\~~~ here.\n');
     expectStrikeReadsBack(h, 'Note *~ here.', '*~');
   });
 
@@ -858,7 +858,8 @@ describe('a dollar sign in text', () => {
   it('stays text when the character after it is escaped too', () => {
     const h = openTracked('Read \\$\\_GET, not \\$HOME.\n');
     typeAtEnd(h, 0, ' Then $[x] and $*.');
-    expect(save(h)).toBe('Read \\$\\_GET, not \\$HOME. Then \\$\\[x] and \\$\\*.\n');
+    // The dollars keep the escapes the author wrote; others go where nothing needs them.
+    expect(save(h)).toBe('Read \\$_GET, not \\$HOME. Then \\$\\[x] and \\$*.\n');
     expectSavedMatchesEditor(h, 'dollar before an escaped character');
   });
 
@@ -874,7 +875,7 @@ describe('a dollar sign in text', () => {
   it('at the start of a styled run after math stays text', () => {
     const h = openTracked('$x$**\\$\\_a** costs \\$5.\n');
     typeAtEnd(h, 0, '!');
-    expect(save(h)).toBe('$x$**\\$\\_a** costs \\$5.!\n');
+    expect(save(h)).toBe('$x$**\\$_a** costs \\$5.!\n');
     expectSavedMatchesEditor(h, 'dollar opening strong text after math');
   });
 });

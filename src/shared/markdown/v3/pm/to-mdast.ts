@@ -15,7 +15,10 @@ import type {
   TableCell,
   TableRow,
 } from 'mdast';
-import { renderMarkdown } from '../syntax';
+import { micromarkShape, renderMarkdown } from '../syntax';
+import { splitBlocks } from '../blocks';
+import { enrichSpansInRange } from '../roobli-md-adapter';
+import { docFromSpans } from './from-mdast';
 import { alignTableMarkdown } from '../table-align';
 
 type AlignType = 'left' | 'right' | 'center' | null;
@@ -410,6 +413,20 @@ function listItemToMdast(item: ProseNode) {
 }
 
 /**
+ * How a block's text reads, for judging which escapes it can lose: both as
+ * micromark reads it and as the editor does, whose fast reader takes simple
+ * paragraphs without micromark. An escape goes only when neither reading
+ * changes, so text written with fewer backslashes never opens in the editor
+ * as something other than what was saved.
+ */
+function readsAs(markdown: string): string {
+  const text = `${markdown}\n`;
+  const spans = splitBlocks(text).spans;
+  const editor = docFromSpans(enrichSpansInRange(spans, text, { from: 0, to: spans.length }));
+  return `${micromarkShape(text)}\u0000${JSON.stringify(editor.toJSON())}`;
+}
+
+/**
  * Serialize one top level ProseMirror node to markdown.
  *
  * The trailing newline `mdast-util-to-markdown` appends is removed, because
@@ -428,7 +445,10 @@ export function blockToMarkdown(node: ProseNode, previous?: string): string {
   if (node.type.name === 'code_block' && node.attrs.fenced === false) {
     return textOf(node).split('\n').map((line) => (line.length > 0 ? `    ${line}` : line)).join('\n');
   }
-  const markdown = renderMarkdown(blockToMdast(node), { keepDollarEscapes: typeof previous === 'string' && previous.includes('\\$') }).replace(/\n+$/, '');
+  const markdown = renderMarkdown(blockToMdast(node), {
+    keepDollarEscapes: typeof previous === 'string' && previous.includes('\\$'),
+    readsAs: readsAs,
+  }).replace(/\n+$/, '');
   // Alignment is a pure transform of the finished text, so it needs no place in
   // the mdast conversion: the reader asked for this table's source to be lined
   // up, and this is the one funnel every block's markdown passes through.
