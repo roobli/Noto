@@ -234,6 +234,30 @@ interface OpenDocumentState {
  * files. The least recently used are let go past this many, never the one in
  * front and never one with unsaved changes.
  */
+/** The last save, as its toast says it. */
+interface SaveToast {
+  readonly key: number;
+  readonly ok: boolean;
+  /** A copy written elsewhere by Save a Copy, rather than the note itself. */
+  readonly copy: boolean;
+  /** The full path written to. */
+  readonly path: string;
+  /** Why it failed, when it did. */
+  readonly reason: string | null;
+}
+
+/** Why a save that came back was not written, in a line. */
+function refusedSaveReason(outcome: FileTruthSaveOutcomeV1): string {
+  switch (outcome.status) {
+    case 'external-conflict': return 'The file changed on disk after it was opened. Your edits are still here.';
+    case 'stale-editor-revision': return 'The note changed while it was being saved. Save again.';
+    case 'recovery-needed': return 'An earlier save left a recovery record, which has to be dealt with first.';
+    case 'recovery-failed': return 'Recovering an earlier save failed. Your edits are still here.';
+    case 'cleanup-failed': return 'The file was written, but cleaning up after it failed.';
+    default: return 'The save was refused. Your edits are still here.';
+  }
+}
+
 const KEEP_LOADED = 12;
 
 function NotoWorkspace({ platform }: { platform: NotoPlatform }) {
@@ -621,6 +645,20 @@ function NotoWorkspace({ platform }: { platform: NotoPlatform }) {
    * it as a button, such as the plain text in place of a tidied paste.
    */
   const [notice, setNotice] = useState<string | null>(null);
+  /*
+   * What the last save did, said every time: the note's name, the full path
+   * it was written to, and, when it failed, why. Each save replaces the one
+   * before, so saves in a row refresh one toast rather than stacking.
+   */
+  const [saveToast, setSaveToast] = useState<SaveToast | null>(null);
+  const saveToastTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const toastSave = useCallback((ok: boolean, filePath: string | null | undefined, reason: string | null = null, copy = false) => {
+    if (!filePath) return;
+    if (saveToastTimerRef.current !== null) clearTimeout(saveToastTimerRef.current);
+    setSaveToast((last) => ({ key: (last?.key ?? 0) + 1, ok, copy, path: filePath, reason }));
+    saveToastTimerRef.current = setTimeout(() => { saveToastTimerRef.current = null; setSaveToast(null); }, ok ? 2800 : 8000);
+  }, []);
+  useEffect(() => () => { if (saveToastTimerRef.current !== null) clearTimeout(saveToastTimerRef.current); }, []);
   const [noticeAction, setNoticeAction] = useState<{ label: string; run: () => void } | null>(null);
   useEffect(() => {
     let timer: ReturnType<typeof setTimeout> | null = null;
@@ -1753,6 +1791,7 @@ function NotoWorkspace({ platform }: { platform: NotoPlatform }) {
     const inFront = documentId === activeIdRef.current;
     const editor = documentId ? editorsRef.current.get(documentId) ?? (inFront ? editorRef.current : null) : editorRef.current;
     const token = documentId ? docsRef.current.get(documentId)?.token ?? null : null;
+    const savedPath = documentId ? docsRef.current.get(documentId)?.opened.path ?? null : null;
     const mark = (value: UiState) => { if (documentId) patchDoc(documentId, { state: value }); else setState(value); };
     // Text still settling in the source view goes into the document first,
     // so a save a moment after typing there writes what is on screen.
@@ -1781,8 +1820,9 @@ function NotoWorkspace({ platform }: { platform: NotoPlatform }) {
     } catch (error) {
       // Nothing was captured, so there is nothing of this save to abandon.
       fileTruthBusyRef.current = false;
-      if (inFront) setLocalMessage(actionableFileTruthMessage(error,
-        'The editor refused this save. Finish the current word, then save again.'));
+      const message = actionableFileTruthMessage(error, 'The editor refused this save. Finish the current word, then save again.');
+      if (inFront) setLocalMessage(message);
+      toastSave(false, savedPath, message);
       mark('Unsaved changes');
       return;
     }
@@ -1805,6 +1845,7 @@ function NotoWorkspace({ platform }: { platform: NotoPlatform }) {
         setPending(false);
         if (documentId) patchDoc(documentId, { outcome: null, state: 'Save failed' });
         if (documentId === activeIdRef.current) setLocalMessage(message);
+        toastSave(false, savedPath, message);
       };
       if (!result.ok) {
         failed(actionableFileTruthMessage(result.error.message, 'The save transport failed. Your edits are still here.'));
@@ -1812,16 +1853,20 @@ function NotoWorkspace({ platform }: { platform: NotoPlatform }) {
       }
       // A refusal (a conflict, another transaction) never commits, and this
       // capture is done with either way.
-      if (!acceptedSaveOutcome(result.value)) editor.abandonSave(capture.captureId);
+      const accepted = acceptedSaveOutcome(result.value) !== null;
+      if (!accepted) editor.abandonSave(capture.captureId);
       present(result.value, capture.captureId, { id: documentId, editor });
+      toastSave(accepted, savedPath, accepted ? null : refusedSaveReason(result.value));
     } catch (error) {
       editor.abandonSave(capture.captureId);
       setPending(false);
       if (documentId) patchDoc(documentId, { outcome: null, state: 'Save failed' });
+      const message = actionableFileTruthMessage(error, 'The save transport failed. Your edits are still here.');
       if (documentId === activeIdRef.current) {
         updateRecoveryBarrier(true);
-        setLocalMessage(actionableFileTruthMessage(error, 'The save transport failed. Your edits are still here.'));
+        setLocalMessage(message);
       }
+      toastSave(false, savedPath, message);
     } finally {
       fileTruthBusyRef.current = false;
     }
@@ -1896,16 +1941,23 @@ function NotoWorkspace({ platform }: { platform: NotoPlatform }) {
       });
       if (!result.ok) {
         setPending(false);
-        setLocalMessage(actionableFileTruthMessage(result.error.message, 'Save a copy failed. The original is unchanged.'));
+        const message = actionableFileTruthMessage(result.error.message, 'Save a copy failed. The original is unchanged.');
+        setLocalMessage(message);
+        toastSave(false, chosen.value.path, message, true);
         setState('Save failed');
         return false;
       }
       present(result.value);
-      return result.value.status === 'copy-saved';
+      const copied = result.value.status === 'copy-saved';
+      toastSave(copied, copied && result.value.status === 'copy-saved' ? result.value.destinationPath : chosen.value.path,
+        copied ? null : refusedSaveReason(result.value), true);
+      return copied;
     } catch (error) {
       setPending(false);
       setOutcome(null);
-      setLocalMessage(actionableFileTruthMessage(error, 'Save a copy failed. The original is unchanged.'));
+      const message = actionableFileTruthMessage(error, 'Save a copy failed. The original is unchanged.');
+      setLocalMessage(message);
+      toastSave(false, chosen.value.path, message, true);
       setState('Save failed');
       return false;
     } finally {
@@ -3971,6 +4023,22 @@ function NotoWorkspace({ platform }: { platform: NotoPlatform }) {
           remounted is not announced, so the announcing is done here, by one
           element that stays on the page. */}
       <p className="announcer" role="status" aria-live="polite" aria-atomic="true" data-testid="announcer">{notice ?? ''}</p>
+
+      {saveToast && (
+        <div key={saveToast.key} className={saveToast.ok ? 'save-toast' : 'save-toast is-failed'}
+          role={saveToast.ok ? 'status' : 'alert'} data-testid="save-toast" data-ok={saveToast.ok ? 'true' : 'false'}
+          onClick={() => setSaveToast(null)}>
+          <span className="save-toast-mark" aria-hidden="true">{saveToast.ok ? '\u2713' : '!'}</span>
+          <span className="save-toast-body">
+            <span className="save-toast-title">
+              {saveToast.ok ? (saveToast.copy ? 'Saved a copy as ' : 'Saved ') : (saveToast.copy ? 'Could not save a copy as ' : 'Could not save ')}
+              <strong>{saveToast.path.split(/[\\/]/).pop()}</strong>
+            </span>
+            <span className="save-toast-path" data-testid="save-toast-path">to {saveToast.path}</span>
+            {saveToast.reason && <span className="save-toast-reason">{saveToast.reason}</span>}
+          </span>
+        </div>
+      )}
 
       {/* Where the file lives, and what state it is in.
           Deliberately not the file name: the title bar already shows that, and

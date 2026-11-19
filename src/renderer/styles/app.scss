@@ -5891,3 +5891,66 @@ button.memory-more {
   &:hover:not(:disabled) { background: var(--accent); filter: brightness(1.06); }
   &:disabled { opacity: 0.6; cursor: default; }
 }
+
+/* Save toast -------------------------------------------------------------- */
+
+/* What a save did, every time: the name, the full path, and why when it
+   failed. Low on the right, over the end of the status line and clear of
+   the text column, so it is seen without covering what is being written.
+   One at a time; a save in a row replaces it, and a press dismisses it. */
+.save-toast {
+  position: fixed;
+  right: 18px;
+  bottom: 38px;
+  z-index: 60;
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr);
+  gap: 10px;
+  align-items: start;
+  box-sizing: border-box;
+  width: max-content;
+  max-width: min(560px, calc(100vw - 36px));
+  padding: 10px 14px 11px 12px;
+  border: 1px solid var(--hairline);
+  border-radius: 8px;
+  background: var(--overlay);
+  color: var(--ink);
+  font: 13px/1.45 tokens.$ui;
+  box-shadow: 0 1px 2px color-mix(in srgb, var(--shadow) 8%, transparent),
+    0 12px 30px -14px color-mix(in srgb, var(--shadow) 38%, transparent);
+  cursor: default;
+  animation: save-toast-in 160ms cubic-bezier(0.2, 0.8, 0.2, 1);
+}
+.save-toast-mark {
+  display: grid;
+  place-items: center;
+  width: 18px;
+  height: 18px;
+  margin-top: 1px;
+  border-radius: 50%;
+  background: var(--success);
+  color: var(--overlay);
+  font: 700 11px/1 tokens.$ui;
+}
+.save-toast.is-failed { border-color: color-mix(in srgb, var(--danger) 45%, var(--hairline)); }
+.save-toast.is-failed .save-toast-mark { background: var(--danger); }
+.save-toast-body {
+  display: grid;
+  gap: 2px;
+  min-width: 0;
+}
+.save-toast-title { color: var(--ink); }
+.save-toast-title strong { font-weight: 600; color: var(--ink-strong); }
+.save-toast-path {
+  color: var(--muted);
+  font: 12px/1.45 tokens.$mono;
+  overflow-wrap: anywhere;
+}
+.save-toast-reason { color: var(--danger); }
+@keyframes save-toast-in {
+  from { opacity: 0; transform: translateY(6px); }
+  to { opacity: 1; transform: none; }
+}
+@media (prefers-reduced-motion: reduce) {
+  .save-toast { animation: none; }
+}
