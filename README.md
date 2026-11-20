@@ -41,7 +41,7 @@ The four states below come from the packaged build in the light theme.
 ## Project status
 
 Noto is usable and under active development. The current formal release is
-`v0.0.4` (3 November 2026), on the Stable channel; the first release outside
+`v0.1.1` (19 November 2026), on the Stable channel; the first release outside
 alpha was `v0.0.3`. Releases are unsigned by choice: macOS builds are ad-hoc signed and not
 notarized, the Windows installer is not code-signed, and there is no dmg.
 Signing comes in a later release: an Apple Developer ID with notarization on
@@ -51,8 +51,9 @@ The honest summary of where it stands is worth reading before you depend on
 it.
 
 All three platforms are now verified the same way: the packaged application is
-built and then driven through its real interface, and the whole suite of about 370 packaged tests runs on macOS, Windows and Linux
-on every change, alongside about 3,200 unit tests. Windows was unproven until the run that proved it,
+built and then driven through its real interface, and the whole suite of 435
+packaged tests in 128 files runs on macOS, Windows and Linux on every pull
+request, alongside 3,320 unit tests. Windows was unproven until the run that proved it,
 which is also the run that found two faults nobody could have read out of the
 code: every plugin came up needing recovery because a durability step that
 only POSIX has was being treated as a failure, and the remote control refused
@@ -70,10 +71,10 @@ numbers are below.
 
 Builds for macOS, Windows and Linux are on the
 [releases page](https://github.com/roobli/Noto/releases). Each release carries
-the downloads listed below, as of `v0.0.4`. macOS ships as zips; there is no
+the downloads listed below, as of `v0.1.1`. macOS ships as zips; there is no
 dmg.
 
-**First open:** `v0.0.4` is unsigned, so each OS warns once on a fresh
+**First open:** `v0.1.1` is unsigned, so each OS warns once on a fresh
 download. That is expected, not a broken build. On macOS, Gatekeeper blocks a
 double-click on the first open; on Windows, SmartScreen asks once (*More info →
 Run anyway*). Follow [`docs/install.md`](docs/install.md) (short, per
@@ -156,10 +157,10 @@ is enough to retheme the app without editing it.
 whole folder by how well it matches and by how often and how recently you open
 it, so an empty box already shows the few notes you probably want. `Enter`
 opens the note; `Alt+Enter` writes a `[[wiki link]]` to it at the caret instead.
-The highlighted note is shown beside the results, its title, folder and when it
-changed, then its opening as readable text, so you can tell two notes with the
-same name apart before opening either; in a narrow window the list takes the
-width alone.
+Quick open is one page: the results on the left, and the highlighted note on
+the right drawn as it reads in the editor, tables, math and diagrams included,
+with a divider you can move. You can tell two notes with the same name apart
+before opening either; in a narrow window the list takes the width alone.
 Wiki links render inline wherever they appear, and `Cmd+click` follows one.
 
 The links are decorations rather than a node type, so they cannot reach the
@@ -270,26 +271,32 @@ copy rather than an overwrite.
 ## Performance
 
 Measured by the [benchmark workflow](.github/workflows/bench.yml) on the
-packaged release build of `v0.0.2-alpha.114`, 12 October 2026, on a
-GitHub-hosted `macos-14` runner, a virtual Apple silicon Mac. It opens four
+packaged release build of `v0.1.1`, 19 November 2026, on a
+GitHub-hosted `macos-15` runner, a virtual Apple silicon Mac. It opens four
 generated documents through the workspace, the way the menu or the file tree
 does, types in the middle of each and saves. Open and save are timed by the
 harness driving the app; a keystroke inside the page, from the edit to the
 next frame; idle lag is the longest main-thread stall after typing stops.
 Median of three runs;
-[the run](https://github.com/roobli/Noto/actions/runs/38279651351).
+[the run](https://github.com/roobli/Noto/actions/runs/44548215284).
 
 | document |     bytes | blocks |     open | keystroke | idle lag |   save |
 | -------- | --------: | -----: | -------: | --------: | -------: | -----: |
-| small    |    66,061 |    338 |   432 ms |   12.4 ms |    83 ms | 202 ms |
-| medium   |   524,952 |  2,742 |   586 ms |   11.2 ms |    36 ms | 205 ms |
-| large    | 2,097,661 | 10,982 |   471 ms |   15.0 ms |    44 ms | 203 ms |
-| huge     | 8,389,427 | 43,970 | 1,250 ms |   20.6 ms |    44 ms | 445 ms |
+| small    |    66,061 |    338 |   321 ms |   14.3 ms |    29 ms | 243 ms |
+| medium   |   524,952 |  2,742 |   722 ms |   10.2 ms |    22 ms | 248 ms |
+| large    | 2,097,661 | 10,982 | 1,016 ms |   14.7 ms |    29 ms | 268 ms |
+| huge     | 8,389,427 | 43,970 | 3,133 ms |   30 ms   |    48 ms | 630 ms |
 
-Up to 2 MB a note opens in about half a second, a keystroke stays inside one
-60 Hz frame, and a save takes about a fifth of a second. At 8 MB opening takes
-about a second and a quarter, a keystroke a little over a frame, and a save
-under half a second. On 29 September the same 8 MB document took ten seconds
+Up to 2 MB a note opens in about a second, a keystroke stays inside one
+60 Hz frame, and a save takes about a quarter of a second. At 8 MB opening takes
+about three seconds, a keystroke about two frames, and a save under two thirds
+of a second. These are slower than the `v0.0.4` run on `macos-14`
+([run](https://github.com/roobli/Noto/actions/runs/41792551432)), which opened
+the 8 MB note in 884 ms. Two things changed at once: GitHub retired `macos-14`
+on 2 November, so every run since is on a different runner image, and
+`0.1.0` and `0.1.1` draw more of the page as Typora does (formulas, pictures,
+timelines, wide tables, emoji and coloured words), which is more work per
+block. The two have not been measured apart. On 29 September the same 8 MB document took ten seconds
 to open, 86 ms a keystroke and three seconds to save
 ([that run](https://github.com/roobli/Noto/actions/runs/36566313564)).
 
@@ -326,7 +333,10 @@ the document only if it asked for that; a service plugin gets a filesystem
 grant scoped to a path, revocable, and denied everywhere else. Nothing is
 ambient.
 
-Eight plugins ship in the build. Title Shift promotes and demotes heading
+Eight plugins ship in the build, and Plugin Center installs more from a
+folder, from a GitHub repository or from a marketplace
+([`roobli/noto-plugins`](https://github.com/roobli/noto-plugins) by default);
+those run sandboxed unless you trust one fully. Title Shift promotes and demotes heading
 levels, and Markdown Padding applies CJK spacing rules; both are ports of the
 author's Typora plugins. Sidenotes draws `<span class="sidenote">` notes in the
 margin and writes new ones there, Changes lists the notes changed since the
@@ -339,9 +349,9 @@ plugin of each shape to read and so the capability broker has something that
 exercises it.
 
 Writing one is described in [docs/plugins.md](docs/plugins.md), which also
-says plainly where the model stops today: plugins ship inside the
-application, and the sandboxed runtime for third-party code is built but not
-yet opened. Theming, which needs no plugin at all, is one CSS file named in
+says plainly where the model stops today: an installed plugin runs in a Web
+Worker with no page, no app API and no network, a capability sandbox in the
+editor's process rather than a process of its own. Theming, which needs no plugin at all, is one CSS file named in
 Settings; [docs/theming.md](docs/theming.md) lists what it can reach.
 
 ## Building and verifying
