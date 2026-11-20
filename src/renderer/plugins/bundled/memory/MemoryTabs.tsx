@@ -132,6 +132,18 @@ function Mention({ around }: { readonly around: readonly [string, string, string
 
 /** The tab's field, for a command that leads to it ("Ask the folder…"). */
 const ASK_FOCUS = 'noto:memory-ask-focus';
+/**
+ * A request for the Ask field's keys that arrived before the field was drawn.
+ *
+ * The field is drawn only once the folder's memory has answered, which on a
+ * large folder or a slow machine is seconds after the tab opens. A command
+ * that leads to it (Ask the Vault from the guide or the palette) used to wait
+ * a fixed time and then give up, and the keys stayed on the button pressed.
+ * The request is kept instead, and the field takes the keys when it mounts,
+ * within a short while of being asked.
+ */
+let askWanted = 0;
+const ASK_WANTED_FOR_MS = 15_000;
 
 /**
  * A question in words, and the folder's answer: the notes most likely to
@@ -147,8 +159,10 @@ function Ask({ host, note }: { readonly host: InfoTabHost; readonly note: string
   const field = useRef<HTMLInputElement>(null);
   const asked = useRef(0);
   useEffect(() => {
-    const focus = () => { field.current?.focus(); field.current?.select(); };
+    const focus = () => { askWanted = 0; field.current?.focus(); field.current?.select(); };
     window.addEventListener(ASK_FOCUS, focus);
+    // Asked for before this was drawn, and not long ago: take the keys now.
+    if (askWanted > 0 && performance.now() - askWanted < ASK_WANTED_FOR_MS) focus();
     return () => window.removeEventListener(ASK_FOCUS, focus);
   }, []);
   // A new note is a new conversation: what was asked from the last one is not about this one.
@@ -368,10 +382,10 @@ function mount(Component: typeof Related, element: HTMLElement, host: InfoTabHos
   return {
     reveal: (key) => {
       // `ask`: the field, for a command that leads here; it may mount a moment after.
+      // The field takes the keys now if it is drawn, or when it is (`askWanted`).
       if (key === 'ask') {
-        const focus = () => window.dispatchEvent(new Event(ASK_FOCUS));
-        if (element.querySelector('[data-testid="memory-ask-field"]')) focus();
-        else setTimeout(focus, 120);
+        if (element.querySelector('[data-testid="memory-ask-field"]')) window.dispatchEvent(new Event(ASK_FOCUS));
+        else askWanted = performance.now();
         return;
       }
       element.querySelector<HTMLElement>('[data-key="reads"]')?.scrollIntoView({ block: 'nearest' });

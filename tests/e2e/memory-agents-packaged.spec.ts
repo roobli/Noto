@@ -176,7 +176,11 @@ test.describe('agents and privacy', () => {
       await expect(page.getByTestId('tree-directory').filter({ hasText: 'Ideas' }).getByTestId('tree-privacy-mark')).toHaveCount(0);
       // Sealed wears the solid lock.
       const ideas = page.getByTestId('tree-directory').filter({ hasText: 'Ideas' });
+      // The menu this press draws, not the one before it, which still answered the poll.
+      const menus = () => app.evaluate(() => (globalThis as { shownMenus?: Electron.Menu[] }).shownMenus?.length ?? 0);
+      const before = await menus();
       await ideas.click({ button: 'right' });
+      await expect.poll(menus).toBeGreaterThan(before);
       await expect.poll(privacy).not.toBeNull();
       await app.evaluate(() => {
         const menu = (globalThis as { shownMenus?: Electron.Menu[] }).shownMenus!.at(-1)!;

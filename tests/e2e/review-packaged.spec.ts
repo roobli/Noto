@@ -195,6 +195,17 @@ test.describe('the Review page', () => {
       await page.keyboard.press(process.platform === 'darwin' ? 'Meta+ArrowDown' : 'Control+End');
       await page.keyboard.type(' 还没存。');
       await expect(page.getByTestId('file-state')).toHaveText('Unsaved changes');
+      // A window under 900px wide (a runner's small screen) draws the rail over the note, and
+      // the press in the note put it away, as it should; it is brought back to go on.
+      if (!(await view(page).isVisible())) {
+        // Said in the report, so a failure here says which of the two closed it.
+        test.info().annotations.push({ type: 'rail', description: `put away at ${await page.evaluate(() => innerWidth)}px` });
+        await toggle(page).click();
+      }
+      // Back from the queue the page counts the names again, one fewer now plan.md is
+      // linked, and the button waits for that count; on a slow runner the press came first.
+      await expect(kind(page, 'mention').getByTestId('review-count')).toHaveText('1', { timeout: 30_000 });
+      await expect(kind(page, 'mention').getByTestId('review-start')).toBeEnabled();
       await kind(page, 'mention').getByTestId('review-start').click();
       await expect(view(page).getByTestId('review-queue')).toBeFocused();
       expect(await from()).toBe('essay.md');

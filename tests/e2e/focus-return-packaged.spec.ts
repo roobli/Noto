@@ -72,6 +72,8 @@ for (const [command, open] of SHEETS) {
       await invokeMenu(app, command);
       const sheet = page.locator(open).first();
       await expect(sheet).toBeVisible();
+      // Escape once the sheet holds the keys: pressed sooner, it went to the note.
+      await expect.poll(() => sheet.evaluate((node) => node.contains(document.activeElement))).toBe(true);
       await page.keyboard.press('Escape');
       await expect(sheet).toBeHidden();
       await page.keyboard.type('Z');

@@ -420,10 +420,19 @@ export function InfoPane({ registry, state, width, tab, reveal, onTab, onResize,
     if (active && !opened.has(active.key)) setOpened((current) => new Set(current).add(active.key));
   }, [active, opened]);
 
-  // A reveal waits for its tab to be mounted, which may be this very render.
+  // A reveal waits for its tab's view, which a plugin may make some frames
+  // after the tab is shown: asked for once, a frame on, it was lost on a slow
+  // machine and Ask the Vault opened without its field taking the keys.
   useEffect(() => {
     if (!reveal?.reveal) return undefined;
-    const frame = requestAnimationFrame(() => views.get(reveal.key)?.reveal?.(reveal.reveal!));
+    const started = performance.now();
+    let frame = 0;
+    const attempt = () => {
+      const view = views.get(reveal.key);
+      if (view) view.reveal?.(reveal.reveal!);
+      else if (performance.now() - started < 3000) frame = requestAnimationFrame(attempt);
+    };
+    frame = requestAnimationFrame(attempt);
     return () => cancelAnimationFrame(frame);
   }, [reveal, views, opened]);
 

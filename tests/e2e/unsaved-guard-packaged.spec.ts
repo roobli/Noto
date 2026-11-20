@@ -87,6 +87,11 @@ test.describe('unsaved edits are asked about before they are lost', () => {
       await menu(app, 'new-file');
       await expect(page.locator('.titlebar')).not.toContainText('alpha.md');
       await expect.poll(() => alphaOnDisk(vault)).toBe('# Alpha\n\nFirst note. Typed, not saved.\n');
+      // And main has heard it is saved: the file is on disk a moment before the note is
+      // marked clean and main is told, and a close in between was held by the quit's
+      // question, answered Review here, until the test gave up on it.
+      await expect.poll(() => app.evaluate(() => (globalThis as { __notoUnsaved?: readonly string[] }).__notoUnsaved ?? null))
+        .toEqual([]);
     } finally {
       await app.close();
     }
