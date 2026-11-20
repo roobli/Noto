@@ -17,6 +17,10 @@ How releases are made, and what each channel receives, is in
 
 ### Fixed
 
+- **A diagram opened behind another note is drawn when it comes forward.**
+  A chart with labelled arrows, asked for while its note was not in front,
+  said "Could not find a suitable point for the given distance" and kept
+  saying it until its source was edited.
 - **A long code block whose lines wrap ends at its last line.** Its line
   numbers drifted rows above their lines and left blank rows under the
   block that the caret could not reach.

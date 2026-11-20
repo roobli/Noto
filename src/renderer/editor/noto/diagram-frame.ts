@@ -17,6 +17,8 @@ import type { DiagramPalette, DiagramReply, DiagramRequest } from '../../diagram
 const REDRAW_DELAY_MS = 150;
 /** No drawing is taller than this; a runaway diagram must not take the page. */
 const MAX_HEIGHT_PX = 4000;
+/** A drawing that failed while its page was hidden is tried again this many times, once shown. */
+const HIDDEN_RETRIES = 2;
 
 const frames = new Map<Window, DiagramFrame>();
 let installed = false;
@@ -80,6 +82,22 @@ export class DiagramFrame {
   private source: string | null = null;
   private serial = 0;
   private timer: ReturnType<typeof setTimeout> | null = null;
+  /**
+   * A drawing waiting for the diagram to be shown.
+   *
+   * Every note keeps its own page, and the one behind another is hidden.
+   * Mermaid measures each box and label as it lays a chart out, and in a
+   * hidden page every measure is zero: a chart with labelled arrows failed
+   * with "Could not find a suitable point for the given distance", and the
+   * failure stayed when the note came forward, since nothing asked again.
+   * So nothing is drawn while hidden, and what was asked for then is drawn
+   * when the diagram is shown.
+   */
+  private waitingToBeShown = false;
+  /** Whether the diagram was hidden at any moment since the drawing in flight was asked for. */
+  private hiddenSincePost = false;
+  private hiddenRetries = 0;
+  private readonly shown: ResizeObserver | null;
 
   constructor(private readonly onEnter: () => void) {
     install();
@@ -109,6 +127,18 @@ export class DiagramFrame {
     this.status.setAttribute('role', 'status');
 
     this.dom.append(this.frame, this.status);
+    // A hidden page lays the diagram out at no size, and showing it again
+    // gives it one: that is the moment to draw what waited.
+    this.shown = typeof ResizeObserver === 'function'
+      ? new ResizeObserver(() => {
+        if (!this.isShown()) {
+          this.hiddenSincePost = true;
+          return;
+        }
+        if (this.waitingToBeShown) this.post();
+      })
+      : null;
+    this.shown?.observe(this.dom);
     this.dom.addEventListener('mousedown', (event) => {
       event.preventDefault();
       this.onEnter();
@@ -134,6 +164,7 @@ export class DiagramFrame {
     }
     if (mermaid.source === this.source) return;
     this.source = mermaid.source;
+    this.hiddenRetries = 0;
     if (this.timer !== null) clearTimeout(this.timer);
     this.timer = setTimeout(() => {
       this.timer = null;
@@ -152,6 +183,13 @@ export class DiagramFrame {
       this.frame.style.height = `${Math.min(Math.max(0, data.height), MAX_HEIGHT_PX)}px`;
       this.dom.dataset.state = 'rendered';
       this.status.textContent = '';
+      this.hiddenRetries = 0;
+    } else if ((this.hiddenSincePost || !this.isShown()) && this.hiddenRetries < HIDDEN_RETRIES) {
+      // Laid out while hidden, so measured at nothing: not the chart's fault.
+      // Drawn again once shown, and the failure is not put up meanwhile.
+      this.hiddenRetries += 1;
+      this.waitingToBeShown = true;
+      if (this.isShown()) this.post();
     } else {
       this.frame.style.height = '0px';
       this.dom.dataset.state = 'failed';
@@ -161,14 +199,26 @@ export class DiagramFrame {
 
   destroy(): void {
     if (this.timer !== null) clearTimeout(this.timer);
+    this.shown?.disconnect();
     const target = this.frame.contentWindow;
     if (target) frames.delete(target);
     this.dom.remove();
   }
 
+  /** Whether the diagram is laid out on the page at all, not in a hidden note. */
+  private isShown(): boolean {
+    return this.dom.isConnected && this.dom.getClientRects().length > 0;
+  }
+
   private post(): void {
     const target = this.frame.contentWindow;
     if (!this.ready || !target || this.source === null) return;
+    if (!this.isShown()) {
+      this.waitingToBeShown = true;
+      return;
+    }
+    this.waitingToBeShown = false;
+    this.hiddenSincePost = false;
     this.serial += 1;
     const request: DiagramRequest = {
       type: 'noto-diagram-render',
