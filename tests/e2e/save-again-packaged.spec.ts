@@ -53,8 +53,14 @@ test('a save asked for while one is landing writes what was typed in between', a
     // The first save is under way before the next words are typed; otherwise this proves nothing.
     // Waited for rather than read once: a slow runner can take a frame or two to say so.
     await expect(page.getByTestId('file-state')).toHaveText('Saving', { timeout: 5_000 });
-    await page.keyboard.type(' two');
-    const during = await page.getByTestId('file-state').innerText();
+    // Typed and asked for at once, in the page, so no round trip to the test lets the first
+    // save land in between; a fast runner finished it while ' two' was being typed key by key.
+    const during = await page.evaluate(() => {
+      const view = document.querySelector('.canvas-slot:not([hidden]) .ProseMirror') as HTMLElement & { pmViewDesc?: unknown };
+      document.execCommand('insertText', false, ' two');
+      void view;
+      return document.querySelector('[data-testid="file-state"]')?.textContent ?? '';
+    });
     await invokeMenu(app, 'save');
     expect(during).toBe('Saving');
     await expect.poll(() => readFile(file, 'utf8'), { timeout: 20_000 }).toMatch(/^# Long one two\n/);
