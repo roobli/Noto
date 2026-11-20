@@ -368,10 +368,18 @@ function mount(Component: typeof Related, element: HTMLElement, host: InfoTabHos
   return {
     reveal: (key) => {
       // `ask`: the field, for a command that leads here; it may mount a moment after.
+      // Waited for each frame, for up to two seconds: one try a fixed 120ms on
+      // missed the field on a slow machine, and the keys stayed where they were.
       if (key === 'ask') {
-        const focus = () => window.dispatchEvent(new Event(ASK_FOCUS));
-        if (element.querySelector('[data-testid="memory-ask-field"]')) focus();
-        else setTimeout(focus, 120);
+        const started = performance.now();
+        const focus = () => {
+          if (element.querySelector('[data-testid="memory-ask-field"]')) {
+            window.dispatchEvent(new Event(ASK_FOCUS));
+          } else if (performance.now() - started < 2000) {
+            requestAnimationFrame(focus);
+          }
+        };
+        focus();
         return;
       }
       element.querySelector<HTMLElement>('[data-key="reads"]')?.scrollIntoView({ block: 'nearest' });
