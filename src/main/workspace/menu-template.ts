@@ -515,11 +515,11 @@ export function buildMenuTemplate(options: MenuTemplateOptions): MenuItemConstru
       /*
        * Shown, not registered.
        *
-       * A native accelerator is handled before the document sees the key, so
-       * claiming Command and a bracket here would kill list indentation, which
-       * is what the same pair means inside a list. The editor decides between
-       * the two by where the caret is; these items only say so, which is how
-       * the chord stays discoverable without being stolen.
+       * A native accelerator is handled before the document sees the key, and
+       * the same pair steps the width of whichever sheet is open (Quick Open,
+       * the guide, Browse Tags, the palette) rather than the page's. The note
+       * and each sheet act on it themselves; these items only say so, which is
+       * how the chord stays discoverable without being stolen.
        */
       {
         id: 'widen',

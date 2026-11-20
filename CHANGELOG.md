@@ -9,6 +9,18 @@ How releases are made, and what each channel receives, is in
 
 ## [Unreleased]
 
+### Changed
+
+- **Command-[ and Command-] are the page width everywhere,** a list
+  included. In a list they used to indent the item instead; a list item,
+  numbered, bulleted or a task, is indented with Tab and Shift-Tab.
+
+### Fixed
+
+- **A long code block whose lines wrap ends at its last line.** Its line
+  numbers drifted rows above their lines and left blank rows under the
+  block that the caret could not reach.
+
 ## [0.1.1] - 2026-11-19
 
 The round that brings the page closer to Typora's: formulas, pictures,

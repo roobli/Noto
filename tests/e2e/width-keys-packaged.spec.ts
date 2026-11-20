@@ -5,7 +5,7 @@ import { packagedExecutable, placeCaret } from './packaged-app';
 
 const resultRoot = path.join(process.cwd(), 'test-results', 'width-keys');
 
-const NOTE = '# Title\n\nA paragraph.\n\n- first\n- second\n';
+const NOTE = '# Title\n\nA paragraph.\n\n- first\n- second\n\nBetween.\n\n1. one\n2. two\n\nAnd.\n\n- [ ] task\n- [ ] subtask\n';
 
 async function launch(name: string): Promise<{ app: ElectronApplication; page: Page }> {
   const workspace = path.join(resultRoot, name);
@@ -49,27 +49,36 @@ test.describe('Command and a bracket', () => {
     }
   });
 
-  test('indents the list instead, when the caret is in one', async () => {
+  test('steps the page width in a list too, and leaves indenting to Tab', async () => {
     const { app, page } = await launch('list');
     try {
-      await placeCaret(page, page.locator('.ProseMirror li').nth(1));
-      const before = await widthMode(page);
+      const nested = page.locator('.ProseMirror li ul li, .ProseMirror li ol li');
+      await placeCaret(page, page.locator('.ProseMirror ul > li').nth(1));
+      expect(await widthMode(page)).toBe('default');
 
+      // The brackets mean the page width here as anywhere, and nest nothing.
       await page.keyboard.press(`${mod}+BracketRight`);
-      // The second item is now nested inside the first.
-      await expect(page.locator('.ProseMirror li ul li, .ProseMirror li ol li')).toHaveCount(1);
-      // And the page width was left alone, because the list had the key.
-      expect(await widthMode(page)).toBe(before);
-
+      await expect.poll(() => widthMode(page)).toBe('wide');
+      await expect(nested).toHaveCount(0);
       await page.keyboard.press(`${mod}+BracketLeft`);
-      await expect(page.locator('.ProseMirror li ul li, .ProseMirror li ol li')).toHaveCount(0);
-      expect(await widthMode(page)).toBe(before);
+      await expect.poll(() => widthMode(page)).toBe('default');
+
+      // Tab indents a bulleted item, a numbered one and a task; Shift-Tab brings each back.
+      for (const item of ['second', 'two', 'subtask']) {
+        await placeCaret(page, page.locator('.ProseMirror li', { hasText: item }).last());
+        await page.keyboard.press('Tab');
+        await expect(nested).toHaveCount(1);
+        await expect(nested.first()).toContainText(item);
+        await page.keyboard.press('Shift+Tab');
+        await expect(nested).toHaveCount(0);
+      }
+      expect(await widthMode(page)).toBe('default');
     } finally {
       await app.close();
     }
   });
 
-  test('shows the chord on the View menu without taking it from the list', async () => {
+  test('shows the chord on the View menu without taking it from the note or the sheets', async () => {
     const { app } = await launch('menu');
     try {
       const items = await app.evaluate(({ Menu }) => {

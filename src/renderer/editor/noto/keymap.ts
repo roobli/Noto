@@ -659,13 +659,12 @@ export interface KeymapOptions {
 export function notoBindings({ mac, onWidthStep, taskStamp }: KeymapOptions): Record<string, Command> {
   const mod = mac ? 'Meta' : 'Ctrl';
   /**
-   * The width, when the brackets are not doing something else.
+   * The page width, on Command and a bracket wherever the caret is.
    *
-   * Command and a bracket is the page width in the author's own Typora plugin
-   * and list indentation in Typora itself, and both are right where they apply.
-   * A list wins, because inside a list that is unambiguously what the key means
-   * and Tab is not always available there; everywhere else there is no list to
-   * indent and the key would otherwise do nothing at all.
+   * The pair used to indent a list item when the caret was in a list and step
+   * the width elsewhere, so the same keys did two things depending on where
+   * the caret happened to be. A list is indented with Tab and Shift-Tab, as
+   * in every outliner; the brackets mean one thing everywhere.
    */
   const stepWidth = (direction: 1 | -1): Command => () => {
     if (!onWidthStep) return false;
@@ -751,8 +750,8 @@ export function notoBindings({ mac, onWidthStep, taskStamp }: KeymapOptions): Re
 
     // Typora's own chord for it on macOS. Off macOS Control-X is Cut.
     [mac ? 'Ctrl-x' : 'Alt-Shift-x']: toggleTaskStatus(undefined, taskStamp),
-    [`${mod}-]`]: chainCommands(sinkListItem(nodes.list_item), stepWidth(1)),
-    [`${mod}-[`]: chainCommands(liftListItem(nodes.list_item), stepWidth(-1)),
+    [`${mod}-]`]: stepWidth(1),
+    [`${mod}-[`]: stepWidth(-1),
   };
 }
 

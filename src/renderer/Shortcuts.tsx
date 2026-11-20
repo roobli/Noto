@@ -25,7 +25,7 @@ import { SheetWidthHint, stepSheetWidth, type SheetWidthControl } from './sheet-
  * new ones marked New, gathered at the top, and the title bar's ? carries a
  * dot until the list is opened again.
  */
-export const GUIDE_EDITION = 9;
+export const GUIDE_EDITION = 10;
 
 /** What a Try It button does: the window leads there, or does it. */
 export type GuideTry =
@@ -86,6 +86,8 @@ export function shortcutGroups(mac: boolean): Group[] {
         { keys: [shift(mac) + mod('V', mac)], what: 'Paste the text alone, read as markdown.' },
         { keys: ['⌫'], what: 'Straight after a smart quote, dash or ellipsis is put in, Backspace gives back what you typed. Settings → Markdown turns each one off.', since: 5 },
         { keys: [alt(mac) + '↑', alt(mac) + '↓'], what: 'Move the block, the list item, or the table row.' },
+        { keys: ['Tab', shift(mac) + 'Tab'], what: 'Indent or outdent a list item, numbered, bulleted or a task. In a table they step between cells.', since: 10 },
+        { keys: [mod('[', mac), mod(']', mac)], what: 'Make the page narrower or wider, wherever the caret is, a list included.', since: 10 },
         { keys: ['$8,000 - $50,000'], what: 'Prices stay text and $x$ is maths: one dollar opens maths only before a non-space and closes it only after one, as in Pandoc.', since: 6 },
         { keys: ['Right-click'], what: 'Format, Paragraph and Insert, with Copy as Markdown over a selection, as the menu bar has them.', since: 6 },
         { keys: ['F8', 'F9', mod('\\', mac)], what: 'Focus Mode, Typewriter Mode and Clear Format, on Typora\'s keys.', since: 6 },
