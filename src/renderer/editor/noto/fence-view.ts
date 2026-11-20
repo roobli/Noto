@@ -272,16 +272,24 @@ export class FenceView implements NodeView {
     } catch {
       return;
     }
+    // Each number is as tall as the distance to the next line's start, in the
+    // fractions the page lays out in, so the column sums to the code's own
+    // height. Rounded per line and floored at one row, a row of 20.64px came
+    // out 21 or 20.64 but never 20, and over 358 lines the column grew four
+    // rows taller than the code: the block stretched to it, and blank rows the
+    // caret could not reach stood under the last line.
     const first = tops[0] ?? 0;
-    const relative = tops.map((top) => Math.round(top - first));
-    if (this.wrappedTops && relative.length === this.wrappedTops.length && relative.every((top, index) => top === this.wrappedTops![index])) return;
-    this.wrappedTops = relative;
+    const relative = tops.map((top) => top - first);
+    const settled = relative.map((top) => Math.round(top * 2) / 2);
+    if (this.wrappedTops && settled.length === this.wrappedTops.length && settled.every((top, index) => top === this.wrappedTops![index])) return;
+    this.wrappedTops = settled;
     this.gutter.dataset.wrapped = '';
     const rows = relative.map((top, index) => {
       const number = document.createElement('div');
       number.className = 'noto-fence-number';
       number.textContent = String(index + 1);
-      number.style.height = `${Math.max(row, (relative[index + 1] ?? top + row) - top)}px`;
+      const next = relative[index + 1];
+      number.style.height = `${next === undefined ? row : Math.max(0, next - top)}px`;
       return number;
     });
     this.gutter.replaceChildren(...rows);
