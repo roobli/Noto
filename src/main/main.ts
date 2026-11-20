@@ -700,6 +700,9 @@ async function run(): Promise<void> {
     if (!isTrustedRendererSender(editorWindow, event) || !isWorkspaceUnsavedEventV1(value)) return;
     unsavedPaths = value.paths;
     session?.setUnsavedPaths(value.paths);
+    // What main last heard, readable by a test build, so a spec can wait for
+    // the quit's question to have nothing to ask about before it closes.
+    if (__NTO_PACKAGE_VARIANT__ === 'e2e') (globalThis as { __notoUnsaved?: readonly string[] }).__notoUnsaved = value.paths;
   });
 
   /**
