@@ -195,16 +195,10 @@ test.describe('the Review page', () => {
       await page.keyboard.press(process.platform === 'darwin' ? 'Meta+ArrowDown' : 'Control+End');
       await page.keyboard.type(' 还没存。');
       await expect(page.getByTestId('file-state')).toHaveText('Unsaved changes');
-      // The page counts again once the edit is in, redrawing the button the press was
-      // aimed at; on a slow runner each try met a new one. Pressed once the counts are still.
-      const counts = () => view(page).locator('[data-testid="review-kind"]').allInnerTexts();
-      let last = await counts();
-      await expect.poll(async () => {
-        const now = await counts();
-        const same = JSON.stringify(now) === JSON.stringify(last);
-        last = now;
-        return same;
-      }, { intervals: [300] }).toBe(true);
+      // Back from the queue the page counts the names again, one fewer now plan.md is
+      // linked, and the button waits for that count; on a slow runner the press came first.
+      await expect(kind(page, 'mention').getByTestId('review-count')).toHaveText('1', { timeout: 30_000 });
+      await expect(kind(page, 'mention').getByTestId('review-start')).toBeEnabled();
       await kind(page, 'mention').getByTestId('review-start').click();
       await expect(view(page).getByTestId('review-queue')).toBeFocused();
       expect(await from()).toBe('essay.md');
