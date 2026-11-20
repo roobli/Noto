@@ -40,7 +40,8 @@ test('a save asked for while one is landing writes what was typed in between', a
     // Shown off macOS, as click-stays-put is. On Linux and Windows a window
     // that is never shown does not draw "Saving" until the save has landed,
     // so the first save looked already done when the second was asked for.
-    env: { ...process.env, NOTO_HEADLESS: process.platform === 'darwin' ? '1' : '0' },
+    // Each save held a second as it writes, so the second is surely asked for while the first lands.
+    env: { ...process.env, NOTO_HEADLESS: process.platform === 'darwin' ? '1' : '0', NOTO_TEST_SAVE_HOLD_MS: '1000' },
   });
   try {
     const page = await app.firstWindow();

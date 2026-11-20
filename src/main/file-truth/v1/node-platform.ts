@@ -191,6 +191,13 @@ export class NodeFileTruthPlatform {
 
   async writeTemp(handle: FileHandle, bytes: Uint8Array): Promise<void> {
     this.injector.hit('before-temp-write');
+    // A test build can hold each save for a moment, so a spec can act while
+    // one is landing on a machine fast enough to finish it first. Compiled
+    // out of a release build: the variant is a constant there.
+    if (typeof __NTO_PACKAGE_VARIANT__ !== 'undefined' && __NTO_PACKAGE_VARIANT__ === 'e2e') {
+      const hold = Number(process.env.NOTO_TEST_SAVE_HOLD_MS ?? 0);
+      if (hold > 0) await new Promise((resolve) => setTimeout(resolve, Math.min(hold, 10_000)));
+    }
     await writeAll(handle, bytes);
     this.injector.hit('after-write');
   }
