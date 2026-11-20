@@ -81,6 +81,9 @@ test.describe('editing a table', () => {
       await expect(page.locator('.ProseMirror table tr')).toHaveCount(3);
       await invokeMenu(app, 'table-row-delete');
       await expect(page.locator('.ProseMirror table tr')).toHaveCount(2);
+      // Into the column added above before it is deleted. Where a row's delete leaves the
+      // caret is the table plugin's choice, and on a slow runner it was the first column.
+      await placeCaret(page, page.locator('.ProseMirror table th').nth(1));
       await invokeMenu(app, 'table-column-delete');
       await expect(page.locator('.ProseMirror table th')).toHaveCount(2);
 
