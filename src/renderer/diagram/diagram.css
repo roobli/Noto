@@ -4,3 +4,6 @@ html, body { margin: 0; padding: 0; background: transparent; overflow: hidden; }
 /* Centred, as Typora sets a diagram: a drawing narrower than the column sat
    against its left edge and read as a block that had failed to fill the line. */
 #diagram > svg { display: block; max-width: 100%; height: auto; margin: 0 auto; }
+#diagram > svg foreignObject { overflow: visible; }
+#diagram > svg .edgeLabel rect { opacity: 0.92 !important; }
+#diagram > svg .labelBkg { border-radius: 3px; }

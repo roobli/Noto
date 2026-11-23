@@ -201,7 +201,7 @@ const RULES: readonly Rule[] = [
   ['lisp', /^[ \t]*\((?:defun|defvar|defmacro|setq|use-package|defcustom)\b/gm, 5, 3],
   ['markdown', /^[ \t]*[-*+]\s+\[[ xX]\]\s|\[[^\]\n]+\]\([^)\s]+\)|\*\*[^*\n]+\*\*|^`{3}/gm, 2, 4],
   ['markdown', /^#{1,6}\s+\S/gm, 1, 3],
-  ['mermaid', /^[ \t]*(?:(?:graph|flowchart)\s+(?:TD|TB|BT|RL|LR)\b|sequenceDiagram|classDiagram|stateDiagram(?:-v2)?|erDiagram|gantt|journey|gitGraph|mindmap)/m, 12],
+  ['mermaid', /^[ \t]*(?:(?:graph|flowchart(?:-elk)?)\s+(?:TD|TB|BT|RL|LR)\b|(?:sequenceDiagram|classDiagram|stateDiagram(?:-v2)?|erDiagram|gantt|journey|gitGraph|mindmap|block-beta|treeView(?:-beta)?|xychart(?:-beta)?|architecture-beta|treemap-beta)(?:[ \t]+(?:horizontal|vertical))?[ \t]*$)/m, 12],
 ];
 
 /** A language that is another one with more on top: named only when its own marks are there. */

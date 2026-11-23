@@ -1,5 +1,5 @@
 {
-  "lockfileSha256": "6aeaf49dda77f842867acc50add71dc49ee4ae8bdd9da5430697321affec99e8",
+  "lockfileSha256": "cdd54fd433ff2e3096e720af3af8a396ddac2545493df1c50c9754117f999174",
   "packages": [
     {
       "name": "@antfu/install-pkg",
@@ -20,8 +20,44 @@
       ]
     },
     {
+      "name": "@chevrotain/cst-dts-gen",
+      "version": "13.2.0",
+      "license": "Apache-2.0",
+      "repository": "git://github.com/Chevrotain/chevrotain.git",
+      "noticeFiles": [
+        "LICENSE.txt"
+      ]
+    },
+    {
+      "name": "@chevrotain/gast",
+      "version": "13.2.0",
+      "license": "Apache-2.0",
+      "repository": "git://github.com/Chevrotain/chevrotain.git",
+      "noticeFiles": [
+        "LICENSE.txt"
+      ]
+    },
+    {
+      "name": "@chevrotain/regexp-to-ast",
+      "version": "13.2.0",
+      "license": "Apache-2.0",
+      "repository": "git://github.com/Chevrotain/chevrotain.git",
+      "noticeFiles": [
+        "LICENSE.txt"
+      ]
+    },
+    {
       "name": "@chevrotain/types",
-      "version": "11.1.2",
+      "version": "13.2.0",
+      "license": "Apache-2.0",
+      "repository": "git://github.com/Chevrotain/chevrotain.git",
+      "noticeFiles": [
+        "LICENSE.txt"
+      ]
+    },
+    {
+      "name": "@chevrotain/utils",
+      "version": "13.2.0",
       "license": "Apache-2.0",
       "repository": "git://github.com/Chevrotain/chevrotain.git",
       "noticeFiles": [
@@ -539,7 +575,7 @@
     },
     {
       "name": "@mermaid-js/parser",
-      "version": "1.2.1",
+      "version": "2.0.1",
       "license": "MIT",
       "repository": "https://github.com/mermaid-js/mermaid.git",
       "noticeFiles": [
@@ -1859,6 +1895,15 @@
       ]
     },
     {
+      "name": "chevrotain",
+      "version": "13.2.0",
+      "license": "Apache-2.0",
+      "repository": "git://github.com/Chevrotain/chevrotain.git",
+      "noticeFiles": [
+        "LICENSE.txt"
+      ]
+    },
+    {
       "name": "chokidar",
       "version": "5.0.0",
       "license": "MIT",
@@ -2007,6 +2052,15 @@
       "version": "11.1.0",
       "license": "MIT",
       "repository": "https://github.com/tj/commander.js.git",
+      "noticeFiles": [
+        "LICENSE"
+      ]
+    },
+    {
+      "name": "commander",
+      "version": "15.1.0",
+      "license": "MIT",
+      "repository": "git+https://github.com/tj/commander.js.git",
       "noticeFiles": [
         "LICENSE"
       ]
@@ -2630,7 +2684,7 @@
     },
     {
       "name": "dompurify",
-      "version": "3.4.14",
+      "version": "3.4.18",
       "license": "(MPL-2.0 OR Apache-2.0)",
       "repository": "git://github.com/cure53/DOMPurify.git",
       "noticeFiles": [
@@ -2705,6 +2759,15 @@
       "repository": "https://github.com/electron/electron",
       "noticeFiles": [
         "LICENSE"
+      ]
+    },
+    {
+      "name": "elkjs",
+      "version": "0.12.1",
+      "license": "EPL-2.0 OR GPL-3.0-or-later",
+      "repository": "https://github.com/kieler/elkjs.git",
+      "noticeFiles": [
+        "LICENSE.md"
       ]
     },
     {
@@ -2971,13 +3034,6 @@
       "noticeFiles": [
         "LICENSE"
       ]
-    },
-    {
-      "name": "fastdom",
-      "version": "1.0.12",
-      "license": "MIT",
-      "repository": "git://github.com/wilsonpage/fastdom.git",
-      "noticeFiles": []
     },
     {
       "name": "fastq",
@@ -3756,6 +3812,15 @@
       ]
     },
     {
+      "name": "katex",
+      "version": "0.18.11",
+      "license": "MIT",
+      "repository": "https://github.com/KaTeX/KaTeX.git",
+      "noticeFiles": [
+        "LICENSE"
+      ]
+    },
+    {
       "name": "keyv",
       "version": "4.5.4",
       "license": "MIT",
@@ -4149,7 +4214,7 @@
     },
     {
       "name": "mermaid",
-      "version": "11.17.2",
+      "version": "12.3.0",
       "license": "MIT",
       "repository": "https://github.com/mermaid-js/mermaid",
       "noticeFiles": [
@@ -5929,13 +5994,6 @@
       ]
     },
     {
-      "name": "strictdom",
-      "version": "1.0.1",
-      "license": "MIT",
-      "repository": "git://github.com/wilsonpage/strictdom.git",
-      "noticeFiles": []
-    },
-    {
       "name": "string_decoder",
       "version": "1.3.0",
       "license": "MIT",
@@ -6378,15 +6436,6 @@
       "repository": "git://github.com/TooTallNate/util-deprecate.git",
       "noticeFiles": [
         "LICENSE"
-      ]
-    },
-    {
-      "name": "uuid",
-      "version": "14.0.2",
-      "license": "MIT",
-      "repository": "https://github.com/uuidjs/uuid.git",
-      "noticeFiles": [
-        "LICENSE.md"
       ]
     },
     {
