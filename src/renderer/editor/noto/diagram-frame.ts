@@ -193,6 +193,12 @@ export class DiagramFrame {
     if (!isReply(data) || data.type === 'noto-diagram-ready') return;
     if (data.serial !== this.serial) return;
     if (data.type === 'noto-diagram-rendered') {
+      if ((data.width <= 16 || data.height <= 24) && (this.hiddenSincePost || !this.isShown()) && this.hiddenRetries < HIDDEN_RETRIES) {
+        this.hiddenRetries += 1;
+        this.waitingToBeShown = true;
+        if (this.isShown()) this.post();
+        return;
+      }
       this.frame.style.height = `${Math.min(Math.max(0, data.height), MAX_HEIGHT_PX)}px`;
       this.dom.dataset.state = 'rendered';
       this.status.textContent = '';
