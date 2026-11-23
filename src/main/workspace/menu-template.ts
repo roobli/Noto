@@ -544,6 +544,8 @@ export function buildMenuTemplate(options: MenuTemplateOptions): MenuItemConstru
       command('Zoom Out', 'CmdOrCtrl+-', 'text-smaller'),
       command('Actual Size', 'CmdOrCtrl+0', 'text-default'),
       { type: 'separator' },
+      command('Developer Console', mac ? 'Alt+CmdOrCtrl+I' : 'Ctrl+Shift+I', 'toggle-debug-console'),
+      { type: 'separator' },
       { role: 'togglefullscreen' },
     ],
   };

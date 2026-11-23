@@ -409,10 +409,10 @@ export class FenceView implements NodeView {
 
     // A diagram fence (mermaid, or Typora's flow and sequence) is drawn as
     // its diagram, beside the source; a press on the drawing puts the caret at
-    // the top of the source.
+    // the failed line when there is one, or at the top of the source.
     if (isDiagramLanguage(lang)) {
       if (this.diagram === null) {
-        this.diagram = new DiagramFrame(() => this.caretToLine(0));
+        this.diagram = new DiagramFrame((line) => this.caretToLine(line ?? 0));
         this.dom.append(this.diagram.dom);
       }
       this.diagram.render(this.node.textContent, lang);

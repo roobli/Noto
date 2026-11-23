@@ -57,6 +57,9 @@ import {
   WorkspaceLinksFollowedV1,
   WorkspaceUndoLinksReplyV1,
   WorkspaceUndoLinksRequestV1,
+  WorkspaceDebugConsoleEntryV1,
+  WorkspaceDebugLogEntryV1,
+  WorkspaceDebugFeedReplyV1,
   FolderNoteV1,
   WorkspaceNoteHistoryReplyV1,
   WorkspaceNoteHistoryRequestV1,
@@ -1212,3 +1215,38 @@ export function isWorkspaceExportReplyV1(value: unknown): value is WorkspaceExpo
 
 export const isWorkspaceExportResultV1 = (value: unknown, id: string): value is WorkspaceResultV1<WorkspaceExportReplyV1> =>
   isResult(value, id, isWorkspaceExportReplyV1);
+
+function isDebugConsoleEntryV1(value: unknown): value is WorkspaceDebugConsoleEntryV1 {
+  return record(value)
+    && exact(value, ['timestamp', 'level', 'message', 'line', 'source', 'noise'])
+    && text(value.timestamp, 64)
+    && typeof value.level === 'number' && whole(value.level) && value.level <= 10
+    && text(value.message, 4096)
+    && whole(value.line)
+    && text(value.source, 256)
+    && typeof value.noise === 'boolean';
+}
+
+function isDebugLogEntryV1(value: unknown): value is WorkspaceDebugLogEntryV1 {
+  return record(value)
+    && exact(value, ['timestamp', 'event', 'summary'])
+    && text(value.timestamp, 64)
+    && text(value.event, 128)
+    && text(value.summary, 2048);
+}
+
+export function isWorkspaceDebugFeedReplyV1(value: unknown): value is WorkspaceDebugFeedReplyV1 {
+  return record(value)
+    && exact(value, ['version', 'consoleEntries', 'logEntries'])
+    && value.version === NOTO_WORKSPACE_VERSION
+    && Array.isArray(value.consoleEntries)
+    && value.consoleEntries.length <= 300
+    && value.consoleEntries.every(isDebugConsoleEntryV1)
+    && Array.isArray(value.logEntries)
+    && value.logEntries.length <= 300
+    && value.logEntries.every(isDebugLogEntryV1);
+}
+
+export const isWorkspaceDebugFeedResultV1 = (
+  value: unknown, id: string,
+): value is WorkspaceResultV1<WorkspaceDebugFeedReplyV1> => isResult(value, id, isWorkspaceDebugFeedReplyV1);

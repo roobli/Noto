@@ -2960,9 +2960,22 @@
 .ProseMirror pre .noto-diagram[data-state='rendering'] .noto-diagram-frame { opacity: 0.5; }
 .ProseMirror pre .noto-diagram-status {
   color: var(--danger);
-  font: calc(12px * var(--doc-scale, 1)) tokens.$ui;
+  font: 500 calc(12px * var(--doc-scale, 1)) tokens.$ui;
 }
-.ProseMirror pre .noto-diagram:not([data-state='failed']) .noto-diagram-status { display: none; }
+.ProseMirror pre .noto-diagram-detail {
+  margin: 6px 0 0;
+  padding: 8px 10px;
+  border: 1px solid var(--hairline);
+  border-radius: 6px;
+  background: var(--raised);
+  color: var(--ink);
+  font: calc(11.5px * var(--doc-scale, 1))/1.5 tokens.$mono;
+  white-space: pre-wrap;
+  overflow-x: auto;
+}
+.ProseMirror pre .noto-diagram-detail:empty,
+.ProseMirror pre .noto-diagram:not([data-state='failed']) .noto-diagram-status,
+.ProseMirror pre .noto-diagram:not([data-state='failed']) .noto-diagram-detail { display: none; }
 
 /* Every language the frame draws, Typora's flow and sequence among them, and
    in any case: the frame reads `Mermaid` as a diagram, so the source must hide

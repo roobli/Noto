@@ -57,6 +57,7 @@ import { TableDialog } from './TableDialog';
 import { ReloadConfirmDialog } from './ReloadConfirmDialog';
 import { LeaveUnsavedDialog, type LeaveChoice } from './LeaveUnsavedDialog';
 import { GUIDE_EDITION, Shortcuts, tryNeeds, type GuideTry } from './Shortcuts';
+import { DebugConsole } from './DebugConsole';
 import { RailFooter } from './RailFooter';
 import { Settings, type SettingsSection } from './Settings';
 import {
@@ -344,6 +345,8 @@ function NotoWorkspace({ platform }: { platform: NotoPlatform }) {
   });
   /** The sheet of what the app can do, on the Help menu. */
   const [shortcuts, setShortcuts] = useState(false);
+  /** Read-only Developer Console sheet (`Option+Cmd+I` / `Ctrl+Shift+I`). */
+  const [debugConsole, setDebugConsole] = useState(false);
   /**
    * The edition of What Noto Can Do last opened on this machine. Anyone who
    * has not opened it since the list became the guide saw the first; what
@@ -1574,6 +1577,7 @@ function NotoWorkspace({ platform }: { platform: NotoPlatform }) {
     return true;
   };
   useFocusReturn(shortcuts, focusNoteInFront);
+  useFocusReturn(debugConsole, focusNoteInFront);
   useFocusReturn(tableDialog, focusNoteInFront);
 
   useEffect(() => {
@@ -3151,6 +3155,9 @@ function NotoWorkspace({ platform }: { platform: NotoPlatform }) {
       case 'shortcuts':
         setShortcuts((open) => !open);
         break;
+      case 'toggle-debug-console':
+        setDebugConsole((open) => !open);
+        break;
       case 'tree-collapse-all':
         setRail((current) => ({ ...current, open: true, view: 'files' }));
         setTreeCollapse((current) => current + 1);
@@ -3626,6 +3633,7 @@ function NotoWorkspace({ platform }: { platform: NotoPlatform }) {
       >
         {shortcuts && <Shortcuts mac={platform === 'darwin'} sheet={sheetWidth} seen={guideSeen} onClose={closeGuide} onTry={tryGuide}
           unavailable={(action) => tryNeeds(action, { folder: folder.root !== null, note: active !== null })} />}
+        {debugConsole && <DebugConsole sheet={sheetWidth} onClose={() => setDebugConsole(false)} />}
         {leaveAsk && <LeaveUnsavedDialog name={leaveAsk.name} onChoose={leaveAsk.answer} />}
         {reloadConfirm && (
           <ReloadConfirmDialog
