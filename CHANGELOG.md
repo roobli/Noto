@@ -11,7 +11,7 @@ How releases are made, and what each channel receives, is in
 
 ### Added
 
-- **Developer Console (`Option+Command+I` / `Ctrl+Shift+I`, or View › Developer Console) and full diagram syntax diagnostics.**
+- **Developer Console (`Option+Command+I` / `Ctrl+Alt+I`, or View › Developer Console) and full diagram syntax diagnostics.**
   A diagram fence that fails to parse now prints Mermaid's multi-line caret snippet and expected tokens directly under the status line, and clicking the error jumps the caret straight to the offending line inside the fence. The new read-only Developer Console sheet inspects renderer and diagram warnings/errors alongside structured main-process events (`main.ndjson`), with search, severity filtering and copy.
 - **Mermaid 12 diagrams with bundled ELK, semantic roles, ER tables, block grids and directory trees.**
   Flowcharts with `subgraph` containers now lay out with ELK by default (orthogonal routing, line hops, parallel items inside a layer packed into a row, left-aligned container headers and trimmed bottom slack), while flat flowcharts keep Dagre unless overridden via `layout: elk` or `layout: dagre`. Notes can tag nodes with `:::core`, `:::ours`, `:::store`, `:::gate`, `:::async`, `:::other`, `:::client` or `:::risk` instead of writing hex colours, write multi-line quoted labels with plain newlines, and draw `erDiagram`, `block-beta` and `treeView-beta` fences in the theme's own palette.

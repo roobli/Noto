@@ -345,7 +345,7 @@ function NotoWorkspace({ platform }: { platform: NotoPlatform }) {
   });
   /** The sheet of what the app can do, on the Help menu. */
   const [shortcuts, setShortcuts] = useState(false);
-  /** Read-only Developer Console sheet (`Option+Cmd+I` / `Ctrl+Shift+I`). */
+  /** Read-only Developer Console sheet (`Option+Cmd+I` / `Ctrl+Alt+I`). */
   const [debugConsole, setDebugConsole] = useState(false);
   /**
    * The edition of What Noto Can Do last opened on this machine. Anyone who

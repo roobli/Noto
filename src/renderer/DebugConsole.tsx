@@ -1,5 +1,5 @@
 /**
- * In-app Developer Console sheet (`Option+Command+I` / `Ctrl+Shift+I`, or
+ * In-app Developer Console sheet (`Option+Command+I` / `Ctrl+Alt+I`, or
  * View -> Developer Console).
  *
  * Production builds keep Chromium DevTools disabled (`devTools: false`), so the
