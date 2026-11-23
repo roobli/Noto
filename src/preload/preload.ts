@@ -176,6 +176,7 @@ import type {
   WorkspaceLinksFollowedV1,
   WorkspaceUndoLinksReplyV1,
   WorkspaceUndoLinksRequestV1,
+  WorkspaceDebugFeedReplyV1,
   WorkspaceFolderHistoryReplyV1,
   WorkspaceFolderMemoryReplyV1,
   WorkspaceGitMarksV1,
@@ -241,6 +242,7 @@ import {
   isWorkspaceRecentResultV1,
   isWorkspaceRequestV1,
   isWorkspaceIndexResultV1,
+  isWorkspaceDebugFeedResultV1,
   isWorkspaceContentRequestV1,
   isWorkspaceEntryRequestV1,
   isWorkspaceEntryResultV1,
@@ -678,6 +680,9 @@ const workspaceApi: NotoWorkspaceApiV1 = Object.freeze({
   undoLinks: (request: WorkspaceUndoLinksRequestV1) => isWorkspaceUndoLinksRequestV1(request)
     ? invokeWorkspace<WorkspaceUndoLinksReplyV1>(WORKSPACE_CHANNELS.undoLinks, request, request.requestId, isWorkspaceUndoLinksResultV1)
     : Promise.resolve(rejectedWorkspace<WorkspaceUndoLinksReplyV1>('invalid', 'Invalid undo links request')),
+  debugFeed: (request: WorkspaceRequestV1) => isWorkspaceRequestV1(request)
+    ? invokeWorkspace<WorkspaceDebugFeedReplyV1>(WORKSPACE_CHANNELS.debugFeed, request, request.requestId, isWorkspaceDebugFeedResultV1)
+    : Promise.resolve(rejectedWorkspace<WorkspaceDebugFeedReplyV1>('invalid', 'Invalid debug feed request')),
   gitMarks: (request: WorkspaceRequestV1) => isWorkspaceRequestV1(request)
     ? invokeWorkspace<WorkspaceGitMarksV1>(WORKSPACE_CHANNELS.gitMarks, request, request.requestId, isWorkspaceGitMarksResultV1)
     : Promise.resolve(rejectedWorkspace<WorkspaceGitMarksV1>('invalid', 'Invalid git marks request')),

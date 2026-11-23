@@ -25,4 +25,10 @@ export interface DiagramRequest {
 export type DiagramReply =
   | { readonly type: 'noto-diagram-ready' }
   | { readonly type: 'noto-diagram-rendered'; readonly serial: number; readonly width: number; readonly height: number }
-  | { readonly type: 'noto-diagram-failed'; readonly serial: number; readonly message: string };
+  | {
+      readonly type: 'noto-diagram-failed';
+      readonly serial: number;
+      readonly message: string;
+      readonly detail?: string;
+      readonly line?: number;
+    };

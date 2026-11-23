@@ -1011,6 +1011,7 @@ async function run(): Promise<void> {
     recent,
     getWindow: () => editorWindow,
     logger,
+    consoleRecent: () => rendererConsole.recent,
     onMenuStale: refreshMenu,
     recentFolders: async () => { await recentFolders.load(); return recentFolders.list(); },
   });

@@ -46,7 +46,10 @@ function isReply(data: unknown): data is DiagramReply {
     case 'noto-diagram-rendered':
       return typeof record.serial === 'number' && typeof record.height === 'number' && typeof record.width === 'number';
     case 'noto-diagram-failed':
-      return typeof record.serial === 'number' && typeof record.message === 'string';
+      return typeof record.serial === 'number'
+        && typeof record.message === 'string'
+        && (record.detail === undefined || typeof record.detail === 'string')
+        && (record.line === undefined || (typeof record.line === 'number' && Number.isFinite(record.line)));
     default:
       return false;
   }
@@ -78,8 +81,11 @@ export class DiagramFrame {
   readonly dom: HTMLElement;
   private readonly frame: HTMLIFrameElement;
   private readonly status: HTMLElement;
+  private readonly detail: HTMLPreElement;
   private ready = false;
   private source: string | null = null;
+  private injectedExtraLines = 0;
+  private failedLine: number | null = null;
   private serial = 0;
   private timer: ReturnType<typeof setTimeout> | null = null;
   /**
@@ -99,7 +105,7 @@ export class DiagramFrame {
   private hiddenRetries = 0;
   private readonly shown: ResizeObserver | null;
 
-  constructor(private readonly onEnter: () => void) {
+  constructor(private readonly onEnter: (zeroBasedLine?: number) => void) {
     install();
     this.dom = document.createElement('div');
     this.dom.className = 'noto-diagram';
@@ -126,7 +132,10 @@ export class DiagramFrame {
     this.status.className = 'noto-diagram-status';
     this.status.setAttribute('role', 'status');
 
-    this.dom.append(this.frame, this.status);
+    this.detail = document.createElement('pre');
+    this.detail.className = 'noto-diagram-detail';
+
+    this.dom.append(this.frame, this.status, this.detail);
     // A hidden page lays the diagram out at no size, and showing it again
     // gives it one: that is the moment to draw what waited.
     this.shown = typeof ResizeObserver === 'function'
@@ -141,7 +150,7 @@ export class DiagramFrame {
     this.shown?.observe(this.dom);
     this.dom.addEventListener('mousedown', (event) => {
       event.preventDefault();
-      this.onEnter();
+      this.onEnter(this.failedLine !== null ? Math.max(0, this.failedLine - 1) : undefined);
     });
   }
 
@@ -156,14 +165,18 @@ export class DiagramFrame {
       if (this.timer !== null) clearTimeout(this.timer);
       this.timer = null;
       this.source = null;
+      const hit = /\bline\s+(\d+)\b/i.exec(mermaid.error);
+      this.failedLine = hit ? Number(hit[1]) : null;
       this.serial += 1;
       this.frame.style.height = '0px';
       this.dom.dataset.state = 'failed';
       this.status.textContent = `The diagram could not be drawn: ${mermaid.error}`;
+      this.detail.textContent = '';
       return;
     }
     if (mermaid.source === this.source) return;
     this.source = mermaid.source;
+    this.injectedExtraLines = Math.max(0, mermaid.source.split('\n').length - source.split('\n').length);
     this.hiddenRetries = 0;
     if (this.timer !== null) clearTimeout(this.timer);
     this.timer = setTimeout(() => {
@@ -180,9 +193,17 @@ export class DiagramFrame {
     if (!isReply(data) || data.type === 'noto-diagram-ready') return;
     if (data.serial !== this.serial) return;
     if (data.type === 'noto-diagram-rendered') {
+      if ((data.width <= 16 || data.height <= 24) && (this.hiddenSincePost || !this.isShown()) && this.hiddenRetries < HIDDEN_RETRIES) {
+        this.hiddenRetries += 1;
+        this.waitingToBeShown = true;
+        if (this.isShown()) this.post();
+        return;
+      }
       this.frame.style.height = `${Math.min(Math.max(0, data.height), MAX_HEIGHT_PX)}px`;
       this.dom.dataset.state = 'rendered';
       this.status.textContent = '';
+      this.detail.textContent = '';
+      this.failedLine = null;
       this.hiddenRetries = 0;
     } else if ((this.hiddenSincePost || !this.isShown()) && this.hiddenRetries < HIDDEN_RETRIES) {
       // Laid out while hidden, so measured at nothing: not the chart's fault.
@@ -193,7 +214,11 @@ export class DiagramFrame {
     } else {
       this.frame.style.height = '0px';
       this.dom.dataset.state = 'failed';
-      this.status.textContent = `The diagram could not be drawn: ${data.message}`;
+      const userLine = data.line !== undefined ? Math.max(1, data.line - this.injectedExtraLines) : null;
+      this.failedLine = userLine;
+      const hint = userLine !== null ? ` (click to jump to line ${userLine})` : '';
+      this.status.textContent = `The diagram could not be drawn: ${data.message}${hint}`;
+      this.detail.textContent = data.detail ?? '';
     }
   }
 

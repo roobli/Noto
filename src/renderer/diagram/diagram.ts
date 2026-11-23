@@ -11,8 +11,10 @@
 
 import mermaid from 'mermaid';
 import { isXyChart, readXyShape, xyLayout } from './chart-layout';
-import { drawWholeGroups } from './flow-groups';
 import { chartVariables, labelColourOn, mix } from './chart-theme';
+import { polishDiagramSvg } from './diagram-polish';
+import { injectSemanticRoles, preferredLayout, stripDiagramHeader } from './diagram-roles';
+import { drawWholeGroups } from './flow-groups';
 import type { DiagramReply, DiagramRequest } from './protocol';
 
 const container = document.getElementById('diagram') as HTMLDivElement;
@@ -65,13 +67,44 @@ async function draw(request: DiagramRequest): Promise<void> {
   // An xychart is laid out for the column and its labels (chart-layout.ts);
   // what the note says in its own source or directive still wins.
   const xyChart = isXyChart(source) ? xyLayout(readXyShape(source), laidOutFor) : undefined;
+  const layoutOverride = preferredLayout(source);
   mermaid.initialize({
     startOnLoad: false,
     // Strict: no click handlers, no scripts in labels, HTML in labels sanitised.
     securityLevel: 'strict',
     suppressErrorRendering: true,
     theme: 'base',
+    look: 'classic',
+    ...(layoutOverride ? { layout: layoutOverride } : {}),
+    markdownAutoWrap: false,
     darkMode: dark,
+    flowchart: {
+      htmlLabels: true,
+      wrappingWidth: 300,
+      minNodeWidth: 72,
+      padding: 14,
+      nodeSpacing: 34,
+      rankSpacing: 46,
+      curve: 'basis',
+      subGraphTitleMargin: { top: 8, bottom: 12 },
+    },
+    elk: {
+      mergeEdges: false,
+      straightenEdges: true,
+      lineHops: true,
+      keepEntryNodeOnTop: true,
+    },
+    er: {
+      layoutDirection: 'TB',
+      minEntityWidth: 120,
+      minEntityHeight: 48,
+      entityPadding: 14,
+      nodeSpacing: 52,
+      rankSpacing: 68,
+      fontSize: 12.5,
+    },
+    block: { padding: 12 },
+    treeView: { rowIndent: 20, paddingX: 8, paddingY: 5, lineThickness: 1 },
     ...(xyChart ? { xyChart } : {}),
     // A journey's people and sections are configuration, not theme: lawn
     // green, cyan and pale yellow by default, whatever the theme says.
@@ -125,21 +158,53 @@ async function draw(request: DiagramRequest): Promise<void> {
     },
   });
   try {
-    // A statement naming every node of a group is drawn to or from the group (flow-groups.ts).
-    const { svg } = await mermaid.render(`noto-diagram-${serial}`, drawWholeGroups(source));
+    // A statement naming every node of a group is drawn to or from the group (flow-groups.ts),
+    // and semantic roles (`:::core`, `class x store`) get theme-derived `classDef`s (diagram-roles.ts).
+    const prepared = injectSemanticRoles(drawWholeGroups(source), palette, dark);
+    const { svg } = await mermaid.render(`noto-diagram-${serial}`, prepared);
     if (serial !== latest) return;
     container.innerHTML = svg;
     if (xyChart) {
       settleBars(xyChart.chartOrientation);
       capValueLabels(xyChart.xAxis.labelFontSize);
     }
+    const svgEl = container.querySelector('svg');
+    if (svgEl) {
+      const isElkFlowchart = layoutOverride === 'elk'
+        || (/^(?:flowchart(?:-elk)?|graph)\b/.test(stripDiagramHeader(source)) && /\blayout\s*:\s*["']?elk/i.test(source));
+      polishDiagramSvg(svgEl, palette, dark, font, { isElkFlowchart });
+    }
     settleColours(palette);
     reply({ type: 'noto-diagram-rendered', serial, ...measure() });
   } catch (error) {
     if (serial !== latest) return;
     container.replaceChildren();
-    const text = error instanceof Error ? error.message : String(error);
-    reply({ type: 'noto-diagram-failed', serial, message: text.split('\n', 1)[0].slice(0, 200) });
+    const raw = error instanceof Error ? error.message : String(error);
+    const lines = raw.split('\n').map((line) => line.trimEnd()).filter((line) => line.length > 0);
+    const summary = (lines[0] ?? raw).slice(0, 200);
+    const detail = lines.length > 1 ? lines.slice(0, 8).join('\n').slice(0, 1200) : undefined;
+    const hashLine = typeof error === 'object' && error !== null && 'hash' in error
+      ? ((error as { hash?: { loc?: { first_line?: unknown }; line?: unknown } }).hash?.loc?.first_line
+        ?? (typeof (error as { hash?: { line?: unknown } }).hash?.line === 'number'
+          ? ((error as { hash: { line: number } }).hash.line + 1)
+          : undefined))
+      : undefined;
+    const parsedLine = typeof hashLine === 'number' && Number.isFinite(hashLine) && hashLine >= 1
+      ? Math.floor(hashLine)
+      : (() => {
+          const hit = /\bline\s+(\d+)\b/i.exec(raw);
+          return hit ? Number(hit[1]) : undefined;
+        })();
+    // Surface in the frame's console so the Developer Console panel captures
+    // every diagram syntax failure with its full caret snippet and line number.
+    console.warn(`[diagram] ${raw.slice(0, 800)}`);
+    reply({
+      type: 'noto-diagram-failed',
+      serial,
+      message: summary,
+      ...(detail ? { detail } : {}),
+      ...(parsedLine !== undefined && parsedLine >= 1 ? { line: parsedLine } : {}),
+    });
   }
 }
 

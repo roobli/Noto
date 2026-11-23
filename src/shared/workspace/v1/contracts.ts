@@ -89,6 +89,8 @@ export const WORKSPACE_CHANNELS = {
   linksFollowed: 'noto:v1:workspace:links-followed',
   /** Take back the links written after the last move. See `WorkspaceUndoLinksReplyV1`. */
   undoLinks: 'noto:v1:workspace:undo-links',
+  /** Read the recent renderer console lines and structured main-process log entries for the Developer Console. */
+  debugFeed: 'noto:v1:workspace:debug-feed',
   /** Push: Get Info was chosen on a folder in the tree, so the info pane turns to it. */
   showFolderInfo: 'noto:v1:workspace:show-folder-info',
   focusFolder: 'noto:v1:workspace:focus-folder',
@@ -412,6 +414,7 @@ export const WORKSPACE_MENU_COMMANDS = [
   'navigate-back',
   'navigate-forward',
   'browse-tags',
+  'toggle-debug-console',
 ] as const;
 
 export type WorkspaceMenuCommandV1 = typeof WORKSPACE_MENU_COMMANDS[number];
@@ -1621,4 +1624,26 @@ export interface NotoWorkspaceApiV1 {
   onFocusFolder(listener: (event: WorkspaceFocusFolderEventV1) => void): () => void;
   onLinksFollowed(listener: (event: WorkspaceLinksFollowedV1) => void): () => void;
   undoLinks(request: WorkspaceUndoLinksRequestV1): Promise<WorkspaceResultV1<WorkspaceUndoLinksReplyV1>>;
+  debugFeed(request: WorkspaceRequestV1): Promise<WorkspaceResultV1<WorkspaceDebugFeedReplyV1>>;
+}
+
+export interface WorkspaceDebugConsoleEntryV1 {
+  readonly timestamp: string;
+  readonly level: number;
+  readonly message: string;
+  readonly line: number;
+  readonly source: string;
+  readonly noise: boolean;
+}
+
+export interface WorkspaceDebugLogEntryV1 {
+  readonly timestamp: string;
+  readonly event: string;
+  readonly summary: string;
+}
+
+export interface WorkspaceDebugFeedReplyV1 {
+  readonly version: typeof NOTO_WORKSPACE_VERSION;
+  readonly consoleEntries: readonly WorkspaceDebugConsoleEntryV1[];
+  readonly logEntries: readonly WorkspaceDebugLogEntryV1[];
 }

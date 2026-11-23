@@ -281,14 +281,130 @@ test.describe('diagrams', () => {
     }
   });
 
-  test('says when a diagram cannot be drawn, without touching the source', async () => {
-    const broken = SOURCE.replace('graph TD\n  A[Start] --> B[End]', 'graph TD\n  A[Start] --> ');
+  test('draws Mermaid 12 ELK architectures, semantic roles, ER tables, block grids and treeView cleanly under CSP', async () => {
+    const rich = [
+      '# Architecture & Rich Diagrams',
+      '',
+      '```mermaid',
+      'flowchart TB',
+      '  caller["Caller',
+      'api-gateway · cli"]:::client',
+      '  subgraph core["scheduler-core · 1 node"]',
+      '    go["Go control plane',
+      'public API · lease state · scheduler"]:::core',
+      '    py["Python worker"]:::ours',
+      '    pg[("Postgres")]:::store',
+      '    go --> pg',
+      '    py --> pg',
+      '  end',
+      '  caller -->|HTTPS · internal key| go',
+      '```',
+      '',
+      '```mermaid',
+      'erDiagram',
+      '  account ||--o{ identity_link : "account_id"',
+      '  account {',
+      '    bigint account_id PK "primary identifier"',
+      '    text status',
+      '  }',
+      '  identity_link {',
+      '    bigint account_id FK',
+      '  }',
+      '```',
+      '',
+      '```mermaid',
+      'treeView-beta',
+      's3://archive-lake/',
+      '  ├── raw/{source}/ ## immutable snapshot',
+      '  └── golden/{generation}/ :::highlight ## curated record',
+      '```',
+      '',
+    ].join('\n');
+    const { app, page } = await launch('rich-m12', rich);
+    try {
+      const diagrams = page.locator('pre.noto-fence[data-lang="mermaid"] .noto-diagram');
+      await expect(diagrams).toHaveCount(3);
+      for (let at = 0; at < 3; at += 1) {
+        const d = diagrams.nth(at);
+        await d.scrollIntoViewIfNeeded();
+        await expect(d).toHaveAttribute('data-state', 'rendered', { timeout: 20_000 });
+      }
+      // 1. Subgraph architecture: ELK rendered, cluster header left-aligned, :::core applied, newline kept without <br/>
+      const archFrame = await (await diagrams.nth(0).locator('iframe').elementHandle())!.contentFrame();
+      const archInfo = await archFrame!.evaluate(() => {
+        const clusterRect = document.querySelector('svg g.cluster > rect')!;
+        const clusterLabel = document.querySelector('svg g.cluster > .cluster-label')!;
+        const rx = Number(clusterRect.getAttribute('x'));
+        const lx = Number(/translate\(\s*([-\d.]+)/.exec(clusterLabel.getAttribute('transform') ?? '')?.[1] ?? 0);
+        const goNode = [...document.querySelectorAll('svg g.node')].find((n) => n.textContent?.includes('Go control plane'))!;
+        const goRect = goNode.querySelector('rect')!;
+        return {
+          leftAlignedOffset: lx - rx,
+          cornerRadius: Number(goRect.getAttribute('rx')),
+          goFill: getComputedStyle(goRect).fill,
+          linesInGo: goNode.querySelectorAll('br').length + 1,
+        };
+      });
+      expect(archInfo.leftAlignedOffset).toBeLessThanOrEqual(20);
+      expect(archInfo.cornerRadius).toBeGreaterThanOrEqual(4);
+      expect(archInfo.goFill).not.toBe('rgb(242, 241, 238)'); // tinted with core role, not default raised
+      expect(archInfo.linesInGo).toBe(2);
+
+      // 2. ER diagram: cream #fff4dd replaced with Noto warm palette
+      const erFrame = await (await diagrams.nth(1).locator('iframe').elementHandle())!.contentFrame();
+      const erHasCream = await erFrame!.evaluate(() =>
+        [...document.querySelectorAll('svg path')].some((p) => (p.getAttribute('fill') ?? '').toLowerCase() === '#fff4dd'),
+      );
+      expect(erHasCream).toBe(false);
+
+      // 3. TreeView: synthetic "/" root stripped, real root starts at s3://archive-lake
+      const tvFrame = await (await diagrams.nth(2).locator('iframe').elementHandle())!.contentFrame();
+      const tvFirst = await tvFrame!.evaluate(() =>
+        document.querySelector('svg .treeView-node-label')?.textContent?.trim() ?? '',
+      );
+      expect(tvFirst).toBe('s3://archive-lake');
+    } finally {
+      await app.close();
+    }
+  });
+
+  test('says when a diagram cannot be drawn, shows its syntax snippet, jumps to the failed line, and surfaces in Developer Console', async () => {
+    const broken = [
+      '# Sequence error',
+      '',
+      '```mermaid',
+      'sequenceDiagram',
+      '  participant Node as node',
+      '  participant Box as sandbox',
+      '  Node->>Box: start',
+      '```',
+      '',
+    ].join('\n');
     const { app, page } = await launch('broken', broken);
     try {
       const diagram = page.locator('pre.noto-fence[data-lang="mermaid"] .noto-diagram');
       await expect(diagram).toHaveAttribute('data-state', 'failed', { timeout: 20_000 });
       await expect(diagram.locator('.noto-diagram-status')).toContainText('could not be drawn');
-      await expect(page.locator('pre.noto-fence[data-lang="mermaid"] .noto-fence-code')).toHaveText('graph TD\n  A[Start] --> ');
+      await expect(diagram.locator('.noto-diagram-status')).toContainText('line 4');
+      // Full parser context is now shown instead of truncated after line 1
+      await expect(diagram.locator('.noto-diagram-detail')).toContainText("got 'box'");
+      await expect(page.locator('pre.noto-fence[data-lang="mermaid"] .noto-fence-code')).toContainText('Node->>Box: start');
+
+      // Developer Console sheet shows the captured [diagram] warning and main-process events
+      await page.evaluate(async () => {
+        await window.notoWorkspace.runMenuCommand({
+          version: 1,
+          requestId: 'open-console',
+          id: 'toggle-debug-console',
+        });
+      });
+      const consoleSheet = page.getByTestId('debug-console');
+      await expect(consoleSheet).toBeVisible();
+      await expect(page.getByTestId('debug-console-body')).toContainText('[diagram]', { timeout: 5_000 });
+      await page.getByTestId('debug-tab-main').click();
+      await expect(page.getByTestId('debug-console-body')).toContainText('renderer_console');
+      await page.keyboard.press('Escape');
+      await expect(consoleSheet).toBeHidden();
     } finally {
       await app.close();
     }

@@ -59,7 +59,8 @@ import {
   isWorkspaceExportRequestV1,
 } from '../../shared/workspace/v1/validate';
 import { isTrustedRendererSender } from '../ipc/trusted-renderer';
-import type { StructuredLogger } from '../logger';
+import type { ReadableLogger, StructuredLogger } from '../logger';
+import type { RendererConsoleEntry } from '../windows/create-editor-window';
 import type { RecentFiles } from './recent-files';
 import type { WorkspaceSession } from './session';
 import { openedNote, openReply } from './open-reply';
@@ -70,7 +71,8 @@ export function registerWorkspaceHandlers(deps: {
   session: WorkspaceSession;
   recent: RecentFiles;
   getWindow: () => BrowserWindow | null;
-  logger: StructuredLogger;
+  logger: StructuredLogger & Partial<Pick<ReadableLogger, 'tail'>>;
+  consoleRecent?: () => readonly RendererConsoleEntry[];
   /**
    * Something the application menu shows has changed.
    *
@@ -273,5 +275,27 @@ export function registerWorkspaceHandlers(deps: {
   register(WORKSPACE_CHANNELS.recent, isWorkspaceRequestV1, async (_request: WorkspaceRequestV1) => {
     await deps.recent.load();
     return { version: NOTO_WORKSPACE_VERSION, files: deps.recent.list() } as const;
+  });
+
+  register(WORKSPACE_CHANNELS.debugFeed, isWorkspaceRequestV1, () => {
+    const consoleEntries = (deps.consoleRecent?.() ?? []).slice(-200).map((entry) => ({
+      timestamp: entry.timestamp.slice(0, 64),
+      level: Math.min(Math.max(0, Math.floor(entry.level)), 10),
+      message: entry.message.slice(0, 4096),
+      line: Math.max(0, Math.floor(entry.line)),
+      source: entry.source.slice(0, 256),
+      noise: Boolean(entry.noise),
+    }));
+    const rawLogs = typeof deps.logger.tail === 'function' ? deps.logger.tail(200, null) : [];
+    const logEntries = rawLogs.map((raw) => {
+      const { timestamp, event, process: _proc, ...rest } = raw;
+      const summary = Object.keys(rest).length === 0 ? '' : JSON.stringify(rest).slice(0, 2048);
+      return {
+        timestamp: String(timestamp ?? '').slice(0, 64),
+        event: String(event ?? 'event').slice(0, 128),
+        summary,
+      };
+    });
+    return { version: NOTO_WORKSPACE_VERSION, consoleEntries, logEntries } as const;
   });
 }
